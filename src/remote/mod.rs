@@ -240,6 +240,8 @@ impl RemoteStatus {
                     TicketStatus::Complete
                 } else if lower.contains("cancel") {
                     TicketStatus::Cancelled
+                } else if lower.contains("progress") {
+                    TicketStatus::InProgress
                 } else {
                     TicketStatus::New
                 }
@@ -251,6 +253,8 @@ impl RemoteStatus {
     pub fn from_ticket_status(status: TicketStatus) -> Self {
         match status {
             TicketStatus::New => RemoteStatus::Open,
+            TicketStatus::Next => RemoteStatus::Open,
+            TicketStatus::InProgress => RemoteStatus::Open,
             TicketStatus::Complete => RemoteStatus::Closed,
             TicketStatus::Cancelled => RemoteStatus::Closed,
         }
@@ -429,7 +433,7 @@ mod tests {
         );
         assert_eq!(
             RemoteStatus::Custom("In Progress".to_string()).to_ticket_status(),
-            TicketStatus::New
+            TicketStatus::InProgress
         );
     }
 

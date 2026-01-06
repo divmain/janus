@@ -216,7 +216,7 @@ fn test_status_start() {
 
     janus.run_success(&["start", &id]);
     let content = janus.read_ticket(&id);
-    assert!(content.contains("status: new"));
+    assert!(content.contains("status: in_progress"));
 }
 
 #[test]
@@ -251,6 +251,39 @@ fn test_status_cancelled() {
 
     let content = janus.read_ticket(&id);
     assert!(content.contains("status: cancelled"));
+}
+
+#[test]
+fn test_status_next() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    janus.run_success(&["status", &id, "next"]);
+
+    let content = janus.read_ticket(&id);
+    assert!(content.contains("status: next"));
+}
+
+#[test]
+fn test_status_in_progress() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    janus.run_success(&["status", &id, "in_progress"]);
+
+    let content = janus.read_ticket(&id);
+    assert!(content.contains("status: in_progress"));
+}
+
+#[test]
+fn test_start_sets_in_progress() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    janus.run_success(&["start", &id]);
+
+    let content = janus.read_ticket(&id);
+    assert!(content.contains("status: in_progress"));
 }
 
 #[test]

@@ -30,15 +30,15 @@ pub fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// List tickets that are ready to work on (new status, all deps complete)
+/// List tickets that are ready to work on (new or next status, all deps complete)
 pub fn cmd_ready() -> Result<()> {
     let ticket_map = build_ticket_map();
 
     let mut ready: Vec<TicketMetadata> = ticket_map
         .values()
         .filter(|t| {
-            // Must be "new" status
-            if t.status != Some(TicketStatus::New) {
+            // Must be "new" or "next" status
+            if !matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
                 return false;
             }
 
@@ -73,8 +73,8 @@ pub fn cmd_blocked() -> Result<()> {
     let mut blocked: Vec<(TicketMetadata, Vec<String>)> = Vec::new();
 
     for t in ticket_map.values() {
-        // Must be "new" status
-        if t.status != Some(TicketStatus::New) {
+        // Must be "new" or "next" status
+        if !matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
             continue;
         }
 

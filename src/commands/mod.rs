@@ -58,6 +58,8 @@ pub fn format_ticket_line(ticket: &TicketMetadata, options: FormatOptions) -> St
     // Apply colors based on status
     let colored_status = match status {
         TicketStatus::New => status_str.yellow().to_string(),
+        TicketStatus::Next => status_str.magenta().to_string(),
+        TicketStatus::InProgress => status_str.cyan().to_string(),
         TicketStatus::Complete => status_str.green().to_string(),
         TicketStatus::Cancelled => status_str.dimmed().to_string(),
     };

@@ -8,10 +8,12 @@ use crate::error::JanusError;
 pub const TICKETS_DIR: &str = ".janus";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum TicketStatus {
     #[default]
     New,
+    Next,
+    InProgress,
     Complete,
     Cancelled,
 }
@@ -20,6 +22,8 @@ impl fmt::Display for TicketStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TicketStatus::New => write!(f, "new"),
+            TicketStatus::Next => write!(f, "next"),
+            TicketStatus::InProgress => write!(f, "in_progress"),
             TicketStatus::Complete => write!(f, "complete"),
             TicketStatus::Cancelled => write!(f, "cancelled"),
         }
@@ -32,6 +36,8 @@ impl FromStr for TicketStatus {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "new" => Ok(TicketStatus::New),
+            "next" => Ok(TicketStatus::Next),
+            "in_progress" => Ok(TicketStatus::InProgress),
             "complete" => Ok(TicketStatus::Complete),
             "cancelled" => Ok(TicketStatus::Cancelled),
             _ => Err(JanusError::InvalidStatus(s.to_string())),
@@ -39,7 +45,7 @@ impl FromStr for TicketStatus {
     }
 }
 
-pub const VALID_STATUSES: &[&str] = &["new", "complete", "cancelled"];
+pub const VALID_STATUSES: &[&str] = &["new", "next", "in_progress", "complete", "cancelled"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]

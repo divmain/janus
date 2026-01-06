@@ -10,9 +10,9 @@ fn update_status(id: &str, status: TicketStatus) -> Result<()> {
     Ok(())
 }
 
-/// Set a ticket's status to "new" (start working on it)
+/// Set a ticket's status to "in_progress" (start working on it)
 pub fn cmd_start(id: &str) -> Result<()> {
-    update_status(id, TicketStatus::New)
+    update_status(id, TicketStatus::InProgress)
 }
 
 /// Set a ticket's status to "complete"

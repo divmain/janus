@@ -105,7 +105,7 @@ enum Commands {
         /// Ticket ID (can be partial)
         id: String,
 
-        /// New status (new, complete, cancelled)
+        /// New status (new, next, in_progress, complete, cancelled)
         #[arg(value_parser = parse_status)]
         status: String,
     },
