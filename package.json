@@ -1,0 +1,25 @@
+{
+  "name": "janus",
+  "version": "1.0.0",
+  "description": "Plain-text issue tracking",
+  "type": "module",
+  "bin": {
+    "janus": "./src/cli.ts"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'",
+    "typecheck": "tsgo --noEmit"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/divmain/janus"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260105.1"
+  }
+}
