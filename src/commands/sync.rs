@@ -17,7 +17,7 @@ use crate::remote::github::GitHubProvider;
 use crate::remote::linear::LinearProvider;
 use crate::remote::{IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
 use crate::ticket::Ticket;
-use crate::types::TICKETS_DIR;
+use crate::types::TICKETS_ITEMS_DIR;
 use crate::utils::{ensure_dir, generate_id, get_git_user_name, iso_date};
 
 /// Adopt a remote issue and create a local ticket
@@ -98,8 +98,8 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
 
     let content = format!("{}\n{}", frontmatter, body);
 
-    let file_path = PathBuf::from(TICKETS_DIR).join(format!("{}.md", id));
-    fs::create_dir_all(TICKETS_DIR)?;
+    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+    fs::create_dir_all(TICKETS_ITEMS_DIR)?;
     fs::write(file_path, content)?;
 
     Ok(id)

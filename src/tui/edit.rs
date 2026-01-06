@@ -12,7 +12,7 @@ use crate::ticket::Ticket;
 use crate::tui::components::{Footer, Selectable, edit_shortcuts, options_for};
 use crate::tui::state::get_git_user_name;
 use crate::tui::theme::theme;
-use crate::types::{TICKETS_DIR, TicketMetadata, TicketPriority, TicketStatus, TicketType};
+use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus, TicketType};
 use crate::utils::{generate_id, iso_date};
 
 /// Which field is currently focused in the edit form
@@ -615,9 +615,9 @@ fn save_new_ticket(
     let content = format!("{}\n{}\n", frontmatter, body_content);
 
     // Ensure directory exists
-    fs::create_dir_all(TICKETS_DIR).map_err(|e| e.to_string())?;
+    fs::create_dir_all(TICKETS_ITEMS_DIR).map_err(|e| e.to_string())?;
 
-    let file_path = PathBuf::from(TICKETS_DIR).join(format!("{}.md", id));
+    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
     fs::write(&file_path, content).map_err(|e| e.to_string())?;
 
     Ok(id)

@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{JanusError, Result};
 use crate::parser::parse_ticket_content;
-use crate::types::{TICKETS_DIR, TicketMetadata};
+use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
 
 /// Find all ticket files in the tickets directory
 fn find_tickets() -> Vec<String> {
-    fs::read_dir(TICKETS_DIR)
+    fs::read_dir(TICKETS_ITEMS_DIR)
         .ok()
         .map(|entries| {
             entries
@@ -34,7 +34,7 @@ fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     // Check for exact match first
     let exact_name = format!("{}.md", partial_id);
     if files.iter().any(|f| f == &exact_name) {
-        return Ok(PathBuf::from(TICKETS_DIR).join(&exact_name));
+        return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
     }
 
     // Then check for partial matches
@@ -42,7 +42,7 @@ fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
 
     match matches.len() {
         0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
-        1 => Ok(PathBuf::from(TICKETS_DIR).join(matches[0])),
+        1 => Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(matches[0])),
         _ => Err(JanusError::AmbiguousId(partial_id.to_string())),
     }
 }
@@ -161,7 +161,7 @@ pub fn get_all_tickets() -> Vec<TicketMetadata> {
     let mut tickets = Vec::new();
 
     for file in files {
-        let file_path = PathBuf::from(TICKETS_DIR).join(&file);
+        let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(&file);
         match fs::read_to_string(&file_path) {
             Ok(content) => match parse_ticket_content(&content) {
                 Ok(mut metadata) => {

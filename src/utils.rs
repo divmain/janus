@@ -5,11 +5,11 @@ use std::fs;
 use std::io::{self, BufRead};
 use std::process::Command;
 
-use crate::types::TICKETS_DIR;
+use crate::types::TICKETS_ITEMS_DIR;
 
 /// Ensure the tickets directory exists
 pub fn ensure_dir() -> io::Result<()> {
-    fs::create_dir_all(TICKETS_DIR)
+    fs::create_dir_all(TICKETS_ITEMS_DIR)
 }
 
 /// Get the git user.name config value

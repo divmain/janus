@@ -70,6 +70,7 @@ impl JanusTest {
             .temp_dir
             .path()
             .join(".janus")
+            .join("items")
             .join(format!("{}.md", id));
         fs::read_to_string(path).expect("Failed to read ticket file")
     }
@@ -79,6 +80,7 @@ impl JanusTest {
             .temp_dir
             .path()
             .join(".janus")
+            .join("items")
             .join(format!("{}.md", id));
         path.exists()
     }

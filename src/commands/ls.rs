@@ -5,7 +5,7 @@ use crate::commands::{FormatOptions, format_deps, format_ticket_line, sort_by_pr
 use crate::error::Result;
 use crate::parser::parse_ticket_content;
 use crate::ticket::{build_ticket_map, get_all_tickets, get_file_mtime};
-use crate::types::{TICKETS_DIR, TicketMetadata, TicketStatus};
+use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketStatus};
 
 /// List all tickets, optionally filtered by status
 pub fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
@@ -125,7 +125,7 @@ pub fn cmd_blocked() -> Result<()> {
 
 /// List recently closed tickets
 pub fn cmd_closed(limit: usize) -> Result<()> {
-    let files: Vec<String> = fs::read_dir(TICKETS_DIR)
+    let files: Vec<String> = fs::read_dir(TICKETS_ITEMS_DIR)
         .ok()
         .map(|entries| {
             entries
@@ -146,7 +146,7 @@ pub fn cmd_closed(limit: usize) -> Result<()> {
     let mut file_stats: Vec<(String, PathBuf, std::time::SystemTime)> = files
         .into_iter()
         .filter_map(|file| {
-            let path = PathBuf::from(TICKETS_DIR).join(&file);
+            let path = PathBuf::from(TICKETS_ITEMS_DIR).join(&file);
             get_file_mtime(&path).map(|mtime| (file, path, mtime))
         })
         .collect();

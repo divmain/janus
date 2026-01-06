@@ -6,6 +6,7 @@ use std::str::FromStr;
 use crate::error::JanusError;
 
 pub const TICKETS_DIR: &str = ".janus";
+pub const TICKETS_ITEMS_DIR: &str = ".janus/items";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]

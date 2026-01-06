@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::error::Result;
-use crate::types::{TICKETS_DIR, TicketPriority, TicketType};
+use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketType};
 use crate::utils::{ensure_dir, generate_id, get_git_user_name, iso_date};
 
 /// Options for creating a new ticket
@@ -84,8 +84,8 @@ pub fn cmd_create(options: CreateOptions) -> Result<()> {
     let body = sections.join("\n");
     let content = format!("{}\n{}\n", frontmatter, body);
 
-    let file_path = PathBuf::from(TICKETS_DIR).join(format!("{}.md", id));
-    fs::create_dir_all(TICKETS_DIR)?;
+    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+    fs::create_dir_all(TICKETS_ITEMS_DIR)?;
     fs::write(file_path, content)?;
 
     println!("{}", id);
