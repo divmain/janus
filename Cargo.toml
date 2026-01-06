@@ -1,0 +1,76 @@
+[workspace]
+members = ["crates/janus-schema"]
+
+[package]
+name = "janus"
+version = "0.5.0"
+edition = "2024"
+description = "Plain-text issue tracking"
+license = "MIT"
+repository = "https://github.com/divmain/janus"
+
+[[bin]]
+name = "janus"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+janus-schema = { path = "crates/janus-schema" }
+
+# External dependencies
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "0.10"
+jiff = "0.2"
+thiserror = "2"
+owo-colors = { version = "4", features = ["supports-colors"] }
+regex = "1"
+sha2 = "0.10"
+rand = "0.9"
+uuid = { version = "1.11", features = ["v4"] }
+
+# Async runtime for HTTP clients
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# GitHub API client
+octocrab = "0.48"
+
+# HTTP client for Linear API
+reqwest = { version = "0.12", features = ["json"] }
+
+# Type-safe GraphQL client
+cynic = "3"
+
+# TUI Framework (React-like declarative API)
+iocraft = "0.7"
+
+# Fuzzy search for filtering
+fuzzy-matcher = "0.3"
+
+# SQLite cache (pure Rust implementation)
+turso = "0.4"
+base64 = "0.22"
+directories = "5"
+
+# Markdown parsing (AST-based, CommonMark + GFM compliant)
+comrak = "0.34"
+
+# Temp files for editor workflows
+tempfile = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cynic-codegen = { version = "3", features = ["rkyv"] }
+
+[dev-dependencies]
+tempfile = "3"
+serial_test = "3"
+criterion = "0.5"
+
+[[bench]]
+name = "cache"
+harness = false

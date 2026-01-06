@@ -1,0 +1,980 @@
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
+use std::io::{self, IsTerminal};
+use std::process::ExitCode;
+
+use janus::commands::{
+    CreateOptions, cmd_add_note, cmd_adopt, cmd_board, cmd_cache_clear, cmd_cache_path,
+    cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set,
+    cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_edit, cmd_link_add,
+    cmd_link_remove, cmd_ls, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
+    cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket,
+    cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
+    cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_remote_browse,
+    cmd_remote_link, cmd_reopen, cmd_set, cmd_show, cmd_show_import_spec, cmd_start, cmd_status,
+    cmd_sync, cmd_view,
+};
+use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
+
+#[derive(Parser)]
+#[command(name = "janus")]
+#[command(about = "Plain-text issue tracking")]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Create a new ticket
+    #[command(visible_alias = "c")]
+    Create {
+        /// Ticket title
+        title: String,
+
+        /// Description text
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Design notes
+        #[arg(long)]
+        design: Option<String>,
+
+        /// Acceptance criteria
+        #[arg(long)]
+        acceptance: Option<String>,
+
+        /// Priority (0-4, default: 2)
+        #[arg(short, long, default_value = "2", value_parser = parse_priority)]
+        priority: TicketPriority,
+
+        /// Type: bug, feature, task, epic, chore (default: task)
+        #[arg(short = 't', long = "type", default_value = "task", value_parser = parse_type)]
+        ticket_type: TicketType,
+
+        /// External reference (e.g., gh-123)
+        #[arg(long)]
+        external_ref: Option<String>,
+
+        /// Parent ticket ID
+        #[arg(long)]
+        parent: Option<String>,
+
+        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Display ticket with relationships
+    #[command(visible_alias = "s")]
+    Show {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Open ticket in $EDITOR
+    #[command(visible_alias = "e")]
+    Edit {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON (prints file path as JSON instead of opening editor)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Add timestamped note to ticket
+    AddNote {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Note text (reads from stdin if not provided)
+        #[arg(trailing_var_arg = true)]
+        text: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Mark ticket as in-progress
+    Start {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Mark ticket as complete
+    Close {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Reopen a closed ticket
+    Reopen {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Set ticket status
+    Status {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// New status (new, next, in_progress, complete, cancelled)
+        #[arg(value_parser = parse_status)]
+        status: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Set a ticket field (priority, type, parent)
+    Set {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Field name to update (priority, type, parent)
+        field: String,
+
+        /// New value (use empty string to clear parent)
+        value: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Manage dependencies
+    Dep {
+        #[command(subcommand)]
+        action: DepAction,
+    },
+
+    /// Legacy: add dependency (hidden, use `dep add` instead)
+    #[command(hide = true)]
+    Undep {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID to remove
+        dep_id: String,
+    },
+
+    /// Manage links
+    Link {
+        #[command(subcommand)]
+        action: LinkAction,
+    },
+
+    /// Legacy: remove link (hidden, use `link remove` instead)
+    #[command(hide = true)]
+    Unlink {
+        /// First ticket ID
+        id1: String,
+        /// Second ticket ID
+        id2: String,
+    },
+
+    /// List tickets with optional filters
+    #[command(visible_alias = "l")]
+    Ls {
+        /// Show tickets ready to work on (no incomplete deps, status=new|next)
+        #[arg(long)]
+        ready: bool,
+
+        /// Show tickets with incomplete dependencies
+        #[arg(long)]
+        blocked: bool,
+
+        /// Show recently closed/cancelled tickets
+        #[arg(long)]
+        closed: bool,
+
+        /// Include closed/cancelled tickets in output
+        #[arg(long)]
+        all: bool,
+
+        /// Filter by specific status
+        #[arg(long, conflicts_with_all = ["ready", "blocked", "closed"])]
+        status: Option<String>,
+
+        /// Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Output tickets as JSON, optionally filtered with jq syntax
+    Query {
+        /// jq filter expression (e.g., '.status == "new"')
+        filter: Option<String>,
+    },
+
+    /// Browse issues with fuzzy search
+    View,
+
+    /// View issues on a Kanban board
+    Board,
+
+    /// Manage remote issues (use --help for subcommands)
+    Remote {
+        #[command(subcommand)]
+        action: Option<RemoteAction>,
+    },
+
+    /// Manage configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+
+    /// Cache management
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
+
+    /// Plan management
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for [possible values: bash, zsh, fish, powershell, elvish]
+        shell: Shell,
+    },
+}
+
+#[derive(Subcommand)]
+enum DepAction {
+    /// Add a dependency
+    Add {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID (ticket that must be completed first)
+        dep_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a dependency
+    Remove {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID to remove
+        dep_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show dependency tree
+    Tree {
+        /// Ticket ID
+        id: String,
+        /// Show full tree (including duplicate nodes)
+        #[arg(long)]
+        full: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum LinkAction {
+    /// Link tickets together
+    Add {
+        /// Ticket IDs to link
+        #[arg(required = true, num_args = 2..)]
+        ids: Vec<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove link between tickets
+    Remove {
+        /// First ticket ID
+        id1: String,
+        /// Second ticket ID
+        id2: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Show current configuration
+    Show {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set a configuration value
+    Set {
+        /// Configuration key (github.token, linear.api_key, default_remote)
+        key: String,
+        /// Value to set
+        value: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Get a configuration value
+    Get {
+        /// Configuration key (github.token, linear.api_key, default_remote)
+        key: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Show cache status
+    Status {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Clear cache for current repo
+    Clear {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Force full cache rebuild
+    Rebuild {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print path to cache database
+    Path {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RemoteAction {
+    /// Browse remote issues in TUI
+    Browse {
+        /// Optional provider override (github or linear)
+        provider: Option<String>,
+    },
+
+    /// Import a remote issue and create a local ticket
+    Adopt {
+        /// Remote reference (e.g., github:owner/repo/123)
+        remote_ref: String,
+
+        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Push a local ticket to create a remote issue
+    Push {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Link a local ticket to an existing remote issue
+    Link {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Remote reference
+        remote_ref: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Sync a local ticket with its remote issue
+    Sync {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum PlanAction {
+    /// Create a new plan
+    Create {
+        /// Plan title
+        title: String,
+
+        /// Add initial phase (creates a phased plan), can be repeated
+        #[arg(long = "phase", action = clap::ArgAction::Append)]
+        phases: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Display a plan with full details
+    Show {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Show raw file content instead of enhanced output
+        #[arg(long)]
+        raw: bool,
+
+        /// Show only the ticket list with statuses
+        #[arg(long = "tickets-only")]
+        tickets_only: bool,
+
+        /// Show only phase summary (phased plans)
+        #[arg(long = "phases-only")]
+        phases_only: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Open plan in $EDITOR
+    Edit {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Output as JSON (prints file path as JSON instead of opening editor)
+        #[arg(long)]
+        json: bool,
+    },
+    /// List all plans
+    Ls {
+        /// Filter by computed status
+        #[arg(long)]
+        status: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add a ticket to a plan
+    AddTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to add
+        ticket_id: String,
+
+        /// Target phase (required for phased plans)
+        #[arg(long)]
+        phase: Option<String>,
+
+        /// Insert after specific ticket
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a ticket from a plan
+    RemoveTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to remove
+        ticket_id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Move a ticket between phases
+    MoveTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to move
+        ticket_id: String,
+
+        /// Target phase (required)
+        #[arg(long = "to-phase")]
+        to_phase: String,
+
+        /// Insert after specific ticket in target phase
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position in target phase (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add a new phase to a plan
+    AddPhase {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Phase name
+        phase_name: String,
+
+        /// Insert after specific phase
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a phase from a plan
+    RemovePhase {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Phase name or number
+        phase: String,
+
+        /// Force removal even if phase contains tickets
+        #[arg(long)]
+        force: bool,
+
+        /// Move tickets to another phase instead of removing
+        #[arg(long)]
+        migrate: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Reorder tickets or phases
+    Reorder {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Reorder tickets within a specific phase
+        #[arg(long)]
+        phase: Option<String>,
+
+        /// Reorder the phases themselves (not tickets within a phase)
+        #[arg(long = "reorder-phases")]
+        reorder_phases: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a plan
+    Delete {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rename a plan (update its title)
+    Rename {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// New title
+        new_title: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the next actionable item(s) in a plan
+    Next {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Show next item in current phase only
+        #[arg(long)]
+        phase: bool,
+
+        /// Show next item for each incomplete phase
+        #[arg(long)]
+        all: bool,
+
+        /// Number of next items to show (default: 1)
+        #[arg(long, default_value = "1")]
+        count: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show plan status summary
+    Status {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import a plan from a markdown file
+    Import {
+        /// File path (use "-" for stdin)
+        file: String,
+
+        /// Validate and show what would be created without creating anything
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Override the extracted title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Ticket type for created tasks (default: task)
+        #[arg(long = "type", default_value = "task", value_parser = parse_type)]
+        ticket_type: TicketType,
+
+        /// Custom prefix for created ticket IDs
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the importable plan format specification
+    ImportSpec,
+}
+
+fn parse_priority(s: &str) -> Result<TicketPriority, String> {
+    s.parse().map_err(|_| {
+        format!(
+            "Invalid priority. Must be one of: {}",
+            VALID_PRIORITIES.join(", ")
+        )
+    })
+}
+
+fn parse_type(s: &str) -> Result<TicketType, String> {
+    s.parse()
+        .map_err(|_| format!("Invalid type. Must be one of: {}", VALID_TYPES.join(", ")))
+}
+
+fn parse_status(s: &str) -> Result<String, String> {
+    if VALID_STATUSES.contains(&s) {
+        Ok(s.to_string())
+    } else {
+        Err(format!(
+            "Invalid status. Must be one of: {}",
+            VALID_STATUSES.join(", ")
+        ))
+    }
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Commands::Create {
+            title,
+            description,
+            design,
+            acceptance,
+            priority,
+            ticket_type,
+            external_ref,
+            parent,
+            prefix,
+            json,
+        } => cmd_create(
+            CreateOptions {
+                title,
+                description,
+                design,
+                acceptance,
+                priority,
+                ticket_type,
+                external_ref,
+                parent,
+                prefix,
+            },
+            json,
+        ),
+
+        Commands::Show { id, json } => cmd_show(&id, json).await,
+        Commands::Edit { id, json } => cmd_edit(&id, json),
+        Commands::AddNote { id, text, json } => {
+            let note_text = if text.is_empty() {
+                None
+            } else {
+                Some(text.join(" "))
+            };
+            cmd_add_note(&id, note_text.as_deref(), json)
+        }
+
+        Commands::Start { id, json } => cmd_start(&id, json),
+        Commands::Close { id, json } => cmd_close(&id, json),
+        Commands::Reopen { id, json } => cmd_reopen(&id, json),
+        Commands::Status { id, status, json } => cmd_status(&id, &status, json),
+        Commands::Set {
+            id,
+            field,
+            value,
+            json,
+        } => cmd_set(&id, &field, &value, json),
+
+        Commands::Dep { action } => match action {
+            DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json),
+            DepAction::Remove { id, dep_id, json } => cmd_dep_remove(&id, &dep_id, json),
+            DepAction::Tree { id, full, json } => cmd_dep_tree(&id, full, json).await,
+        },
+        Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id, false),
+
+        Commands::Link { action } => match action {
+            LinkAction::Add { ids, json } => cmd_link_add(&ids, json),
+            LinkAction::Remove { id1, id2, json } => cmd_link_remove(&id1, &id2, json),
+        },
+        Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2, false),
+
+        Commands::Ls {
+            ready,
+            blocked,
+            closed,
+            all,
+            status,
+            limit,
+            json,
+        } => cmd_ls(ready, blocked, closed, all, status.as_deref(), limit, json).await,
+
+        Commands::Query { filter } => cmd_query(filter.as_deref()).await,
+
+        // TUI commands
+        Commands::View => cmd_view(),
+        Commands::Board => cmd_board(),
+
+        // Remote commands
+        Commands::Remote { action } => match action {
+            Some(RemoteAction::Browse { provider }) => cmd_remote_browse(provider.as_deref()),
+            Some(RemoteAction::Adopt {
+                remote_ref,
+                prefix,
+                json,
+            }) => cmd_adopt(&remote_ref, prefix.as_deref(), json).await,
+            Some(RemoteAction::Push { id, json }) => cmd_push(&id, json).await,
+            Some(RemoteAction::Link {
+                id,
+                remote_ref,
+                json,
+            }) => cmd_remote_link(&id, &remote_ref, json).await,
+            Some(RemoteAction::Sync { id, json }) => cmd_sync(&id, json).await,
+            None => {
+                // No subcommand - check if PTY
+                if std::io::stdin().is_terminal() {
+                    cmd_remote_browse(None)
+                } else {
+                    eprintln!("Cannot open TUI in non-interactive session.");
+                    eprintln!();
+                    eprintln!("Available subcommands:");
+                    eprintln!("  janus remote browse [provider]   Browse remote issues in TUI");
+                    eprintln!("  janus remote adopt <ref>         Import a remote issue");
+                    eprintln!("  janus remote push <id>           Push local ticket to remote");
+                    eprintln!("  janus remote link <id> <ref>     Link local to existing remote");
+                    eprintln!("  janus remote sync <id>           Sync local with remote");
+                    eprintln!();
+                    eprintln!("Run 'janus remote --help' for more information.");
+                    Ok(())
+                }
+            }
+        },
+
+        // Configuration commands
+        Commands::Config { action } => match action {
+            ConfigAction::Show { json } => cmd_config_show(json),
+            ConfigAction::Set { key, value, json } => cmd_config_set(&key, &value, json),
+            ConfigAction::Get { key, json } => cmd_config_get(&key, json),
+        },
+
+        // Cache commands
+        Commands::Cache { action } => match action {
+            CacheAction::Status { json } => cmd_cache_status(json).await,
+            CacheAction::Clear { json } => cmd_cache_clear(json).await,
+            CacheAction::Rebuild { json } => cmd_cache_rebuild(json).await,
+            CacheAction::Path { json } => cmd_cache_path(json).await,
+        },
+
+        // Plan commands
+        Commands::Plan { action } => match action {
+            PlanAction::Create {
+                title,
+                phases,
+                json,
+            } => cmd_plan_create(&title, &phases, json),
+            PlanAction::Show {
+                id,
+                raw,
+                tickets_only,
+                phases_only,
+                json,
+            } => cmd_plan_show(&id, raw, tickets_only, phases_only, json).await,
+            PlanAction::Edit { id, json } => cmd_plan_edit(&id, json),
+            PlanAction::Ls { status, json } => cmd_plan_ls(status.as_deref(), json).await,
+            PlanAction::AddTicket {
+                plan_id,
+                ticket_id,
+                phase,
+                after,
+                position,
+                json,
+            } => {
+                cmd_plan_add_ticket(
+                    &plan_id,
+                    &ticket_id,
+                    phase.as_deref(),
+                    after.as_deref(),
+                    position,
+                    json,
+                )
+                .await
+            }
+            PlanAction::RemoveTicket {
+                plan_id,
+                ticket_id,
+                json,
+            } => cmd_plan_remove_ticket(&plan_id, &ticket_id, json).await,
+            PlanAction::MoveTicket {
+                plan_id,
+                ticket_id,
+                to_phase,
+                after,
+                position,
+                json,
+            } => {
+                cmd_plan_move_ticket(
+                    &plan_id,
+                    &ticket_id,
+                    &to_phase,
+                    after.as_deref(),
+                    position,
+                    json,
+                )
+                .await
+            }
+            PlanAction::AddPhase {
+                plan_id,
+                phase_name,
+                after,
+                position,
+                json,
+            } => cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position, json),
+            PlanAction::RemovePhase {
+                plan_id,
+                phase,
+                force,
+                migrate,
+                json,
+            } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), json),
+            PlanAction::Reorder {
+                plan_id,
+                phase,
+                reorder_phases,
+                json,
+            } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases, json),
+            PlanAction::Delete { id, force, json } => cmd_plan_delete(&id, force, json),
+            PlanAction::Rename {
+                id,
+                new_title,
+                json,
+            } => cmd_plan_rename(&id, &new_title, json),
+            PlanAction::Next {
+                id,
+                phase,
+                all,
+                count,
+                json,
+            } => cmd_plan_next(&id, phase, all, count, json).await,
+            PlanAction::Status { id, json } => cmd_plan_status(&id, json).await,
+            PlanAction::Import {
+                file,
+                dry_run,
+                title,
+                ticket_type,
+                prefix,
+                json,
+            } => cmd_plan_import(
+                &file,
+                dry_run,
+                title.as_deref(),
+                ticket_type,
+                prefix.as_deref(),
+                json,
+            ),
+            PlanAction::ImportSpec => cmd_show_import_spec(),
+        },
+
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "janus", &mut io::stdout());
+            Ok(())
+        }
+    };
+
+    match result {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{}", e);
+            ExitCode::FAILURE
+        }
+    }
+}
