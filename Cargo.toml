@@ -31,6 +31,12 @@ octocrab = "0.48"
 # HTTP client for Linear API
 reqwest = { version = "0.12", features = ["json"] }
 
+# TUI Framework (React-like declarative API)
+iocraft = "0.7"
+
+# Fuzzy search for filtering
+fuzzy-matcher = "0.3"
+
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

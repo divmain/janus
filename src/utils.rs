@@ -81,6 +81,19 @@ pub fn is_stdin_tty() -> bool {
     atty_check()
 }
 
+/// Truncate a string to a maximum length, handling multi-byte characters properly.
+/// Appends "..." if truncated.
+pub fn truncate_string(s: &str, max_len: usize) -> String {
+    if s.chars().count() <= max_len {
+        s.to_string()
+    } else if max_len <= 3 {
+        s.chars().take(max_len).collect()
+    } else {
+        let truncated: String = s.chars().take(max_len.saturating_sub(3)).collect();
+        format!("{}...", truncated)
+    }
+}
+
 #[cfg(unix)]
 fn atty_check() -> bool {
     use std::os::unix::io::AsRawFd;
@@ -113,5 +126,41 @@ mod tests {
         // Should match ISO 8601 format
         assert!(date.contains('T'));
         assert!(date.ends_with('Z'));
+    }
+
+    #[test]
+    fn test_truncate_string_short() {
+        assert_eq!(truncate_string("Hello", 10), "Hello");
+    }
+
+    #[test]
+    fn test_truncate_string_exact() {
+        assert_eq!(truncate_string("Hello", 5), "Hello");
+    }
+
+    #[test]
+    fn test_truncate_string_long() {
+        assert_eq!(truncate_string("Hello World", 8), "Hello...");
+    }
+
+    #[test]
+    fn test_truncate_string_very_short_max() {
+        assert_eq!(truncate_string("Hello World", 3), "Hel");
+    }
+
+    #[test]
+    fn test_truncate_string_multibyte() {
+        // Japanese text: "Hello World"
+        let japanese = "こんにちは世界";
+        let truncated = truncate_string(japanese, 5);
+        assert_eq!(truncated, "こん...");
+    }
+
+    #[test]
+    fn test_truncate_string_emoji() {
+        let emoji = "Test 🎉🎊🎈 emoji";
+        let truncated = truncate_string(emoji, 10);
+        // Each emoji counts as 1 char, so 10 chars = "Test 🎉🎊" + "..." = 7 + 3 = 10
+        assert_eq!(truncated, "Test 🎉🎊...");
     }
 }

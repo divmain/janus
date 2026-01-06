@@ -1,4 +1,5 @@
 mod add_note;
+mod board;
 mod config;
 pub mod create;
 mod dep;
@@ -9,8 +10,10 @@ mod query;
 mod show;
 mod status;
 mod sync;
+mod view;
 
 pub use add_note::cmd_add_note;
+pub use board::cmd_board;
 pub use config::{cmd_config_get, cmd_config_set, cmd_config_show};
 pub use create::{CreateOptions, cmd_create};
 pub use dep::{cmd_dep_add, cmd_dep_remove, cmd_dep_tree};
@@ -21,6 +24,7 @@ pub use query::cmd_query;
 pub use show::cmd_show;
 pub use status::{cmd_close, cmd_reopen, cmd_start, cmd_status};
 pub use sync::{cmd_adopt, cmd_push, cmd_remote_link, cmd_sync};
+pub use view::cmd_view;
 
 use crate::types::{TicketMetadata, TicketStatus};
 use owo_colors::OwoColorize;

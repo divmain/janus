@@ -3,6 +3,7 @@ pub mod error;
 pub mod parser;
 pub mod remote;
 pub mod ticket;
+pub mod tui;
 pub mod types;
 pub mod utils;
 

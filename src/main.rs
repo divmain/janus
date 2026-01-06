@@ -2,10 +2,10 @@ use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
 use janus::commands::{
-    CreateOptions, cmd_add_note, cmd_adopt, cmd_blocked, cmd_close, cmd_closed, cmd_config_get,
-    cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree,
-    cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_push, cmd_query, cmd_ready,
-    cmd_remote_link, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync,
+    CreateOptions, cmd_add_note, cmd_adopt, cmd_blocked, cmd_board, cmd_close, cmd_closed,
+    cmd_config_get, cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove,
+    cmd_dep_tree, cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_push, cmd_query, cmd_ready,
+    cmd_remote_link, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync, cmd_view,
 };
 use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
 
@@ -165,6 +165,12 @@ enum Commands {
         /// jq filter expression (e.g., '.status == "new"')
         filter: Option<String>,
     },
+
+    /// Browse issues with fuzzy search
+    View,
+
+    /// View issues on a Kanban board
+    Board,
 
     // Remote sync commands
     /// Adopt a remote issue and create a local ticket
@@ -347,6 +353,10 @@ fn main() -> ExitCode {
         Commands::Closed { limit } => cmd_closed(limit),
 
         Commands::Query { filter } => cmd_query(filter.as_deref()),
+
+        // TUI commands
+        Commands::View => cmd_view(),
+        Commands::Board => cmd_board(),
 
         // Remote sync commands
         Commands::Adopt { remote_ref } => cmd_adopt(&remote_ref),
