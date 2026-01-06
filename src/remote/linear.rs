@@ -1,13 +1,188 @@
-//! Linear.app provider implementation using GraphQL API.
+//! Linear.app provider implementation using GraphQL API with type-safe cynic queries.
 
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 
 use crate::error::{JanusError, Result};
 
 use super::{Config, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
+
+mod graphql {
+    // Re-export cynic types we need
+    pub use cynic::{GraphQlResponse, MutationBuilder, QueryBuilder};
+
+    // Schema module - generated types from Linear's GraphQL schema
+    #[cynic::schema("linear")]
+    pub mod schema {}
+
+    // Custom Scalars
+
+    /// DateTime scalar from Linear API (ISO 8601 formatted string)
+    #[derive(cynic::Scalar, Debug, Clone)]
+    #[cynic(graphql_type = "DateTime")]
+    pub struct DateTime(pub String);
+
+    // Query Variables
+
+    /// Variables for fetching a single issue by ID
+    #[derive(cynic::QueryVariables, Debug)]
+    pub struct IssueQueryVariables {
+        pub id: String,
+    }
+
+    /// Variables for fetching teams
+    #[derive(cynic::QueryVariables, Debug)]
+    pub struct TeamsQueryVariables {
+        pub first: Option<i32>,
+    }
+
+    /// Variables for creating an issue
+    #[derive(cynic::QueryVariables, Debug)]
+    pub struct IssueCreateVariables {
+        pub input: IssueCreateInput,
+    }
+
+    /// Variables for updating an issue
+    #[derive(cynic::QueryVariables, Debug)]
+    pub struct IssueUpdateVariables {
+        pub id: String,
+        pub input: IssueUpdateInput,
+    }
+
+    // Input Objects
+
+    /// Input for creating an issue
+    #[derive(cynic::InputObject, Debug, Clone)]
+    #[cynic(rename_all = "camelCase")]
+    pub struct IssueCreateInput {
+        /// The title of the issue
+        pub title: Option<String>,
+        /// The issue description in markdown format
+        pub description: Option<String>,
+        /// The identifier of the team associated with the issue
+        pub team_id: String,
+    }
+
+    /// Input for updating an issue
+    #[derive(cynic::InputObject, Debug, Clone, Default)]
+    #[cynic(rename_all = "camelCase")]
+    pub struct IssueUpdateInput {
+        /// The issue title
+        pub title: Option<String>,
+        /// The issue description in markdown format
+        pub description: Option<String>,
+    }
+
+    // Query Fragments - Issue Query
+
+    /// Query to fetch a single issue by ID
+    #[derive(cynic::QueryFragment, Debug)]
+    #[cynic(graphql_type = "Query", variables = "IssueQueryVariables")]
+    pub struct IssueQuery {
+        #[arguments(id: $id)]
+        pub issue: Issue,
+    }
+
+    /// Issue fragment for fetching issue details
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct Issue {
+        pub id: cynic::Id,
+        pub identifier: String,
+        pub title: String,
+        pub description: Option<String>,
+        pub state: WorkflowState,
+        pub priority: f64,
+        pub assignee: Option<User>,
+        pub updated_at: DateTime,
+        pub url: String,
+    }
+
+    /// Workflow state of an issue
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct WorkflowState {
+        pub name: String,
+        #[cynic(rename = "type")]
+        pub state_type: String,
+    }
+
+    /// User information
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct User {
+        pub name: String,
+    }
+
+    // Query Fragments - Teams Query
+
+    /// Query to fetch teams
+    #[derive(cynic::QueryFragment, Debug)]
+    #[cynic(graphql_type = "Query", variables = "TeamsQueryVariables")]
+    pub struct TeamsQuery {
+        #[arguments(first: $first)]
+        pub teams: TeamConnection,
+    }
+
+    /// Connection of teams
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct TeamConnection {
+        pub nodes: Vec<Team>,
+    }
+
+    /// Team information
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct Team {
+        pub id: cynic::Id,
+        #[allow(dead_code)]
+        pub key: String,
+    }
+
+    // Mutation Fragments - Create Issue
+
+    /// Mutation to create an issue
+    #[derive(cynic::QueryFragment, Debug)]
+    #[cynic(graphql_type = "Mutation", variables = "IssueCreateVariables")]
+    pub struct IssueCreateMutation {
+        #[arguments(input: $input)]
+        pub issue_create: IssuePayload,
+    }
+
+    /// Payload returned from issue mutations
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct IssuePayload {
+        pub success: bool,
+        pub issue: Option<CreatedIssue>,
+    }
+
+    /// Issue fragment for created/updated issue (minimal fields)
+    #[derive(cynic::QueryFragment, Debug)]
+    #[cynic(graphql_type = "Issue")]
+    pub struct CreatedIssue {
+        pub identifier: String,
+        #[allow(dead_code)]
+        pub url: String,
+    }
+
+    // Mutation Fragments - Update Issue
+
+    /// Mutation to update an issue
+    #[derive(cynic::QueryFragment, Debug)]
+    #[cynic(graphql_type = "Mutation", variables = "IssueUpdateVariables")]
+    pub struct IssueUpdateMutation {
+        #[arguments(id: $id, input: $input)]
+        pub issue_update: IssueUpdatePayload,
+    }
+
+    /// Payload returned from issue update mutation
+    #[derive(cynic::QueryFragment, Debug)]
+    #[cynic(graphql_type = "IssuePayload")]
+    pub struct IssueUpdatePayload {
+        pub success: bool,
+    }
+}
+
+// Linear Provider Implementation
+
+use graphql::*;
 
 /// Linear.app provider
 pub struct LinearProvider {
@@ -66,23 +241,21 @@ impl LinearProvider {
         self
     }
 
-    /// Execute a GraphQL query
-    async fn graphql<T: for<'de> Deserialize<'de>>(
+    /// Execute a GraphQL operation (query or mutation)
+    async fn execute<ResponseData, Vars>(
         &self,
-        query: &str,
-        variables: Option<serde_json::Value>,
-    ) -> Result<T> {
-        let body = GraphQLRequest {
-            query: query.to_string(),
-            variables,
-        };
-
+        operation: cynic::Operation<ResponseData, Vars>,
+    ) -> Result<ResponseData>
+    where
+        ResponseData: serde::de::DeserializeOwned + 'static,
+        Vars: serde::Serialize,
+    {
         let response = self
             .client
             .post(LINEAR_API_URL)
             .header("Authorization", &self.api_key)
             .header("Content-Type", "application/json")
-            .json(&body)
+            .json(&operation)
             .send()
             .await?;
 
@@ -95,7 +268,7 @@ impl LinearProvider {
             )));
         }
 
-        let result: GraphQLResponse<T> = response.json().await?;
+        let result: GraphQlResponse<ResponseData> = response.json().await?;
 
         if let Some(errors) = result.errors {
             let error_msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
@@ -112,60 +285,18 @@ impl LinearProvider {
 
     /// Fetch the first team ID for this organization
     async fn fetch_default_team_id(&self) -> Result<String> {
-        let query = r#"
-            query {
-                teams(first: 1) {
-                    nodes {
-                        id
-                        key
-                    }
-                }
-            }
-        "#;
+        let operation = TeamsQuery::build(TeamsQueryVariables { first: Some(1) });
 
-        #[derive(Deserialize)]
-        struct TeamsResponse {
-            teams: TeamsConnection,
-        }
-
-        #[derive(Deserialize)]
-        struct TeamsConnection {
-            nodes: Vec<TeamNode>,
-        }
-
-        #[derive(Deserialize)]
-        struct TeamNode {
-            id: String,
-        }
-
-        let response: TeamsResponse = self.graphql(query, None).await?;
+        let response = self.execute(operation).await?;
 
         response
             .teams
             .nodes
             .into_iter()
             .next()
-            .map(|t| t.id)
+            .map(|t| t.id.into_inner())
             .ok_or_else(|| JanusError::Api("No teams found in Linear workspace".to_string()))
     }
-}
-
-#[derive(Serialize)]
-struct GraphQLRequest {
-    query: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    variables: Option<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-struct GraphQLResponse<T> {
-    data: Option<T>,
-    errors: Option<Vec<GraphQLError>>,
-}
-
-#[derive(Deserialize)]
-struct GraphQLError {
-    message: String,
 }
 
 impl RemoteProvider for LinearProvider {
@@ -179,69 +310,20 @@ impl RemoteProvider for LinearProvider {
             }
         };
 
-        // Query issue by identifier (e.g., "PROJ-123")
-        let query = r#"
-            query GetIssue($id: String!) {
-                issue(id: $id) {
-                    id
-                    identifier
-                    title
-                    description
-                    state {
-                        name
-                        type
-                    }
-                    priority
-                    assignee {
-                        name
-                    }
-                    updatedAt
-                    url
-                }
-            }
-        "#;
-
-        let variables = serde_json::json!({
-            "id": issue_id
+        let operation = IssueQuery::build(IssueQueryVariables {
+            id: issue_id.clone(),
         });
 
-        #[derive(Deserialize)]
-        struct IssueResponse {
-            issue: Option<LinearIssue>,
-        }
+        let response = self.execute(operation).await.map_err(|e| {
+            // If the issue is not found, return a more specific error
+            if e.to_string().contains("not found") || e.to_string().contains("Entity not found") {
+                JanusError::RemoteIssueNotFound(remote_ref.to_string())
+            } else {
+                e
+            }
+        })?;
 
-        #[derive(Deserialize)]
-        #[allow(dead_code)]
-        struct LinearIssue {
-            id: String,
-            identifier: String,
-            title: String,
-            description: Option<String>,
-            state: IssueState,
-            priority: Option<i32>,
-            assignee: Option<Assignee>,
-            #[serde(rename = "updatedAt")]
-            updated_at: String,
-            url: String,
-        }
-
-        #[derive(Deserialize)]
-        struct IssueState {
-            name: String,
-            #[serde(rename = "type")]
-            state_type: String,
-        }
-
-        #[derive(Deserialize)]
-        struct Assignee {
-            name: String,
-        }
-
-        let response: IssueResponse = self.graphql(query, Some(variables)).await?;
-
-        let issue = response
-            .issue
-            .ok_or_else(|| JanusError::RemoteIssueNotFound(remote_ref.to_string()))?;
+        let issue = response.issue;
 
         // Map Linear state type to RemoteStatus
         let status = match issue.state.state_type.as_str() {
@@ -252,25 +334,26 @@ impl RemoteProvider for LinearProvider {
 
         // Linear priority is 0-4, where 0 = no priority, 1 = urgent, 4 = low
         // We map this to our 0-4 scale where 0 = highest
-        let priority = issue.priority.map(|p| {
-            match p {
+        let priority = {
+            let p = issue.priority as i32;
+            Some(match p {
                 0 => 2, // No priority -> P2 (default)
                 1 => 0, // Urgent -> P0
                 2 => 1, // High -> P1
                 3 => 2, // Medium -> P2
                 4 => 3, // Low -> P3
                 _ => 4, // Other -> P4
-            }
-        });
+            } as u8)
+        };
 
         Ok(RemoteIssue {
             id: issue.identifier,
             title: issue.title,
             body: issue.description.unwrap_or_default(),
             status,
-            priority: priority.map(|p| p as u8),
+            priority,
             assignee: issue.assignee.map(|a| a.name),
-            updated_at: issue.updated_at,
+            updated_at: issue.updated_at.0,
             url: issue.url,
         })
     }
@@ -281,46 +364,15 @@ impl RemoteProvider for LinearProvider {
             None => self.fetch_default_team_id().await?,
         };
 
-        let query = r#"
-            mutation CreateIssue($title: String!, $description: String, $teamId: String!) {
-                issueCreate(input: {
-                    title: $title
-                    description: $description
-                    teamId: $teamId
-                }) {
-                    success
-                    issue {
-                        identifier
-                        url
-                    }
-                }
-            }
-        "#;
-
-        let variables = serde_json::json!({
-            "title": title,
-            "description": body,
-            "teamId": team_id
+        let operation = IssueCreateMutation::build(IssueCreateVariables {
+            input: IssueCreateInput {
+                title: Some(title.to_string()),
+                description: Some(body.to_string()),
+                team_id,
+            },
         });
 
-        #[derive(Deserialize)]
-        struct CreateResponse {
-            #[serde(rename = "issueCreate")]
-            issue_create: IssueCreateResult,
-        }
-
-        #[derive(Deserialize)]
-        struct IssueCreateResult {
-            success: bool,
-            issue: Option<CreatedIssue>,
-        }
-
-        #[derive(Deserialize)]
-        struct CreatedIssue {
-            identifier: String,
-        }
-
-        let response: CreateResponse = self.graphql(query, Some(variables)).await?;
+        let response = self.execute(operation).await?;
 
         if !response.issue_create.success {
             return Err(JanusError::Api("Failed to create Linear issue".to_string()));
@@ -352,77 +404,38 @@ impl RemoteProvider for LinearProvider {
             }
         };
 
-        // First, get the internal UUID for this issue
-        let id_query = r#"
-            query GetIssueId($identifier: String!) {
-                issue(id: $identifier) {
-                    id
-                }
+        // First, get the internal UUID for this issue by fetching it
+        let fetch_operation = IssueQuery::build(IssueQueryVariables {
+            id: issue_id.clone(),
+        });
+
+        let fetch_response = self.execute(fetch_operation).await.map_err(|e| {
+            if e.to_string().contains("not found") || e.to_string().contains("Entity not found") {
+                JanusError::RemoteIssueNotFound(remote_ref.to_string())
+            } else {
+                e
             }
-        "#;
+        })?;
 
-        #[derive(Deserialize)]
-        struct IdResponse {
-            issue: Option<IssueId>,
-        }
-
-        #[derive(Deserialize)]
-        struct IssueId {
-            id: String,
-        }
-
-        let id_vars = serde_json::json!({ "identifier": issue_id });
-        let id_response: IdResponse = self.graphql(id_query, Some(id_vars)).await?;
-
-        let internal_id = id_response
-            .issue
-            .ok_or_else(|| JanusError::RemoteIssueNotFound(remote_ref.to_string()))?
-            .id;
+        let internal_id = fetch_response.issue.id.into_inner();
 
         // Build update input
-        let mut input = serde_json::Map::new();
+        let input = IssueUpdateInput {
+            title: updates.title,
+            description: updates.body,
+        };
 
-        if let Some(title) = updates.title {
-            input.insert("title".to_string(), serde_json::Value::String(title));
-        }
-
-        if let Some(body) = updates.body {
-            input.insert("description".to_string(), serde_json::Value::String(body));
-        }
-
-        // Note: Updating status in Linear requires knowing the state IDs,
-        // which are team-specific. For MVP, we skip status updates.
-        // A full implementation would fetch available states and map them.
-
-        if input.is_empty() {
+        // Check if there's anything to update
+        if input.title.is_none() && input.description.is_none() {
             return Ok(());
         }
 
-        let query = r#"
-            mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
-                issueUpdate(id: $id, input: $input) {
-                    success
-                }
-            }
-        "#;
-
-        let variables = serde_json::json!({
-            "id": internal_id,
-            "input": input
+        let operation = IssueUpdateMutation::build(IssueUpdateVariables {
+            id: internal_id,
+            input,
         });
 
-        #[derive(Deserialize)]
-        struct UpdateResponse {
-            #[serde(rename = "issueUpdate")]
-            issue_update: UpdateResult,
-        }
-
-        #[derive(Deserialize)]
-        struct UpdateResult {
-            success: bool,
-        }
-
-        let response: UpdateResponse = self.graphql(query, Some(variables)).await?;
+        let response = self.execute(operation).await?;
 
         if !response.issue_update.success {
             return Err(JanusError::Api("Failed to update Linear issue".to_string()));
