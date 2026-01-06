@@ -89,7 +89,7 @@ janus sync j-a1b2
 ### Linear Setup
 
 1. Get a Linear API key:
-   - Go to https://linear.app/settings/api
+   - Go to https://linear.app/socketdev/settings/account/security
    - Create a personal API key
    - Copy the key (starts with `lin_api_`)
 
