@@ -40,6 +40,10 @@ iocraft = "0.7"
 # Fuzzy search for filtering
 fuzzy-matcher = "0.3"
 
+# SQLite cache (pure Rust implementation)
+turso = "0.4"
+base64 = "0.22"
+directories = "5"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -49,3 +53,4 @@ cynic-codegen = "3"
 
 [dev-dependencies]
 tempfile = "3"
+serial_test = "3"

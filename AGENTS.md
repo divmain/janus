@@ -163,15 +163,23 @@ pub enum JanusError {
 - Integration tests spawn the compiled binary in temp directories
 - Use `tempfile` crate for isolated test environments
 - Test function names: `test_<feature>_<scenario>`
+- **Important**: Tests that make changes to the filesystem (create/delete files, databases, etc.) must use the `#[serial]` attribute from the `serial_test` crate to prevent race conditions when running tests in parallel
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_parse_basic_ticket() {
         // test implementation
+    }
+
+    #[test]
+    #[serial]  // Required for tests that modify filesystem
+    fn test_cache_initialization() {
+        // test implementation that creates files/databases
     }
 }
 ```

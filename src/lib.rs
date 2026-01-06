@@ -1,3 +1,5 @@
+pub mod cache;
+pub mod cache_error;
 pub mod commands;
 pub mod error;
 pub mod parser;

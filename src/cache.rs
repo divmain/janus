@@ -1,0 +1,1064 @@
+use base64::Engine;
+use serde_json;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+use turso::transaction::Transaction;
+use turso::{Builder, Connection, Database, params};
+
+use crate::cache_error::{CacheError, Result as CacheResult};
+use crate::parser::parse_ticket_content;
+use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
+
+#[cfg(test)]
+use serial_test::serial;
+
+const CACHE_VERSION: &str = "1";
+
+pub fn cache_dir() -> PathBuf {
+    let proj_dirs = directories::ProjectDirs::from("com", "divmain", "janus")
+        .expect("cannot determine cache directory");
+    let cache_dir = proj_dirs.cache_dir().to_path_buf();
+
+    if !cache_dir.exists() {
+        fs::create_dir_all(&cache_dir).ok();
+    }
+
+    cache_dir
+}
+
+pub fn repo_hash(repo_path: &Path) -> String {
+    let canonical_path = repo_path
+        .canonicalize()
+        .unwrap_or_else(|_| repo_path.to_path_buf());
+
+    let hash = Sha256::digest(canonical_path.to_string_lossy().as_bytes());
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&hash[..16])
+}
+
+pub fn cache_db_path(repo_hash: &str) -> PathBuf {
+    cache_dir().join(format!("{}.db", repo_hash))
+}
+
+pub struct TicketCache {
+    #[allow(dead_code)]
+    db: Database,
+    conn: Connection,
+    #[allow(dead_code)]
+    repo_path: PathBuf,
+    repo_hash: String,
+}
+
+impl TicketCache {
+    pub async fn open() -> CacheResult<Self> {
+        let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
+
+        let repo_hash = repo_hash(&repo_path);
+        let db_path = cache_db_path(&repo_hash);
+
+        let cache_dir = cache_dir();
+        if !cache_dir.exists() {
+            fs::create_dir_all(&cache_dir)
+                .map_err(|_e| CacheError::AccessDenied(cache_dir.clone()))?;
+        }
+
+        let db_path_str = db_path.to_string_lossy();
+        let db = Builder::new_local(&db_path_str).build().await?;
+        let conn = db.connect()?;
+
+        let cache = Self {
+            db,
+            conn,
+            repo_path: repo_path.clone(),
+            repo_hash,
+        };
+
+        cache.initialize_database().await?;
+        cache.store_repo_path(&repo_path).await?;
+
+        Ok(cache)
+    }
+
+    async fn initialize_database(&self) -> CacheResult<()> {
+        self.conn
+            .execute(
+                "CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )",
+                (),
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "CREATE TABLE IF NOT EXISTS tickets (
+                ticket_id TEXT PRIMARY KEY,
+                mtime_ns INTEGER NOT NULL,
+                status TEXT,
+                title TEXT,
+                priority INTEGER,
+                ticket_type TEXT,
+                assignee TEXT,
+                deps TEXT,
+                links TEXT,
+                parent TEXT,
+                created TEXT,
+                external_ref TEXT,
+                remote TEXT
+            )",
+                (),
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)",
+                (),
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)",
+                (),
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(ticket_type)",
+                (),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn store_repo_path(&self, repo_path: &Path) -> CacheResult<()> {
+        let path_str = repo_path.to_string_lossy().to_string();
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('repo_path', ?1)",
+                [path_str],
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('cache_version', ?1)",
+                [CACHE_VERSION],
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub fn cache_db_path(&self) -> PathBuf {
+        cache_db_path(&self.repo_hash)
+    }
+
+    pub async fn sync(&mut self) -> CacheResult<bool> {
+        let tickets_dir = PathBuf::from(TICKETS_ITEMS_DIR);
+
+        if !tickets_dir.exists() {
+            fs::create_dir_all(&tickets_dir).map_err(CacheError::Io)?;
+            return Ok(false);
+        }
+
+        let disk_files = self.scan_directory(&tickets_dir)?;
+
+        let cached_mt = self.get_cached_mtimes().await?;
+
+        let mut added_tickets = Vec::new();
+        let mut modified_tickets = Vec::new();
+        let mut removed_tickets = Vec::new();
+
+        for (ticket_id, disk_mtime) in &disk_files {
+            if let Some(&cache_mtime) = cached_mt.get(ticket_id) {
+                if *disk_mtime != cache_mtime {
+                    modified_tickets.push(ticket_id.clone());
+                }
+            } else {
+                added_tickets.push(ticket_id.clone());
+            }
+        }
+
+        for ticket_id in cached_mt.keys() {
+            if !disk_files.contains_key(ticket_id) {
+                removed_tickets.push(ticket_id.clone());
+            }
+        }
+
+        if added_tickets.is_empty() && modified_tickets.is_empty() && removed_tickets.is_empty() {
+            return Ok(false);
+        }
+
+        // Read and parse tickets before starting the transaction to avoid borrow issues
+        let mut tickets_to_upsert = Vec::new();
+        for id in added_tickets.iter().chain(modified_tickets.iter()) {
+            if let Ok((metadata, mtime_ns)) = Self::read_and_parse_ticket_static(id) {
+                tickets_to_upsert.push((metadata, mtime_ns));
+            }
+        }
+
+        // Use transaction for atomicity
+        let tx = self.conn.transaction().await?;
+
+        for (metadata, mtime_ns) in &tickets_to_upsert {
+            Self::insert_or_replace_ticket_tx(&tx, metadata, *mtime_ns).await?;
+        }
+
+        for id in &removed_tickets {
+            tx.execute("DELETE FROM tickets WHERE ticket_id = ?1", [id.as_str()])
+                .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(true)
+    }
+
+    fn scan_directory(&self, tickets_dir: &Path) -> CacheResult<HashMap<String, i64>> {
+        let mut files = HashMap::new();
+
+        let entries = fs::read_dir(tickets_dir).map_err(CacheError::Io)?;
+
+        for entry in entries {
+            let entry = entry.map_err(CacheError::Io)?;
+            let path = entry.path();
+
+            if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                continue;
+            }
+
+            let metadata = entry.metadata().map_err(CacheError::Io)?;
+            let mtime = metadata.modified().map_err(CacheError::Io)?;
+            let mtime_ns = mtime
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
+                .as_nanos() as i64;
+
+            if let Some(ticket_id) = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|s| s.to_string())
+            {
+                files.insert(ticket_id, mtime_ns);
+            }
+        }
+
+        Ok(files)
+    }
+
+    async fn get_cached_mtimes(&self) -> CacheResult<HashMap<String, i64>> {
+        let mut mtimes = HashMap::new();
+
+        let mut rows = self
+            .conn
+            .query("SELECT ticket_id, mtime_ns FROM tickets", ())
+            .await?;
+
+        while let Some(row) = rows.next().await? {
+            let id: String = row.get(0)?;
+            let mtime: i64 = row.get(1)?;
+            mtimes.insert(id, mtime);
+        }
+
+        Ok(mtimes)
+    }
+
+    fn read_and_parse_ticket_static(ticket_id: &str) -> CacheResult<(TicketMetadata, i64)> {
+        let ticket_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", ticket_id));
+
+        let content = fs::read_to_string(&ticket_path).map_err(CacheError::Io)?;
+
+        let metadata = parse_ticket_content(&content)
+            .map_err(|e| CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+
+        let file_mtime = fs::metadata(&ticket_path)
+            .map_err(CacheError::Io)?
+            .modified()
+            .map_err(CacheError::Io)?;
+
+        let mtime_ns = file_mtime
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
+            .as_nanos() as i64;
+
+        Ok((metadata, mtime_ns))
+    }
+
+    async fn insert_or_replace_ticket_tx<'a>(
+        tx: &Transaction<'a>,
+        metadata: &TicketMetadata,
+        mtime_ns: i64,
+    ) -> CacheResult<()> {
+        let ticket_id = metadata.id.clone().unwrap_or_default();
+        let status = metadata.status.map(|s| s.to_string());
+        let priority = metadata.priority.map(|p| p.as_num() as i64);
+        let ticket_type = metadata.ticket_type.map(|t| t.to_string());
+        let deps_json = Self::serialize_array(&metadata.deps)?;
+        let links_json = Self::serialize_array(&metadata.links)?;
+
+        tx.execute(
+            "INSERT OR REPLACE INTO tickets (
+                ticket_id, mtime_ns, status, title, priority, ticket_type, assignee,
+                deps, links, parent, created, external_ref, remote
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                ticket_id,
+                mtime_ns,
+                status,
+                metadata.title.clone(),
+                priority,
+                ticket_type,
+                metadata.assignee.clone(),
+                deps_json,
+                links_json,
+                metadata.parent.clone(),
+                metadata.created.clone(),
+                metadata.external_ref.clone(),
+                metadata.remote.clone(),
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    fn serialize_array(arr: &[String]) -> CacheResult<Option<String>> {
+        if arr.is_empty() {
+            Ok(None)
+        } else {
+            serde_json::to_string(arr).map(Some).map_err(|e| {
+                CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            })
+        }
+    }
+
+    // Helper method for tests to query the connection directly
+    #[cfg(test)]
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper to get the first row from a query result, avoiding .unwrap().unwrap() pattern
+    async fn get_first_row(rows: &mut turso::Rows) -> turso::Row {
+        let row_opt = rows.next().await.expect("query failed");
+        row_opt.expect("expected at least one row")
+    }
+
+    #[test]
+    fn test_repo_hash_consistency() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = temp.path();
+
+        let hash1 = repo_hash(path);
+        let hash2 = repo_hash(path);
+
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1.len(), 22);
+    }
+
+    #[test]
+    fn test_cache_dir_creates_directory() {
+        let dir = cache_dir();
+        assert!(dir.exists());
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("janus") || dir_str.contains(".local/share"));
+    }
+
+    #[test]
+    fn test_cache_db_path_format() {
+        let hash = "aB3xY9zK1mP2qR4sT6uV8w";
+        let path = cache_db_path(hash);
+
+        assert!(path.ends_with(format!("{}.db", hash)));
+        assert_eq!(path.extension().unwrap().to_str().unwrap(), "db");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_initialization() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_cache_initialization");
+        fs::create_dir_all(&repo_path).unwrap();
+
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+        let db_path = cache.cache_db_path();
+
+        assert!(db_path.exists());
+        assert!(db_path.is_absolute());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_database_tables_created() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_database_tables_created");
+        fs::create_dir_all(&repo_path).unwrap();
+
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT name FROM sqlite_master WHERE type='table'", ())
+            .await
+            .unwrap();
+
+        let mut tables = Vec::new();
+        while let Some(row) = rows.next().await.unwrap() {
+            let name: String = row.get(0).unwrap();
+            tables.push(name);
+        }
+
+        assert!(tables.contains(&"tickets".to_string()));
+        assert!(tables.contains(&"meta".to_string()));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_repo_path_stored_in_meta() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_repo_path_stored_in_meta");
+        fs::create_dir_all(&repo_path).unwrap();
+        let repo_path_str = repo_path
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT value FROM meta WHERE key = 'repo_path'", ())
+            .await
+            .unwrap();
+
+        let stored_path: Option<String> = if let Some(row) = rows.next().await.unwrap() {
+            Some(row.get(0).unwrap())
+        } else {
+            None
+        };
+
+        assert_eq!(stored_path, Some(repo_path_str));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_version_stored_in_meta() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_cache_version_stored_in_meta");
+        fs::create_dir_all(&repo_path).unwrap();
+
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT value FROM meta WHERE key = 'cache_version'", ())
+            .await
+            .unwrap();
+
+        let stored_version: Option<String> = if let Some(row) = rows.next().await.unwrap() {
+            Some(row.get(0).unwrap())
+        } else {
+            None
+        };
+
+        assert_eq!(stored_version, Some(CACHE_VERSION.to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir(&repo_path).ok();
+    }
+
+    fn create_test_ticket(dir: &Path, ticket_id: &str, title: &str) -> PathBuf {
+        let tickets_dir = dir.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let content = format!(
+            r#"---
+id: {}
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# {}
+"#,
+            ticket_id, title
+        );
+        fs::write(&ticket_path, content).unwrap();
+        ticket_path
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_creates_entries() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_creates_entries");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+        create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        let changed = cache.sync().await.unwrap();
+
+        assert!(changed);
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT COUNT(*) FROM tickets", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count: i64 = row.get(0).unwrap();
+        assert_eq!(count, 3);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_detects_additions() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_detects_additions");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        let changed1 = cache.sync().await.unwrap();
+        assert!(changed1);
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT COUNT(*) FROM tickets", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count1: i64 = row.get(0).unwrap();
+        assert_eq!(count1, 1);
+
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let changed2 = cache.sync().await.unwrap();
+        assert!(changed2);
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT COUNT(*) FROM tickets", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count2: i64 = row.get(0).unwrap();
+        assert_eq!(count2, 2);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_detects_deletions() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_detects_deletions");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let ticket_path = create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT COUNT(*) FROM tickets", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count1: i64 = row.get(0).unwrap();
+        assert_eq!(count1, 1);
+
+        fs::remove_file(&ticket_path).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let changed = cache.sync().await.unwrap();
+        assert!(changed);
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT COUNT(*) FROM tickets", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count2: i64 = row.get(0).unwrap();
+        assert_eq!(count2, 0);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_detects_modifications() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_detects_modifications");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let ticket_path = create_test_ticket(&repo_path, "j-a1b2", "Original Title");
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT title FROM tickets WHERE ticket_id = ?1", ["j-a1b2"])
+            .await
+            .unwrap();
+        let original_title: Option<String> = if let Some(row) = rows.next().await.unwrap() {
+            row.get(0).ok()
+        } else {
+            None
+        };
+        assert_eq!(original_title, Some("Original Title".to_string()));
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let content = fs::read_to_string(&ticket_path).unwrap();
+        let modified_content = content.replace("Original Title", "Modified Title");
+        fs::write(&ticket_path, modified_content).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let changed = cache.sync().await.unwrap();
+        assert!(changed);
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT title FROM tickets WHERE ticket_id = ?1", ["j-a1b2"])
+            .await
+            .unwrap();
+        let modified_title: Option<String> = if let Some(row) = rows.next().await.unwrap() {
+            row.get(0).ok()
+        } else {
+            None
+        };
+        assert_eq!(modified_title, Some("Modified Title".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_serialize_deserialize_arrays() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_serialize_deserialize");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let _cache = TicketCache::open().await.unwrap();
+
+        let arr = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
+        let json = TicketCache::serialize_array(&arr).unwrap();
+
+        assert!(json.is_some());
+        let json_str = json.unwrap();
+        assert!(json_str.starts_with('['));
+        assert!(json_str.ends_with(']'));
+
+        let decoded: Vec<String> = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(decoded, arr);
+
+        let empty_arr: Vec<String> = vec![];
+        let empty_json = TicketCache::serialize_array(&empty_arr).unwrap();
+        assert!(empty_json.is_none());
+
+        let db_path = _cache.cache_db_path();
+        drop(_cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_scan_directory() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_scan_directory");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+
+        let non_md_file = tickets_dir.join("other.txt");
+        fs::write(&non_md_file, "not a ticket").unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+        let files = cache.scan_directory(&tickets_dir).unwrap();
+
+        assert_eq!(files.len(), 2);
+        assert!(files.contains_key("j-a1b2"));
+        assert!(files.contains_key("j-c3d4"));
+
+        for (_, mtime_ns) in &files {
+            assert!(*mtime_ns > 0);
+        }
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[test]
+    fn test_repo_hash_different_paths() {
+        let temp1 = tempfile::TempDir::new().unwrap();
+        let temp2 = tempfile::TempDir::new().unwrap();
+
+        let hash1 = repo_hash(temp1.path());
+        let hash2 = repo_hash(temp2.path());
+
+        // Different paths should produce different hashes
+        assert_ne!(hash1, hash2);
+        // Both should be valid 22-char base64 strings
+        assert_eq!(hash1.len(), 22);
+        assert_eq!(hash2.len(), 22);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_returns_false_when_no_changes() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_no_changes");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+
+        let mut cache = TicketCache::open().await.unwrap();
+
+        // First sync should return true (new tickets)
+        let changed1 = cache.sync().await.unwrap();
+        assert!(changed1);
+
+        // Second sync with no changes should return false
+        let changed2 = cache.sync().await.unwrap();
+        assert!(!changed2);
+
+        // Third sync also should return false
+        let changed3 = cache.sync().await.unwrap();
+        assert!(!changed3);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_with_deps_and_links() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_deps_links");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        // Create a ticket with deps and links (using JSON array format on single line)
+        let ticket_path = tickets_dir.join("j-a1b2.md");
+        let content = r#"---
+id: j-a1b2
+status: new
+deps: ["j-dep1", "j-dep2"]
+links: ["j-link1"]
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Ticket with deps
+"#;
+        fs::write(&ticket_path, content).unwrap();
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Verify deps were stored correctly
+        let mut rows = cache
+            .conn()
+            .query(
+                "SELECT deps, links FROM tickets WHERE ticket_id = ?1",
+                ["j-a1b2"],
+            )
+            .await
+            .unwrap();
+
+        let row = get_first_row(&mut rows).await;
+        let deps_json: Option<String> = row.get(0).ok();
+        let links_json: Option<String> = row.get(1).ok();
+
+        assert!(deps_json.is_some());
+        assert!(links_json.is_some());
+
+        let deps: Vec<String> = serde_json::from_str(&deps_json.unwrap()).unwrap();
+        let links: Vec<String> = serde_json::from_str(&links_json.unwrap()).unwrap();
+
+        assert_eq!(deps, vec!["j-dep1", "j-dep2"]);
+        assert_eq!(links, vec!["j-link1"]);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_with_all_fields() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_all_fields");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        // Create a ticket with all fields populated
+        // Note: parser uses "external-ref" (with hyphen), not "external_ref"
+        let ticket_path = tickets_dir.join("j-full.md");
+        let content = r#"---
+id: j-full
+status: in_progress
+deps: []
+links: []
+created: 2024-06-15T10:30:00Z
+type: bug
+priority: 0
+assignee: John Doe
+parent: j-parent
+external-ref: GH-123
+remote: github
+---
+# Full Ticket
+"#;
+        fs::write(&ticket_path, content).unwrap();
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Verify all fields were stored correctly
+        let mut rows = cache
+            .conn()
+            .query(
+                "SELECT status, title, priority, ticket_type, assignee, parent, external_ref, remote 
+                 FROM tickets WHERE ticket_id = ?1",
+                ["j-full"],
+            )
+            .await
+            .unwrap();
+
+        let row = get_first_row(&mut rows).await;
+        let status: Option<String> = row.get(0).ok();
+        let title: Option<String> = row.get(1).ok();
+        let priority: Option<i64> = row.get(2).ok();
+        let ticket_type: Option<String> = row.get(3).ok();
+        let assignee: Option<String> = row.get(4).ok();
+        let parent: Option<String> = row.get(5).ok();
+        let external_ref: Option<String> = row.get(6).ok();
+        let remote: Option<String> = row.get(7).ok();
+
+        assert_eq!(status, Some("in_progress".to_string()));
+        assert_eq!(title, Some("Full Ticket".to_string()));
+        assert_eq!(priority, Some(0));
+        assert_eq!(ticket_type, Some("bug".to_string()));
+        assert_eq!(assignee, Some("John Doe".to_string()));
+        assert_eq!(parent, Some("j-parent".to_string()));
+        assert_eq!(external_ref, Some("GH-123".to_string()));
+        assert_eq!(remote, Some("github".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_reopen_existing_cache() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_reopen_cache");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+
+        // Open cache and sync
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let db_path = cache.cache_db_path();
+
+        // Drop and reopen
+        drop(cache);
+
+        // Reopen the cache - should preserve existing data
+        let cache2 = TicketCache::open().await.unwrap();
+
+        let mut rows = cache2
+            .conn()
+            .query("SELECT COUNT(*) FROM tickets", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count: i64 = row.get(0).unwrap();
+
+        // Data should still be there from before
+        assert_eq!(count, 2);
+
+        drop(cache2);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_database_indexes_created() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_indexes");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+
+        // Query for indexes
+        let mut rows = cache
+            .conn()
+            .query(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tickets'",
+                (),
+            )
+            .await
+            .unwrap();
+
+        let mut indexes = Vec::new();
+        while let Some(row) = rows.next().await.unwrap() {
+            let name: String = row.get(0).unwrap();
+            indexes.push(name);
+        }
+
+        assert!(indexes.contains(&"idx_tickets_status".to_string()));
+        assert!(indexes.contains(&"idx_tickets_priority".to_string()));
+        assert!(indexes.contains(&"idx_tickets_type".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_empty_directory() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_empty");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create empty tickets directory
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        let mut cache = TicketCache::open().await.unwrap();
+
+        // Sync with empty directory should return false (no changes)
+        let changed = cache.sync().await.unwrap();
+        assert!(!changed);
+
+        let mut rows = cache
+            .conn()
+            .query("SELECT COUNT(*) FROM tickets", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count: i64 = row.get(0).unwrap();
+        assert_eq!(count, 0);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_creates_tickets_dir_if_missing() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_missing_dir");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Don't create the tickets directory
+
+        let mut cache = TicketCache::open().await.unwrap();
+
+        // Sync should create the directory and return false
+        let changed = cache.sync().await.unwrap();
+        assert!(!changed);
+
+        // Verify directory was created
+        let tickets_dir = repo_path.join(".janus/items");
+        assert!(tickets_dir.exists());
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+}
