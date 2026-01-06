@@ -1,0 +1,303 @@
+use clap::{Parser, Subcommand};
+use std::process::ExitCode;
+
+use janus::commands::{
+    cmd_add_note, cmd_blocked, cmd_close, cmd_closed, cmd_create, cmd_dep_add, cmd_dep_remove,
+    cmd_dep_tree, cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_query, cmd_ready,
+    cmd_reopen, cmd_show, cmd_start, cmd_status, CreateOptions,
+};
+use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
+
+#[derive(Parser)]
+#[command(name = "janus")]
+#[command(about = "Plain-text issue tracking")]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Create a new ticket
+    #[command(visible_alias = "c")]
+    Create {
+        /// Ticket title
+        title: String,
+
+        /// Description text
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Design notes
+        #[arg(long)]
+        design: Option<String>,
+
+        /// Acceptance criteria
+        #[arg(long)]
+        acceptance: Option<String>,
+
+        /// Priority (0-4, default: 2)
+        #[arg(short, long, default_value = "2", value_parser = parse_priority)]
+        priority: TicketPriority,
+
+        /// Type: bug, feature, task, epic, chore (default: task)
+        #[arg(short = 't', long = "type", default_value = "task", value_parser = parse_type)]
+        ticket_type: TicketType,
+
+        /// Assignee (default: git user.name)
+        #[arg(short, long)]
+        assignee: Option<String>,
+
+        /// External reference (e.g., gh-123)
+        #[arg(long)]
+        external_ref: Option<String>,
+
+        /// Parent ticket ID
+        #[arg(long)]
+        parent: Option<String>,
+    },
+
+    /// Display ticket with relationships
+    #[command(visible_alias = "s")]
+    Show {
+        /// Ticket ID (can be partial)
+        id: String,
+    },
+
+    /// Open ticket in $EDITOR
+    Edit {
+        /// Ticket ID (can be partial)
+        id: String,
+    },
+
+    /// Add timestamped note to ticket
+    AddNote {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Note text (reads from stdin if not provided)
+        #[arg(trailing_var_arg = true)]
+        text: Vec<String>,
+    },
+
+    /// Mark ticket as in-progress
+    Start {
+        /// Ticket ID (can be partial)
+        id: String,
+    },
+
+    /// Mark ticket as complete
+    Close {
+        /// Ticket ID (can be partial)
+        id: String,
+    },
+
+    /// Reopen a closed ticket
+    Reopen {
+        /// Ticket ID (can be partial)
+        id: String,
+    },
+
+    /// Set ticket status
+    Status {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// New status (new, complete, cancelled)
+        #[arg(value_parser = parse_status)]
+        status: String,
+    },
+
+    /// Manage dependencies
+    Dep {
+        #[command(subcommand)]
+        action: DepAction,
+    },
+
+    /// Legacy: add dependency (hidden, use `dep add` instead)
+    #[command(hide = true)]
+    Undep {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID to remove
+        dep_id: String,
+    },
+
+    /// Manage links
+    Link {
+        #[command(subcommand)]
+        action: LinkAction,
+    },
+
+    /// Legacy: remove link (hidden, use `link remove` instead)
+    #[command(hide = true)]
+    Unlink {
+        /// First ticket ID
+        id1: String,
+        /// Second ticket ID
+        id2: String,
+    },
+
+    /// List all tickets
+    Ls {
+        /// Filter by status
+        #[arg(long)]
+        status: Option<String>,
+    },
+
+    /// List tickets ready to work on
+    Ready,
+
+    /// List blocked tickets
+    Blocked,
+
+    /// List recently closed tickets
+    Closed {
+        /// Maximum number of tickets to show
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
+
+    /// Output tickets as JSON, optionally filtered with jq syntax
+    Query {
+        /// jq filter expression (e.g., '.status == "new"')
+        filter: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum DepAction {
+    /// Add a dependency
+    Add {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID (ticket that must be completed first)
+        dep_id: String,
+    },
+    /// Remove a dependency
+    Remove {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID to remove
+        dep_id: String,
+    },
+    /// Show dependency tree
+    Tree {
+        /// Ticket ID
+        id: String,
+        /// Show full tree (including duplicate nodes)
+        #[arg(long)]
+        full: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum LinkAction {
+    /// Link tickets together
+    Add {
+        /// Ticket IDs to link
+        #[arg(required = true, num_args = 2..)]
+        ids: Vec<String>,
+    },
+    /// Remove link between tickets
+    Remove {
+        /// First ticket ID
+        id1: String,
+        /// Second ticket ID
+        id2: String,
+    },
+}
+
+fn parse_priority(s: &str) -> Result<TicketPriority, String> {
+    s.parse()
+        .map_err(|_| format!("Invalid priority. Must be one of: {}", VALID_PRIORITIES.join(", ")))
+}
+
+fn parse_type(s: &str) -> Result<TicketType, String> {
+    s.parse()
+        .map_err(|_| format!("Invalid type. Must be one of: {}", VALID_TYPES.join(", ")))
+}
+
+fn parse_status(s: &str) -> Result<String, String> {
+    if VALID_STATUSES.contains(&s) {
+        Ok(s.to_string())
+    } else {
+        Err(format!(
+            "Invalid status. Must be one of: {}",
+            VALID_STATUSES.join(", ")
+        ))
+    }
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Commands::Create {
+            title,
+            description,
+            design,
+            acceptance,
+            priority,
+            ticket_type,
+            assignee,
+            external_ref,
+            parent,
+        } => cmd_create(CreateOptions {
+            title,
+            description,
+            design,
+            acceptance,
+            priority,
+            ticket_type,
+            assignee,
+            external_ref,
+            parent,
+        }),
+
+        Commands::Show { id } => cmd_show(&id),
+        Commands::Edit { id } => cmd_edit(&id),
+        Commands::AddNote { id, text } => {
+            let note_text = if text.is_empty() {
+                None
+            } else {
+                Some(text.join(" "))
+            };
+            cmd_add_note(&id, note_text.as_deref())
+        }
+
+        Commands::Start { id } => cmd_start(&id),
+        Commands::Close { id } => cmd_close(&id),
+        Commands::Reopen { id } => cmd_reopen(&id),
+        Commands::Status { id, status } => cmd_status(&id, &status),
+
+        Commands::Dep { action } => match action {
+            DepAction::Add { id, dep_id } => cmd_dep_add(&id, &dep_id),
+            DepAction::Remove { id, dep_id } => cmd_dep_remove(&id, &dep_id),
+            DepAction::Tree { id, full } => cmd_dep_tree(&id, full),
+        },
+        Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id),
+
+        Commands::Link { action } => match action {
+            LinkAction::Add { ids } => cmd_link_add(&ids),
+            LinkAction::Remove { id1, id2 } => cmd_link_remove(&id1, &id2),
+        },
+        Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2),
+
+        Commands::Ls { status } => cmd_ls(status.as_deref()),
+        Commands::Ready => cmd_ready(),
+        Commands::Blocked => cmd_blocked(),
+        Commands::Closed { limit } => cmd_closed(limit),
+
+        Commands::Query { filter } => cmd_query(filter.as_deref()),
+    };
+
+    match result {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{}", e);
+            ExitCode::FAILURE
+        }
+    }
+}
