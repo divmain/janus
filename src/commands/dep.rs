@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use owo_colors::OwoColorize;
 
 use crate::error::{JanusError, Result};
-use crate::ticket::{build_ticket_map, Ticket};
+use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::TicketMetadata;
 
 /// Add a dependency to a ticket
@@ -89,7 +89,12 @@ pub fn cmd_dep_tree(id: &str, full_mode: bool) -> Result<()> {
         let mut max = max_depth.get(id).copied().unwrap_or(0);
         if let Some(ticket) = ticket_map.get(id) {
             for dep in &ticket.deps {
-                max = max.max(compute_subtree_depth(dep, max_depth, subtree_depth, ticket_map));
+                max = max.max(compute_subtree_depth(
+                    dep,
+                    max_depth,
+                    subtree_depth,
+                    ticket_map,
+                ));
             }
         }
         subtree_depth.insert(id.to_string(), max);
@@ -150,14 +155,8 @@ pub fn cmd_dep_tree(id: &str, full_mode: bool) -> Result<()> {
         subtree_depth: &HashMap<String, usize>,
         ticket_map: &HashMap<String, TicketMetadata>,
     ) {
-        let children = get_printable_children(
-            id,
-            depth,
-            full_mode,
-            max_depth,
-            subtree_depth,
-            ticket_map,
-        );
+        let children =
+            get_printable_children(id, depth, full_mode, max_depth, subtree_depth, ticket_map);
 
         for (i, child) in children.iter().enumerate() {
             let is_last = i == children.len() - 1;

@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::commands::{format_deps, format_ticket_line, sort_by_priority, FormatOptions};
+use crate::commands::{FormatOptions, format_deps, format_ticket_line, sort_by_priority};
 use crate::error::Result;
 use crate::parser::parse_ticket_content;
 use crate::ticket::{build_ticket_map, get_all_tickets, get_file_mtime};
-use crate::types::{TicketMetadata, TicketStatus, TICKETS_DIR};
+use crate::types::{TICKETS_DIR, TicketMetadata, TicketStatus};
 
 /// List all tickets, optionally filtered by status
 pub fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
@@ -162,17 +162,15 @@ pub fn cmd_closed(limit: usize) -> Result<()> {
             break;
         }
 
-        if let Ok(content) = fs::read_to_string(path) {
-            if let Ok(mut metadata) = parse_ticket_content(&content) {
-                if metadata.status == Some(TicketStatus::Complete) {
-                    if metadata.id.is_none() {
-                        metadata.id =
-                            Some(file.strip_suffix(".md").unwrap_or(file).to_string());
-                    }
-                    metadata.file_path = Some(path.clone());
-                    closed_tickets.push(metadata);
-                }
+        if let Ok(content) = fs::read_to_string(path)
+            && let Ok(mut metadata) = parse_ticket_content(&content)
+            && metadata.status == Some(TicketStatus::Complete)
+        {
+            if metadata.id.is_none() {
+                metadata.id = Some(file.strip_suffix(".md").unwrap_or(file).to_string());
             }
+            metadata.file_path = Some(path.clone());
+            closed_tickets.push(metadata);
         }
     }
 

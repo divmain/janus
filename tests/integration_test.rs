@@ -66,12 +66,20 @@ impl JanusTest {
     }
 
     fn read_ticket(&self, id: &str) -> String {
-        let path = self.temp_dir.path().join(".janus").join(format!("{}.md", id));
+        let path = self
+            .temp_dir
+            .path()
+            .join(".janus")
+            .join(format!("{}.md", id));
         fs::read_to_string(path).expect("Failed to read ticket file")
     }
 
     fn ticket_exists(&self, id: &str) -> bool {
-        let path = self.temp_dir.path().join(".janus").join(format!("{}.md", id));
+        let path = self
+            .temp_dir
+            .path()
+            .join(".janus")
+            .join(format!("{}.md", id));
         path.exists()
     }
 }
@@ -133,7 +141,10 @@ fn test_create_with_options() {
 fn test_create_with_parent() {
     let janus = JanusTest::new();
 
-    let parent_id = janus.run_success(&["create", "Parent ticket"]).trim().to_string();
+    let parent_id = janus
+        .run_success(&["create", "Parent ticket"])
+        .trim()
+        .to_string();
     let child_id = janus
         .run_success(&["create", "Child ticket", "--parent", &parent_id])
         .trim()
@@ -259,7 +270,8 @@ fn test_status_invalid() {
 fn test_show_basic() {
     let janus = JanusTest::new();
 
-    let id = janus.run_success(&["create", "Test ticket", "-d", "Description"])
+    let id = janus
+        .run_success(&["create", "Test ticket", "-d", "Description"])
         .trim()
         .to_string();
     let output = janus.run_success(&["show", &id]);
@@ -273,7 +285,10 @@ fn test_show_basic() {
 fn test_show_partial_id() {
     let janus = JanusTest::new();
 
-    let id = janus.run_success(&["create", "Test ticket"]).trim().to_string();
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
     // Use just the hash part (after the dash)
     let partial = id.split('-').last().unwrap();
     let output = janus.run_success(&["show", partial]);
@@ -285,8 +300,14 @@ fn test_show_partial_id() {
 fn test_show_with_blockers() {
     let janus = JanusTest::new();
 
-    let dep_id = janus.run_success(&["create", "Dependency"]).trim().to_string();
-    let id = janus.run_success(&["create", "Main ticket"]).trim().to_string();
+    let dep_id = janus
+        .run_success(&["create", "Dependency"])
+        .trim()
+        .to_string();
+    let id = janus
+        .run_success(&["create", "Main ticket"])
+        .trim()
+        .to_string();
     janus.run_success(&["dep", "add", &id, &dep_id]);
 
     let output = janus.run_success(&["show", &id]);
@@ -298,8 +319,14 @@ fn test_show_with_blockers() {
 fn test_show_with_blocking() {
     let janus = JanusTest::new();
 
-    let id = janus.run_success(&["create", "Main ticket"]).trim().to_string();
-    let blocked_id = janus.run_success(&["create", "Blocked ticket"]).trim().to_string();
+    let id = janus
+        .run_success(&["create", "Main ticket"])
+        .trim()
+        .to_string();
+    let blocked_id = janus
+        .run_success(&["create", "Blocked ticket"])
+        .trim()
+        .to_string();
     janus.run_success(&["dep", "add", &blocked_id, &id]);
 
     let output = janus.run_success(&["show", &id]);
@@ -326,8 +353,14 @@ fn test_show_with_children() {
 fn test_show_with_links() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
     janus.run_success(&["link", "add", &id1, &id2]);
 
     let output = janus.run_success(&["show", &id1]);
@@ -350,8 +383,14 @@ fn test_show_not_found() {
 fn test_dep_add() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     let output = janus.run_success(&["dep", "add", &id1, &id2]);
     assert!(output.contains("Added dependency"));
@@ -364,8 +403,14 @@ fn test_dep_add() {
 fn test_dep_add_duplicate() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     janus.run_success(&["dep", "add", &id1, &id2]);
     let output = janus.run_success(&["dep", "add", &id1, &id2]);
@@ -376,8 +421,14 @@ fn test_dep_add_duplicate() {
 fn test_dep_remove() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     janus.run_success(&["dep", "add", &id1, &id2]);
     let output = janus.run_success(&["dep", "remove", &id1, &id2]);
@@ -391,8 +442,14 @@ fn test_dep_remove() {
 fn test_dep_remove_not_found() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     let stderr = janus.run_failure(&["dep", "remove", &id1, &id2]);
     assert!(stderr.contains("not found"));
@@ -422,7 +479,10 @@ fn test_dep_tree_full() {
 
     let id1 = janus.run_success(&["create", "Root"]).trim().to_string();
     let id2 = janus.run_success(&["create", "Child"]).trim().to_string();
-    let id3 = janus.run_success(&["create", "Grandchild"]).trim().to_string();
+    let id3 = janus
+        .run_success(&["create", "Grandchild"])
+        .trim()
+        .to_string();
 
     janus.run_success(&["dep", "add", &id1, &id2]);
     janus.run_success(&["dep", "add", &id2, &id3]);
@@ -437,8 +497,14 @@ fn test_dep_tree_full() {
 fn test_undep_legacy() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     janus.run_success(&["dep", "add", &id1, &id2]);
     let output = janus.run_success(&["undep", &id1, &id2]);
@@ -453,8 +519,14 @@ fn test_undep_legacy() {
 fn test_link_add() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     let output = janus.run_success(&["link", "add", &id1, &id2]);
     assert!(output.contains("Added"));
@@ -470,9 +542,18 @@ fn test_link_add() {
 fn test_link_add_multiple() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
-    let id3 = janus.run_success(&["create", "Ticket 3"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+    let id3 = janus
+        .run_success(&["create", "Ticket 3"])
+        .trim()
+        .to_string();
 
     let output = janus.run_success(&["link", "add", &id1, &id2, &id3]);
     assert!(output.contains("Added"));
@@ -483,8 +564,14 @@ fn test_link_add_multiple() {
 fn test_link_add_duplicate() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     janus.run_success(&["link", "add", &id1, &id2]);
     let output = janus.run_success(&["link", "add", &id1, &id2]);
@@ -495,8 +582,14 @@ fn test_link_add_duplicate() {
 fn test_link_remove() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     janus.run_success(&["link", "add", &id1, &id2]);
     let output = janus.run_success(&["link", "remove", &id1, &id2]);
@@ -512,8 +605,14 @@ fn test_link_remove() {
 fn test_link_remove_not_found() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     let stderr = janus.run_failure(&["link", "remove", &id1, &id2]);
     assert!(stderr.contains("not found"));
@@ -523,8 +622,14 @@ fn test_link_remove_not_found() {
 fn test_unlink_legacy() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     janus.run_success(&["link", "add", &id1, &id2]);
     let output = janus.run_success(&["unlink", &id1, &id2]);
@@ -546,8 +651,14 @@ fn test_ls_empty() {
 fn test_ls_basic() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     let output = janus.run_success(&["ls"]);
     assert!(output.contains(&id1));
@@ -560,8 +671,14 @@ fn test_ls_basic() {
 fn test_ls_status_filter() {
     let janus = JanusTest::new();
 
-    let id1 = janus.run_success(&["create", "Open ticket"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Closed ticket"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Open ticket"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Closed ticket"])
+        .trim()
+        .to_string();
     janus.run_success(&["close", &id2]);
 
     let output = janus.run_success(&["ls", "--status", "new"]);
@@ -577,7 +694,10 @@ fn test_ls_status_filter() {
 fn test_ready() {
     let janus = JanusTest::new();
 
-    let dep_id = janus.run_success(&["create", "Dependency"]).trim().to_string();
+    let dep_id = janus
+        .run_success(&["create", "Dependency"])
+        .trim()
+        .to_string();
     let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
     let ready_id = janus.run_success(&["create", "Ready"]).trim().to_string();
 
@@ -593,7 +713,10 @@ fn test_ready() {
 fn test_ready_after_dep_closed() {
     let janus = JanusTest::new();
 
-    let dep_id = janus.run_success(&["create", "Dependency"]).trim().to_string();
+    let dep_id = janus
+        .run_success(&["create", "Dependency"])
+        .trim()
+        .to_string();
     let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
 
     janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
@@ -614,7 +737,10 @@ fn test_ready_after_dep_closed() {
 fn test_blocked() {
     let janus = JanusTest::new();
 
-    let dep_id = janus.run_success(&["create", "Dependency"]).trim().to_string();
+    let dep_id = janus
+        .run_success(&["create", "Dependency"])
+        .trim()
+        .to_string();
     let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
     let ready_id = janus.run_success(&["create", "Ready"]).trim().to_string();
 
@@ -624,15 +750,27 @@ fn test_blocked() {
 
     // The blocked ticket should appear with its title
     assert!(output.contains(&blocked_id), "Blocked ticket should appear");
-    assert!(output.contains("Blocked"), "Blocked ticket title should appear");
+    assert!(
+        output.contains("Blocked"),
+        "Blocked ticket title should appear"
+    );
 
     // The dep_id appears in the suffix as a blocker, which is expected
     // But the dependency ticket's title should NOT appear (it's not blocked itself)
-    assert!(!output.contains("Dependency"), "Dependency ticket should not be listed as blocked");
+    assert!(
+        !output.contains("Dependency"),
+        "Dependency ticket should not be listed as blocked"
+    );
 
     // Ready ticket should not appear at all
-    assert!(!output.contains(&ready_id), "Ready ticket should not appear");
-    assert!(!output.contains("Ready"), "Ready ticket title should not appear");
+    assert!(
+        !output.contains(&ready_id),
+        "Ready ticket should not appear"
+    );
+    assert!(
+        !output.contains("Ready"),
+        "Ready ticket title should not appear"
+    );
 }
 
 #[test]
@@ -720,7 +858,10 @@ fn test_edit_non_tty() {
 fn test_query_basic() {
     let janus = JanusTest::new();
 
-    let id = janus.run_success(&["create", "Test ticket"]).trim().to_string();
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
 
     let output = janus.run_success(&["query"]);
     assert!(output.contains(&id));
@@ -762,8 +903,14 @@ fn test_ambiguous_id() {
     let janus = JanusTest::new();
 
     // Create two tickets - they'll have the same prefix
-    let id1 = janus.run_success(&["create", "Ticket 1"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Ticket 2"]).trim().to_string();
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
 
     // Get the common prefix (before the hash)
     let prefix = id1.split('-').next().unwrap();
@@ -815,9 +962,18 @@ fn test_ready_sorted_by_priority() {
     let janus = JanusTest::new();
 
     // Create tickets with different priorities
-    let id_p4 = janus.run_success(&["create", "P4 ticket", "-p", "4"]).trim().to_string();
-    let id_p0 = janus.run_success(&["create", "P0 ticket", "-p", "0"]).trim().to_string();
-    let id_p2 = janus.run_success(&["create", "P2 ticket", "-p", "2"]).trim().to_string();
+    let id_p4 = janus
+        .run_success(&["create", "P4 ticket", "-p", "4"])
+        .trim()
+        .to_string();
+    let id_p0 = janus
+        .run_success(&["create", "P0 ticket", "-p", "0"])
+        .trim()
+        .to_string();
+    let id_p2 = janus
+        .run_success(&["create", "P2 ticket", "-p", "2"])
+        .trim()
+        .to_string();
 
     let output = janus.run_success(&["ready"]);
     let lines: Vec<&str> = output.lines().collect();
@@ -855,4 +1011,134 @@ fn test_version() {
     let output = janus.run_success(&["--version"]);
     assert!(output.contains("janus"));
     assert!(output.contains("1.0.0"));
+}
+
+// ============================================================================
+// Config command tests
+// ============================================================================
+
+#[test]
+fn test_config_show_empty() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["config", "show"]);
+    assert!(output.contains("Configuration"));
+    assert!(output.contains("not configured"));
+}
+
+#[test]
+fn test_config_set_default_remote() {
+    let janus = JanusTest::new();
+
+    janus.run_success(&["config", "set", "default_remote", "github:myorg/myrepo"]);
+    let output = janus.run_success(&["config", "show"]);
+    assert!(output.contains("github"));
+    assert!(output.contains("myorg"));
+}
+
+#[test]
+fn test_config_set_linear_default_remote() {
+    let janus = JanusTest::new();
+
+    janus.run_success(&["config", "set", "default_remote", "linear:myorg"]);
+    let output = janus.run_success(&["config", "show"]);
+    assert!(output.contains("linear"));
+    assert!(output.contains("myorg"));
+}
+
+#[test]
+fn test_config_get_not_set() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["config", "get", "github.token"]);
+    assert!(stderr.contains("not set"));
+}
+
+#[test]
+fn test_config_set_invalid_key() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["config", "set", "invalid.key", "value"]);
+    assert!(stderr.contains("unknown config key"));
+}
+
+#[test]
+fn test_config_set_invalid_default_remote_format() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["config", "set", "default_remote", "invalid"]);
+    assert!(stderr.contains("invalid") || stderr.contains("format"));
+}
+
+#[test]
+fn test_config_file_created() {
+    let janus = JanusTest::new();
+
+    janus.run_success(&["config", "set", "default_remote", "github:owner/repo"]);
+
+    let config_path = janus.temp_dir.path().join(".janus").join("config.yaml");
+    assert!(config_path.exists(), "Config file should be created");
+
+    let content = fs::read_to_string(config_path).unwrap();
+    assert!(content.contains("github"));
+    assert!(content.contains("owner"));
+}
+
+// ============================================================================
+// Remote sync command tests (without actual API calls)
+// ============================================================================
+
+#[test]
+fn test_adopt_invalid_ref() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["adopt", "invalid"]);
+    assert!(stderr.contains("invalid") || stderr.contains("expected"));
+}
+
+#[test]
+fn test_push_not_configured() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["push", &id]);
+    // Should fail due to no default_remote config
+    assert!(
+        stderr.contains("not configured") || stderr.contains("default_remote"),
+        "Should fail due to missing config: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_remote_link_invalid_ref() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["remote-link", &id, "invalid"]);
+    assert!(stderr.contains("invalid") || stderr.contains("expected"));
+}
+
+#[test]
+fn test_sync_not_linked() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["sync", &id]);
+    assert!(stderr.contains("not linked"));
+}
+
+#[test]
+fn test_help_shows_new_commands() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["--help"]);
+    assert!(output.contains("adopt"), "Should show adopt command");
+    assert!(output.contains("push"), "Should show push command");
+    assert!(
+        output.contains("remote-link"),
+        "Should show remote-link command"
+    );
+    assert!(output.contains("sync"), "Should show sync command");
+    assert!(output.contains("config"), "Should show config command");
 }

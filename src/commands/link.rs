@@ -20,10 +20,8 @@ pub fn cmd_link_add(ids: &[String]) -> Result<()> {
     // Add links between all pairs
     for ticket in &tickets {
         for other in &tickets {
-            if ticket.id != other.id {
-                if ticket.add_to_array_field("links", &other.id)? {
-                    added_count += 1;
-                }
+            if ticket.id != other.id && ticket.add_to_array_field("links", &other.id)? {
+                added_count += 1;
             }
         }
     }

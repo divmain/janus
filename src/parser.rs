@@ -19,9 +19,9 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
     // Match frontmatter: ---\n...\n---\n...
     let frontmatter_re = Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").unwrap();
 
-    let captures = frontmatter_re.captures(content).ok_or_else(|| {
-        JanusError::InvalidFormat("missing YAML frontmatter".to_string())
-    })?;
+    let captures = frontmatter_re
+        .captures(content)
+        .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
 
     let yaml = captures.get(1).map(|m| m.as_str()).unwrap_or("");
     let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
@@ -56,6 +56,7 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
                 }
                 "assignee" => metadata.assignee = Some(value.to_string()),
                 "external-ref" => metadata.external_ref = Some(value.to_string()),
+                "remote" => metadata.remote = Some(value.to_string()),
                 "parent" => metadata.parent = Some(value.to_string()),
                 _ => {} // Ignore unknown fields
             }

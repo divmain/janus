@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::error::Result;
-use crate::types::{TicketPriority, TicketType, TICKETS_DIR};
+use crate::types::{TICKETS_DIR, TicketPriority, TicketType};
 use crate::utils::{ensure_dir, generate_id, get_git_user_name, iso_date};
 
 /// Options for creating a new ticket

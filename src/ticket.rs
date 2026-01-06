@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{JanusError, Result};
 use crate::parser::parse_ticket_content;
-use crate::types::{TicketMetadata, TICKETS_DIR};
+use crate::types::{TICKETS_DIR, TicketMetadata};
 
 /// Find all ticket files in the tickets directory
 fn find_tickets() -> Vec<String> {

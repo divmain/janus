@@ -26,6 +26,31 @@ pub enum JanusError {
     #[error("jq filter error: {0}")]
     JqFilter(String),
 
+    // Remote sync errors
+    #[error("invalid remote reference '{0}': {1}")]
+    InvalidRemoteRef(String, String),
+
+    #[error("remote issue not found: {0}")]
+    RemoteIssueNotFound(String),
+
+    #[error("ticket already linked to remote: {0}")]
+    AlreadyLinked(String),
+
+    #[error("ticket not linked to any remote")]
+    NotLinked,
+
+    #[error("configuration error: {0}")]
+    Config(String),
+
+    #[error("authentication error: {0}")]
+    Auth(String),
+
+    #[error("API error: {0}")]
+    Api(String),
+
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
     #[error("{0}")]
     Other(String),
 }

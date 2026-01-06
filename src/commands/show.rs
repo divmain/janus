@@ -1,6 +1,6 @@
 use crate::commands::format_ticket_bullet;
 use crate::error::Result;
-use crate::ticket::{build_ticket_map, Ticket};
+use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::{TicketMetadata, TicketStatus};
 
 /// Display a ticket with its relationships
@@ -32,10 +32,10 @@ pub fn cmd_show(id: &str) -> Result<()> {
 
     // Find blockers (deps that are not complete)
     for dep_id in &metadata.deps {
-        if let Some(dep) = ticket_map.get(dep_id) {
-            if dep.status != Some(TicketStatus::Complete) {
-                blockers.push(dep);
-            }
+        if let Some(dep) = ticket_map.get(dep_id)
+            && dep.status != Some(TicketStatus::Complete)
+        {
+            blockers.push(dep);
         }
     }
 

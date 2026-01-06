@@ -2,9 +2,10 @@ use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
 use janus::commands::{
-    cmd_add_note, cmd_blocked, cmd_close, cmd_closed, cmd_create, cmd_dep_add, cmd_dep_remove,
-    cmd_dep_tree, cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_query, cmd_ready,
-    cmd_reopen, cmd_show, cmd_start, cmd_status, CreateOptions,
+    CreateOptions, cmd_add_note, cmd_adopt, cmd_blocked, cmd_close, cmd_closed, cmd_config_get,
+    cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree,
+    cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_push, cmd_query, cmd_ready,
+    cmd_remote_link, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync,
 };
 use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
 
@@ -164,6 +165,39 @@ enum Commands {
         /// jq filter expression (e.g., '.status == "new"')
         filter: Option<String>,
     },
+
+    // Remote sync commands
+    /// Adopt a remote issue and create a local ticket
+    Adopt {
+        /// Remote reference (e.g., github:owner/repo/123 or linear:org/PROJ-123)
+        remote_ref: String,
+    },
+
+    /// Push a local ticket to create a remote issue
+    Push {
+        /// Local ticket ID (can be partial)
+        id: String,
+    },
+
+    /// Link a local ticket to an existing remote issue
+    RemoteLink {
+        /// Local ticket ID (can be partial)
+        id: String,
+        /// Remote reference (e.g., github:owner/repo/123 or linear:org/PROJ-123)
+        remote_ref: String,
+    },
+
+    /// Sync a local ticket with its remote issue
+    Sync {
+        /// Local ticket ID (can be partial)
+        id: String,
+    },
+
+    /// Manage configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -209,9 +243,31 @@ enum LinkAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Show current configuration
+    Show,
+    /// Set a configuration value
+    Set {
+        /// Configuration key (github.token, linear.api_key, default_remote)
+        key: String,
+        /// Value to set
+        value: String,
+    },
+    /// Get a configuration value
+    Get {
+        /// Configuration key (github.token, linear.api_key, default_remote)
+        key: String,
+    },
+}
+
 fn parse_priority(s: &str) -> Result<TicketPriority, String> {
-    s.parse()
-        .map_err(|_| format!("Invalid priority. Must be one of: {}", VALID_PRIORITIES.join(", ")))
+    s.parse().map_err(|_| {
+        format!(
+            "Invalid priority. Must be one of: {}",
+            VALID_PRIORITIES.join(", ")
+        )
+    })
 }
 
 fn parse_type(s: &str) -> Result<TicketType, String> {
@@ -291,6 +347,19 @@ fn main() -> ExitCode {
         Commands::Closed { limit } => cmd_closed(limit),
 
         Commands::Query { filter } => cmd_query(filter.as_deref()),
+
+        // Remote sync commands
+        Commands::Adopt { remote_ref } => cmd_adopt(&remote_ref),
+        Commands::Push { id } => cmd_push(&id),
+        Commands::RemoteLink { id, remote_ref } => cmd_remote_link(&id, &remote_ref),
+        Commands::Sync { id } => cmd_sync(&id),
+
+        // Configuration commands
+        Commands::Config { action } => match action {
+            ConfigAction::Show => cmd_config_show(),
+            ConfigAction::Set { key, value } => cmd_config_set(&key, &value),
+            ConfigAction::Get { key } => cmd_config_get(&key),
+        },
     };
 
     match result {

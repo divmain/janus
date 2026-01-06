@@ -11,9 +11,7 @@ pub fn cmd_edit(id: &str) -> Result<()> {
     if is_stdin_tty() {
         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
 
-        let status = Command::new(&editor)
-            .arg(&ticket.file_path)
-            .status()?;
+        let status = Command::new(&editor).arg(&ticket.file_path).status()?;
 
         if !status.success() {
             eprintln!("Editor exited with code {:?}", status.code());

@@ -163,6 +163,10 @@ pub struct TicketMetadata {
     #[serde(rename = "external-ref", skip_serializing_if = "Option::is_none")]
     pub external_ref: Option<String>,
 
+    /// Remote issue reference (e.g., "github:owner/repo/123" or "linear:org/PROJ-123")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
 
