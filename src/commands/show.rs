@@ -4,11 +4,11 @@ use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::{TicketMetadata, TicketStatus};
 
 /// Display a ticket with its relationships
-pub fn cmd_show(id: &str) -> Result<()> {
-    let ticket = Ticket::find(id)?;
+pub async fn cmd_show(id: &str) -> Result<()> {
+    let ticket = Ticket::find_async(id).await?;
     let content = ticket.read_content()?;
     let metadata = ticket.read()?;
-    let ticket_map = build_ticket_map();
+    let ticket_map = build_ticket_map().await;
 
     let mut blockers: Vec<&TicketMetadata> = Vec::new();
     let mut blocking: Vec<&TicketMetadata> = Vec::new();

@@ -2,7 +2,8 @@
 
 use std::path::Path;
 
-use crate::ticket::get_all_tickets;
+use crate::cache;
+use crate::ticket::get_all_tickets_from_disk;
 use crate::types::{TICKETS_DIR, TicketMetadata, TicketStatus};
 
 /// Active pane in the issue browser
@@ -42,15 +43,37 @@ pub struct TuiState {
 
 impl TuiState {
     /// Create a new TUI state with all tickets loaded
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
+        if !janus_dir_exists() {
+            return Self {
+                all_tickets: vec![],
+                init_error: Some("No .janus directory found".to_string()),
+            };
+        }
+
+        let all_tickets = if let Some(cache) = cache::get_or_init_cache().await {
+            match cache.get_all_tickets().await {
+                Ok(tickets) => tickets,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: failed to load from cache: {}. Using file reads.",
+                        e
+                    );
+                    get_all_tickets_from_disk()
+                }
+            }
+        } else {
+            get_all_tickets_from_disk()
+        };
+
         Self {
-            all_tickets: get_all_tickets(),
+            all_tickets,
             init_error: None,
         }
     }
 
     /// Create a new TUI state with initialization result tracking
-    pub fn init() -> (Self, InitResult) {
+    pub async fn init() -> (Self, InitResult) {
         if !janus_dir_exists() {
             return (
                 Self {
@@ -61,8 +84,22 @@ impl TuiState {
             );
         }
 
-        let tickets = get_all_tickets();
-        let result = if tickets.is_empty() {
+        let all_tickets = if let Some(cache) = cache::get_or_init_cache().await {
+            match cache.get_all_tickets().await {
+                Ok(tickets) => tickets,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: failed to load from cache: {}. Using file reads.",
+                        e
+                    );
+                    get_all_tickets_from_disk()
+                }
+            }
+        } else {
+            get_all_tickets_from_disk()
+        };
+
+        let result = if all_tickets.is_empty() {
             InitResult::EmptyDir
         } else {
             InitResult::Ok
@@ -70,7 +107,7 @@ impl TuiState {
 
         (
             Self {
-                all_tickets: tickets,
+                all_tickets,
                 init_error: None,
             },
             result,
@@ -78,8 +115,22 @@ impl TuiState {
     }
 
     /// Reload all tickets from disk
-    pub fn reload(&mut self) {
-        self.all_tickets = get_all_tickets();
+    pub async fn reload(&mut self) {
+        // Sync cache (incremental update happens automatically in get_or_init_cache)
+        if let Some(cache) = cache::get_or_init_cache().await {
+            match cache.get_all_tickets().await {
+                Ok(tickets) => {
+                    self.all_tickets = tickets;
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("Warning: cache reload failed: {}. Using file reads.", e);
+                }
+            }
+        }
+
+        // FALLBACK: Original implementation
+        self.all_tickets = get_all_tickets_from_disk();
     }
 
     /// Get tickets filtered by status
@@ -169,4 +220,65 @@ pub fn get_git_user_name() -> Option<String> {
                 None
             }
         })
+}
+
+impl TuiState {
+    /// Create a new TUI state with all tickets loaded (sync wrapper for backward compatibility)
+    pub fn new_sync() -> Self {
+        tokio::runtime::Handle::try_current()
+            .ok()
+            .map(|h| h.block_on(Self::new()))
+            .unwrap_or_else(|| {
+                // No tokio runtime available, fall back to sync implementation
+                Self {
+                    all_tickets: if janus_dir_exists() {
+                        get_all_tickets_from_disk()
+                    } else {
+                        vec![]
+                    },
+                    init_error: None,
+                }
+            })
+    }
+
+    /// Create a new TUI state with initialization result tracking (sync wrapper)
+    pub fn init_sync() -> (Self, InitResult) {
+        tokio::runtime::Handle::try_current()
+            .ok()
+            .map(|h| h.block_on(Self::init()))
+            .unwrap_or_else(|| {
+                // No tokio runtime available, fall back to sync implementation
+                if !janus_dir_exists() {
+                    return (
+                        Self {
+                            all_tickets: vec![],
+                            init_error: Some("No .janus directory found".to_string()),
+                        },
+                        InitResult::NoJanusDir,
+                    );
+                }
+
+                let tickets = get_all_tickets_from_disk();
+                let result = if tickets.is_empty() {
+                    InitResult::EmptyDir
+                } else {
+                    InitResult::Ok
+                };
+
+                (
+                    Self {
+                        all_tickets: tickets,
+                        init_error: None,
+                    },
+                    result,
+                )
+            })
+    }
+
+    /// Reload all tickets from disk (sync wrapper)
+    pub fn reload_sync(&mut self) {
+        if let Ok(h) = tokio::runtime::Handle::try_current() {
+            h.block_on(self.reload());
+        }
+    }
 }

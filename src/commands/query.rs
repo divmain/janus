@@ -24,8 +24,8 @@ fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
 }
 
 /// Output tickets as JSON, optionally filtered with jq syntax
-pub fn cmd_query(filter: Option<&str>) -> Result<()> {
-    let tickets = get_all_tickets();
+pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
+    let tickets = get_all_tickets().await;
 
     // Build JSON lines output
     let output: String = tickets

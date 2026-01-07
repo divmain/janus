@@ -11,7 +11,9 @@ pub mod utils;
 
 pub use error::{JanusError, Result};
 pub use remote::{Config, Platform, RemoteIssue, RemoteRef, RemoteStatus};
-pub use ticket::{Ticket, build_ticket_map, get_all_tickets};
+pub use ticket::{
+    Ticket, build_ticket_map, build_ticket_map_sync, get_all_tickets, get_all_tickets_sync,
+};
 pub use types::{
     TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus, TicketType,
 };

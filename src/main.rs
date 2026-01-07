@@ -2,9 +2,10 @@ use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
 use janus::commands::{
-    CreateOptions, cmd_add_note, cmd_adopt, cmd_blocked, cmd_board, cmd_close, cmd_closed,
-    cmd_config_get, cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove,
-    cmd_dep_tree, cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_push, cmd_query, cmd_ready,
+    CreateOptions, cmd_add_note, cmd_adopt, cmd_blocked, cmd_board, cmd_cache_clear,
+    cmd_cache_path, cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_closed, cmd_config_get,
+    cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree,
+    cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_push, cmd_query, cmd_ready,
     cmd_remote_link, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync, cmd_view,
 };
 use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
@@ -204,6 +205,12 @@ enum Commands {
         #[command(subcommand)]
         action: ConfigAction,
     },
+
+    /// Cache management
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -267,6 +274,18 @@ enum ConfigAction {
     },
 }
 
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Show cache status
+    Status,
+    /// Clear cache for current repo
+    Clear,
+    /// Force full cache rebuild
+    Rebuild,
+    /// Print path to cache database
+    Path,
+}
+
 fn parse_priority(s: &str) -> Result<TicketPriority, String> {
     s.parse().map_err(|_| {
         format!(
@@ -292,7 +311,8 @@ fn parse_status(s: &str) -> Result<String, String> {
     }
 }
 
-fn main() -> ExitCode {
+#[tokio::main]
+async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
@@ -318,7 +338,7 @@ fn main() -> ExitCode {
             parent,
         }),
 
-        Commands::Show { id } => cmd_show(&id),
+        Commands::Show { id } => cmd_show(&id).await,
         Commands::Edit { id } => cmd_edit(&id),
         Commands::AddNote { id, text } => {
             let note_text = if text.is_empty() {
@@ -337,7 +357,7 @@ fn main() -> ExitCode {
         Commands::Dep { action } => match action {
             DepAction::Add { id, dep_id } => cmd_dep_add(&id, &dep_id),
             DepAction::Remove { id, dep_id } => cmd_dep_remove(&id, &dep_id),
-            DepAction::Tree { id, full } => cmd_dep_tree(&id, full),
+            DepAction::Tree { id, full } => cmd_dep_tree(&id, full).await,
         },
         Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id),
 
@@ -347,12 +367,12 @@ fn main() -> ExitCode {
         },
         Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2),
 
-        Commands::Ls { status } => cmd_ls(status.as_deref()),
-        Commands::Ready => cmd_ready(),
-        Commands::Blocked => cmd_blocked(),
+        Commands::Ls { status } => cmd_ls(status.as_deref()).await,
+        Commands::Ready => cmd_ready().await,
+        Commands::Blocked => cmd_blocked().await,
         Commands::Closed { limit } => cmd_closed(limit),
 
-        Commands::Query { filter } => cmd_query(filter.as_deref()),
+        Commands::Query { filter } => cmd_query(filter.as_deref()).await,
 
         // TUI commands
         Commands::View => cmd_view(),
@@ -369,6 +389,14 @@ fn main() -> ExitCode {
             ConfigAction::Show => cmd_config_show(),
             ConfigAction::Set { key, value } => cmd_config_set(&key, &value),
             ConfigAction::Get { key } => cmd_config_get(&key),
+        },
+
+        // Cache commands
+        Commands::Cache { action } => match action {
+            CacheAction::Status => cmd_cache_status().await,
+            CacheAction::Clear => cmd_cache_clear().await,
+            CacheAction::Rebuild => cmd_cache_rebuild().await,
+            CacheAction::Path => cmd_cache_path().await,
         },
     };
 

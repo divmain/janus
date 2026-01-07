@@ -1,3 +1,4 @@
+use crate::cache_error::CacheError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -50,6 +51,10 @@ pub enum JanusError {
 
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
+
+    // Cache errors
+    #[error("cache error: {0}")]
+    Cache(#[from] CacheError),
 
     #[error("{0}")]
     Other(String),

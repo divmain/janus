@@ -8,8 +8,8 @@ use crate::ticket::{build_ticket_map, get_all_tickets, get_file_mtime};
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketStatus};
 
 /// List all tickets, optionally filtered by status
-pub fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
-    let tickets = get_all_tickets();
+pub async fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
+    let tickets = get_all_tickets().await;
 
     for t in &tickets {
         // Filter by status if provided
@@ -31,8 +31,8 @@ pub fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
 }
 
 /// List tickets that are ready to work on (new or next status, all deps complete)
-pub fn cmd_ready() -> Result<()> {
-    let ticket_map = build_ticket_map();
+pub async fn cmd_ready() -> Result<()> {
+    let ticket_map = build_ticket_map().await;
 
     let mut ready: Vec<TicketMetadata> = ticket_map
         .values()
@@ -67,8 +67,8 @@ pub fn cmd_ready() -> Result<()> {
 }
 
 /// List tickets that are blocked (have incomplete deps)
-pub fn cmd_blocked() -> Result<()> {
-    let ticket_map = build_ticket_map();
+pub async fn cmd_blocked() -> Result<()> {
+    let ticket_map = build_ticket_map().await;
 
     let mut blocked: Vec<(TicketMetadata, Vec<String>)> = Vec::new();
 

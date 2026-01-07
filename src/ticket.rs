@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::parser::parse_ticket_content;
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
@@ -28,7 +29,29 @@ fn find_tickets() -> Vec<String> {
 }
 
 /// Find a ticket file by partial ID
-fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
+pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
+    // Try cache first
+    if let Some(cache) = cache::get_or_init_cache().await {
+        // Exact match check - file exists?
+        let exact_match_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", partial_id));
+        if exact_match_path.exists() {
+            return Ok(exact_match_path);
+        }
+
+        // Partial match via cache
+        if let Ok(matches) = cache.find_by_partial_id(partial_id).await {
+            match matches.len() {
+                0 => {}
+                1 => {
+                    let filename = format!("{}.md", &matches[0]);
+                    return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(filename));
+                }
+                _ => return Err(JanusError::AmbiguousId(partial_id.to_string())),
+            }
+        }
+    }
+
+    // FALLBACK: Original file-based implementation
     let files = find_tickets();
 
     // Check for exact match first
@@ -47,6 +70,38 @@ fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     }
 }
 
+/// Find a ticket file by partial ID (sync wrapper for backward compatibility)
+pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
+    // Try to use cache if we're in a tokio runtime, otherwise use fallback
+    use tokio::runtime::Handle;
+
+    // Check if we're already in a tokio runtime
+    if Handle::try_current().is_err() {
+        // Not in a tokio runtime, create one
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| JanusError::Other(format!("Failed to create tokio runtime: {}", e)))?;
+        return rt.block_on(find_ticket_by_id(partial_id));
+    }
+
+    // We're in a tokio runtime, cannot use block_on
+    // This shouldn't happen if called from async functions properly
+    // Fall back to file-based implementation
+    let files = find_tickets();
+
+    let exact_name = format!("{}.md", partial_id);
+    if files.iter().any(|f| f == &exact_name) {
+        return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
+    }
+
+    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
+
+    match matches.len() {
+        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        1 => Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(matches[0])),
+        _ => Err(JanusError::AmbiguousId(partial_id.to_string())),
+    }
+}
+
 /// A ticket handle for reading and writing ticket files
 pub struct Ticket {
     pub file_path: PathBuf,
@@ -56,7 +111,13 @@ pub struct Ticket {
 impl Ticket {
     /// Find a ticket by its (partial) ID
     pub fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_ticket_by_id(partial_id)?;
+        let file_path = find_ticket_by_id_sync(partial_id)?;
+        Ok(Ticket::new(file_path))
+    }
+
+    /// Find a ticket by its (partial) ID (async version)
+    pub async fn find_async(partial_id: &str) -> Result<Self> {
+        let file_path = find_ticket_by_id(partial_id).await?;
         Ok(Ticket::new(file_path))
     }
 
@@ -155,8 +216,8 @@ impl Ticket {
     }
 }
 
-/// Get all tickets from the tickets directory
-pub fn get_all_tickets() -> Vec<TicketMetadata> {
+/// Get all tickets from the tickets directory (original implementation, used as fallback)
+pub fn get_all_tickets_from_disk() -> Vec<TicketMetadata> {
     let files = find_tickets();
     let mut tickets = Vec::new();
 
@@ -182,9 +243,66 @@ pub fn get_all_tickets() -> Vec<TicketMetadata> {
     tickets
 }
 
+/// Get all tickets from the tickets directory
+pub async fn get_all_tickets() -> Vec<TicketMetadata> {
+    // Try cache first
+    if let Some(cache) = cache::get_or_init_cache().await {
+        if let Ok(tickets) = cache.get_all_tickets().await {
+            return tickets;
+        }
+        eprintln!("Warning: cache read failed, falling back to file reads");
+    }
+
+    // FALLBACK: Original implementation
+    get_all_tickets_from_disk()
+}
+
+/// Get all tickets (sync wrapper for backward compatibility)
+pub fn get_all_tickets_sync() -> Vec<TicketMetadata> {
+    use tokio::runtime::Handle;
+
+    if Handle::try_current().is_err() {
+        let rt = tokio::runtime::Runtime::new().ok();
+        if let Some(rt) = rt {
+            return rt.block_on(get_all_tickets());
+        }
+    }
+
+    // Fallback to disk reads
+    get_all_tickets_from_disk()
+}
+
 /// Build a map of all tickets by ID
-pub fn build_ticket_map() -> HashMap<String, TicketMetadata> {
+pub async fn build_ticket_map() -> HashMap<String, TicketMetadata> {
+    // Try cache first
+    if let Some(cache) = cache::get_or_init_cache().await {
+        if let Ok(map) = cache.build_ticket_map().await {
+            return map;
+        }
+        eprintln!("Warning: cache read failed, falling back to file reads");
+    }
+
+    // FALLBACK: Use get_all_tickets which has cache logic
     get_all_tickets()
+        .await
+        .into_iter()
+        .filter_map(|t| t.id.clone().map(|id| (id, t)))
+        .collect()
+}
+
+/// Build a map of all tickets by ID (sync wrapper for backward compatibility)
+pub fn build_ticket_map_sync() -> HashMap<String, TicketMetadata> {
+    use tokio::runtime::Handle;
+
+    if Handle::try_current().is_err() {
+        let rt = tokio::runtime::Runtime::new().ok();
+        if let Some(rt) = rt {
+            return rt.block_on(build_ticket_map());
+        }
+    }
+
+    // Fallback to disk reads
+    get_all_tickets_from_disk()
         .into_iter()
         .filter_map(|t| t.id.clone().map(|id| (id, t)))
         .collect()

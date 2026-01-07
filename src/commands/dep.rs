@@ -38,8 +38,8 @@ pub fn cmd_dep_remove(id: &str, dep_id: &str) -> Result<()> {
 }
 
 /// Display the dependency tree for a ticket
-pub fn cmd_dep_tree(id: &str, full_mode: bool) -> Result<()> {
-    let ticket_map = build_ticket_map();
+pub async fn cmd_dep_tree(id: &str, full_mode: bool) -> Result<()> {
+    let ticket_map = build_ticket_map().await;
 
     // Find the matching ticket ID
     let matching_ids: Vec<_> = ticket_map.keys().filter(|k| k.contains(id)).collect();

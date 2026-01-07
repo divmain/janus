@@ -1177,3 +1177,335 @@ fn test_help_shows_new_commands() {
     assert!(output.contains("sync"), "Should show sync command");
     assert!(output.contains("config"), "Should show config command");
 }
+
+// ============================================================================
+// Cache command and error handling tests (Phase 6)
+// ============================================================================
+
+#[test]
+fn test_cache_basic_workflow() {
+    let janus = JanusTest::new();
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-a1b2.md");
+    let content = r#"---
+id: j-a1b2
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let ticket_path2 = janus_dir.join("items").join("j-c3d4.md");
+    let content2 = r#"---
+id: j-c3d4
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Another ticket
+"#;
+    fs::write(&ticket_path2, content2).unwrap();
+
+    let output = janus.run_success(&["ls"]);
+    assert!(output.contains("j-a1b2"));
+    assert!(output.contains("j-c3d4"));
+
+    let output2 = janus.run_success(&["ls"]);
+    assert!(output2.contains("j-a1b2"));
+    assert!(output2.contains("j-c3d4"));
+
+    let modified_content = content.replace("Test ticket", "Modified ticket");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    fs::write(&ticket_path, modified_content).unwrap();
+
+    let output3 = janus.run_success(&["show", "j-a1b2"]);
+    assert!(output3.contains("Modified ticket"));
+
+    let ticket_path3 = janus_dir.join("items").join("j-e5f6.md");
+    let content3 = r#"---
+id: j-e5f6
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# New ticket
+"#;
+    fs::write(&ticket_path3, content3).unwrap();
+
+    let output4 = janus.run_success(&["ls"]);
+    assert!(output4.contains("j-e5f6"));
+
+    fs::remove_file(&ticket_path2).unwrap();
+    let output5 = janus.run_success(&["ls"]);
+    assert!(!output5.contains("j-c3d4"));
+}
+
+#[test]
+fn test_cache_status_command() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["cache", "status"]);
+    assert!(output.contains("Cache status") || output.contains("not available"));
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-test.md");
+    let content = r#"---
+id: j-test
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let _ = janus.run(&["ls"]);
+    let status_output = janus.run_success(&["cache", "status"]);
+    assert!(status_output.contains("Cache status"));
+    assert!(status_output.contains("Cached tickets"));
+}
+
+#[test]
+fn test_cache_clear_command() {
+    let janus = JanusTest::new();
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-test.md");
+    let content = r#"---
+id: j-test
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let _ = janus.run(&["ls"]);
+
+    let output = janus.run_success(&["cache", "clear"]);
+    assert!(output.contains("clear"));
+
+    let output2 = janus.run_success(&["ls"]);
+    assert!(output2.contains("j-test"));
+}
+
+#[test]
+fn test_cache_rebuild_command() {
+    let janus = JanusTest::new();
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-test.md");
+    let content = r#"---
+id: j-test
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let output = janus.run_success(&["cache", "rebuild"]);
+    assert!(output.contains("rebuilt") || output.contains("Cached tickets"));
+
+    let output2 = janus.run_success(&["ls"]);
+    assert!(output2.contains("j-test"));
+}
+
+#[test]
+fn test_cache_path_command() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["cache", "path"]);
+    let path_str = output.trim();
+    let cache_path = std::path::PathBuf::from(path_str);
+
+    assert!(cache_path.is_absolute());
+    assert!(cache_path.to_string_lossy().contains("janus"));
+    assert!(
+        cache_path
+            .extension()
+            .map(|ext| ext == "db")
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn test_cache_corrupted_database() {
+    let janus = JanusTest::new();
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-test.md");
+    let content = r#"---
+id: j-test
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let _ = janus.run(&["ls"]);
+
+    let cache_path_output = janus.run_success(&["cache", "path"]);
+    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
+
+    assert!(cache_path.exists(), "Cache file should exist after ls");
+
+    let corrupted_data = b"This is corrupted database data, not SQLite format";
+    fs::write(&cache_path, corrupted_data).unwrap();
+
+    let stderr = janus.run(&["ls"]).stderr;
+    let stderr_str = String::from_utf8_lossy(&stderr);
+    let stdout = janus.run(&["ls"]).stdout;
+    let stdout_str = String::from_utf8_lossy(&stdout);
+
+    assert!(
+        stderr_str.contains("Warning")
+            || stderr_str.contains("corrupted")
+            || stdout_str.contains("j-test"),
+        "Should warn about corruption or fall back to file reads. stderr: {}, stdout: {}",
+        stderr_str,
+        stdout_str
+    );
+}
+
+#[test]
+fn test_cache_rebuild_after_corruption() {
+    let janus = JanusTest::new();
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-test.md");
+    let content = r#"---
+id: j-test
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let _ = janus.run(&["ls"]);
+
+    let cache_path_output = janus.run_success(&["cache", "path"]);
+    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
+
+    fs::write(&cache_path, b"corrupted data").unwrap();
+
+    let output = janus.run_success(&["cache", "rebuild"]);
+    assert!(output.contains("rebuilt"));
+
+    let stdout = janus.run_success(&["ls"]);
+    assert!(stdout.contains("j-test"));
+}
+
+#[test]
+fn test_cache_no_directory_works_without_cache() {
+    let janus = JanusTest::new();
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-test.md");
+    let content = r#"---
+id: j-test
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let _ = janus.run(&["ls"]);
+
+    let cache_path_output = janus.run_success(&["cache", "path"]);
+    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
+    let cache_dir = cache_path.parent().unwrap();
+
+    if cache_dir.exists() {
+        fs::remove_dir_all(&cache_dir).ok();
+    }
+
+    let stdout1 = janus.run(&["ls"]).stdout;
+    let stdout1_str = String::from_utf8_lossy(&stdout1);
+    assert!(stdout1_str.contains("j-test"));
+}
+
+#[test]
+fn test_cache_unavailable_degrades_gracefully() {
+    let janus = JanusTest::new();
+
+    let janus_dir = janus.temp_dir.path().join(".janus");
+    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+
+    let ticket_path = janus_dir.join("items").join("j-test.md");
+    let content = r#"---
+id: j-test
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test ticket
+"#;
+    fs::write(&ticket_path, content).unwrap();
+
+    let _ = janus.run(&["ls"]);
+
+    let cache_path_output = janus.run_success(&["cache", "path"]);
+    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
+
+    let corrupt_content = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA];
+    fs::write(&cache_path, &corrupt_content).unwrap();
+
+    let output = janus.run_success(&["show", "j-test"]);
+    assert!(output.contains("Test ticket"));
+}

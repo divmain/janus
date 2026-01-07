@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+use tokio::sync::OnceCell;
 use turso::transaction::Transaction;
 use turso::{Builder, Connection, Database, params};
 
@@ -16,6 +17,8 @@ use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
 use serial_test::serial;
 
 const CACHE_VERSION: &str = "1";
+
+static GLOBAL_CACHE: OnceCell<Option<TicketCache>> = OnceCell::const_new();
 
 pub fn cache_dir() -> PathBuf {
     let proj_dirs = directories::ProjectDirs::from("com", "divmain", "janus")
@@ -79,6 +82,47 @@ impl TicketCache {
         cache.store_repo_path(&repo_path).await?;
 
         Ok(cache)
+    }
+
+    async fn open_with_corruption_handling() -> CacheResult<Self> {
+        let repo_hash = {
+            let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
+            repo_hash(&repo_path)
+        };
+
+        let db_path = cache_db_path(&repo_hash);
+        let database_exists = db_path.exists();
+
+        let result = Self::open().await;
+
+        if result.is_err() && database_exists {
+            let error = result.as_ref().err().unwrap();
+            let error_str = error.to_string();
+
+            let likely_corruption = error_str.contains("corrupted")
+                || error_str.contains("CORRUPT")
+                || error_str.contains("database disk image is malformed")
+                || error_str.contains("database file is corrupted")
+                || error_str.contains("malformed")
+                || error_str.contains("invalid database");
+
+            if likely_corruption {
+                eprintln!(
+                    "Warning: Cache file appears corrupted at: {}",
+                    db_path.display()
+                );
+                eprintln!("Deleting corrupted cache and attempting rebuild...");
+
+                if let Err(e) = fs::remove_file(&db_path) {
+                    eprintln!("Warning: failed to delete corrupted cache: {}", e);
+                } else {
+                    eprintln!("Cache deleted successfully, rebuilding...");
+                    return Self::open().await;
+                }
+            }
+        }
+
+        result
     }
 
     async fn initialize_database(&self) -> CacheResult<()> {
@@ -339,11 +383,190 @@ impl TicketCache {
         }
     }
 
+    fn deserialize_array(s: Option<&str>) -> CacheResult<Vec<String>> {
+        match s {
+            Some(json_str) if !json_str.is_empty() => serde_json::from_str(json_str).map_err(|e| {
+                CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            }),
+            _ => Ok(vec![]),
+        }
+    }
+
+    async fn row_to_metadata(row: &turso::Row) -> CacheResult<TicketMetadata> {
+        let id: Option<String> = row.get(0).ok();
+        let status_str: Option<String> = row.get(1).ok();
+        let title: Option<String> = row.get(2).ok();
+        let priority_num: Option<i64> = row.get(3).ok();
+        let type_str: Option<String> = row.get(4).ok();
+        let assignee: Option<String> = row.get(5).ok();
+        let deps_json: Option<String> = row.get(6).ok();
+        let links_json: Option<String> = row.get(7).ok();
+        let parent: Option<String> = row.get(8).ok();
+        let created: Option<String> = row.get(9).ok();
+        let external_ref: Option<String> = row.get(10).ok();
+        let remote: Option<String> = row.get(11).ok();
+
+        let status = status_str.and_then(|s| s.parse().ok());
+
+        let ticket_type = type_str.and_then(|s| s.parse().ok());
+
+        let priority = priority_num.and_then(|n| match n {
+            0 => Some(crate::types::TicketPriority::P0),
+            1 => Some(crate::types::TicketPriority::P1),
+            2 => Some(crate::types::TicketPriority::P2),
+            3 => Some(crate::types::TicketPriority::P3),
+            4 => Some(crate::types::TicketPriority::P4),
+            _ => None,
+        });
+
+        let deps = Self::deserialize_array(deps_json.as_deref())?;
+        let links = Self::deserialize_array(links_json.as_deref())?;
+
+        Ok(TicketMetadata {
+            id,
+            title,
+            status,
+            priority,
+            ticket_type,
+            assignee,
+            deps,
+            links,
+            parent,
+            created,
+            external_ref,
+            remote,
+            file_path: None,
+        })
+    }
+
+    pub async fn get_all_tickets(&self) -> CacheResult<Vec<TicketMetadata>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT ticket_id, status, title, priority, ticket_type, assignee,
+                    deps, links, parent, created, external_ref, remote
+             FROM tickets",
+                (),
+            )
+            .await?;
+
+        let mut tickets = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let metadata = Self::row_to_metadata(&row).await?;
+            tickets.push(metadata);
+        }
+        Ok(tickets)
+    }
+
+    pub async fn get_ticket(&self, id: &str) -> CacheResult<Option<TicketMetadata>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT ticket_id, status, title, priority, ticket_type, assignee,
+                    deps, links, parent, created, external_ref, remote
+             FROM tickets WHERE ticket_id = ?1",
+                [id],
+            )
+            .await?;
+
+        if let Some(row) = rows.next().await? {
+            let metadata = Self::row_to_metadata(&row).await?;
+            Ok(Some(metadata))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn find_by_partial_id(&self, partial: &str) -> CacheResult<Vec<String>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT ticket_id FROM tickets WHERE ticket_id LIKE ?1",
+                [format!("{}%", partial)],
+            )
+            .await?;
+
+        let mut matches = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let id: String = row.get(0)?;
+            matches.push(id);
+        }
+        Ok(matches)
+    }
+
+    pub async fn build_ticket_map(&self) -> CacheResult<HashMap<String, TicketMetadata>> {
+        let tickets = self.get_all_tickets().await?;
+
+        let mut map = HashMap::new();
+        for ticket in tickets {
+            if let Some(id) = &ticket.id {
+                map.insert(id.clone(), ticket);
+            }
+        }
+        Ok(map)
+    }
+
     // Helper method for tests to query the connection directly
     #[cfg(test)]
     pub(crate) fn conn(&self) -> &Connection {
         &self.conn
     }
+}
+
+pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
+    GLOBAL_CACHE
+        .get_or_init(|| async {
+            match TicketCache::open_with_corruption_handling().await {
+                Ok(mut cache) => {
+                    if let Err(e) = cache.sync().await {
+                        eprintln!(
+                            "Warning: cache sync failed: {}. Falling back to file reads.",
+                            e
+                        );
+
+                        let error_str = e.to_string();
+                        if error_str.contains("corrupted")
+                            || error_str.contains("CORRUPT")
+                            || error_str.contains("malformed")
+                        {
+                            let db_path = cache.cache_db_path();
+                            eprintln!("Cache appears corrupted at: {}", db_path.display());
+                            eprintln!("Run 'janus cache clear' or 'janus cache rebuild' to fix this issue.");
+                        }
+
+                        None
+                    } else {
+                        Some(cache)
+                    }
+                }
+                Err(e) => {
+                    let error_str = e.to_string();
+
+                    if error_str.contains("AccessDenied")
+                        || error_str.contains("Permission")
+                        || error_str.contains("denied")
+                    {
+                        eprintln!(
+                            "Warning: cannot access cache directory (permission denied). \
+                             Falling back to file reads.",
+                        );
+                        eprintln!("Tip: Check file permissions or try 'janus cache rebuild'.");
+                    } else if error_str.contains("corrupted") || error_str.contains("CORRUPT") {
+                        eprintln!("Warning: cache database is corrupted. Falling back to file reads.");
+                        eprintln!("Tip: Run 'janus cache clear' or 'janus cache rebuild' to fix this.");
+                    } else {
+                        eprintln!(
+                            "Warning: failed to open cache: {}. Falling back to file reads.",
+                            e
+                        );
+                    }
+
+                    None
+                }
+            }
+        })
+        .await
+        .as_ref()
 }
 
 #[cfg(test)]
@@ -1055,6 +1278,205 @@ remote: github
         // Verify directory was created
         let tickets_dir = repo_path.join(".janus/items");
         assert!(tickets_dir.exists());
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_all_tickets() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_get_all_tickets");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+        create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let tickets = cache.get_all_tickets().await.unwrap();
+        assert_eq!(tickets.len(), 3);
+
+        let titles: Vec<&str> = tickets.iter().filter_map(|t| t.title.as_deref()).collect();
+        assert!(titles.contains(&"Ticket 1"));
+        assert!(titles.contains(&"Ticket 2"));
+        assert!(titles.contains(&"Ticket 3"));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_ticket() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_get_ticket");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Test Ticket");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let ticket = cache.get_ticket("j-a1b2").await.unwrap();
+        assert!(ticket.is_some());
+
+        let metadata = ticket.unwrap();
+        assert_eq!(metadata.id, Some("j-a1b2".to_string()));
+        assert_eq!(metadata.title, Some("Test Ticket".to_string()));
+
+        let nonexistent = cache.get_ticket("j-xxxx").await.unwrap();
+        assert!(nonexistent.is_none());
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_find_by_partial_id() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_find_by_partial_id");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+        create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let matches = cache.find_by_partial_id("j-a").await.unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0], "j-a1b2");
+
+        let matches = cache.find_by_partial_id("j-").await.unwrap();
+        assert_eq!(matches.len(), 3);
+
+        let matches = cache.find_by_partial_id("j-xxx").await.unwrap();
+        assert_eq!(matches.len(), 0);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_find_by_partial_id_ambiguous() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_find_by_partial_id_ambiguous");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket A1");
+        create_test_ticket(&repo_path, "j-a2c3", "Ticket A2");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let matches = cache.find_by_partial_id("j-a").await.unwrap();
+        assert_eq!(matches.len(), 2);
+        assert!(matches.contains(&"j-a1b2".to_string()));
+        assert!(matches.contains(&"j-a2c3".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_build_ticket_map() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_build_ticket_map");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+        create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let map = cache.build_ticket_map().await.unwrap();
+        assert_eq!(map.len(), 3);
+
+        assert!(map.contains_key("j-a1b2"));
+        assert!(map.contains_key("j-c3d4"));
+        assert!(map.contains_key("j-e5f6"));
+
+        let ticket1 = map.get("j-a1b2").unwrap();
+        assert_eq!(ticket1.title, Some("Ticket 1".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_all_tickets_with_all_fields() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_get_all_fields");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        let ticket_path = tickets_dir.join("j-full.md");
+        let content = r#"---
+id: j-full
+status: in_progress
+deps: ["j-dep1", "j-dep2"]
+links: ["j-link1"]
+created: 2024-06-15T10:30:00Z
+type: bug
+priority: 0
+assignee: John Doe
+parent: j-parent
+external-ref: GH-123
+remote: github
+---
+# Full Ticket
+"#;
+        fs::write(&ticket_path, content).unwrap();
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let tickets = cache.get_all_tickets().await.unwrap();
+        assert_eq!(tickets.len(), 1);
+
+        let ticket = &tickets[0];
+        assert_eq!(ticket.id, Some("j-full".to_string()));
+        assert_eq!(ticket.title, Some("Full Ticket".to_string()));
+        assert_eq!(ticket.status, Some(crate::types::TicketStatus::InProgress));
+        assert_eq!(ticket.ticket_type, Some(crate::types::TicketType::Bug));
+        assert_eq!(ticket.priority, Some(crate::types::TicketPriority::P0));
+        assert_eq!(ticket.assignee, Some("John Doe".to_string()));
+        assert_eq!(ticket.parent, Some("j-parent".to_string()));
+        assert_eq!(ticket.external_ref, Some("GH-123".to_string()));
+        assert_eq!(ticket.remote, Some("github".to_string()));
+        assert_eq!(ticket.deps, vec!["j-dep1", "j-dep2"]);
+        assert_eq!(ticket.links, vec!["j-link1"]);
 
         let db_path = cache.cache_db_path();
         drop(cache);
