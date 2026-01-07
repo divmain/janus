@@ -59,8 +59,24 @@ The cache is particularly valuable when working with large repositories (1000+ t
 
 ## Installation
 
+### Homebrew (macOS)
+
 ```bash
-# Build from source
+# Add the tap
+brew tap divmain/janus
+
+# Install Janus
+brew install janus
+```
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/divmain/janus.git
+cd janus
+
+# Build release binary
 cargo build --release
 
 # The binary will be at target/release/janus
