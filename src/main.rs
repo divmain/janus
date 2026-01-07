@@ -6,7 +6,8 @@ use janus::commands::{
     cmd_cache_path, cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_closed, cmd_config_get,
     cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree,
     cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_push, cmd_query, cmd_ready,
-    cmd_remote_link, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync, cmd_view,
+    cmd_remote_link, cmd_remote_tui, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync,
+    cmd_view,
 };
 use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
 
@@ -200,6 +201,13 @@ enum Commands {
         id: String,
     },
 
+    /// TUI for managing remote issues
+    Remote {
+        /// Optional provider override (github or linear)
+        #[arg(value_name = "provider")]
+        provider: Option<String>,
+    },
+
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -379,10 +387,11 @@ async fn main() -> ExitCode {
         Commands::Board => cmd_board(),
 
         // Remote sync commands
-        Commands::Adopt { remote_ref } => cmd_adopt(&remote_ref),
-        Commands::Push { id } => cmd_push(&id),
-        Commands::RemoteLink { id, remote_ref } => cmd_remote_link(&id, &remote_ref),
-        Commands::Sync { id } => cmd_sync(&id),
+        Commands::Adopt { remote_ref } => cmd_adopt(&remote_ref).await,
+        Commands::Push { id } => cmd_push(&id).await,
+        Commands::RemoteLink { id, remote_ref } => cmd_remote_link(&id, &remote_ref).await,
+        Commands::Sync { id } => cmd_sync(&id).await,
+        Commands::Remote { provider } => cmd_remote_tui(provider.as_deref()),
 
         // Configuration commands
         Commands::Config { action } => match action {

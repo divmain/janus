@@ -170,6 +170,18 @@ impl Ticket {
         Ok(())
     }
 
+    /// Remove a field from the frontmatter
+    pub fn remove_field(&self, field: &str) -> Result<()> {
+        let content = fs::read_to_string(&self.file_path)?;
+        let field_pattern =
+            Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
+
+        let new_content = field_pattern.replace(&content, "").into_owned();
+
+        fs::write(&self.file_path, new_content)?;
+        Ok(())
+    }
+
     /// Add a value to an array field (deps, links)
     pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
         let metadata = self.read()?;

@@ -4,7 +4,9 @@ use octocrab::Octocrab;
 
 use crate::error::{JanusError, Result};
 
-use super::{Config, IssueUpdates, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
+use super::{
+    Config, IssueUpdates, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef, RemoteStatus,
+};
 
 /// GitHub Issues provider
 pub struct GitHubProvider {
@@ -102,18 +104,24 @@ impl RemoteProvider for GitHubProvider {
             _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
         };
 
-        // Get updated_at - it's a DateTime, not Option<DateTime>
-        let updated_at = issue.updated_at.to_rfc3339();
+        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
 
         Ok(RemoteIssue {
             id: issue.number.to_string(),
-            title: issue.title,
-            body: issue.body.unwrap_or_default(),
+            title: issue.title.clone(),
+            body: issue.body.clone().unwrap_or_default(),
             status,
-            priority: None, // GitHub doesn't have native priority
-            assignee: issue.assignee.map(|a| a.login),
-            updated_at,
+            priority: None,
+            assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
+            updated_at: issue.updated_at.to_rfc3339(),
             url: issue.html_url.to_string(),
+            labels,
+            team: None,
+            project: None,
+            milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
+            due_date: None,
+            created_at: issue.created_at.to_rfc3339(),
+            creator: Some(issue.user.login.clone()),
         })
     }
 
@@ -196,5 +204,154 @@ impl RemoteProvider for GitHubProvider {
             .map_err(|e| JanusError::Api(format!("Failed to update GitHub issue: {}", e)))?;
 
         Ok(())
+    }
+
+    async fn list_issues(
+        &self,
+        query: &RemoteQuery,
+    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
+        let owner = self.default_owner.as_ref().ok_or_else(|| {
+            JanusError::Config(
+                "No default GitHub owner configured. Set default_remote in config.".to_string(),
+            )
+        })?;
+
+        let repo = self.default_repo.as_ref().ok_or_else(|| {
+            JanusError::Config(
+                "No default GitHub repo configured. Set default_remote.repo in config.".to_string(),
+            )
+        })?;
+
+        let issues_handler = self.client.issues(owner, repo);
+        let result = issues_handler
+            .list()
+            .per_page(query.limit as u8)
+            .send()
+            .await
+            .map_err(|e| JanusError::Api(format!("Failed to list GitHub issues: {}", e)))?;
+
+        let issues: Vec<RemoteIssue> = result
+            .items
+            .into_iter()
+            .map(|issue| self.convert_github_issue(&issue))
+            .collect();
+
+        Ok(issues)
+    }
+
+    async fn search_issues(
+        &self,
+        text: &str,
+        limit: u32,
+    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
+        let owner = self.default_owner.as_ref().ok_or_else(|| {
+            JanusError::Config(
+                "No default GitHub owner configured. Set default_remote in config.".to_string(),
+            )
+        })?;
+
+        let repo = self.default_repo.as_ref().ok_or_else(|| {
+            JanusError::Config(
+                "No default GitHub repo configured. Set default_remote.repo in config.".to_string(),
+            )
+        })?;
+
+        // Build search query: search in the specific repo for issues containing the text
+        let query = format!("repo:{}/{} is:issue {}", owner, repo, text);
+
+        let result = self
+            .client
+            .search()
+            .issues_and_pull_requests(&query)
+            .per_page(limit.min(100) as u8) // GitHub limits to 100 per page
+            .send()
+            .await
+            .map_err(|e| JanusError::Api(format!("GitHub search failed: {}", e)))?;
+
+        let issues: Vec<RemoteIssue> = result
+            .items
+            .into_iter()
+            .filter(|item| item.pull_request.is_none()) // Filter out PRs
+            .map(|issue| RemoteIssue {
+                id: issue.number.to_string(),
+                title: issue.title.clone(),
+                body: issue.body.clone().unwrap_or_default(),
+                status: match issue.state {
+                    octocrab::models::IssueState::Open => RemoteStatus::Open,
+                    octocrab::models::IssueState::Closed => RemoteStatus::Closed,
+                    _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
+                },
+                priority: None,
+                assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
+                updated_at: issue.updated_at.to_rfc3339(),
+                url: issue.html_url.to_string(),
+                labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
+                team: None,
+                project: None,
+                milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
+                due_date: None,
+                created_at: issue.created_at.to_rfc3339(),
+                creator: Some(issue.user.login.clone()),
+            })
+            .collect();
+
+        Ok(issues)
+    }
+}
+
+impl GitHubProvider {
+    fn convert_github_issue(&self, issue: &octocrab::models::issues::Issue) -> RemoteIssue {
+        let status = match issue.state {
+            octocrab::models::IssueState::Open => RemoteStatus::Open,
+            octocrab::models::IssueState::Closed => RemoteStatus::Closed,
+            _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
+        };
+
+        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+
+        RemoteIssue {
+            id: issue.number.to_string(),
+            title: issue.title.clone(),
+            body: issue.body.clone().unwrap_or_default(),
+            status,
+            priority: None,
+            assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
+            updated_at: issue.updated_at.to_rfc3339(),
+            url: issue.html_url.to_string(),
+            labels,
+            team: None,
+            project: None,
+            milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
+            due_date: None,
+            created_at: issue.created_at.to_rfc3339(),
+            creator: Some(issue.user.login.clone()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_github_provider_new() {
+        let provider = GitHubProvider::new("test_token");
+        assert!(provider.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_github_provider_new_empty_token() {
+        let provider = GitHubProvider::new("");
+        assert!(provider.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_github_provider_with_defaults() {
+        let provider = GitHubProvider::new("test_token")
+            .unwrap()
+            .with_defaults("owner".to_string(), "repo".to_string());
+
+        assert_eq!(provider.default_owner, Some("owner".to_string()));
+        assert_eq!(provider.default_repo, Some("repo".to_string()));
     }
 }

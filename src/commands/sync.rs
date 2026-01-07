@@ -21,14 +21,7 @@ use crate::types::TICKETS_ITEMS_DIR;
 use crate::utils::{ensure_dir, generate_id, get_git_user_name, iso_date};
 
 /// Adopt a remote issue and create a local ticket
-pub fn cmd_adopt(remote_ref_str: &str) -> Result<()> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| JanusError::Other(format!("Failed to create async runtime: {}", e)))?;
-
-    rt.block_on(async { cmd_adopt_async(remote_ref_str).await })
-}
-
-async fn cmd_adopt_async(remote_ref_str: &str) -> Result<()> {
+pub async fn cmd_adopt(remote_ref_str: &str) -> Result<()> {
     let config = Config::load()?;
     let remote_ref = RemoteRef::parse(remote_ref_str, Some(&config))?;
 
@@ -106,14 +99,7 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
 }
 
 /// Push a local ticket to create a remote issue
-pub fn cmd_push(local_id: &str) -> Result<()> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| JanusError::Other(format!("Failed to create async runtime: {}", e)))?;
-
-    rt.block_on(async { cmd_push_async(local_id).await })
-}
-
-async fn cmd_push_async(local_id: &str) -> Result<()> {
+pub async fn cmd_push(local_id: &str) -> Result<()> {
     let config = Config::load()?;
 
     // Find and read the local ticket
@@ -161,14 +147,7 @@ async fn cmd_push_async(local_id: &str) -> Result<()> {
 }
 
 /// Link a local ticket to an existing remote issue
-pub fn cmd_remote_link(local_id: &str, remote_ref_str: &str) -> Result<()> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| JanusError::Other(format!("Failed to create async runtime: {}", e)))?;
-
-    rt.block_on(async { cmd_remote_link_async(local_id, remote_ref_str).await })
-}
-
-async fn cmd_remote_link_async(local_id: &str, remote_ref_str: &str) -> Result<()> {
+pub async fn cmd_remote_link(local_id: &str, remote_ref_str: &str) -> Result<()> {
     let config = Config::load()?;
 
     // Find the local ticket
@@ -210,14 +189,7 @@ async fn cmd_remote_link_async(local_id: &str, remote_ref_str: &str) -> Result<(
 }
 
 /// Sync a local ticket with its remote issue
-pub fn cmd_sync(local_id: &str) -> Result<()> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| JanusError::Other(format!("Failed to create async runtime: {}", e)))?;
-
-    rt.block_on(async { cmd_sync_async(local_id).await })
-}
-
-async fn cmd_sync_async(local_id: &str) -> Result<()> {
+pub async fn cmd_sync(local_id: &str) -> Result<()> {
     let config = Config::load()?;
 
     // Find and read the local ticket

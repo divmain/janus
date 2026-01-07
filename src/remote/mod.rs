@@ -216,6 +216,26 @@ pub struct RemoteIssue {
     pub updated_at: String,
     /// Web URL to view the issue
     pub url: String,
+    /// Labels attached to the issue
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// Team name (Linear only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team: Option<String>,
+    /// Project name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// Milestone name (GitHub only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<String>,
+    /// Due date (ISO 8601)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+    /// Created timestamp (ISO 8601)
+    pub created_at: String,
+    /// Creator name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creator: Option<String>,
 }
 
 /// Platform-agnostic status
@@ -291,6 +311,61 @@ impl IssueUpdates {
     }
 }
 
+/// Query parameters for listing/filtering remote issues
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RemoteQuery {
+    pub search: Option<String>,
+    pub assignee: Option<String>,
+    pub status: Option<RemoteStatusFilter>,
+    pub labels: Option<Vec<String>>,
+    pub since: Option<String>,
+    pub team: Option<String>,
+    pub project: Option<String>,
+    pub priority: Option<Vec<u8>>,
+    pub cycle: Option<String>,
+    pub milestone: Option<String>,
+    pub creator: Option<String>,
+    pub limit: u32,
+    pub cursor: Option<String>,
+    pub sort_by: Option<SortField>,
+    pub sort_direction: Option<SortDirection>,
+}
+
+impl RemoteQuery {
+    pub fn new() -> Self {
+        Self {
+            limit: 400,
+            ..Default::default()
+        }
+    }
+}
+
+/// Remote status filter
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RemoteStatusFilter {
+    Open,
+    Closed,
+    All,
+}
+
+/// Sort field for remote issues
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SortField {
+    Created,
+    #[default]
+    Updated,
+    Priority,
+}
+
+/// Sort direction
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SortDirection {
+    Asc,
+    #[default]
+    Desc,
+}
+
 /// Common interface for remote providers
 pub trait RemoteProvider: Send + Sync {
     /// Fetch an issue from the remote platform
@@ -312,6 +387,19 @@ pub trait RemoteProvider: Send + Sync {
         remote_ref: &RemoteRef,
         updates: IssueUpdates,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    /// List issues from the remote platform with filtering
+    fn list_issues(
+        &self,
+        query: &RemoteQuery,
+    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send;
+
+    /// Search for issues by text
+    fn search_issues(
+        &self,
+        text: &str,
+        limit: u32,
+    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send;
 }
 
 #[cfg(test)]
@@ -446,5 +534,123 @@ mod tests {
         assert!(RemoteRef::parse("github:owner/repo/abc", None).is_err());
         assert!(RemoteRef::parse("linear:", None).is_err());
         assert!(RemoteRef::parse("linear:org", None).is_err());
+    }
+
+    #[test]
+    fn test_parse_empty_owner_repo() {
+        assert!(RemoteRef::parse("github://repo/123", None).is_err());
+        assert!(RemoteRef::parse("github:owner//123", None).is_err());
+    }
+
+    #[test]
+    fn test_parse_empty_org_issue() {
+        assert!(RemoteRef::parse("linear:/PROJ-123", None).is_err());
+        assert!(RemoteRef::parse("linear:org/", None).is_err());
+    }
+
+    #[test]
+    fn test_parse_negative_issue_number() {
+        assert!(RemoteRef::parse("owner/repo/-1", None).is_err());
+    }
+
+    #[test]
+    fn test_platform_detection() {
+        let github = RemoteRef::parse("github:owner/repo/123", None).unwrap();
+        assert_eq!(github.platform(), Platform::GitHub);
+
+        let linear = RemoteRef::parse("linear:org/PROJ-123", None).unwrap();
+        assert_eq!(linear.platform(), Platform::Linear);
+    }
+
+    #[test]
+    fn test_remote_query_default_limit() {
+        let query = RemoteQuery::new();
+        assert_eq!(query.limit, 400);
+    }
+
+    #[test]
+    fn test_remote_query_with_filters() {
+        let mut query = RemoteQuery::new();
+        query.limit = 100;
+        query.search = Some("test".to_string());
+        query.status = Some(RemoteStatusFilter::Open);
+
+        assert_eq!(query.limit, 100);
+        assert_eq!(query.search, Some("test".to_string()));
+        assert_eq!(query.status, Some(RemoteStatusFilter::Open));
+    }
+
+    #[test]
+    fn test_sort_field_defaults() {
+        assert_eq!(SortDirection::default(), SortDirection::Desc);
+        assert_eq!(SortField::default(), SortField::Updated);
+    }
+
+    #[test]
+    fn test_issue_updates_empty() {
+        let updates = IssueUpdates::default();
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn test_issue_updates_not_empty() {
+        let updates = IssueUpdates {
+            title: Some("Title".to_string()),
+            ..Default::default()
+        };
+        assert!(!updates.is_empty());
+    }
+
+    #[test]
+    fn test_issue_updates_multiple_fields() {
+        let updates = IssueUpdates {
+            title: Some("Title".to_string()),
+            body: Some("Body".to_string()),
+            status: Some(RemoteStatus::Open),
+            priority: Some(1),
+            assignee: Some("user@example.com".to_string()),
+        };
+        assert!(!updates.is_empty());
+        assert_eq!(updates.title, Some("Title".to_string()));
+        assert_eq!(updates.body, Some("Body".to_string()));
+        assert_eq!(updates.status, Some(RemoteStatus::Open));
+        assert_eq!(updates.priority, Some(1));
+        assert_eq!(updates.assignee, Some("user@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_remote_status_from_ticket() {
+        assert_eq!(
+            RemoteStatus::from_ticket_status(TicketStatus::New),
+            RemoteStatus::Open
+        );
+        assert_eq!(
+            RemoteStatus::from_ticket_status(TicketStatus::Next),
+            RemoteStatus::Open
+        );
+        assert_eq!(
+            RemoteStatus::from_ticket_status(TicketStatus::InProgress),
+            RemoteStatus::Open
+        );
+        assert_eq!(
+            RemoteStatus::from_ticket_status(TicketStatus::Complete),
+            RemoteStatus::Closed
+        );
+        assert_eq!(
+            RemoteStatus::from_ticket_status(TicketStatus::Cancelled),
+            RemoteStatus::Closed
+        );
+    }
+
+    #[test]
+    fn test_parse_large_issue_number() {
+        let result = RemoteRef::parse("owner/repo/999999999999999", None);
+        assert!(result.is_ok());
+
+        if let Ok(RemoteRef::GitHub { issue_number, .. }) = result {
+            assert_eq!(issue_number, 999999999999999);
+        } else {
+            panic!("Expected GitHub ref");
+        }
     }
 }

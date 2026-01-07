@@ -4,7 +4,10 @@ use reqwest::Client;
 
 use crate::error::{JanusError, Result};
 
-use super::{Config, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
+use super::{
+    Config, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef,
+    RemoteStatus,
+};
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
 
@@ -15,7 +18,6 @@ mod graphql {
     // Import schema from the dedicated janus-schema crate.
     // The import MUST be named `schema` for cynic derives to work.
     use janus_schema::linear as schema;
-
     // Custom Scalars
 
     /// DateTime scalar from Linear API (ISO 8601 formatted string)
@@ -35,6 +37,13 @@ mod graphql {
     #[derive(cynic::QueryVariables, Debug)]
     pub struct TeamsQueryVariables {
         pub first: Option<i32>,
+    }
+
+    /// Variables for fetching multiple issues
+    #[derive(cynic::QueryVariables, Debug)]
+    pub struct IssuesQueryVariables {
+        pub first: Option<i32>,
+        pub after: Option<String>,
     }
 
     /// Variables for creating an issue
@@ -82,6 +91,31 @@ mod graphql {
     pub struct IssueQuery {
         #[arguments(id: $id)]
         pub issue: Issue,
+    }
+
+    /// Query to fetch multiple issues
+    #[derive(cynic::QueryFragment, Debug)]
+    #[cynic(graphql_type = "Query", variables = "IssuesQueryVariables")]
+    pub struct IssuesQuery {
+        #[arguments(first: $first, after: $after)]
+        pub issues: IssueConnection,
+    }
+
+    /// Connection of issues
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct IssueConnection {
+        pub nodes: Vec<Issue>,
+        #[allow(dead_code)]
+        pub page_info: PageInfo,
+    }
+
+    /// Pagination info
+    #[derive(cynic::QueryFragment, Debug)]
+    pub struct PageInfo {
+        #[allow(dead_code)]
+        pub has_next_page: bool,
+        #[allow(dead_code)]
+        pub end_cursor: Option<String>,
     }
 
     /// Issue fragment for fetching issue details
@@ -315,7 +349,6 @@ impl RemoteProvider for LinearProvider {
         });
 
         let response = self.execute(operation).await.map_err(|e| {
-            // If the issue is not found, return a more specific error
             if e.to_string().contains("not found") || e.to_string().contains("Entity not found") {
                 JanusError::RemoteIssueNotFound(remote_ref.to_string())
             } else {
@@ -323,39 +356,7 @@ impl RemoteProvider for LinearProvider {
             }
         })?;
 
-        let issue = response.issue;
-
-        // Map Linear state type to RemoteStatus
-        let status = match issue.state.state_type.as_str() {
-            "completed" => RemoteStatus::Closed,
-            "canceled" => RemoteStatus::Custom("Cancelled".to_string()),
-            _ => RemoteStatus::Custom(issue.state.name.clone()),
-        };
-
-        // Linear priority is 0-4, where 0 = no priority, 1 = urgent, 4 = low
-        // We map this to our 0-4 scale where 0 = highest
-        let priority = {
-            let p = issue.priority as i32;
-            Some(match p {
-                0 => 2, // No priority -> P2 (default)
-                1 => 0, // Urgent -> P0
-                2 => 1, // High -> P1
-                3 => 2, // Medium -> P2
-                4 => 3, // Low -> P3
-                _ => 4, // Other -> P4
-            } as u8)
-        };
-
-        Ok(RemoteIssue {
-            id: issue.identifier,
-            title: issue.title,
-            body: issue.description.unwrap_or_default(),
-            status,
-            priority,
-            assignee: issue.assignee.map(|a| a.name),
-            updated_at: issue.updated_at.0,
-            url: issue.url,
-        })
+        Ok(self.convert_linear_issue(response.issue))
     }
 
     async fn create_issue(&self, title: &str, body: &str) -> Result<RemoteRef> {
@@ -442,5 +443,332 @@ impl RemoteProvider for LinearProvider {
         }
 
         Ok(())
+    }
+
+    async fn list_issues(
+        &self,
+        query: &RemoteQuery,
+    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
+        let operation = IssuesQuery::build(IssuesQueryVariables {
+            first: Some(query.limit as i32),
+            after: query.cursor.clone(),
+        });
+
+        let response = self.execute(operation).await?;
+
+        let issues: Vec<RemoteIssue> = response
+            .issues
+            .nodes
+            .into_iter()
+            .map(|issue| self.convert_linear_issue(issue))
+            .collect();
+
+        Ok(issues)
+    }
+
+    async fn search_issues(
+        &self,
+        text: &str,
+        limit: u32,
+    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
+        // Linear's searchIssues query returns IssueSearchResult which has different fields
+        // than Issue. For simplicity, we fall back to fetching issues and filtering client-side.
+        // This is less efficient but avoids needing separate GraphQL query types.
+        // TODO: Implement proper searchIssues query with IssueSearchResult types
+        let query = RemoteQuery::new();
+
+        let all_issues = self.list_issues(&query).await?;
+        let text_lower = text.to_lowercase();
+
+        let filtered: Vec<RemoteIssue> = all_issues
+            .into_iter()
+            .filter(|issue| {
+                issue.title.to_lowercase().contains(&text_lower)
+                    || issue.body.to_lowercase().contains(&text_lower)
+                    || issue.id.to_lowercase().contains(&text_lower)
+            })
+            .take(limit as usize)
+            .collect();
+
+        Ok(filtered)
+    }
+}
+
+impl LinearProvider {
+    fn convert_linear_issue(&self, issue: Issue) -> RemoteIssue {
+        let status = match issue.state.state_type.as_str() {
+            "completed" => RemoteStatus::Closed,
+            "canceled" => RemoteStatus::Custom("Cancelled".to_string()),
+            _ => RemoteStatus::Custom(issue.state.name.clone()),
+        };
+
+        let priority = {
+            let p = issue.priority as i32;
+            Some(match p {
+                0 => 2,
+                1 => 0,
+                2 => 1,
+                3 => 2,
+                4 => 3,
+                _ => 4,
+            } as u8)
+        };
+
+        RemoteIssue {
+            id: issue.identifier,
+            title: issue.title,
+            body: issue.description.unwrap_or_default(),
+            status,
+            priority,
+            assignee: issue.assignee.map(|a| a.name),
+            updated_at: issue.updated_at.0,
+            url: issue.url,
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: jiff::Timestamp::now().to_string(),
+            creator: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_priority_conversion() {
+        let provider = LinearProvider::new("test_api_key");
+
+        let test_issue = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "In Progress".to_string(),
+                state_type: "started".to_string(),
+            },
+            priority: 2.0,
+            assignee: Some(User {
+                name: "Test User".to_string(),
+            }),
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+
+        let converted = provider.convert_linear_issue(test_issue);
+        assert_eq!(converted.priority, Some(1));
+
+        let test_issue_p0 = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "In Progress".to_string(),
+                state_type: "started".to_string(),
+            },
+            priority: 1.0,
+            assignee: Some(User {
+                name: "Test User".to_string(),
+            }),
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+        let converted_p0 = provider.convert_linear_issue(test_issue_p0);
+        assert_eq!(converted_p0.priority, Some(0));
+
+        let test_issue_p4 = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "In Progress".to_string(),
+                state_type: "started".to_string(),
+            },
+            priority: 4.0,
+            assignee: Some(User {
+                name: "Test User".to_string(),
+            }),
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+        let converted_p4 = provider.convert_linear_issue(test_issue_p4);
+        assert_eq!(converted_p4.priority, Some(3));
+    }
+
+    #[test]
+    fn test_priority_out_of_range() {
+        let provider = LinearProvider::new("test_api_key");
+
+        let test_issue_p_negative = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "In Progress".to_string(),
+                state_type: "started".to_string(),
+            },
+            priority: -1.0,
+            assignee: Some(User {
+                name: "Test User".to_string(),
+            }),
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+        let converted = provider.convert_linear_issue(test_issue_p_negative);
+        assert_eq!(converted.priority, Some(4));
+    }
+
+    #[test]
+    fn test_status_conversion() {
+        let provider = LinearProvider::new("test_api_key");
+
+        let completed_issue = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "Done".to_string(),
+                state_type: "completed".to_string(),
+            },
+            priority: 2.0,
+            assignee: None,
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+
+        assert_eq!(
+            provider.convert_linear_issue(completed_issue).status,
+            RemoteStatus::Closed
+        );
+
+        let canceled_issue = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "Canceled".to_string(),
+                state_type: "canceled".to_string(),
+            },
+            priority: 2.0,
+            assignee: None,
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+
+        assert_eq!(
+            provider.convert_linear_issue(canceled_issue).status,
+            RemoteStatus::Custom("Cancelled".to_string())
+        );
+
+        let custom_issue = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "Backlog".to_string(),
+                state_type: "backlog".to_string(),
+            },
+            priority: 2.0,
+            assignee: None,
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+
+        assert_eq!(
+            provider.convert_linear_issue(custom_issue).status,
+            RemoteStatus::Custom("Backlog".to_string())
+        );
+    }
+
+    #[test]
+    fn test_issue_without_description() {
+        let provider = LinearProvider::new("test_api_key");
+
+        let test_issue = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: None,
+            state: WorkflowState {
+                name: "In Progress".to_string(),
+                state_type: "started".to_string(),
+            },
+            priority: 2.0,
+            assignee: None,
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+
+        let converted = provider.convert_linear_issue(test_issue);
+        assert_eq!(converted.body, "");
+    }
+
+    #[test]
+    fn test_issue_without_assignee() {
+        let provider = LinearProvider::new("test_api_key");
+
+        let test_issue = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "In Progress".to_string(),
+                state_type: "started".to_string(),
+            },
+            priority: 2.0,
+            assignee: None,
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+
+        let converted = provider.convert_linear_issue(test_issue);
+        assert_eq!(converted.assignee, None);
+    }
+
+    #[test]
+    fn test_issue_fields() {
+        let provider = LinearProvider::new("test_api_key");
+
+        let test_issue = Issue {
+            id: cynic::Id::new("test-id"),
+            identifier: "ENG-123".to_string(),
+            title: "Test Issue".to_string(),
+            description: Some("Description".to_string()),
+            state: WorkflowState {
+                name: "In Progress".to_string(),
+                state_type: "started".to_string(),
+            },
+            priority: 2.0,
+            assignee: Some(User {
+                name: "Test User".to_string(),
+            }),
+            updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
+            url: "https://linear.app/issue/ENG-123".to_string(),
+        };
+
+        let converted = provider.convert_linear_issue(test_issue);
+
+        assert_eq!(converted.id, "ENG-123");
+        assert_eq!(converted.title, "Test Issue");
+        assert_eq!(converted.body, "Description");
+        assert_eq!(converted.url, "https://linear.app/issue/ENG-123");
+        assert_eq!(converted.assignee, Some("Test User".to_string()));
+        assert_eq!(converted.labels, Vec::<String>::new());
+        assert_eq!(converted.team, None);
+        assert_eq!(converted.project, None);
+        assert_eq!(converted.milestone, None);
+        assert_eq!(converted.due_date, None);
+        assert_eq!(converted.creator, None);
     }
 }
