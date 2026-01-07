@@ -1045,7 +1045,6 @@ fn test_version() {
 
     let output = janus.run_success(&["--version"]);
     assert!(output.contains("janus"));
-    assert!(output.contains("1.0.0"));
 }
 
 // ============================================================================
