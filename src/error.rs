@@ -15,6 +15,9 @@ pub enum JanusError {
     #[error("invalid status '{0}'")]
     InvalidStatus(String),
 
+    #[error("invalid prefix '{0}': {1}")]
+    InvalidPrefix(String, String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

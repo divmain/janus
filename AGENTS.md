@@ -221,7 +221,7 @@ All cache operations are async and use `tokio` runtime.
 
 ## Domain Concepts
 
-- **Ticket statuses**: `new`, `complete`, `cancelled`
+- **Ticket statuses**: `new`, `next`, `in_progress`, `complete`, `cancelled`
 - **Ticket types**: `bug`, `feature`, `task`, `epic`, `chore`
 - **Priorities**: 0-4 (P0 highest, P4 lowest, default P2)
 - **Dependencies**: Tickets can depend on other tickets (blocks/blocked-by)

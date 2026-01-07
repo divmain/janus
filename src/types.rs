@@ -143,6 +143,9 @@ pub struct TicketMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+
     #[serde(skip)]
     pub title: Option<String>,
 

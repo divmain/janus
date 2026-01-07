@@ -38,6 +38,7 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
 
             match key {
                 "id" => metadata.id = Some(value.to_string()),
+                "uuid" => metadata.uuid = Some(value.to_string()),
                 "status" => {
                     metadata.status = value.parse::<TicketStatus>().ok();
                 }

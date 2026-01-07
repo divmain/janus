@@ -202,6 +202,139 @@ fn test_create_invalid_type() {
     assert!(stderr.contains("Invalid type"));
 }
 
+#[test]
+fn test_create_with_custom_prefix() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["create", "Test ticket", "--prefix", "perf"]);
+    let id = output.trim();
+
+    assert!(id.starts_with("perf-"), "ID should start with 'perf-'");
+    assert!(janus.ticket_exists(id), "Ticket file should exist");
+
+    let content = janus.read_ticket(id);
+    assert!(content.contains("# Test ticket"));
+    assert!(content.contains("uuid:"), "Ticket should have a UUID");
+}
+
+#[test]
+fn test_create_with_empty_uses_default() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["create", "Test ticket", "--prefix", ""]);
+    let id = output.trim();
+
+    assert!(!id.is_empty(), "Should output a ticket ID");
+    assert!(id.contains('-'), "ID should contain a dash");
+    assert!(janus.ticket_exists(id), "Ticket file should exist");
+}
+
+#[test]
+fn test_create_with_hyphen_prefix() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["create", "Test ticket", "--prefix", "my-prefix"]);
+    let id = output.trim();
+
+    assert!(
+        id.starts_with("my-prefix-"),
+        "ID should start with 'my-prefix-'"
+    );
+    assert!(janus.ticket_exists(id), "Ticket file should exist");
+}
+
+#[test]
+fn test_create_with_underscore_prefix() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["create", "Test ticket", "--prefix", "my_prefix"]);
+    let id = output.trim();
+
+    assert!(
+        id.starts_with("my_prefix-"),
+        "ID should start with 'my_prefix-'"
+    );
+    assert!(janus.ticket_exists(id), "Ticket file should exist");
+}
+
+#[test]
+fn test_create_multiple_tickets_same_prefix() {
+    let janus = JanusTest::new();
+
+    let output1 = janus.run_success(&["create", "Ticket 1", "--prefix", "perf"]);
+    let output2 = janus.run_success(&["create", "Ticket 2", "--prefix", "perf"]);
+    let id1 = output1.trim();
+    let id2 = output2.trim();
+
+    assert!(id1.starts_with("perf-"), "ID1 should start with 'perf-'");
+    assert!(id2.starts_with("perf-"), "ID2 should start with 'perf-'");
+    assert_ne!(id1, id2, "IDs should be unique even with same prefix");
+    assert!(janus.ticket_exists(id1), "Ticket1 should exist");
+    assert!(janus.ticket_exists(id2), "Ticket2 should exist");
+}
+
+#[test]
+fn test_create_tickets_different_prefixes() {
+    let janus = JanusTest::new();
+
+    let output1 = janus.run_success(&["create", "Bug fix", "--prefix", "bug"]);
+    let output2 = janus.run_success(&["create", "Feature", "--prefix", "feat"]);
+    let output3 = janus.run_success(&["create", "Task"]);
+    let id1 = output1.trim();
+    let id2 = output2.trim();
+    let id3 = output3.trim();
+
+    assert!(id1.starts_with("bug-"), "ID1 should start with 'bug-'");
+    assert!(id2.starts_with("feat-"), "ID2 should start with 'feat-'");
+    assert!(!id3.starts_with("bug-"), "ID3 should not start with 'bug-'");
+    assert!(
+        !id3.starts_with("feat-"),
+        "ID3 should not start with 'feat-'"
+    );
+}
+
+#[test]
+fn test_create_with_reserved_prefix_fails() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["create", "Test ticket", "--prefix", "plan"]);
+    assert!(
+        stderr.contains("reserved"),
+        "Error should mention the prefix is reserved"
+    );
+    assert!(
+        stderr.contains("plan"),
+        "Error should mention the prefix 'plan'"
+    );
+}
+
+#[test]
+fn test_create_with_invalid_prefix_characters_fails() {
+    let janus = JanusTest::new();
+
+    let invalid_prefixes = vec![
+        ("invalid/prefix", "invalid characters"),
+        ("invalid@prefix", "invalid characters"),
+        ("invalid prefix", "invalid characters"),
+        ("invalid.prefix", "invalid characters"),
+    ];
+
+    for (prefix, expected_error) in invalid_prefixes {
+        let stderr = janus.run_failure(&["create", "Test ticket", "--prefix", prefix]);
+        assert!(
+            stderr.contains(expected_error),
+            "Error for prefix '{}' should contain '{}'",
+            prefix,
+            expected_error
+        );
+        assert!(
+            stderr.contains(prefix),
+            "Error should mention the invalid prefix '{}'",
+            prefix
+        );
+    }
+}
+
 // ============================================================================
 // Status command tests
 // ============================================================================
@@ -1128,6 +1261,35 @@ fn test_adopt_invalid_ref() {
 
     let stderr = janus.run_failure(&["adopt", "invalid"]);
     assert!(stderr.contains("invalid") || stderr.contains("expected"));
+}
+
+#[test]
+fn test_adopt_with_reserved_prefix_fails() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["adopt", "github:test/test/123", "--prefix", "plan"]);
+    assert!(
+        stderr.contains("reserved"),
+        "Error should mention the prefix is reserved, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_adopt_with_invalid_prefix_characters_fails() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&[
+        "adopt",
+        "github:test/test/123",
+        "--prefix",
+        "invalid/prefix",
+    ]);
+    assert!(
+        stderr.contains("invalid characters"),
+        "Error should mention invalid characters, got: {}",
+        stderr
+    );
 }
 
 #[test]

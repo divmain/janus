@@ -18,10 +18,15 @@ use crate::remote::linear::LinearProvider;
 use crate::remote::{IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
 use crate::ticket::Ticket;
 use crate::types::TICKETS_ITEMS_DIR;
-use crate::utils::{ensure_dir, generate_id, get_git_user_name, iso_date};
+use crate::utils::{ensure_dir, generate_id_with_custom_prefix, get_git_user_name, iso_date};
 
 /// Adopt a remote issue and create a local ticket
-pub async fn cmd_adopt(remote_ref_str: &str) -> Result<()> {
+pub async fn cmd_adopt(remote_ref_str: &str, prefix: Option<&str>) -> Result<()> {
+    // Validate prefix before attempting to fetch remote issue
+    if let Some(p) = prefix {
+        crate::utils::validate_prefix(p)?;
+    }
+
     let config = Config::load()?;
     let remote_ref = RemoteRef::parse(remote_ref_str, Some(&config))?;
 
@@ -38,7 +43,7 @@ pub async fn cmd_adopt(remote_ref_str: &str) -> Result<()> {
     };
 
     // Create the local ticket
-    let id = create_ticket_from_remote(&remote_issue, &remote_ref)?;
+    let id = create_ticket_from_remote(&remote_issue, &remote_ref, prefix)?;
 
     println!("Created {} from {}", id.cyan(), remote_ref);
     println!("  Title: {}", remote_issue.title);
@@ -48,11 +53,15 @@ pub async fn cmd_adopt(remote_ref_str: &str) -> Result<()> {
 }
 
 /// Create a local ticket from a remote issue
-fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef) -> Result<String> {
+fn create_ticket_from_remote(
+    remote_issue: &RemoteIssue,
+    remote_ref: &RemoteRef,
+    prefix: Option<&str>,
+) -> Result<String> {
     ensure_dir()?;
 
     let assignee = remote_issue.assignee.clone().or_else(get_git_user_name);
-    let id = generate_id();
+    let id = generate_id_with_custom_prefix(prefix)?;
     let now = iso_date();
 
     // Map remote status to local status

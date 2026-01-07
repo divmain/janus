@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 use crate::error::Result;
 use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketType};
-use crate::utils::{ensure_dir, generate_id, get_git_user_name, iso_date};
+use crate::utils::{
+    ensure_dir, generate_id_with_custom_prefix, generate_uuid, get_git_user_name, iso_date,
+};
 
 /// Options for creating a new ticket
 pub struct CreateOptions {
@@ -16,6 +18,7 @@ pub struct CreateOptions {
     pub assignee: Option<String>,
     pub external_ref: Option<String>,
     pub parent: Option<String>,
+    pub prefix: Option<String>,
 }
 
 impl Default for CreateOptions {
@@ -30,6 +33,7 @@ impl Default for CreateOptions {
             assignee: None,
             external_ref: None,
             parent: None,
+            prefix: None,
         }
     }
 }
@@ -39,13 +43,15 @@ pub fn cmd_create(options: CreateOptions) -> Result<()> {
     ensure_dir()?;
 
     let assignee = options.assignee.or_else(get_git_user_name);
-    let id = generate_id();
+    let id = generate_id_with_custom_prefix(options.prefix.as_deref())?;
+    let uuid = generate_uuid();
     let now = iso_date();
 
     // Build frontmatter
     let mut frontmatter_lines = vec![
         "---".to_string(),
         format!("id: {}", id),
+        format!("uuid: {}", uuid),
         "status: new".to_string(),
         "deps: []".to_string(),
         "links: []".to_string(),

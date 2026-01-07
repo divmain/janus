@@ -59,6 +59,10 @@ enum Commands {
         /// Parent ticket ID
         #[arg(long)]
         parent: Option<String>,
+
+        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+        #[arg(long)]
+        prefix: Option<String>,
     },
 
     /// Display ticket with relationships
@@ -179,6 +183,10 @@ enum Commands {
     Adopt {
         /// Remote reference (e.g., github:owner/repo/123 or linear:org/PROJ-123)
         remote_ref: String,
+
+        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+        #[arg(long)]
+        prefix: Option<String>,
     },
 
     /// Push a local ticket to create a remote issue
@@ -334,6 +342,7 @@ async fn main() -> ExitCode {
             assignee,
             external_ref,
             parent,
+            prefix,
         } => cmd_create(CreateOptions {
             title,
             description,
@@ -344,6 +353,7 @@ async fn main() -> ExitCode {
             assignee,
             external_ref,
             parent,
+            prefix,
         }),
 
         Commands::Show { id } => cmd_show(&id).await,
@@ -387,7 +397,7 @@ async fn main() -> ExitCode {
         Commands::Board => cmd_board(),
 
         // Remote sync commands
-        Commands::Adopt { remote_ref } => cmd_adopt(&remote_ref).await,
+        Commands::Adopt { remote_ref, prefix } => cmd_adopt(&remote_ref, prefix.as_deref()).await,
         Commands::Push { id } => cmd_push(&id).await,
         Commands::RemoteLink { id, remote_ref } => cmd_remote_link(&id, &remote_ref).await,
         Commands::Sync { id } => cmd_sync(&id).await,

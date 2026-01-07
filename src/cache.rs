@@ -16,7 +16,7 @@ use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
 #[cfg(test)]
 use serial_test::serial;
 
-const CACHE_VERSION: &str = "1";
+const CACHE_VERSION: &str = "2";
 
 static GLOBAL_CACHE: OnceCell<Option<TicketCache>> = OnceCell::const_new();
 
@@ -140,6 +140,7 @@ impl TicketCache {
             .execute(
                 "CREATE TABLE IF NOT EXISTS tickets (
                 ticket_id TEXT PRIMARY KEY,
+                uuid TEXT,
                 mtime_ns INTEGER NOT NULL,
                 status TEXT,
                 title TEXT,
@@ -341,6 +342,7 @@ impl TicketCache {
         mtime_ns: i64,
     ) -> CacheResult<()> {
         let ticket_id = metadata.id.clone().unwrap_or_default();
+        let uuid = metadata.uuid.clone();
         let status = metadata.status.map(|s| s.to_string());
         let priority = metadata.priority.map(|p| p.as_num() as i64);
         let ticket_type = metadata.ticket_type.map(|t| t.to_string());
@@ -349,11 +351,12 @@ impl TicketCache {
 
         tx.execute(
             "INSERT OR REPLACE INTO tickets (
-                ticket_id, mtime_ns, status, title, priority, ticket_type, assignee,
+                ticket_id, uuid, mtime_ns, status, title, priority, ticket_type, assignee,
                 deps, links, parent, created, external_ref, remote
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 ticket_id,
+                uuid,
                 mtime_ns,
                 status,
                 metadata.title.clone(),
@@ -394,17 +397,18 @@ impl TicketCache {
 
     async fn row_to_metadata(row: &turso::Row) -> CacheResult<TicketMetadata> {
         let id: Option<String> = row.get(0).ok();
-        let status_str: Option<String> = row.get(1).ok();
-        let title: Option<String> = row.get(2).ok();
-        let priority_num: Option<i64> = row.get(3).ok();
-        let type_str: Option<String> = row.get(4).ok();
-        let assignee: Option<String> = row.get(5).ok();
-        let deps_json: Option<String> = row.get(6).ok();
-        let links_json: Option<String> = row.get(7).ok();
-        let parent: Option<String> = row.get(8).ok();
-        let created: Option<String> = row.get(9).ok();
-        let external_ref: Option<String> = row.get(10).ok();
-        let remote: Option<String> = row.get(11).ok();
+        let uuid: Option<String> = row.get(1).ok();
+        let status_str: Option<String> = row.get(2).ok();
+        let title: Option<String> = row.get(3).ok();
+        let priority_num: Option<i64> = row.get(4).ok();
+        let type_str: Option<String> = row.get(5).ok();
+        let assignee: Option<String> = row.get(6).ok();
+        let deps_json: Option<String> = row.get(7).ok();
+        let links_json: Option<String> = row.get(8).ok();
+        let parent: Option<String> = row.get(9).ok();
+        let created: Option<String> = row.get(10).ok();
+        let external_ref: Option<String> = row.get(11).ok();
+        let remote: Option<String> = row.get(12).ok();
 
         let status = status_str.and_then(|s| s.parse().ok());
 
@@ -424,6 +428,7 @@ impl TicketCache {
 
         Ok(TicketMetadata {
             id,
+            uuid,
             title,
             status,
             priority,
@@ -443,7 +448,7 @@ impl TicketCache {
         let mut rows = self
             .conn
             .query(
-                "SELECT ticket_id, status, title, priority, ticket_type, assignee,
+                "SELECT ticket_id, uuid, status, title, priority, ticket_type, assignee,
                     deps, links, parent, created, external_ref, remote
              FROM tickets",
                 (),
@@ -462,7 +467,7 @@ impl TicketCache {
         let mut rows = self
             .conn
             .query(
-                "SELECT ticket_id, status, title, priority, ticket_type, assignee,
+                "SELECT ticket_id, uuid, status, title, priority, ticket_type, assignee,
                     deps, links, parent, created, external_ref, remote
              FROM tickets WHERE ticket_id = ?1",
                 [id],
