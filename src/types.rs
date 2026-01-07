@@ -7,6 +7,7 @@ use crate::error::JanusError;
 
 pub const TICKETS_DIR: &str = ".janus";
 pub const TICKETS_ITEMS_DIR: &str = ".janus/items";
+pub const PLANS_DIR: &str = ".janus/plans";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -182,6 +183,11 @@ pub struct TicketMetadata {
 
     #[serde(skip)]
     pub file_path: Option<PathBuf>,
+
+    /// Completion summary extracted from `## Completion Summary` section in body
+    /// Only meaningful for tickets with status: complete
+    #[serde(skip)]
+    pub completion_summary: Option<String>,
 }
 
 impl TicketMetadata {

@@ -9,6 +9,36 @@ pub enum JanusError {
     #[error("ambiguous ID '{0}' matches multiple tickets")]
     AmbiguousId(String),
 
+    #[error("plan '{0}' not found")]
+    PlanNotFound(String),
+
+    #[error("ambiguous plan ID '{0}' matches multiple plans")]
+    AmbiguousPlanId(String),
+
+    #[error("phase '{0}' not found in plan")]
+    PhaseNotFound(String),
+
+    #[error("ticket '{0}' is already in this plan")]
+    TicketAlreadyInPlan(String),
+
+    #[error("ticket '{0}' is already in phase '{1}'")]
+    TicketAlreadyInPhase(String, String),
+
+    #[error("ticket '{0}' not found in plan")]
+    TicketNotInPlan(String),
+
+    #[error("phase '{0}' contains tickets - use --force or --migrate")]
+    PhaseNotEmpty(String),
+
+    #[error("cannot add ticket to simple plan with --phase option")]
+    SimpleplanNoPhase,
+
+    #[error("phased plan requires --phase option")]
+    PhasedPlanRequiresPhase,
+
+    #[error("cannot move ticket in a simple plan (no phases)")]
+    CannotMoveInSimplePlan,
+
     #[error("invalid ticket format: {0}")]
     InvalidFormat(String),
 

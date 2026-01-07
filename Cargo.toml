@@ -53,6 +53,12 @@ turso = "0.4"
 base64 = "0.22"
 directories = "5"
 
+# Markdown parsing (AST-based, CommonMark + GFM compliant)
+comrak = "0.34"
+
+# Temp files for editor workflows
+tempfile = "3"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

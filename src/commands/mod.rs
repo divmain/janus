@@ -7,6 +7,7 @@ mod dep;
 mod edit;
 mod link;
 mod ls;
+mod plan;
 mod query;
 mod remote_tui;
 mod show;
@@ -23,6 +24,11 @@ pub use dep::{cmd_dep_add, cmd_dep_remove, cmd_dep_tree};
 pub use edit::cmd_edit;
 pub use link::{cmd_link_add, cmd_link_remove};
 pub use ls::{cmd_blocked, cmd_closed, cmd_ls, cmd_ready};
+pub use plan::{
+    cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete, cmd_plan_edit,
+    cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next, cmd_plan_remove_phase,
+    cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder, cmd_plan_show, cmd_plan_status,
+};
 pub use query::cmd_query;
 pub use remote_tui::cmd_remote_tui;
 pub use show::cmd_show;

@@ -1,3 +1,5 @@
+use owo_colors::OwoColorize;
+
 use crate::commands::format_ticket_bullet;
 use crate::error::Result;
 use crate::ticket::{Ticket, build_ticket_map};
@@ -41,6 +43,21 @@ pub async fn cmd_show(id: &str) -> Result<()> {
 
     // Print the raw content
     println!("{}", content);
+
+    // Print completion summary if ticket is complete and has one
+    // (This is separate from the raw content because we format it nicely)
+    if metadata.status == Some(TicketStatus::Complete)
+        && let Some(ref summary) = metadata.completion_summary
+    {
+        // Only print if the summary isn't already in the raw content
+        // (The raw content contains the ## Completion Summary section)
+        // We print a formatted version to highlight it
+        println!();
+        println!("{}", "Completion Summary:".green().bold());
+        for line in summary.lines() {
+            println!("  {}", line.dimmed());
+        }
+    }
 
     // Print sections
     print_section("Blockers", &blockers);

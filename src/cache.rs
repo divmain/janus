@@ -11,12 +11,61 @@ use turso::{Builder, Connection, Database, params};
 
 use crate::cache_error::{CacheError, Result as CacheResult};
 use crate::parser::parse_ticket_content;
-use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
+use crate::plan_parser::parse_plan_content;
+use crate::plan_types::PlanMetadata;
+use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
 
 #[cfg(test)]
 use serial_test::serial;
 
-const CACHE_VERSION: &str = "2";
+const CACHE_VERSION: &str = "4";
+
+/// Cached plan metadata - a lightweight representation for fast queries
+#[derive(Debug, Clone)]
+pub struct CachedPlanMetadata {
+    pub id: Option<String>,
+    pub uuid: Option<String>,
+    pub title: Option<String>,
+    pub created: Option<String>,
+    /// "simple", "phased", or "empty"
+    pub structure_type: String,
+    /// For simple plans: the ordered list of ticket IDs
+    pub tickets: Vec<String>,
+    /// For phased plans: phase information with their tickets
+    pub phases: Vec<CachedPhase>,
+}
+
+impl CachedPlanMetadata {
+    /// Get all tickets across all phases (or from tickets field for simple plans)
+    pub fn all_tickets(&self) -> Vec<&str> {
+        if self.structure_type == "simple" {
+            self.tickets.iter().map(|s| s.as_str()).collect()
+        } else {
+            self.phases
+                .iter()
+                .flat_map(|p| p.tickets.iter().map(|s| s.as_str()))
+                .collect()
+        }
+    }
+
+    /// Check if this is a phased plan
+    pub fn is_phased(&self) -> bool {
+        self.structure_type == "phased"
+    }
+
+    /// Check if this is a simple plan
+    pub fn is_simple(&self) -> bool {
+        self.structure_type == "simple"
+    }
+}
+
+/// Cached phase information
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CachedPhase {
+    pub number: String,
+    pub name: String,
+    pub tickets: Vec<String>,
+}
 
 static GLOBAL_CACHE: OnceCell<Option<TicketCache>> = OnceCell::const_new();
 
@@ -152,7 +201,8 @@ impl TicketCache {
                 parent TEXT,
                 created TEXT,
                 external_ref TEXT,
-                remote TEXT
+                remote TEXT,
+                completion_summary TEXT
             )",
                 (),
             )
@@ -175,6 +225,30 @@ impl TicketCache {
         self.conn
             .execute(
                 "CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(ticket_type)",
+                (),
+            )
+            .await?;
+
+        // Plans table
+        self.conn
+            .execute(
+                "CREATE TABLE IF NOT EXISTS plans (
+                plan_id TEXT PRIMARY KEY,
+                uuid TEXT,
+                mtime_ns INTEGER NOT NULL,
+                title TEXT,
+                created TEXT,
+                structure_type TEXT,
+                tickets_json TEXT,
+                phases_json TEXT
+            )",
+                (),
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_plans_structure_type ON plans(structure_type)",
                 (),
             )
             .await?;
@@ -205,7 +279,19 @@ impl TicketCache {
         cache_db_path(&self.repo_hash)
     }
 
+    /// Sync both tickets and plans from disk to cache
+    ///
+    /// Returns true if any changes were made, false if cache was already up to date.
     pub async fn sync(&mut self) -> CacheResult<bool> {
+        let tickets_changed = self.sync_tickets().await?;
+        let plans_changed = self.sync_plans().await?;
+        Ok(tickets_changed || plans_changed)
+    }
+
+    /// Sync tickets from disk to cache
+    ///
+    /// Returns true if any changes were made, false if cache was already up to date.
+    pub async fn sync_tickets(&mut self) -> CacheResult<bool> {
         let tickets_dir = PathBuf::from(TICKETS_ITEMS_DIR);
 
         if !tickets_dir.exists() {
@@ -352,8 +438,8 @@ impl TicketCache {
         tx.execute(
             "INSERT OR REPLACE INTO tickets (
                 ticket_id, uuid, mtime_ns, status, title, priority, ticket_type, assignee,
-                deps, links, parent, created, external_ref, remote
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                deps, links, parent, created, external_ref, remote, completion_summary
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 ticket_id,
                 uuid,
@@ -369,6 +455,7 @@ impl TicketCache {
                 metadata.created.clone(),
                 metadata.external_ref.clone(),
                 metadata.remote.clone(),
+                metadata.completion_summary.clone(),
             ],
         )
         .await?;
@@ -384,6 +471,289 @@ impl TicketCache {
                 CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
             })
         }
+    }
+
+    // =========================================================================
+    // Plan caching methods
+    // =========================================================================
+
+    /// Sync plans from disk to cache
+    ///
+    /// Returns true if any changes were made, false if cache was already up to date.
+    pub async fn sync_plans(&mut self) -> CacheResult<bool> {
+        let plans_dir = PathBuf::from(PLANS_DIR);
+
+        if !plans_dir.exists() {
+            fs::create_dir_all(&plans_dir).map_err(CacheError::Io)?;
+            return Ok(false);
+        }
+
+        let disk_files = self.scan_plans_directory(&plans_dir)?;
+        let cached_mt = self.get_cached_plan_mtimes().await?;
+
+        let mut added_plans = Vec::new();
+        let mut modified_plans = Vec::new();
+        let mut removed_plans = Vec::new();
+
+        for (plan_id, disk_mtime) in &disk_files {
+            if let Some(&cache_mtime) = cached_mt.get(plan_id) {
+                if *disk_mtime != cache_mtime {
+                    modified_plans.push(plan_id.clone());
+                }
+            } else {
+                added_plans.push(plan_id.clone());
+            }
+        }
+
+        for plan_id in cached_mt.keys() {
+            if !disk_files.contains_key(plan_id) {
+                removed_plans.push(plan_id.clone());
+            }
+        }
+
+        if added_plans.is_empty() && modified_plans.is_empty() && removed_plans.is_empty() {
+            return Ok(false);
+        }
+
+        // Read and parse plans before starting the transaction
+        let mut plans_to_upsert = Vec::new();
+        for id in added_plans.iter().chain(modified_plans.iter()) {
+            if let Ok((metadata, mtime_ns)) = Self::read_and_parse_plan_static(id) {
+                plans_to_upsert.push((metadata, mtime_ns));
+            }
+        }
+
+        // Use transaction for atomicity
+        let tx = self.conn.transaction().await?;
+
+        for (metadata, mtime_ns) in &plans_to_upsert {
+            Self::insert_or_replace_plan_tx(&tx, metadata, *mtime_ns).await?;
+        }
+
+        for id in &removed_plans {
+            tx.execute("DELETE FROM plans WHERE plan_id = ?1", [id.as_str()])
+                .await?;
+        }
+
+        tx.commit().await?;
+
+        Ok(true)
+    }
+
+    fn scan_plans_directory(&self, plans_dir: &Path) -> CacheResult<HashMap<String, i64>> {
+        let mut files = HashMap::new();
+
+        let entries = match fs::read_dir(plans_dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(files),
+            Err(e) => return Err(CacheError::Io(e)),
+        };
+
+        for entry in entries {
+            let entry = entry.map_err(CacheError::Io)?;
+            let path = entry.path();
+
+            if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                continue;
+            }
+
+            let metadata = entry.metadata().map_err(CacheError::Io)?;
+            let mtime = metadata.modified().map_err(CacheError::Io)?;
+            let mtime_ns = mtime
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
+                .as_nanos() as i64;
+
+            if let Some(plan_id) = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|s| s.to_string())
+            {
+                files.insert(plan_id, mtime_ns);
+            }
+        }
+
+        Ok(files)
+    }
+
+    async fn get_cached_plan_mtimes(&self) -> CacheResult<HashMap<String, i64>> {
+        let mut mtimes = HashMap::new();
+
+        let mut rows = self
+            .conn
+            .query("SELECT plan_id, mtime_ns FROM plans", ())
+            .await?;
+
+        while let Some(row) = rows.next().await? {
+            let id: String = row.get(0)?;
+            let mtime: i64 = row.get(1)?;
+            mtimes.insert(id, mtime);
+        }
+
+        Ok(mtimes)
+    }
+
+    fn read_and_parse_plan_static(plan_id: &str) -> CacheResult<(PlanMetadata, i64)> {
+        let plan_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", plan_id));
+
+        let content = fs::read_to_string(&plan_path).map_err(CacheError::Io)?;
+
+        let metadata = parse_plan_content(&content)
+            .map_err(|e| CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+
+        let file_mtime = fs::metadata(&plan_path)
+            .map_err(CacheError::Io)?
+            .modified()
+            .map_err(CacheError::Io)?;
+
+        let mtime_ns = file_mtime
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
+            .as_nanos() as i64;
+
+        Ok((metadata, mtime_ns))
+    }
+
+    async fn insert_or_replace_plan_tx<'a>(
+        tx: &Transaction<'a>,
+        metadata: &PlanMetadata,
+        mtime_ns: i64,
+    ) -> CacheResult<()> {
+        let plan_id = metadata.id.clone().unwrap_or_default();
+        let uuid = metadata.uuid.clone();
+        let title = metadata.title.clone();
+        let created = metadata.created.clone();
+
+        // Determine structure type and serialize tickets/phases
+        let (structure_type, tickets_json, phases_json) = if metadata.is_phased() {
+            let phases = metadata.phases();
+            let phases_data: Vec<_> = phases
+                .iter()
+                .map(|p| {
+                    serde_json::json!({
+                        "number": p.number,
+                        "name": p.name,
+                        "tickets": p.tickets
+                    })
+                })
+                .collect();
+            let phases_json = serde_json::to_string(&phases_data).ok();
+            ("phased".to_string(), None, phases_json)
+        } else if metadata.is_simple() {
+            let tickets = metadata.all_tickets();
+            let tickets_json = serde_json::to_string(&tickets).ok();
+            ("simple".to_string(), tickets_json, None)
+        } else {
+            // Empty plan
+            ("empty".to_string(), None, None)
+        };
+
+        tx.execute(
+            "INSERT OR REPLACE INTO plans (
+                plan_id, uuid, mtime_ns, title, created, structure_type, tickets_json, phases_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                plan_id,
+                uuid,
+                mtime_ns,
+                title,
+                created,
+                structure_type,
+                tickets_json,
+                phases_json,
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Get all cached plans
+    pub async fn get_all_plans(&self) -> CacheResult<Vec<CachedPlanMetadata>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT plan_id, uuid, title, created, structure_type, tickets_json, phases_json
+                 FROM plans",
+                (),
+            )
+            .await?;
+
+        let mut plans = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let metadata = Self::row_to_plan_metadata(&row).await?;
+            plans.push(metadata);
+        }
+        Ok(plans)
+    }
+
+    /// Get a single plan by ID
+    pub async fn get_plan(&self, id: &str) -> CacheResult<Option<CachedPlanMetadata>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT plan_id, uuid, title, created, structure_type, tickets_json, phases_json
+                 FROM plans WHERE plan_id = ?1",
+                [id],
+            )
+            .await?;
+
+        if let Some(row) = rows.next().await? {
+            let metadata = Self::row_to_plan_metadata(&row).await?;
+            Ok(Some(metadata))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Find plans by partial ID
+    pub async fn find_plan_by_partial_id(&self, partial: &str) -> CacheResult<Vec<String>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT plan_id FROM plans WHERE plan_id LIKE ?1",
+                [format!("{}%", partial)],
+            )
+            .await?;
+
+        let mut matches = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let id: String = row.get(0)?;
+            matches.push(id);
+        }
+        Ok(matches)
+    }
+
+    async fn row_to_plan_metadata(row: &turso::Row) -> CacheResult<CachedPlanMetadata> {
+        let id: Option<String> = row.get(0).ok();
+        let uuid: Option<String> = row.get(1).ok();
+        let title: Option<String> = row.get(2).ok();
+        let created: Option<String> = row.get(3).ok();
+        let structure_type: Option<String> = row.get(4).ok();
+        let tickets_json: Option<String> = row.get(5).ok();
+        let phases_json: Option<String> = row.get(6).ok();
+
+        // Deserialize tickets for simple plans
+        let tickets: Vec<String> = tickets_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+
+        // Deserialize phases for phased plans
+        let phases: Vec<CachedPhase> = phases_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+
+        Ok(CachedPlanMetadata {
+            id,
+            uuid,
+            title,
+            created,
+            structure_type: structure_type.unwrap_or_else(|| "empty".to_string()),
+            tickets,
+            phases,
+        })
     }
 
     fn deserialize_array(s: Option<&str>) -> CacheResult<Vec<String>> {
@@ -409,6 +779,7 @@ impl TicketCache {
         let created: Option<String> = row.get(10).ok();
         let external_ref: Option<String> = row.get(11).ok();
         let remote: Option<String> = row.get(12).ok();
+        let completion_summary: Option<String> = row.get(13).ok();
 
         let status = status_str.and_then(|s| s.parse().ok());
 
@@ -441,6 +812,7 @@ impl TicketCache {
             external_ref,
             remote,
             file_path: None,
+            completion_summary,
         })
     }
 
@@ -449,7 +821,7 @@ impl TicketCache {
             .conn
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type, assignee,
-                    deps, links, parent, created, external_ref, remote
+                    deps, links, parent, created, external_ref, remote, completion_summary
              FROM tickets",
                 (),
             )
@@ -468,7 +840,7 @@ impl TicketCache {
             .conn
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type, assignee,
-                    deps, links, parent, created, external_ref, remote
+                    deps, links, parent, created, external_ref, remote, completion_summary
              FROM tickets WHERE ticket_id = ?1",
                 [id],
             )
@@ -1487,5 +1859,511 @@ remote: github
         drop(cache);
         fs::remove_file(&db_path).ok();
         fs::remove_dir_all(&repo_path).ok();
+    }
+
+    // =========================================================================
+    // Plan caching tests
+    // =========================================================================
+
+    fn create_test_plan(dir: &Path, plan_id: &str, title: &str, is_phased: bool) -> PathBuf {
+        let plans_dir = dir.join(".janus/plans");
+        fs::create_dir_all(&plans_dir).unwrap();
+
+        let plan_path = plans_dir.join(format!("{}.md", plan_id));
+        let content = if is_phased {
+            format!(
+                r#"---
+id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# {}
+
+Description of the plan.
+
+## Phase 1: Infrastructure
+
+### Tickets
+
+1. j-a1b2
+2. j-c3d4
+
+## Phase 2: Implementation
+
+### Tickets
+
+1. j-e5f6
+"#,
+                plan_id, title
+            )
+        } else {
+            format!(
+                r#"---
+id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# {}
+
+Description of the plan.
+
+## Tickets
+
+1. j-a1b2
+2. j-c3d4
+3. j-e5f6
+"#,
+                plan_id, title
+            )
+        };
+        fs::write(&plan_path, content).unwrap();
+        plan_path
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_plans_table_created() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_plans_table");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+
+        // Verify plans table exists
+        let mut rows = cache
+            .conn()
+            .query("SELECT name FROM sqlite_master WHERE type='table'", ())
+            .await
+            .unwrap();
+
+        let mut tables = Vec::new();
+        while let Some(row) = rows.next().await.unwrap() {
+            let name: String = row.get(0).unwrap();
+            tables.push(name);
+        }
+
+        assert!(tables.contains(&"plans".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_simple_plan() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_simple_plan");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_plan(&repo_path, "plan-a1b2", "Simple Test Plan", false);
+
+        let mut cache = TicketCache::open().await.unwrap();
+        let changed = cache.sync().await.unwrap();
+
+        assert!(changed);
+
+        // Verify plan was cached
+        let mut rows = cache
+            .conn()
+            .query("SELECT COUNT(*) FROM plans", ())
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count: i64 = row.get(0).unwrap();
+        assert_eq!(count, 1);
+
+        // Verify plan data
+        let plan = cache.get_plan("plan-a1b2").await.unwrap();
+        assert!(plan.is_some());
+        let plan = plan.unwrap();
+        assert_eq!(plan.id, Some("plan-a1b2".to_string()));
+        assert_eq!(plan.title, Some("Simple Test Plan".to_string()));
+        assert_eq!(plan.structure_type, "simple");
+        assert!(plan.is_simple());
+        assert!(!plan.is_phased());
+        assert_eq!(plan.tickets, vec!["j-a1b2", "j-c3d4", "j-e5f6"]);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_phased_plan() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_phased_plan");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_plan(&repo_path, "plan-b2c3", "Phased Test Plan", true);
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let plan = cache.get_plan("plan-b2c3").await.unwrap();
+        assert!(plan.is_some());
+        let plan = plan.unwrap();
+        assert_eq!(plan.id, Some("plan-b2c3".to_string()));
+        assert_eq!(plan.title, Some("Phased Test Plan".to_string()));
+        assert_eq!(plan.structure_type, "phased");
+        assert!(plan.is_phased());
+        assert!(!plan.is_simple());
+
+        // Verify phases
+        assert_eq!(plan.phases.len(), 2);
+        assert_eq!(plan.phases[0].number, "1");
+        assert_eq!(plan.phases[0].name, "Infrastructure");
+        assert_eq!(plan.phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(plan.phases[1].number, "2");
+        assert_eq!(plan.phases[1].name, "Implementation");
+        assert_eq!(plan.phases[1].tickets, vec!["j-e5f6"]);
+
+        // Verify all_tickets helper
+        let all_tickets = plan.all_tickets();
+        assert_eq!(all_tickets, vec!["j-a1b2", "j-c3d4", "j-e5f6"]);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_multiple_plans() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_multiple_plans");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_plan(&repo_path, "plan-a1b2", "Plan One", false);
+        create_test_plan(&repo_path, "plan-c3d4", "Plan Two", true);
+        create_test_plan(&repo_path, "plan-e5f6", "Plan Three", false);
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let plans = cache.get_all_plans().await.unwrap();
+        assert_eq!(plans.len(), 3);
+
+        // Verify titles
+        let titles: Vec<&str> = plans.iter().filter_map(|p| p.title.as_deref()).collect();
+        assert!(titles.contains(&"Plan One"));
+        assert!(titles.contains(&"Plan Two"));
+        assert!(titles.contains(&"Plan Three"));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_detects_additions() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_plans_additions");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_plan(&repo_path, "plan-a1b2", "Plan One", false);
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let plans = cache.get_all_plans().await.unwrap();
+        assert_eq!(plans.len(), 1);
+
+        // Add another plan
+        create_test_plan(&repo_path, "plan-c3d4", "Plan Two", true);
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let changed = cache.sync().await.unwrap();
+        assert!(changed);
+
+        let plans = cache.get_all_plans().await.unwrap();
+        assert_eq!(plans.len(), 2);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_detects_deletions() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_plans_deletions");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let plan_path = create_test_plan(&repo_path, "plan-a1b2", "Plan One", false);
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let plans = cache.get_all_plans().await.unwrap();
+        assert_eq!(plans.len(), 1);
+
+        // Delete the plan
+        fs::remove_file(&plan_path).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let changed = cache.sync().await.unwrap();
+        assert!(changed);
+
+        let plans = cache.get_all_plans().await.unwrap();
+        assert_eq!(plans.len(), 0);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_detects_modifications() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_plans_modifications");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let plan_path = create_test_plan(&repo_path, "plan-a1b2", "Original Title", false);
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let plan = cache.get_plan("plan-a1b2").await.unwrap().unwrap();
+        assert_eq!(plan.title, Some("Original Title".to_string()));
+
+        // Modify the plan
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+
+        let content = fs::read_to_string(&plan_path).unwrap();
+        let modified_content = content.replace("Original Title", "Modified Title");
+        fs::write(&plan_path, modified_content).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let changed = cache.sync().await.unwrap();
+        assert!(changed);
+
+        let plan = cache.get_plan("plan-a1b2").await.unwrap().unwrap();
+        assert_eq!(plan.title, Some("Modified Title".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_find_plan_by_partial_id() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_find_plan_partial");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_plan(&repo_path, "plan-a1b2", "Plan One", false);
+        create_test_plan(&repo_path, "plan-a2c3", "Plan Two", true);
+        create_test_plan(&repo_path, "plan-b3d4", "Plan Three", false);
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Find by prefix
+        let matches = cache.find_plan_by_partial_id("plan-a").await.unwrap();
+        assert_eq!(matches.len(), 2);
+        assert!(matches.contains(&"plan-a1b2".to_string()));
+        assert!(matches.contains(&"plan-a2c3".to_string()));
+
+        // Find exact match
+        let matches = cache.find_plan_by_partial_id("plan-b3d4").await.unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0], "plan-b3d4");
+
+        // Find all plans
+        let matches = cache.find_plan_by_partial_id("plan-").await.unwrap();
+        assert_eq!(matches.len(), 3);
+
+        // No match
+        let matches = cache.find_plan_by_partial_id("plan-xxx").await.unwrap();
+        assert_eq!(matches.len(), 0);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_no_changes() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_plans_no_changes");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_plan(&repo_path, "plan-a1b2", "Test Plan", false);
+
+        let mut cache = TicketCache::open().await.unwrap();
+
+        // First sync should return true
+        let changed1 = cache.sync().await.unwrap();
+        assert!(changed1);
+
+        // Second sync with no changes should return false
+        let changed2 = cache.sync().await.unwrap();
+        assert!(!changed2);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_empty_directory() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_plans_empty");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create empty plans directory
+        let plans_dir = repo_path.join(".janus/plans");
+        fs::create_dir_all(&plans_dir).unwrap();
+
+        let mut cache = TicketCache::open().await.unwrap();
+        let changed = cache.sync().await.unwrap();
+        assert!(!changed);
+
+        let plans = cache.get_all_plans().await.unwrap();
+        assert_eq!(plans.len(), 0);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_plans_creates_directory_if_missing() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_plans_missing_dir");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Don't create the plans directory
+
+        let mut cache = TicketCache::open().await.unwrap();
+        let changed = cache.sync().await.unwrap();
+        assert!(!changed);
+
+        // Verify plans directory was created
+        let plans_dir = repo_path.join(".janus/plans");
+        assert!(plans_dir.exists());
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_plans_index_created() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_plans_index");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let cache = TicketCache::open().await.unwrap();
+
+        // Query for indexes on plans table
+        let mut rows = cache
+            .conn()
+            .query(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='plans'",
+                (),
+            )
+            .await
+            .unwrap();
+
+        let mut indexes = Vec::new();
+        while let Some(row) = rows.next().await.unwrap() {
+            let name: String = row.get(0).unwrap();
+            indexes.push(name);
+        }
+
+        assert!(indexes.contains(&"idx_plans_structure_type".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cached_plan_metadata_all_tickets_phased() {
+        let plan = CachedPlanMetadata {
+            id: Some("plan-test".to_string()),
+            uuid: None,
+            title: Some("Test Plan".to_string()),
+            created: None,
+            structure_type: "phased".to_string(),
+            tickets: vec![],
+            phases: vec![
+                CachedPhase {
+                    number: "1".to_string(),
+                    name: "Phase One".to_string(),
+                    tickets: vec!["t1".to_string(), "t2".to_string()],
+                },
+                CachedPhase {
+                    number: "2".to_string(),
+                    name: "Phase Two".to_string(),
+                    tickets: vec!["t3".to_string()],
+                },
+            ],
+        };
+
+        let all = plan.all_tickets();
+        assert_eq!(all, vec!["t1", "t2", "t3"]);
+        assert!(plan.is_phased());
+        assert!(!plan.is_simple());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cached_plan_metadata_all_tickets_simple() {
+        let plan = CachedPlanMetadata {
+            id: Some("plan-test".to_string()),
+            uuid: None,
+            title: Some("Test Plan".to_string()),
+            created: None,
+            structure_type: "simple".to_string(),
+            tickets: vec!["t1".to_string(), "t2".to_string(), "t3".to_string()],
+            phases: vec![],
+        };
+
+        let all = plan.all_tickets();
+        assert_eq!(all, vec!["t1", "t2", "t3"]);
+        assert!(!plan.is_phased());
+        assert!(plan.is_simple());
     }
 }

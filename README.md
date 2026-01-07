@@ -765,6 +765,130 @@ Implement OAuth2 authentication flow for Google and GitHub login providers.
 - [ ] Logout clears all session data
 ```
 
+## Plans
+
+Plans organize tickets into larger goals with optional phases. They provide computed status tracking and progress summaries.
+
+### Plan Types
+
+- **Simple Plan**: A flat sequence of tickets
+- **Phased Plan**: Tickets organized into sequential phases
+
+### Creating Plans
+
+```bash
+# Create a simple plan
+janus plan create "Q1 Feature Release"
+
+# Create a phased plan
+janus plan create "Database Migration" \
+  --phase "Preparation" \
+  --phase "Migration" \
+  --phase "Validation"
+```
+
+### Managing Plan Tickets
+
+```bash
+# Add ticket to simple plan
+janus plan add-ticket plan-a1b2 j-x1y2
+
+# Add ticket to specific phase
+janus plan add-ticket plan-a1b2 j-x1y2 --phase "Preparation"
+
+# Remove ticket from plan
+janus plan remove-ticket plan-a1b2 j-x1y2
+
+# Move ticket between phases
+janus plan move-ticket plan-a1b2 j-x1y2 --to-phase "Migration"
+```
+
+### Viewing Plans
+
+```bash
+# List all plans
+janus plan ls
+
+# Show plan details with progress
+janus plan show plan-a1b2
+
+# Show raw file content
+janus plan show plan-a1b2 --raw
+
+# Show plan status summary
+janus plan status plan-a1b2
+
+# Show next actionable items
+janus plan next plan-a1b2
+janus plan next plan-a1b2 --all    # Next for each phase
+janus plan next plan-a1b2 --count 3
+```
+
+### Managing Phases
+
+```bash
+# Add a new phase
+janus plan add-phase plan-a1b2 "Testing"
+
+# Remove an empty phase
+janus plan remove-phase plan-a1b2 "Testing"
+
+# Remove phase with tickets (requires --force or --migrate)
+janus plan remove-phase plan-a1b2 "Old Phase" --force
+janus plan remove-phase plan-a1b2 "Old Phase" --migrate "New Phase"
+```
+
+### Plan Status
+
+Plan status is **computed** from constituent ticket statuses:
+
+| Condition | Status |
+|-----------|--------|
+| All tickets `complete` | `complete` |
+| All tickets `cancelled` | `cancelled` |
+| Mixed `complete`/`cancelled` | `complete` |
+| All tickets `new` or `next` | `new` |
+| Some started, some not | `in_progress` |
+
+### Plan File Format
+
+Plans are stored in `.janus/plans/` as Markdown with YAML frontmatter:
+
+```markdown
+---
+id: plan-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Database Migration Plan
+
+Overview of the migration project.
+
+## Acceptance Criteria
+
+- Zero downtime during migration
+- All data validated post-migration
+
+## Phase 1: Preparation
+
+Set up migration infrastructure.
+
+### Tickets
+
+1. j-prep1
+2. j-prep2
+
+## Phase 2: Migration
+
+Execute the migration.
+
+### Tickets
+
+1. j-migrate1
+```
+
+Plans can also include free-form sections (e.g., `## Technical Details`, `## Open Questions`) that are preserved verbatim.
+
 ## Tips
 
 - **Partial IDs**: Only need first 2-3 characters of ticket ID (e.g., `j-a1` instead of `j-a1b2`)

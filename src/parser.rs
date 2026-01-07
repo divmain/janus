@@ -70,7 +70,25 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
         metadata.title = caps.get(1).map(|m| m.as_str().to_string());
     }
 
+    // Extract completion summary from body (## Completion Summary section)
+    metadata.completion_summary = extract_completion_summary(body);
+
     Ok(metadata)
+}
+
+/// Extract the content of the `## Completion Summary` section from a ticket body.
+///
+/// The section content includes everything after the `## Completion Summary` header
+/// until the next H2 header (`## ...`) or end of document.
+fn extract_completion_summary(body: &str) -> Option<String> {
+    // Match "## Completion Summary" (case-insensitive) and capture everything until next ## or end
+    let section_re = Regex::new(r"(?ims)^##\s+completion\s+summary\s*\n(.*?)(?:^##\s|\z)").unwrap();
+
+    section_re.captures(body).map(|caps| {
+        caps.get(1)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default()
+    })
 }
 
 /// Parse a JSON array string like `["a", "b"]` into a Vec<String>
@@ -134,5 +152,126 @@ links: ["link-1"]
         let content = "# No frontmatter\n\nJust content.";
         let result = parse_ticket_content(content);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_with_completion_summary() {
+        let content = r#"---
+id: j-a1b2
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+---
+# Implement cache initialization
+
+Description of the task.
+
+## Completion Summary
+
+Successfully implemented cache initialization using Turso's async API.
+Key decisions:
+- Used `OnceCell` for global cache singleton
+- Implemented corruption detection and auto-recovery
+
+Performance results: Cold start ~22ms, subsequent lookups <5ms.
+"#;
+
+        let metadata = parse_ticket_content(content).unwrap();
+        assert_eq!(metadata.id, Some("j-a1b2".to_string()));
+        assert_eq!(metadata.status, Some(TicketStatus::Complete));
+
+        let summary = metadata.completion_summary.unwrap();
+        assert!(summary.contains("Successfully implemented cache initialization"));
+        assert!(summary.contains("OnceCell"));
+        assert!(summary.contains("Performance results"));
+    }
+
+    #[test]
+    fn test_parse_completion_summary_with_following_section() {
+        let content = r#"---
+id: j-c3d4
+status: complete
+deps: []
+links: []
+---
+# Task Title
+
+Description.
+
+## Completion Summary
+
+This task is done.
+
+## Notes
+
+Some additional notes here.
+"#;
+
+        let metadata = parse_ticket_content(content).unwrap();
+        let summary = metadata.completion_summary.unwrap();
+        assert_eq!(summary, "This task is done.");
+        // Ensure Notes section is not included
+        assert!(!summary.contains("Notes"));
+        assert!(!summary.contains("additional notes"));
+    }
+
+    #[test]
+    fn test_parse_no_completion_summary() {
+        let content = r#"---
+id: j-e5f6
+status: new
+deps: []
+links: []
+---
+# Task Without Summary
+
+Just a description, no completion summary section.
+"#;
+
+        let metadata = parse_ticket_content(content).unwrap();
+        assert!(metadata.completion_summary.is_none());
+    }
+
+    #[test]
+    fn test_parse_completion_summary_case_insensitive() {
+        let content = r#"---
+id: j-g7h8
+status: complete
+deps: []
+links: []
+---
+# Task Title
+
+## COMPLETION SUMMARY
+
+All caps header should work.
+"#;
+
+        let metadata = parse_ticket_content(content).unwrap();
+        let summary = metadata.completion_summary.unwrap();
+        assert_eq!(summary, "All caps header should work.");
+    }
+
+    #[test]
+    fn test_extract_completion_summary_empty() {
+        let body = "# Title\n\nNo summary here.";
+        assert!(extract_completion_summary(body).is_none());
+    }
+
+    #[test]
+    fn test_extract_completion_summary_at_end() {
+        let body = r#"# Title
+
+Description.
+
+## Completion Summary
+
+Final summary content.
+"#;
+
+        let summary = extract_completion_summary(body).unwrap();
+        assert_eq!(summary, "Final summary content.");
     }
 }

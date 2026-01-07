@@ -45,15 +45,31 @@ pub fn generate_id() -> String {
         .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_default();
 
+    // Strip leading dots (e.g., ".tmpXXX" -> "tmpXXX")
+    let dir_name_clean = dir_name.trim_start_matches('.');
+
     // Generate prefix from directory name (first letter of each word)
-    let prefix: String = dir_name
+    let prefix: String = dir_name_clean
         .replace(['-', '_'], " ")
         .split_whitespace()
         .filter_map(|word| word.chars().next())
+        .filter(|c| c.is_alphanumeric()) // Only alphanumeric characters
         .collect();
 
     let prefix = if prefix.is_empty() {
-        dir_name.chars().take(3).collect()
+        // Fallback: take first 3 alphanumeric characters
+        dir_name_clean
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(3)
+            .collect::<String>()
+    } else {
+        prefix
+    };
+
+    // Final fallback to "j" if still empty
+    let prefix = if prefix.is_empty() {
+        "j".to_string()
     } else {
         prefix
     };

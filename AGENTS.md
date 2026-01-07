@@ -82,6 +82,9 @@ src/
 ├── ticket.rs            # Ticket operations (read, write, find)
 ├── types.rs             # Core types (TicketStatus, TicketType, etc.)
 ├── utils.rs             # Utility functions (ID generation, dates)
+├── plan.rs              # Plan operations (find, read, write, status computation)
+├── plan_types.rs        # Plan data structures (PlanMetadata, Phase, etc.)
+├── plan_parser.rs       # Plan file parsing and serialization
 └── commands/
     ├── mod.rs           # Command module exports and shared formatting
     ├── add_note.rs      # Add timestamped notes
@@ -90,11 +93,12 @@ src/
     ├── edit.rs          # Open ticket in $EDITOR
     ├── link.rs          # Link management
     ├── ls.rs            # List commands (ls, ready, blocked, closed)
+    ├── plan.rs          # Plan CLI commands
     ├── query.rs         # JSON query output
     ├── show.rs          # Display ticket details
     └── status.rs        # Status transitions
 tests/
-└── integration_test.rs  # Integration tests (~850 lines)
+└── integration_test.rs  # Integration tests
 ```
 
 ## Code Style Guidelines
@@ -228,6 +232,8 @@ All cache operations are async and use `tokio` runtime.
 - **Links**: Bidirectional relationships between tickets
 - **Parent/Child**: Hierarchical ticket organization
 - **ID Format**: `<prefix>-<4-char-hash>` (e.g., `j-a1b2`)
+- **Plans**: Hierarchical structures organizing tickets toward a larger goal
+- **Plan ID Format**: `plan-<4-char-hash>` (e.g., `plan-a1b2`)
 
 ## Ticket File Format
 
@@ -270,4 +276,52 @@ ticket.add_to_array_field("deps", "other-id")?;
 ```rust
 let tickets = get_all_tickets();
 let ticket_map = build_ticket_map(); // HashMap<String, TicketMetadata>
+```
+
+## Plans
+
+Plans are hierarchical structures organizing tickets toward a larger goal. They are stored in `.janus/plans/` as Markdown files with YAML frontmatter.
+
+**Plan types:**
+- **Simple Plan**: Direct sequence of tickets (has `## Tickets` section)
+- **Phased Plan**: Sequence of phases, each with tickets (has `## Phase N: Name` sections)
+
+**Plan status computation** (derived from constituent tickets, never stored):
+- All `complete` → `complete`
+- All `cancelled` → `cancelled`  
+- Mixed `complete`/`cancelled` → `complete`
+- All `new` or `next` → `new`
+- Otherwise → `in_progress`
+
+**Section types in plan files:**
+- **Structured**: `## Acceptance Criteria`, `## Tickets`, `## Phase N: Name` → parsed into data structures
+- **Free-form**: Any other H2 (e.g., `## Overview`) → preserved verbatim
+
+### Working with Plans in Code
+
+```rust
+use crate::plan::{Plan, compute_plan_status, get_all_plans};
+use crate::plan_types::{PlanMetadata, Phase, PlanSection};
+
+// Find and read a plan
+let plan = Plan::find("partial-id")?;
+let metadata = plan.read()?;
+
+// Check plan type
+if metadata.is_phased() {
+    for phase in metadata.phases() {
+        println!("Phase {}: {}", phase.number, phase.name);
+    }
+}
+
+// Get all tickets in a plan
+let all_tickets = metadata.all_tickets();
+
+// Compute plan status
+let ticket_map = build_ticket_map();
+let status = compute_plan_status(&metadata, &ticket_map);
+println!("Progress: {}", status.progress_string()); // e.g., "5/12 (41%)"
+
+// Get all plans
+let plans = get_all_plans();
 ```

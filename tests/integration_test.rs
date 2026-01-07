@@ -84,6 +84,40 @@ impl JanusTest {
             .join(format!("{}.md", id));
         path.exists()
     }
+
+    fn write_ticket(&self, id: &str, content: &str) {
+        let dir = self.temp_dir.path().join(".janus").join("items");
+        fs::create_dir_all(&dir).expect("Failed to create .janus/items directory");
+        let path = dir.join(format!("{}.md", id));
+        fs::write(path, content).expect("Failed to write ticket file");
+    }
+
+    fn read_plan(&self, id: &str) -> String {
+        let path = self
+            .temp_dir
+            .path()
+            .join(".janus")
+            .join("plans")
+            .join(format!("{}.md", id));
+        fs::read_to_string(path).expect("Failed to read plan file")
+    }
+
+    fn plan_exists(&self, id: &str) -> bool {
+        let path = self
+            .temp_dir
+            .path()
+            .join(".janus")
+            .join("plans")
+            .join(format!("{}.md", id));
+        path.exists()
+    }
+
+    fn write_plan(&self, id: &str, content: &str) {
+        let dir = self.temp_dir.path().join(".janus").join("plans");
+        fs::create_dir_all(&dir).expect("Failed to create .janus/plans directory");
+        let path = dir.join(format!("{}.md", id));
+        fs::write(path, content).expect("Failed to write plan file");
+    }
 }
 
 // ============================================================================
@@ -1669,4 +1703,2714 @@ priority: 2
 
     let output = janus.run_success(&["show", "j-test"]);
     assert!(output.contains("Test ticket"));
+}
+
+// ============================================================================
+// Completion Summary tests
+// ============================================================================
+
+#[test]
+fn test_show_displays_completion_summary() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with a completion summary section
+    let content = r#"---
+id: j-done
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Completed Task
+
+This task has been completed.
+
+## Completion Summary
+
+Successfully implemented the feature with the following changes:
+- Added new parser logic
+- Updated cache schema
+- All tests passing
+"#;
+    janus.write_ticket("j-done", content);
+
+    let output = janus.run_success(&["show", "j-done"]);
+
+    // The show command displays raw content, so completion summary should be visible
+    assert!(output.contains("## Completion Summary"));
+    assert!(output.contains("Successfully implemented the feature"));
+    assert!(output.contains("Added new parser logic"));
+}
+
+#[test]
+fn test_completion_summary_in_cache() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with a completion summary
+    let content = r#"---
+id: j-cached
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Cached Task
+
+Description.
+
+## Completion Summary
+
+Task completed successfully.
+"#;
+    janus.write_ticket("j-cached", content);
+
+    // Run ls to populate the cache
+    janus.run_success(&["ls"]);
+
+    // Show should still work and display the completion summary
+    let output = janus.run_success(&["show", "j-cached"]);
+    assert!(output.contains("## Completion Summary"));
+    assert!(output.contains("Task completed successfully"));
+}
+
+// ============================================================================
+// Plan command tests
+// ============================================================================
+
+#[test]
+fn test_plan_create_simple() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["plan", "create", "Test Plan"]);
+    let id = output.trim();
+
+    assert!(!id.is_empty(), "Should output a plan ID");
+    assert!(id.starts_with("plan-"), "ID should start with 'plan-'");
+    assert!(janus.plan_exists(id), "Plan file should exist");
+
+    let content = janus.read_plan(id);
+    assert!(content.contains("# Test Plan"));
+    assert!(content.contains(&format!("id: {}", id)));
+    assert!(content.contains("uuid:"));
+    assert!(content.contains("created:"));
+    // Simple plan should have a Tickets section
+    assert!(content.contains("## Tickets"));
+}
+
+#[test]
+fn test_plan_create_with_phases() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&[
+        "plan",
+        "create",
+        "Phased Plan",
+        "--phase",
+        "Infrastructure",
+        "--phase",
+        "Implementation",
+        "--phase",
+        "Testing",
+    ]);
+    let id = output.trim();
+
+    assert!(janus.plan_exists(id), "Plan file should exist");
+
+    let content = janus.read_plan(id);
+    assert!(content.contains("# Phased Plan"));
+    assert!(content.contains("## Phase 1: Infrastructure"));
+    assert!(content.contains("## Phase 2: Implementation"));
+    assert!(content.contains("## Phase 3: Testing"));
+    // Phased plan should NOT have a top-level Tickets section
+    // (tickets are inside phases)
+}
+
+#[test]
+fn test_plan_reorder_no_tickets_message() {
+    let janus = JanusTest::new();
+
+    // Create an empty simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Empty Plan"])
+        .trim()
+        .to_string();
+
+    // Reorder should handle empty plan gracefully with a message
+    let output = janus.run_success(&["plan", "reorder", &plan_id]);
+
+    // Should indicate there are no tickets to reorder
+    assert!(
+        output.contains("No tickets to reorder"),
+        "Should indicate no tickets to reorder"
+    );
+}
+
+#[test]
+fn test_plan_ls_basic() {
+    let janus = JanusTest::new();
+
+    let id1 = janus
+        .run_success(&["plan", "create", "First Plan"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["plan", "create", "Second Plan"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["plan", "ls"]);
+    assert!(output.contains(&id1));
+    assert!(output.contains(&id2));
+    assert!(output.contains("First Plan"));
+    assert!(output.contains("Second Plan"));
+}
+
+#[test]
+fn test_plan_show_simple() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["plan", "create", "Show Test Plan"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["plan", "show", &id]);
+    assert!(output.contains("Show Test Plan"));
+    assert!(output.contains("Progress:"));
+    assert!(output.contains("[new]"));
+}
+
+#[test]
+fn test_plan_show_raw() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["plan", "create", "Raw Test Plan"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["plan", "show", &id, "--raw"]);
+    // Raw output should contain the frontmatter delimiters
+    assert!(output.contains("---"));
+    assert!(output.contains(&format!("id: {}", id)));
+    assert!(output.contains("# Raw Test Plan"));
+}
+
+#[test]
+fn test_plan_show_with_tickets() {
+    let janus = JanusTest::new();
+
+    // Create tickets with known IDs
+    let ticket1_content = r#"---
+id: j-task1
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Task One
+
+First task.
+"#;
+    janus.write_ticket("j-task1", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-task2
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Task Two
+
+Second task.
+"#;
+    janus.write_ticket("j-task2", ticket2_content);
+
+    // Create a simple plan with these tickets
+    let content = r#"---
+id: plan-test
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Tickets
+
+Test plan description.
+
+## Tickets
+
+1. j-task1
+2. j-task2
+"#;
+    janus.write_plan("plan-test", &content);
+
+    let output = janus.run_success(&["plan", "show", "plan-test"]);
+    assert!(output.contains("Plan with Tickets"));
+    assert!(output.contains("j-task1"));
+    assert!(output.contains("j-task2"));
+    assert!(output.contains("Task One"));
+    assert!(output.contains("Task Two"));
+    assert!(output.contains("[new]"));
+}
+
+#[test]
+fn test_plan_show_phased_with_status() {
+    let janus = JanusTest::new();
+
+    // Create tickets with different statuses
+    let ticket1_content = r#"---
+id: j-done1
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Completed Task
+
+Done!
+"#;
+    janus.write_ticket("j-done1", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-prog1
+status: in_progress
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# In Progress Task
+
+Working on it.
+"#;
+    janus.write_ticket("j-prog1", ticket2_content);
+
+    let ticket3_content = r#"---
+id: j-new1
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# New Task
+
+Not started.
+"#;
+    janus.write_ticket("j-new1", ticket3_content);
+
+    // Create a phased plan
+    let plan_content = r#"---
+id: plan-phased
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Phased Plan Test
+
+Test plan with phases.
+
+## Phase 1: Complete Phase
+
+First phase description.
+
+### Tickets
+
+1. j-done1
+
+## Phase 2: In Progress Phase
+
+Second phase.
+
+### Tickets
+
+1. j-prog1
+2. j-new1
+"#;
+    janus.write_plan("plan-phased", &plan_content);
+
+    let output = janus.run_success(&["plan", "show", "plan-phased"]);
+
+    // Check plan shows overall in_progress status
+    assert!(output.contains("[in_progress]"));
+
+    // Check phase statuses
+    assert!(output.contains("Phase 1: Complete Phase"));
+    assert!(output.contains("Phase 2: In Progress Phase"));
+
+    // Check ticket statuses are shown
+    assert!(output.contains("[complete]"));
+    assert!(output.contains("Completed Task"));
+    assert!(output.contains("In Progress Task"));
+    assert!(output.contains("[new]"));
+    assert!(output.contains("New Task"));
+}
+
+#[test]
+fn test_plan_show_missing_ticket() {
+    let janus = JanusTest::new();
+
+    // Create a plan referencing a non-existent ticket
+    let content = r#"---
+id: plan-missing
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Missing Ticket
+
+## Tickets
+
+1. j-nonexistent
+"#;
+    janus.write_plan("plan-missing", &content);
+
+    let output = janus.run_success(&["plan", "show", "plan-missing"]);
+    assert!(output.contains("[missing]"));
+    assert!(output.contains("j-nonexistent"));
+}
+
+#[test]
+fn test_plan_edit_noninteractive() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["plan", "create", "Edit Test Plan"])
+        .trim()
+        .to_string();
+
+    // In non-interactive mode (CI), edit should print the file path
+    let output = janus.run_success(&["plan", "edit", &id]);
+    assert!(output.contains("Edit plan file:"));
+    assert!(output.contains(&id));
+}
+
+#[test]
+fn test_plan_ls_status_filter() {
+    let janus = JanusTest::new();
+
+    // Create a plan with completed tickets
+    let ticket_content = r#"---
+id: j-done2
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Done Task
+
+Completed.
+"#;
+    janus.write_ticket("j-done2", ticket_content);
+
+    let complete_plan = r#"---
+id: plan-complete
+uuid: 550e8400-e29b-41d4-a716-446655440001
+created: 2024-01-01T00:00:00Z
+---
+# Complete Plan
+
+## Tickets
+
+1. j-done2
+"#;
+    janus.write_plan("plan-complete", &complete_plan);
+
+    // Create a plan with new tickets (no actual tickets, so it's "new")
+    let new_id = janus
+        .run_success(&["plan", "create", "New Plan"])
+        .trim()
+        .to_string();
+
+    // Test status filter for complete
+    let output = janus.run_success(&["plan", "ls", "--status", "complete"]);
+    assert!(output.contains("plan-complete"));
+    assert!(!output.contains(&new_id));
+
+    // Test status filter for new
+    let output = janus.run_success(&["plan", "ls", "--status", "new"]);
+    assert!(!output.contains("plan-complete"));
+    assert!(output.contains(&new_id));
+}
+
+#[test]
+fn test_plan_show_partial_id() {
+    let janus = JanusTest::new();
+
+    // Create a plan - the ID will be like plan-xxxx
+    let id = janus
+        .run_success(&["plan", "create", "Partial ID Test"])
+        .trim()
+        .to_string();
+
+    // Should be able to find it with partial ID (just the hash part)
+    let hash_part = id.strip_prefix("plan-").unwrap();
+    let output = janus.run_success(&["plan", "show", hash_part]);
+    assert!(output.contains("Partial ID Test"));
+}
+
+#[test]
+fn test_plan_not_found() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_failure(&["plan", "show", "nonexistent-plan"]);
+    assert!(output.contains("not found"));
+}
+
+#[test]
+fn test_plan_show_with_freeform_sections() {
+    let janus = JanusTest::new();
+
+    let content = r#"---
+id: plan-freeform
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Free-form Sections
+
+Description here.
+
+## Overview
+
+This is the overview section with details.
+
+### Nested Header
+
+Some nested content.
+
+## Phase 1: Implementation
+
+Phase description.
+
+### Tickets
+
+1. j-test1
+
+## Technical Details
+
+```sql
+CREATE TABLE example (id TEXT);
+```
+
+## Open Questions
+
+1. What about this?
+2. And that?
+"#;
+    janus.write_plan("plan-freeform", &content);
+
+    // Create the referenced ticket
+    let ticket_content = r#"---
+id: j-test1
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test Ticket
+
+Description.
+"#;
+    janus.write_ticket("j-test1", ticket_content);
+
+    let output = janus.run_success(&["plan", "show", "plan-freeform"]);
+
+    // Check free-form sections are displayed
+    assert!(output.contains("## Overview"));
+    assert!(output.contains("This is the overview section"));
+    assert!(output.contains("## Technical Details"));
+    assert!(output.contains("CREATE TABLE"));
+    assert!(output.contains("## Open Questions"));
+
+    // Check phase is displayed with status
+    assert!(output.contains("Phase 1: Implementation"));
+    assert!(output.contains("j-test1"));
+}
+
+// ============================================================================
+// Plan Manipulation Command Tests
+// ============================================================================
+
+#[test]
+fn test_plan_add_ticket_simple() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create a ticket
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+
+    // Add ticket to plan
+    let output = janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+    assert!(output.contains("Added"));
+    assert!(output.contains(&ticket_id));
+
+    // Verify ticket is in plan
+    let content = janus.read_plan(&plan_id);
+    assert!(content.contains(&ticket_id));
+}
+
+#[test]
+fn test_plan_add_ticket_phased() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase One",
+            "--phase",
+            "Phase Two",
+        ])
+        .trim()
+        .to_string();
+
+    // Create a ticket
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+
+    // Add ticket to phase
+    let output = janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket_id,
+        "--phase",
+        "Phase One",
+    ]);
+    assert!(output.contains("Added"));
+
+    // Verify ticket is in plan
+    let content = janus.read_plan(&plan_id);
+    assert!(content.contains(&ticket_id));
+}
+
+#[test]
+fn test_plan_add_ticket_requires_phase_for_phased_plan() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Phased Plan", "--phase", "Phase One"])
+        .trim()
+        .to_string();
+
+    // Create a ticket
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+
+    // Try to add ticket without --phase (should fail)
+    let output = janus.run_failure(&["plan", "add-ticket", &plan_id, &ticket_id]);
+    assert!(output.contains("--phase"));
+}
+
+#[test]
+fn test_plan_add_ticket_duplicate() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create a ticket
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+
+    // Add ticket to plan
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+
+    // Try to add same ticket again (should fail)
+    let output = janus.run_failure(&["plan", "add-ticket", &plan_id, &ticket_id]);
+    assert!(output.contains("already"));
+}
+
+#[test]
+fn test_plan_add_ticket_with_position() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create three tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+    let ticket3 = janus
+        .run_success(&["create", "Ticket 3"])
+        .trim()
+        .to_string();
+
+    // Add ticket1 and ticket3
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket3]);
+
+    // Add ticket2 at position 2 (between ticket1 and ticket3)
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2, "--position", "2"]);
+
+    // Verify order in plan
+    let content = janus.read_plan(&plan_id);
+    let pos1 = content.find(&ticket1).unwrap();
+    let pos2 = content.find(&ticket2).unwrap();
+    let pos3 = content.find(&ticket3).unwrap();
+    assert!(pos1 < pos2);
+    assert!(pos2 < pos3);
+}
+
+#[test]
+fn test_plan_remove_ticket() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+
+    // Verify ticket is in plan
+    let content = janus.read_plan(&plan_id);
+    assert!(content.contains(&ticket_id));
+
+    // Remove ticket
+    let output = janus.run_success(&["plan", "remove-ticket", &plan_id, &ticket_id]);
+    assert!(output.contains("Removed"));
+
+    // Verify ticket is no longer in plan
+    let content = janus.read_plan(&plan_id);
+    assert!(!content.contains(&ticket_id));
+}
+
+#[test]
+fn test_plan_remove_ticket_not_in_plan() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create a ticket but don't add it to the plan
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+
+    // Try to remove ticket (should fail)
+    let output = janus.run_failure(&["plan", "remove-ticket", &plan_id, &ticket_id]);
+    assert!(output.contains("not found in plan"));
+}
+
+#[test]
+fn test_plan_move_ticket() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase One",
+            "--phase",
+            "Phase Two",
+        ])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket to Phase One
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket_id,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Move ticket to Phase Two
+    let output = janus.run_success(&[
+        "plan",
+        "move-ticket",
+        &plan_id,
+        &ticket_id,
+        "--to-phase",
+        "Phase Two",
+    ]);
+    assert!(output.contains("Moved"));
+    assert!(output.contains("Phase Two"));
+
+    // Verify the move - ticket should be after Phase 2 header
+    let content = janus.read_plan(&plan_id);
+    let phase2_pos = content.find("Phase 2").unwrap();
+    let ticket_pos = content.rfind(&ticket_id).unwrap(); // Use rfind to find the last occurrence
+    assert!(
+        ticket_pos > phase2_pos,
+        "Ticket should be after Phase 2 header"
+    );
+}
+
+#[test]
+fn test_plan_move_ticket_simple_plan_fails() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+
+    // Try to move ticket (should fail - simple plans don't have phases)
+    let output = janus.run_failure(&[
+        "plan",
+        "move-ticket",
+        &plan_id,
+        &ticket_id,
+        "--to-phase",
+        "Nonexistent",
+    ]);
+    assert!(output.contains("simple plan"));
+}
+
+#[test]
+fn test_plan_add_phase() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan (no phases)
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Add a phase
+    let output = janus.run_success(&["plan", "add-phase", &plan_id, "New Phase"]);
+    assert!(output.contains("Added phase"));
+    assert!(output.contains("New Phase"));
+
+    // Verify phase is in plan
+    let content = janus.read_plan(&plan_id);
+    assert!(content.contains("New Phase"));
+    assert!(content.contains("## Phase"));
+}
+
+#[test]
+fn test_plan_add_phase_to_phased_plan() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Phased Plan", "--phase", "Phase One"])
+        .trim()
+        .to_string();
+
+    // Add another phase
+    janus.run_success(&["plan", "add-phase", &plan_id, "Phase Two"]);
+
+    // Verify both phases are in plan
+    let content = janus.read_plan(&plan_id);
+    assert!(content.contains("Phase One"));
+    assert!(content.contains("Phase Two"));
+}
+
+#[test]
+fn test_plan_remove_phase_empty() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase One",
+            "--phase",
+            "Phase Two",
+        ])
+        .trim()
+        .to_string();
+
+    // Remove Phase One (empty, should succeed)
+    let output = janus.run_success(&["plan", "remove-phase", &plan_id, "Phase One"]);
+    assert!(output.contains("Removed"));
+
+    // Verify phase is no longer in plan
+    let content = janus.read_plan(&plan_id);
+    assert!(!content.contains("Phase One"));
+    assert!(content.contains("Phase Two"));
+}
+
+#[test]
+fn test_plan_remove_phase_with_tickets_fails_without_force() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Phased Plan", "--phase", "Phase One"])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket to the phase
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket_id,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Try to remove phase (should fail without --force)
+    let output = janus.run_failure(&["plan", "remove-phase", &plan_id, "Phase One"]);
+    assert!(output.contains("contains tickets"));
+}
+
+#[test]
+fn test_plan_remove_phase_with_force() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Phased Plan", "--phase", "Phase One"])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket to the phase
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket_id,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Remove phase with --force
+    let output = janus.run_success(&["plan", "remove-phase", &plan_id, "Phase One", "--force"]);
+    assert!(output.contains("Removed"));
+
+    // Verify phase is gone
+    let content = janus.read_plan(&plan_id);
+    assert!(!content.contains("Phase One"));
+}
+
+#[test]
+fn test_plan_remove_phase_with_migrate() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase One",
+            "--phase",
+            "Phase Two",
+        ])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket to Phase One
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket_id,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Remove Phase One with --migrate to Phase Two
+    let output = janus.run_success(&[
+        "plan",
+        "remove-phase",
+        &plan_id,
+        "Phase One",
+        "--migrate",
+        "Phase Two",
+    ]);
+    assert!(output.contains("Migrated"));
+    assert!(output.contains("Removed"));
+
+    // Verify ticket is now in Phase Two
+    let content = janus.read_plan(&plan_id);
+    assert!(!content.contains("Phase One"));
+    assert!(content.contains("Phase Two"));
+    assert!(content.contains(&ticket_id));
+}
+
+#[test]
+fn test_plan_delete() {
+    let janus = JanusTest::new();
+
+    // Create a plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Plan to Delete"])
+        .trim()
+        .to_string();
+
+    // Verify plan exists
+    assert!(janus.plan_exists(&plan_id));
+
+    // Delete with --force (non-interactive)
+    let output = janus.run_success(&["plan", "delete", &plan_id, "--force"]);
+    assert!(output.contains("Deleted"));
+
+    // Verify plan is gone
+    assert!(!janus.plan_exists(&plan_id));
+}
+
+#[test]
+fn test_plan_rename() {
+    let janus = JanusTest::new();
+
+    // Create a plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Original Title"])
+        .trim()
+        .to_string();
+
+    // Rename it
+    let output = janus.run_success(&["plan", "rename", &plan_id, "New Title"]);
+    assert!(output.contains("Renamed"));
+    assert!(output.contains("Original Title"));
+    assert!(output.contains("New Title"));
+
+    // Verify new title
+    let content = janus.read_plan(&plan_id);
+    assert!(content.contains("# New Title"));
+    assert!(!content.contains("# Original Title"));
+}
+
+#[test]
+fn test_plan_add_ticket_with_after() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create three tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+    let ticket3 = janus
+        .run_success(&["create", "Ticket 3"])
+        .trim()
+        .to_string();
+
+    // Add ticket1 and ticket3
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket3]);
+
+    // Add ticket2 after ticket1
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket2,
+        "--after",
+        &ticket1,
+    ]);
+
+    // Verify order in plan
+    let content = janus.read_plan(&plan_id);
+    let pos1 = content.find(&ticket1).unwrap();
+    let pos2 = content.find(&ticket2).unwrap();
+    let pos3 = content.find(&ticket3).unwrap();
+    assert!(pos1 < pos2);
+    assert!(pos2 < pos3);
+}
+
+#[test]
+fn test_plan_not_found_for_manipulation() {
+    let janus = JanusTest::new();
+
+    // Create a ticket for add-ticket test
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+
+    // Try to add ticket to non-existent plan
+    let output = janus.run_failure(&["plan", "add-ticket", "nonexistent", &ticket_id]);
+    assert!(output.contains("not found"));
+}
+
+#[test]
+fn test_plan_ticket_not_found() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Try to add non-existent ticket
+    let output = janus.run_failure(&["plan", "add-ticket", &plan_id, "nonexistent-ticket"]);
+    assert!(output.contains("not found"));
+}
+
+// ============================================================================
+// Plan Next command tests
+// ============================================================================
+
+#[test]
+fn test_plan_next_simple() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+
+    // Add tickets to plan
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
+
+    // Get next item
+    let output = janus.run_success(&["plan", "next", &plan_id]);
+    assert!(
+        output.contains(&ticket1),
+        "Should show first ticket as next"
+    );
+    assert!(output.contains("[new]"), "Should show status badge");
+}
+
+#[test]
+fn test_plan_next_skips_complete() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+
+    // Add tickets to plan
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
+
+    // Complete first ticket
+    janus.run_success(&["close", &ticket1]);
+
+    // Get next item - should be ticket2
+    let output = janus.run_success(&["plan", "next", &plan_id]);
+    assert!(
+        output.contains(&ticket2),
+        "Should show second ticket as next"
+    );
+    assert!(
+        !output.contains(&ticket1),
+        "Should not show completed ticket"
+    );
+}
+
+#[test]
+fn test_plan_next_phased() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase 1",
+            "--phase",
+            "Phase 2",
+        ])
+        .trim()
+        .to_string();
+
+    // Create tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+
+    // Add tickets to different phases
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket1,
+        "--phase",
+        "Phase 1",
+    ]);
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket2,
+        "--phase",
+        "Phase 2",
+    ]);
+
+    // Get next item - should show from Phase 1
+    let output = janus.run_success(&["plan", "next", &plan_id]);
+    assert!(output.contains("Phase 1"), "Should show phase name");
+    assert!(output.contains(&ticket1), "Should show ticket from Phase 1");
+}
+
+#[test]
+fn test_plan_next_phased_skips_complete_phase() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase 1",
+            "--phase",
+            "Phase 2",
+        ])
+        .trim()
+        .to_string();
+
+    // Create tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+
+    // Add tickets to different phases
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket1,
+        "--phase",
+        "Phase 1",
+    ]);
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket2,
+        "--phase",
+        "Phase 2",
+    ]);
+
+    // Complete Phase 1 ticket
+    janus.run_success(&["close", &ticket1]);
+
+    // Get next item - should show from Phase 2
+    let output = janus.run_success(&["plan", "next", &plan_id]);
+    assert!(output.contains("Phase 2"), "Should show Phase 2");
+    assert!(output.contains(&ticket2), "Should show ticket from Phase 2");
+}
+
+#[test]
+fn test_plan_next_all_complete() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+
+    // Complete the ticket
+    janus.run_success(&["close", &ticket1]);
+
+    // Get next item - should say no actionable items
+    let output = janus.run_success(&["plan", "next", &plan_id]);
+    assert!(
+        output.contains("No actionable items"),
+        "Should indicate no more items"
+    );
+}
+
+#[test]
+fn test_plan_next_with_count() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+    let ticket3 = janus
+        .run_success(&["create", "Ticket 3"])
+        .trim()
+        .to_string();
+
+    // Add tickets to plan
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket3]);
+
+    // Get next 2 items
+    let output = janus.run_success(&["plan", "next", &plan_id, "--count", "2"]);
+    assert!(output.contains(&ticket1), "Should show first ticket");
+    assert!(output.contains(&ticket2), "Should show second ticket");
+    // Third ticket may or may not be shown depending on implementation
+}
+
+#[test]
+fn test_plan_next_phased_all_flag() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase 1",
+            "--phase",
+            "Phase 2",
+        ])
+        .trim()
+        .to_string();
+
+    // Create tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+
+    // Add tickets to different phases
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket1,
+        "--phase",
+        "Phase 1",
+    ]);
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket2,
+        "--phase",
+        "Phase 2",
+    ]);
+
+    // Get next item from all phases
+    let output = janus.run_success(&["plan", "next", &plan_id, "--all"]);
+    assert!(output.contains("Phase 1"), "Should show Phase 1");
+    assert!(output.contains("Phase 2"), "Should show Phase 2");
+    assert!(output.contains(&ticket1), "Should show ticket from Phase 1");
+    assert!(output.contains(&ticket2), "Should show ticket from Phase 2");
+}
+
+// ============================================================================
+// Plan Status command tests
+// ============================================================================
+
+#[test]
+fn test_plan_status_simple() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create and add tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
+
+    // Get status
+    let output = janus.run_success(&["plan", "status", &plan_id]);
+    assert!(output.contains("Plan:"), "Should show plan header");
+    assert!(output.contains("Simple Plan"), "Should show plan title");
+    assert!(output.contains("Status:"), "Should show status label");
+    assert!(output.contains("Progress:"), "Should show progress label");
+    assert!(output.contains("0/2"), "Should show 0 of 2 complete");
+}
+
+#[test]
+fn test_plan_status_with_progress() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create and add tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
+
+    // Complete one ticket
+    janus.run_success(&["close", &ticket1]);
+
+    // Get status
+    let output = janus.run_success(&["plan", "status", &plan_id]);
+    assert!(output.contains("1/2"), "Should show 1 of 2 complete");
+    assert!(
+        output.contains("in_progress") || output.contains("[in_progress]"),
+        "Should show in_progress status"
+    );
+}
+
+#[test]
+fn test_plan_status_phased() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Infrastructure",
+            "--phase",
+            "Implementation",
+        ])
+        .trim()
+        .to_string();
+
+    // Create and add tickets
+    let ticket1 = janus
+        .run_success(&["create", "Setup database"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Create API"])
+        .trim()
+        .to_string();
+
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket1,
+        "--phase",
+        "Infrastructure",
+    ]);
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket2,
+        "--phase",
+        "Implementation",
+    ]);
+
+    // Get status
+    let output = janus.run_success(&["plan", "status", &plan_id]);
+    assert!(output.contains("Phases:"), "Should show phases section");
+    assert!(
+        output.contains("Infrastructure"),
+        "Should show phase name Infrastructure"
+    );
+    assert!(
+        output.contains("Implementation"),
+        "Should show phase name Implementation"
+    );
+}
+
+#[test]
+fn test_plan_status_complete() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create and add a ticket
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
+
+    // Complete the ticket
+    janus.run_success(&["close", &ticket1]);
+
+    // Get status
+    let output = janus.run_success(&["plan", "status", &plan_id]);
+    assert!(output.contains("1/1"), "Should show 1 of 1 complete");
+    assert!(
+        output.contains("complete") || output.contains("[complete]"),
+        "Should show complete status"
+    );
+}
+
+#[test]
+fn test_plan_status_empty_plan() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan with no tickets
+    let plan_id = janus
+        .run_success(&["plan", "create", "Empty Plan"])
+        .trim()
+        .to_string();
+
+    // Get status
+    let output = janus.run_success(&["plan", "status", &plan_id]);
+    assert!(output.contains("Empty Plan"), "Should show plan title");
+    assert!(output.contains("0/0"), "Should show 0 of 0");
+}
+
+#[test]
+fn test_plan_status_not_found() {
+    let janus = JanusTest::new();
+
+    // Try to get status of non-existent plan
+    let output = janus.run_failure(&["plan", "status", "nonexistent"]);
+    assert!(output.contains("not found"));
+}
+
+#[test]
+fn test_plan_next_not_found() {
+    let janus = JanusTest::new();
+
+    // Try to get next from non-existent plan
+    let output = janus.run_failure(&["plan", "next", "nonexistent"]);
+    assert!(output.contains("not found"));
+}
+
+// ============================================================================
+// Additional Plan Edge Case Tests (Phase 9)
+// ============================================================================
+
+#[test]
+fn test_plan_status_all_cancelled() {
+    let janus = JanusTest::new();
+
+    // Create a plan with cancelled tickets
+    let ticket1_content = r#"---
+id: j-canc1
+status: cancelled
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Cancelled Task 1
+
+Cancelled.
+"#;
+    janus.write_ticket("j-canc1", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-canc2
+status: cancelled
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Cancelled Task 2
+
+Also cancelled.
+"#;
+    janus.write_ticket("j-canc2", ticket2_content);
+
+    let plan_content = r#"---
+id: plan-allcanc
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# All Cancelled Plan
+
+## Tickets
+
+1. j-canc1
+2. j-canc2
+"#;
+    janus.write_plan("plan-allcanc", &plan_content);
+
+    let output = janus.run_success(&["plan", "status", "plan-allcanc"]);
+    assert!(
+        output.contains("cancelled") || output.contains("[cancelled]"),
+        "Should show cancelled status"
+    );
+}
+
+#[test]
+fn test_plan_status_mixed_complete_cancelled() {
+    let janus = JanusTest::new();
+
+    // Create tickets with mixed complete/cancelled statuses
+    let ticket1_content = r#"---
+id: j-comp1
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Completed Task
+
+Done!
+"#;
+    janus.write_ticket("j-comp1", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-canc3
+status: cancelled
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Cancelled Task
+
+Cancelled.
+"#;
+    janus.write_ticket("j-canc3", ticket2_content);
+
+    let plan_content = r#"---
+id: plan-mixfinish
+uuid: 550e8400-e29b-41d4-a716-446655440001
+created: 2024-01-01T00:00:00Z
+---
+# Mixed Finished Plan
+
+## Tickets
+
+1. j-comp1
+2. j-canc3
+"#;
+    janus.write_plan("plan-mixfinish", &plan_content);
+
+    let output = janus.run_success(&["plan", "status", "plan-mixfinish"]);
+    // Mixed complete/cancelled should show as complete
+    assert!(
+        output.contains("complete") || output.contains("[complete]"),
+        "Mixed complete/cancelled should show as complete"
+    );
+}
+
+#[test]
+fn test_plan_status_all_next() {
+    let janus = JanusTest::new();
+
+    // Create tickets with 'next' status
+    let ticket1_content = r#"---
+id: j-next1
+status: next
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Next Task 1
+
+Ready to start.
+"#;
+    janus.write_ticket("j-next1", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-next2
+status: next
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Next Task 2
+
+Also ready.
+"#;
+    janus.write_ticket("j-next2", ticket2_content);
+
+    let plan_content = r#"---
+id: plan-allnext
+uuid: 550e8400-e29b-41d4-a716-446655440002
+created: 2024-01-01T00:00:00Z
+---
+# All Next Plan
+
+## Tickets
+
+1. j-next1
+2. j-next2
+"#;
+    janus.write_plan("plan-allnext", &plan_content);
+
+    let output = janus.run_success(&["plan", "status", "plan-allnext"]);
+    // All new/next should show as new
+    assert!(
+        output.contains("new") || output.contains("[new]"),
+        "All next tickets should show plan as new"
+    );
+}
+
+#[test]
+fn test_plan_large_many_phases() {
+    let janus = JanusTest::new();
+
+    // Create a plan with many phases (10+)
+    let mut phases = Vec::new();
+    for i in 1..=10 {
+        phases.push(format!("--phase"));
+        phases.push(format!("Phase {}", i));
+    }
+
+    let mut args: Vec<&str> = vec!["plan", "create", "Large Phased Plan"];
+    for p in &phases {
+        args.push(p);
+    }
+
+    let output = janus.run_success(&args);
+    let plan_id = output.trim();
+
+    assert!(janus.plan_exists(plan_id), "Plan file should exist");
+
+    let content = janus.read_plan(plan_id);
+    // Verify all 10 phases are created
+    for i in 1..=10 {
+        assert!(
+            content.contains(&format!("Phase {}", i)),
+            "Should contain Phase {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_plan_large_many_tickets() {
+    let janus = JanusTest::new();
+
+    // Create many tickets
+    let mut ticket_ids = Vec::new();
+    for i in 1..=20 {
+        let ticket_content = format!(
+            r#"---
+id: j-bulk{:02}
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Bulk Task {}
+
+Description for task {}.
+"#,
+            i, i, i
+        );
+        janus.write_ticket(&format!("j-bulk{:02}", i), &ticket_content);
+        ticket_ids.push(format!("j-bulk{:02}", i));
+    }
+
+    // Create a simple plan with all tickets
+    let tickets_list: String = ticket_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| format!("{}. {}", i + 1, id))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let plan_content = format!(
+        r#"---
+id: plan-manytickets
+uuid: 550e8400-e29b-41d4-a716-446655440003
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Many Tickets
+
+Large plan with 20 tickets.
+
+## Tickets
+
+{}
+"#,
+        tickets_list
+    );
+    janus.write_plan("plan-manytickets", &plan_content);
+
+    // Verify plan status works with many tickets
+    let output = janus.run_success(&["plan", "status", "plan-manytickets"]);
+    assert!(output.contains("0/20"), "Should show 0/20 progress");
+
+    // Verify plan show works
+    let output = janus.run_success(&["plan", "show", "plan-manytickets"]);
+    assert!(output.contains("Bulk Task 1"));
+    assert!(output.contains("Bulk Task 20"));
+}
+
+#[test]
+fn test_plan_with_multiple_missing_tickets() {
+    let janus = JanusTest::new();
+
+    // Create a plan referencing multiple non-existent tickets
+    let plan_content = r#"---
+id: plan-manymissing
+uuid: 550e8400-e29b-41d4-a716-446655440004
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Multiple Missing Tickets
+
+## Tickets
+
+1. j-missing1
+2. j-missing2
+3. j-missing3
+"#;
+    janus.write_plan("plan-manymissing", &plan_content);
+
+    let output = janus.run_success(&["plan", "show", "plan-manymissing"]);
+    // Should show all missing tickets
+    assert!(output.contains("[missing]"));
+    assert!(output.contains("j-missing1"));
+    assert!(output.contains("j-missing2"));
+    assert!(output.contains("j-missing3"));
+}
+
+#[test]
+fn test_plan_show_acceptance_criteria() {
+    let janus = JanusTest::new();
+
+    let plan_content = r#"---
+id: plan-ac
+uuid: 550e8400-e29b-41d4-a716-446655440005
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Acceptance Criteria
+
+This is the description.
+
+## Acceptance Criteria
+
+- First criterion
+- Second criterion
+- Third criterion
+
+## Tickets
+
+"#;
+    janus.write_plan("plan-ac", &plan_content);
+
+    let output = janus.run_success(&["plan", "show", "plan-ac"]);
+    assert!(output.contains("Acceptance Criteria"));
+    assert!(output.contains("First criterion"));
+    assert!(output.contains("Second criterion"));
+    assert!(output.contains("Third criterion"));
+}
+
+#[test]
+fn test_plan_phased_with_empty_phase() {
+    let janus = JanusTest::new();
+
+    // Create a ticket
+    let ticket_content = r#"---
+id: j-inphase
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Task in Phase
+
+Description.
+"#;
+    janus.write_ticket("j-inphase", ticket_content);
+
+    // Create a phased plan where one phase is empty
+    let plan_content = r#"---
+id: plan-emptyph
+uuid: 550e8400-e29b-41d4-a716-446655440006
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Empty Phase
+
+## Phase 1: Has Tickets
+
+### Tickets
+
+1. j-inphase
+
+## Phase 2: Empty Phase
+
+No tickets yet.
+
+### Tickets
+
+"#;
+    janus.write_plan("plan-emptyph", &plan_content);
+
+    let output = janus.run_success(&["plan", "show", "plan-emptyph"]);
+    assert!(output.contains("Phase 1: Has Tickets"));
+    assert!(output.contains("Phase 2: Empty Phase"));
+
+    // Status should work with empty phase
+    let output = janus.run_success(&["plan", "status", "plan-emptyph"]);
+    assert!(output.contains("Phase 1") || output.contains("Has Tickets"));
+}
+
+#[test]
+fn test_plan_next_empty_plan() {
+    let janus = JanusTest::new();
+
+    // Create an empty simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Empty Plan"])
+        .trim()
+        .to_string();
+
+    // Get next should indicate no actionable items
+    let output = janus.run_success(&["plan", "next", &plan_id]);
+    assert!(
+        output.contains("No actionable items") || output.contains("no tickets"),
+        "Should indicate no actionable items"
+    );
+}
+
+#[test]
+fn test_plan_with_code_blocks() {
+    let janus = JanusTest::new();
+
+    // Create a plan with code blocks that contain ## headers (edge case)
+    let plan_content = r#"---
+id: plan-code
+uuid: 550e8400-e29b-41d4-a716-446655440007
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Code Blocks
+
+Description.
+
+## Overview
+
+This section has code:
+
+```markdown
+## This is NOT a header
+
+It's inside a code block.
+```
+
+## Tickets
+
+"#;
+    janus.write_plan("plan-code", &plan_content);
+
+    let output = janus.run_success(&["plan", "show", "plan-code"]);
+    // The code block content should be preserved, not parsed as a section
+    // Note: comrak may normalize ``` markdown to ``` markdown (with space)
+    assert!(
+        output.contains("```") && output.contains("markdown"),
+        "Code block fence should be present"
+    );
+    assert!(output.contains("## This is NOT a header"));
+}
+
+#[test]
+fn test_plan_add_phase_with_position() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "First",
+            "--phase",
+            "Third",
+        ])
+        .trim()
+        .to_string();
+
+    // Add a phase at position 2 (between First and Third)
+    janus.run_success(&["plan", "add-phase", &plan_id, "Second", "--position", "2"]);
+
+    let content = janus.read_plan(&plan_id);
+    let first_pos = content.find("First").unwrap();
+    let second_pos = content.find("Second").unwrap();
+    let third_pos = content.find("Third").unwrap();
+
+    assert!(first_pos < second_pos, "First should come before Second");
+    assert!(second_pos < third_pos, "Second should come before Third");
+}
+
+#[test]
+fn test_plan_add_phase_with_after() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "First",
+            "--phase",
+            "Third",
+        ])
+        .trim()
+        .to_string();
+
+    // Add a phase after First
+    janus.run_success(&["plan", "add-phase", &plan_id, "Second", "--after", "First"]);
+
+    let content = janus.read_plan(&plan_id);
+    let first_pos = content.find("First").unwrap();
+    let second_pos = content.find("Second").unwrap();
+    let third_pos = content.find("Third").unwrap();
+
+    assert!(first_pos < second_pos, "First should come before Second");
+    assert!(second_pos < third_pos, "Second should come before Third");
+}
+
+#[test]
+fn test_plan_help_shows_all_subcommands() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["plan", "--help"]);
+
+    // Verify all plan subcommands are documented
+    assert!(output.contains("create"), "Should document create command");
+    assert!(output.contains("show"), "Should document show command");
+    assert!(output.contains("edit"), "Should document edit command");
+    assert!(output.contains("ls"), "Should document ls command");
+    assert!(
+        output.contains("add-ticket"),
+        "Should document add-ticket command"
+    );
+    assert!(
+        output.contains("remove-ticket"),
+        "Should document remove-ticket command"
+    );
+    assert!(
+        output.contains("move-ticket"),
+        "Should document move-ticket command"
+    );
+    assert!(
+        output.contains("add-phase"),
+        "Should document add-phase command"
+    );
+    assert!(
+        output.contains("remove-phase"),
+        "Should document remove-phase command"
+    );
+    assert!(
+        output.contains("reorder"),
+        "Should document reorder command"
+    );
+    assert!(output.contains("delete"), "Should document delete command");
+    assert!(output.contains("rename"), "Should document rename command");
+    assert!(output.contains("next"), "Should document next command");
+    assert!(output.contains("status"), "Should document status command");
+}
+
+#[test]
+fn test_plan_move_ticket_with_position() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase One",
+            "--phase",
+            "Phase Two",
+        ])
+        .trim()
+        .to_string();
+
+    // Create tickets
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+    let ticket3 = janus
+        .run_success(&["create", "Ticket 3"])
+        .trim()
+        .to_string();
+
+    // Add tickets to Phase One
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket1,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Add tickets to Phase Two
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket2,
+        "--phase",
+        "Phase Two",
+    ]);
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket3,
+        "--phase",
+        "Phase Two",
+    ]);
+
+    // Move ticket1 to Phase Two at position 1
+    let output = janus.run_success(&[
+        "plan",
+        "move-ticket",
+        &plan_id,
+        &ticket1,
+        "--to-phase",
+        "Phase Two",
+        "--position",
+        "1",
+    ]);
+    assert!(output.contains("Moved"));
+
+    // Verify ticket1 is now first in Phase Two
+    let content = janus.read_plan(&plan_id);
+    let phase2_pos = content.find("Phase 2").unwrap();
+    let t1_after_p2 = content[phase2_pos..].find(&ticket1);
+    let t2_after_p2 = content[phase2_pos..].find(&ticket2);
+
+    assert!(
+        t1_after_p2.is_some() && t2_after_p2.is_some(),
+        "Both tickets should be in Phase 2"
+    );
+    assert!(
+        t1_after_p2.unwrap() < t2_after_p2.unwrap(),
+        "Ticket1 should be before Ticket2 in Phase 2"
+    );
+}
+
+#[test]
+fn test_plan_status_with_in_progress_tickets() {
+    let janus = JanusTest::new();
+
+    // Create tickets with in_progress status
+    let ticket1_content = r#"---
+id: j-inprog1
+status: in_progress
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# In Progress Task 1
+
+Working on it.
+"#;
+    janus.write_ticket("j-inprog1", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-newt
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# New Task
+
+Not started.
+"#;
+    janus.write_ticket("j-newt", ticket2_content);
+
+    let plan_content = r#"---
+id: plan-inprog
+uuid: 550e8400-e29b-41d4-a716-446655440008
+created: 2024-01-01T00:00:00Z
+---
+# In Progress Plan
+
+## Tickets
+
+1. j-inprog1
+2. j-newt
+"#;
+    janus.write_plan("plan-inprog", &plan_content);
+
+    let output = janus.run_success(&["plan", "status", "plan-inprog"]);
+    assert!(
+        output.contains("in_progress") || output.contains("[in_progress]"),
+        "Should show in_progress status"
+    );
+}
+
+#[test]
+fn test_plan_phased_status_first_complete_second_new() {
+    let janus = JanusTest::new();
+
+    // Phase 1 complete, Phase 2 not started - should be in_progress overall
+    let ticket1_content = r#"---
+id: j-ph1done
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Phase 1 Complete Task
+
+Done.
+"#;
+    janus.write_ticket("j-ph1done", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-ph2new
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Phase 2 New Task
+
+Not started.
+"#;
+    janus.write_ticket("j-ph2new", ticket2_content);
+
+    let plan_content = r#"---
+id: plan-ph12
+uuid: 550e8400-e29b-41d4-a716-446655440009
+created: 2024-01-01T00:00:00Z
+---
+# Two Phase Plan
+
+## Phase 1: Done
+
+### Tickets
+
+1. j-ph1done
+
+## Phase 2: Not Started
+
+### Tickets
+
+1. j-ph2new
+"#;
+    janus.write_plan("plan-ph12", &plan_content);
+
+    let output = janus.run_success(&["plan", "status", "plan-ph12"]);
+    // Overall plan should be in_progress (some complete, some new)
+    assert!(
+        output.contains("in_progress") || output.contains("[in_progress]"),
+        "Overall plan should be in_progress"
+    );
+
+    // Phase 1 should show as complete
+    assert!(output.contains("Done"));
+    // Phase 2 should show
+    assert!(output.contains("Not Started"));
+}
+
+// ============================================================================
+// Plan Show/Ls Format Option Tests
+// ============================================================================
+
+#[test]
+fn test_plan_show_tickets_only() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan with tickets
+    let plan_id = janus
+        .run_success(&["plan", "create", "Test Plan", "--phase", "Phase One"])
+        .trim()
+        .to_string();
+
+    let ticket1 = janus
+        .run_success(&["create", "Task One"])
+        .trim()
+        .to_string();
+    let ticket2 = janus
+        .run_success(&["create", "Task Two"])
+        .trim()
+        .to_string();
+
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket1,
+        "--phase",
+        "Phase One",
+    ]);
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket2,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Run with --tickets-only
+    let output = janus.run_success(&["plan", "show", &plan_id, "--tickets-only"]);
+
+    // Should show tickets but not the full plan structure
+    assert!(output.contains(&ticket1), "Should show ticket 1");
+    assert!(output.contains(&ticket2), "Should show ticket 2");
+    // Should not show section headers like "## Phase"
+    assert!(
+        !output.contains("## Phase"),
+        "Should not show full plan structure"
+    );
+}
+
+#[test]
+fn test_plan_show_phases_only() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Test Plan",
+            "--phase",
+            "First Phase",
+            "--phase",
+            "Second Phase",
+        ])
+        .trim()
+        .to_string();
+
+    // Run with --phases-only
+    let output = janus.run_success(&["plan", "show", &plan_id, "--phases-only"]);
+
+    // Should show phases but not the full plan
+    assert!(output.contains("First Phase"), "Should show first phase");
+    assert!(output.contains("Second Phase"), "Should show second phase");
+    // Should have phase numbers
+    assert!(
+        output.contains("1.") || output.contains("1 "),
+        "Should show phase number"
+    );
+    assert!(
+        output.contains("2.") || output.contains("2 "),
+        "Should show phase number"
+    );
+}
+
+#[test]
+fn test_plan_show_phases_only_simple_plan() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan (no phases)
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Run with --phases-only
+    let output = janus.run_success(&["plan", "show", &plan_id, "--phases-only"]);
+
+    // Should indicate it's a simple plan
+    assert!(
+        output.contains("simple plan") || output.contains("no phases"),
+        "Should indicate no phases for simple plan"
+    );
+}
+
+#[test]
+fn test_plan_show_json_format() {
+    let janus = JanusTest::new();
+
+    // Create a plan with tickets
+    let plan_id = janus
+        .run_success(&["plan", "create", "JSON Test Plan"])
+        .trim()
+        .to_string();
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+
+    // Run with --format json
+    let output = janus.run_success(&["plan", "show", &plan_id, "--format", "json"]);
+
+    // Should be valid JSON
+    assert!(output.starts_with("{"), "Should be JSON object");
+    assert!(output.contains("\"id\""), "Should have id field");
+    assert!(output.contains("\"title\""), "Should have title field");
+    assert!(output.contains("\"status\""), "Should have status field");
+    assert!(output.contains("\"tickets\""), "Should have tickets field");
+    assert!(
+        output.contains("JSON Test Plan"),
+        "Should contain plan title"
+    );
+}
+
+#[test]
+fn test_plan_ls_json_format() {
+    let janus = JanusTest::new();
+
+    // Create a couple of plans
+    janus.run_success(&["plan", "create", "Plan One"]);
+    janus.run_success(&["plan", "create", "Plan Two"]);
+
+    // Run with --format json
+    let output = janus.run_success(&["plan", "ls", "--format", "json"]);
+
+    // Should be valid JSON array
+    assert!(output.starts_with("["), "Should be JSON array");
+    assert!(output.contains("\"id\""), "Should have id field");
+    assert!(output.contains("\"title\""), "Should have title field");
+    assert!(output.contains("Plan One"), "Should contain first plan");
+    assert!(output.contains("Plan Two"), "Should contain second plan");
+}
+
+#[test]
+fn test_plan_ls_json_format_with_status_filter() {
+    let janus = JanusTest::new();
+
+    // Create plans - they will all be "new" status since no tickets
+    janus.run_success(&["plan", "create", "New Plan"]);
+
+    // Run with --format json and --status filter
+    let output = janus.run_success(&["plan", "ls", "--format", "json", "--status", "new"]);
+
+    // Should be valid JSON
+    assert!(output.starts_with("["), "Should be JSON array");
+    assert!(output.contains("New Plan"), "Should contain the new plan");
+}
+
+// ============================================================================
+// Plan Reorder Tests
+// ============================================================================
+
+#[test]
+fn test_plan_reorder_help() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["plan", "reorder", "--help"]);
+
+    // Verify help shows the expected options
+    assert!(output.contains("--phase"), "Should document --phase option");
+    assert!(
+        output.contains("--reorder-phases"),
+        "Should document --reorder-phases option"
+    );
+}
+
+#[test]
+fn test_plan_reorder_plan_not_found() {
+    let janus = JanusTest::new();
+
+    let error = janus.run_failure(&["plan", "reorder", "nonexistent-plan"]);
+    assert!(
+        error.contains("not found") || error.contains("No plan"),
+        "Should report plan not found"
+    );
+}
+
+#[test]
+fn test_plan_reorder_requires_interactive_terminal() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan with tickets
+    let plan_id = janus
+        .run_success(&["plan", "create", "Test Plan"])
+        .trim()
+        .to_string();
+    let ticket_id = janus
+        .run_success(&["create", "Test Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+
+    // Attempt to reorder - should fail because we're not in a TTY
+    let error = janus.run_failure(&["plan", "reorder", &plan_id]);
+    assert!(
+        error.contains("interactive") || error.contains("terminal"),
+        "Should require interactive terminal"
+    );
+}
+
+#[test]
+fn test_plan_reorder_phased_requires_phase_arg() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase One",
+            "--phase",
+            "Phase Two",
+        ])
+        .trim()
+        .to_string();
+
+    // Add tickets to phases
+    let ticket1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket1,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Reorder without --phase or --reorder-phases should give guidance
+    let output = janus.run(&["plan", "reorder", &plan_id]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Should either:
+    // 1. Suggest using --phase or --reorder-phases, OR
+    // 2. Fail with interactive terminal requirement
+    assert!(
+        stdout.contains("--phase")
+            || stdout.contains("--reorder-phases")
+            || stderr.contains("interactive")
+            || stderr.contains("terminal"),
+        "Should guide user or fail gracefully"
+    );
+}
+
+#[test]
+fn test_plan_reorder_phase_not_found() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Phased Plan", "--phase", "Phase One"])
+        .trim()
+        .to_string();
+
+    // Attempt to reorder non-existent phase
+    let error = janus.run_failure(&["plan", "reorder", &plan_id, "--phase", "NonExistent"]);
+    assert!(
+        error.contains("not found") || error.contains("Phase"),
+        "Should report phase not found"
+    );
+}
+
+#[test]
+fn test_plan_reorder_empty_phase() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan with empty phase
+    let plan_id = janus
+        .run_success(&["plan", "create", "Phased Plan", "--phase", "Empty Phase"])
+        .trim()
+        .to_string();
+
+    // Attempt to reorder empty phase - should handle gracefully
+    let output = janus.run(&["plan", "reorder", &plan_id, "--phase", "Empty Phase"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Either succeeds with "No tickets to reorder" or fails with interactive requirement
+    assert!(
+        stdout.contains("No tickets")
+            || stderr.contains("interactive")
+            || stderr.contains("terminal"),
+        "Should handle empty phase gracefully"
+    );
+}
+
+#[test]
+fn test_plan_reorder_phases_no_phases() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan (no phases)
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Attempt to reorder phases in a simple plan
+    let output = janus.run(&["plan", "reorder", &plan_id, "--reorder-phases"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Either succeeds with "No phases to reorder" or fails with interactive requirement
+    assert!(
+        stdout.contains("No phases")
+            || stderr.contains("interactive")
+            || stderr.contains("terminal"),
+        "Should handle plan without phases gracefully"
+    );
 }

@@ -5,7 +5,10 @@ use janus::commands::{
     CreateOptions, cmd_add_note, cmd_adopt, cmd_blocked, cmd_board, cmd_cache_clear,
     cmd_cache_path, cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_closed, cmd_config_get,
     cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree,
-    cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_push, cmd_query, cmd_ready,
+    cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_plan_add_phase, cmd_plan_add_ticket,
+    cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_ls, cmd_plan_move_ticket,
+    cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
+    cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_ready,
     cmd_remote_link, cmd_remote_tui, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync,
     cmd_view,
 };
@@ -227,6 +230,12 @@ enum Commands {
         #[command(subcommand)]
         action: CacheAction,
     },
+
+    /// Plan management
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -300,6 +309,187 @@ enum CacheAction {
     Rebuild,
     /// Print path to cache database
     Path,
+}
+
+#[derive(Subcommand)]
+enum PlanAction {
+    /// Create a new plan
+    Create {
+        /// Plan title
+        title: String,
+
+        /// Add initial phase (creates a phased plan), can be repeated
+        #[arg(long = "phase", action = clap::ArgAction::Append)]
+        phases: Vec<String>,
+    },
+    /// Display a plan with full details
+    Show {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Show raw file content instead of enhanced output
+        #[arg(long)]
+        raw: bool,
+
+        /// Show only the ticket list with statuses
+        #[arg(long = "tickets-only")]
+        tickets_only: bool,
+
+        /// Show only phase summary (phased plans)
+        #[arg(long = "phases-only")]
+        phases_only: bool,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+    /// Open plan in $EDITOR
+    Edit {
+        /// Plan ID (can be partial)
+        id: String,
+    },
+    /// List all plans
+    Ls {
+        /// Filter by computed status
+        #[arg(long)]
+        status: Option<String>,
+
+        /// Output format (text, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+    /// Add a ticket to a plan
+    AddTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to add
+        ticket_id: String,
+
+        /// Target phase (required for phased plans)
+        #[arg(long)]
+        phase: Option<String>,
+
+        /// Insert after specific ticket
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+    },
+    /// Remove a ticket from a plan
+    RemoveTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to remove
+        ticket_id: String,
+    },
+    /// Move a ticket between phases
+    MoveTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to move
+        ticket_id: String,
+
+        /// Target phase (required)
+        #[arg(long = "to-phase")]
+        to_phase: String,
+
+        /// Insert after specific ticket in target phase
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position in target phase (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+    },
+    /// Add a new phase to a plan
+    AddPhase {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Phase name
+        phase_name: String,
+
+        /// Insert after specific phase
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+    },
+    /// Remove a phase from a plan
+    RemovePhase {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Phase name or number
+        phase: String,
+
+        /// Force removal even if phase contains tickets
+        #[arg(long)]
+        force: bool,
+
+        /// Move tickets to another phase instead of removing
+        #[arg(long)]
+        migrate: Option<String>,
+    },
+    /// Reorder tickets or phases
+    Reorder {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Reorder tickets within a specific phase
+        #[arg(long)]
+        phase: Option<String>,
+
+        /// Reorder the phases themselves (not tickets within a phase)
+        #[arg(long = "reorder-phases")]
+        reorder_phases: bool,
+    },
+    /// Delete a plan
+    Delete {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
+    /// Rename a plan (update its title)
+    Rename {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// New title
+        new_title: String,
+    },
+    /// Show the next actionable item(s) in a plan
+    Next {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Show next item in current phase only
+        #[arg(long)]
+        phase: bool,
+
+        /// Show next item for each incomplete phase
+        #[arg(long)]
+        all: bool,
+
+        /// Number of next items to show (default: 1)
+        #[arg(long, default_value = "1")]
+        count: usize,
+    },
+    /// Show plan status summary
+    Status {
+        /// Plan ID (can be partial)
+        id: String,
+    },
 }
 
 fn parse_priority(s: &str) -> Result<TicketPriority, String> {
@@ -416,6 +606,75 @@ async fn main() -> ExitCode {
             CacheAction::Clear => cmd_cache_clear().await,
             CacheAction::Rebuild => cmd_cache_rebuild().await,
             CacheAction::Path => cmd_cache_path().await,
+        },
+
+        // Plan commands
+        Commands::Plan { action } => match action {
+            PlanAction::Create { title, phases } => cmd_plan_create(&title, &phases),
+            PlanAction::Show {
+                id,
+                raw,
+                tickets_only,
+                phases_only,
+                format,
+            } => cmd_plan_show(&id, raw, tickets_only, phases_only, &format).await,
+            PlanAction::Edit { id } => cmd_plan_edit(&id),
+            PlanAction::Ls { status, format } => cmd_plan_ls(status.as_deref(), &format).await,
+            PlanAction::AddTicket {
+                plan_id,
+                ticket_id,
+                phase,
+                after,
+                position,
+            } => {
+                cmd_plan_add_ticket(
+                    &plan_id,
+                    &ticket_id,
+                    phase.as_deref(),
+                    after.as_deref(),
+                    position,
+                )
+                .await
+            }
+            PlanAction::RemoveTicket { plan_id, ticket_id } => {
+                cmd_plan_remove_ticket(&plan_id, &ticket_id).await
+            }
+            PlanAction::MoveTicket {
+                plan_id,
+                ticket_id,
+                to_phase,
+                after,
+                position,
+            } => {
+                cmd_plan_move_ticket(&plan_id, &ticket_id, &to_phase, after.as_deref(), position)
+                    .await
+            }
+            PlanAction::AddPhase {
+                plan_id,
+                phase_name,
+                after,
+                position,
+            } => cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position),
+            PlanAction::RemovePhase {
+                plan_id,
+                phase,
+                force,
+                migrate,
+            } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref()),
+            PlanAction::Reorder {
+                plan_id,
+                phase,
+                reorder_phases,
+            } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases),
+            PlanAction::Delete { id, force } => cmd_plan_delete(&id, force),
+            PlanAction::Rename { id, new_title } => cmd_plan_rename(&id, &new_title),
+            PlanAction::Next {
+                id,
+                phase,
+                all,
+                count,
+            } => cmd_plan_next(&id, phase, all, count).await,
+            PlanAction::Status { id } => cmd_plan_status(&id).await,
         },
     };
 
