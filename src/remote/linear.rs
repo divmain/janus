@@ -12,9 +12,9 @@ mod graphql {
     // Re-export cynic types we need
     pub use cynic::{GraphQlResponse, MutationBuilder, QueryBuilder};
 
-    // Schema module - generated types from Linear's GraphQL schema
-    #[cynic::schema("linear")]
-    pub mod schema {}
+    // Import schema from the dedicated janus-schema crate.
+    // The import MUST be named `schema` for cynic derives to work.
+    use janus_schema::linear as schema;
 
     // Custom Scalars
 

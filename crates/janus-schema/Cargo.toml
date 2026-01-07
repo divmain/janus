@@ -1,0 +1,12 @@
+[package]
+name = "janus-schema"
+version = "1.0.0"
+edition = "2024"
+description = "GraphQL schema definitions for Janus"
+license = "MIT"
+
+[dependencies]
+cynic = "3"
+
+[build-dependencies]
+cynic-codegen = { version = "3", features = ["rkyv"] }
