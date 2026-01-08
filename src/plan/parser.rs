@@ -11,7 +11,33 @@ use comrak::{Arena, Options, parse_document};
 use regex::Regex;
 
 use crate::error::{JanusError, Result};
-use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection};
+use crate::plan::types::{
+    FreeFormSection, ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask, Phase,
+    PlanMetadata, PlanSection,
+};
+
+// ============================================================================
+// Section Alias Constants (for plan import)
+// ============================================================================
+
+/// Recognized section names for acceptance criteria (case-insensitive)
+pub const ACCEPTANCE_CRITERIA_ALIASES: &[&str] = &[
+    "acceptance criteria",
+    "goals",
+    "success criteria",
+    "deliverables",
+    "requirements",
+    "objectives",
+];
+
+/// Recognized section names for tasks in simple plans (case-insensitive)
+pub const TASKS_SECTION_ALIASES: &[&str] =
+    &["tasks", "tickets", "work items", "items", "checklist"];
+
+/// Regex pattern for matching phase headers in importable plans
+/// Matches: "Phase N: Name", "Stage N - Name", "Part N: Name", "Step N: Name"
+/// where N can be numeric (1, 2, 10) or alphanumeric (1a, 2b)
+pub const PHASE_PATTERN: &str = r"(?i)^(phase|stage|part|step)\s+(\d+[a-z]?)\s*[-:]?\s*(.*)$";
 
 /// Parse a plan file's content into PlanMetadata
 ///
@@ -586,6 +612,626 @@ fn serialize_freeform(freeform: &FreeFormSection) -> String {
     }
 
     output
+}
+
+// ============================================================================
+// Importable Plan Parser Functions
+// ============================================================================
+
+/// Check if a heading text matches any alias in a given list (case-insensitive).
+///
+/// # Arguments
+/// * `heading` - The heading text to check
+/// * `aliases` - List of accepted aliases
+///
+/// # Returns
+/// `true` if the heading matches any alias (case-insensitive)
+pub fn is_section_alias(heading: &str, aliases: &[&str]) -> bool {
+    let heading_lower = heading.to_lowercase();
+    aliases.iter().any(|&alias| heading_lower == alias)
+}
+
+/// Check if a heading matches the phase pattern and extract phase info.
+///
+/// Matches headers like:
+/// - "Phase 1: Infrastructure"
+/// - "Stage 2a - Implementation"
+/// - "Part 3: Testing"
+/// - "Step 1: Setup"
+///
+/// # Returns
+/// `Some((number, name))` if the heading is a valid phase header, `None` otherwise.
+pub fn is_phase_header(heading: &str) -> Option<(String, String)> {
+    let phase_re = Regex::new(PHASE_PATTERN).unwrap();
+
+    phase_re.captures(heading).map(|caps| {
+        let number = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
+        let name = caps
+            .get(3)
+            .map(|m| m.as_str().trim())
+            .unwrap_or("")
+            .to_string();
+        (number, name)
+    })
+}
+
+/// Detect completion markers in task titles.
+///
+/// Handles both H3 style (`### Task Title [x]`) and extracts the clean title.
+///
+/// # Arguments
+/// * `text` - The task title text (without the `### ` prefix)
+///
+/// # Returns
+/// `(cleaned_title, is_complete)` tuple
+pub fn is_completed_task(text: &str) -> (String, bool) {
+    let text = text.trim();
+
+    // H3 style: "Task Title [x]" or "Task Title [X]"
+    if let Some(title) = text
+        .strip_suffix("[x]")
+        .or_else(|| text.strip_suffix("[X]"))
+    {
+        return (title.trim().to_string(), true);
+    }
+
+    (text.to_string(), false)
+}
+
+/// Parse a checkbox item from a list item text.
+///
+/// Handles formats like:
+/// - "[ ] Unchecked task"
+/// - "[x] Completed task"
+/// - "[X] Completed task"
+/// - "Task without checkbox" (treated as unchecked)
+///
+/// # Returns
+/// `(title, is_complete)` tuple
+fn parse_checkbox_item(text: &str) -> (String, bool) {
+    let text = text.trim();
+
+    // Check for checkbox markers
+    if let Some(rest) = text.strip_prefix("[ ] ") {
+        return (rest.trim().to_string(), false);
+    }
+    if let Some(rest) = text
+        .strip_prefix("[x] ")
+        .or_else(|| text.strip_prefix("[X] "))
+    {
+        return (rest.trim().to_string(), true);
+    }
+
+    // No checkbox, treat as unchecked
+    (text.to_string(), false)
+}
+
+/// Extract the H1 title from a parsed markdown document.
+///
+/// # Arguments
+/// * `root` - The root AST node of the parsed markdown
+///
+/// # Returns
+/// The title text if an H1 heading is found, `None` otherwise.
+fn extract_title<'a>(root: &'a AstNode<'a>) -> Option<String> {
+    for node in root.children() {
+        if let NodeValue::Heading(heading) = &node.data.borrow().value
+            && heading.level == 1
+        {
+            let text = extract_text_content(node);
+            return Some(text.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Extract the description (preamble paragraphs) from a parsed markdown document.
+///
+/// Returns content between the H1 title and the first H2 section.
+///
+/// # Arguments
+/// * `root` - The root AST node of the parsed markdown
+/// * `options` - Comrak options for rendering nodes back to markdown
+///
+/// # Returns
+/// The description text if any content exists before the first H2, `None` otherwise.
+fn extract_import_description<'a>(root: &'a AstNode<'a>, options: &Options) -> Option<String> {
+    let mut content = String::new();
+    let mut found_title = false;
+
+    for node in root.children() {
+        match &node.data.borrow().value {
+            NodeValue::Heading(heading) => {
+                if heading.level == 1 {
+                    found_title = true;
+                } else if heading.level == 2 {
+                    // Hit first H2, stop collecting
+                    break;
+                } else if found_title {
+                    // H3+ in preamble (unusual but handle it)
+                    content.push_str(&render_node_to_markdown(node, options));
+                }
+            }
+            _ => {
+                if found_title {
+                    content.push_str(&render_node_to_markdown(node, options));
+                }
+            }
+        }
+    }
+
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Extract acceptance criteria from a parsed markdown document.
+///
+/// Looks for an H2 section matching acceptance criteria aliases and extracts list items.
+///
+/// # Arguments
+/// * `root` - The root AST node of the parsed markdown
+///
+/// # Returns
+/// Vector of criteria strings.
+fn extract_import_acceptance_criteria<'a>(root: &'a AstNode<'a>) -> Vec<String> {
+    let mut in_criteria_section = false;
+    let mut criteria = Vec::new();
+
+    for node in root.children() {
+        match &node.data.borrow().value {
+            NodeValue::Heading(heading) => {
+                if heading.level == 2 {
+                    let text = extract_text_content(node);
+                    in_criteria_section = is_section_alias(&text, ACCEPTANCE_CRITERIA_ALIASES);
+                }
+            }
+            NodeValue::List(_) => {
+                if in_criteria_section {
+                    // Extract list items
+                    for item in node.children() {
+                        if let NodeValue::Item(_) = &item.data.borrow().value {
+                            let item_text = extract_text_content(item);
+                            let trimmed = item_text.trim();
+                            if !trimmed.is_empty() {
+                                criteria.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                    // Only take the first list in the criteria section
+                    in_criteria_section = false;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    criteria
+}
+
+/// Parse tasks from a section, supporting both H3 headers and checklist items.
+///
+/// Priority:
+/// 1. If H3 headers exist, each H3 becomes a task
+/// 2. If no H3s, look for bullet/numbered lists (checklist items)
+///
+/// # Arguments
+/// * `root` - The root AST node
+/// * `section_start` - Index of the H2 heading node
+/// * `section_end` - Index of the next H2 heading node (or end of document)
+/// * `options` - Comrak options for rendering
+///
+/// # Returns
+/// Vector of `ImportableTask` structs.
+fn parse_tasks_from_section<'a>(
+    root: &'a AstNode<'a>,
+    section_heading: &str,
+    options: &Options,
+) -> Vec<ImportableTask> {
+    let mut tasks = Vec::new();
+    let mut in_section = false;
+    let mut current_h3: Option<(String, bool)> = None; // (title, is_complete)
+    let mut current_h3_content = String::new();
+    let mut list_items: Vec<ImportableTask> = Vec::new();
+    let mut has_h3_tasks = false;
+
+    let nodes: Vec<_> = root.children().collect();
+
+    for node in &nodes {
+        match &node.data.borrow().value {
+            NodeValue::Heading(heading) => {
+                if heading.level == 2 {
+                    let text = extract_text_content(node);
+                    if in_section {
+                        // End of our section
+                        // Finalize any pending H3 task
+                        if let Some((title, is_complete)) = current_h3.take() {
+                            tasks.push(ImportableTask {
+                                title,
+                                body: if current_h3_content.trim().is_empty() {
+                                    None
+                                } else {
+                                    Some(current_h3_content.trim().to_string())
+                                },
+                                is_complete,
+                            });
+                        }
+                        break;
+                    }
+
+                    // Check if this is our target section
+                    if text.trim().eq_ignore_ascii_case(section_heading) {
+                        in_section = true;
+                    }
+                } else if heading.level == 3 && in_section {
+                    // H3 task header
+                    // Finalize any pending H3 task
+                    if let Some((title, is_complete)) = current_h3.take() {
+                        tasks.push(ImportableTask {
+                            title,
+                            body: if current_h3_content.trim().is_empty() {
+                                None
+                            } else {
+                                Some(current_h3_content.trim().to_string())
+                            },
+                            is_complete,
+                        });
+                    }
+
+                    let text = extract_text_content(node);
+                    let (title, is_complete) = is_completed_task(&text);
+                    current_h3 = Some((title, is_complete));
+                    current_h3_content = String::new();
+                    has_h3_tasks = true;
+                } else if in_section {
+                    // H4+ content within an H3
+                    if current_h3.is_some() {
+                        current_h3_content.push_str(&render_node_to_markdown(node, options));
+                    }
+                }
+            }
+            NodeValue::List(_) => {
+                if in_section {
+                    if current_h3.is_some() {
+                        // List content within an H3 task
+                        current_h3_content.push_str(&render_node_to_markdown(node, options));
+                    } else if !has_h3_tasks {
+                        // Checklist items (only if no H3 tasks found yet)
+                        for item in node.children() {
+                            if let NodeValue::Item(_) = &item.data.borrow().value {
+                                let item_text = extract_text_content(item);
+                                let (title, is_complete) = parse_checkbox_item(&item_text);
+                                if !title.is_empty() {
+                                    list_items.push(ImportableTask {
+                                        title,
+                                        body: None,
+                                        is_complete,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                if in_section && current_h3.is_some() {
+                    // Content within an H3 task
+                    current_h3_content.push_str(&render_node_to_markdown(node, options));
+                }
+            }
+        }
+    }
+
+    // Finalize any pending H3 task
+    if let Some((title, is_complete)) = current_h3.take() {
+        tasks.push(ImportableTask {
+            title,
+            body: if current_h3_content.trim().is_empty() {
+                None
+            } else {
+                Some(current_h3_content.trim().to_string())
+            },
+            is_complete,
+        });
+    }
+
+    // If we have H3 tasks, use those; otherwise use list items
+    if !tasks.is_empty() { tasks } else { list_items }
+}
+
+/// Parse tasks from a phase section.
+///
+/// This is similar to `parse_tasks_from_section` but operates within a phase's boundaries.
+fn parse_tasks_from_phase<'a>(
+    nodes: &[&'a AstNode<'a>],
+    start_idx: usize,
+    end_idx: usize,
+    options: &Options,
+) -> Vec<ImportableTask> {
+    let mut tasks = Vec::new();
+    let mut current_h3: Option<(String, bool)> = None;
+    let mut current_h3_content = String::new();
+    let mut list_items: Vec<ImportableTask> = Vec::new();
+    let mut has_h3_tasks = false;
+
+    for node in &nodes[start_idx..end_idx] {
+        match &node.data.borrow().value {
+            NodeValue::Heading(heading) => {
+                if heading.level == 3 {
+                    // H3 task header
+                    // Finalize any pending H3 task
+                    if let Some((title, is_complete)) = current_h3.take() {
+                        tasks.push(ImportableTask {
+                            title,
+                            body: if current_h3_content.trim().is_empty() {
+                                None
+                            } else {
+                                Some(current_h3_content.trim().to_string())
+                            },
+                            is_complete,
+                        });
+                    }
+
+                    let text = extract_text_content(node);
+                    let (title, is_complete) = is_completed_task(&text);
+                    current_h3 = Some((title, is_complete));
+                    current_h3_content = String::new();
+                    has_h3_tasks = true;
+                } else if heading.level >= 4 {
+                    // H4+ content within an H3
+                    if current_h3.is_some() {
+                        current_h3_content.push_str(&render_node_to_markdown(node, options));
+                    }
+                }
+            }
+            NodeValue::List(_) => {
+                if current_h3.is_some() {
+                    // List content within an H3 task
+                    current_h3_content.push_str(&render_node_to_markdown(node, options));
+                } else if !has_h3_tasks {
+                    // Checklist items (only if no H3 tasks found yet)
+                    for item in node.children() {
+                        if let NodeValue::Item(_) = &item.data.borrow().value {
+                            let item_text = extract_text_content(item);
+                            let (title, is_complete) = parse_checkbox_item(&item_text);
+                            if !title.is_empty() {
+                                list_items.push(ImportableTask {
+                                    title,
+                                    body: None,
+                                    is_complete,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                if current_h3.is_some() {
+                    // Content within an H3 task
+                    current_h3_content.push_str(&render_node_to_markdown(node, options));
+                }
+            }
+        }
+    }
+
+    // Finalize any pending H3 task
+    if let Some((title, is_complete)) = current_h3.take() {
+        tasks.push(ImportableTask {
+            title,
+            body: if current_h3_content.trim().is_empty() {
+                None
+            } else {
+                Some(current_h3_content.trim().to_string())
+            },
+            is_complete,
+        });
+    }
+
+    // If we have H3 tasks, use those; otherwise use list items
+    if !tasks.is_empty() { tasks } else { list_items }
+}
+
+/// Parse phases from a markdown document.
+///
+/// Iterates through H2 sections, identifies phase headers, extracts phase description
+/// and tasks for each phase.
+///
+/// # Arguments
+/// * `root` - The root AST node
+/// * `options` - Comrak options for rendering
+///
+/// # Returns
+/// Vector of `ImportablePhase` structs. Empty if no phases found.
+fn parse_phases<'a>(root: &'a AstNode<'a>, options: &Options) -> Vec<ImportablePhase> {
+    let mut phases = Vec::new();
+    let nodes: Vec<_> = root.children().collect();
+
+    // Find all H2 sections that are phases
+    let mut phase_indices: Vec<(usize, String, String)> = Vec::new(); // (index, number, name)
+
+    for (idx, node) in nodes.iter().enumerate() {
+        if let NodeValue::Heading(heading) = &node.data.borrow().value
+            && heading.level == 2
+        {
+            let text = extract_text_content(node);
+            if let Some((number, name)) = is_phase_header(&text) {
+                phase_indices.push((idx, number, name));
+            }
+        }
+    }
+
+    // Process each phase
+    for (i, (start_idx, number, name)) in phase_indices.iter().enumerate() {
+        // Find the end of this phase section (next H2 or end of document)
+        let end_idx = if i + 1 < phase_indices.len() {
+            phase_indices[i + 1].0
+        } else {
+            // Find next non-phase H2 or end of document
+            nodes
+                .iter()
+                .enumerate()
+                .skip(start_idx + 1)
+                .find(|(_, node)| {
+                    if let NodeValue::Heading(h) = &node.data.borrow().value {
+                        h.level == 2
+                    } else {
+                        false
+                    }
+                })
+                .map(|(idx, _)| idx)
+                .unwrap_or(nodes.len())
+        };
+
+        // Extract phase description (content between H2 and first H3)
+        let mut description_parts = Vec::new();
+        for node in &nodes[start_idx + 1..end_idx] {
+            if let NodeValue::Heading(h) = &node.data.borrow().value
+                && h.level == 3
+            {
+                break;
+            }
+            description_parts.push(render_node_to_markdown(node, options));
+        }
+
+        let description = description_parts.join("").trim().to_string();
+        let description = if description.is_empty() {
+            None
+        } else {
+            Some(description)
+        };
+
+        // Parse tasks from this phase
+        let tasks = parse_tasks_from_phase(&nodes, start_idx + 1, end_idx, options);
+
+        phases.push(ImportablePhase {
+            number: number.clone(),
+            name: name.clone(),
+            description,
+            tasks,
+        });
+    }
+
+    phases
+}
+
+/// Parse simple tasks from a document (for plans without phases).
+///
+/// Looks for a Tasks section (using `TASKS_SECTION_ALIASES`) and extracts tasks from it.
+///
+/// # Arguments
+/// * `root` - The root AST node
+/// * `options` - Comrak options for rendering
+///
+/// # Returns
+/// Vector of `ImportableTask` structs. Empty if no Tasks section found.
+fn parse_simple_tasks<'a>(root: &'a AstNode<'a>, options: &Options) -> Vec<ImportableTask> {
+    // Find the Tasks section heading
+    for node in root.children() {
+        if let NodeValue::Heading(heading) = &node.data.borrow().value
+            && heading.level == 2
+        {
+            let text = extract_text_content(node);
+            if is_section_alias(&text, TASKS_SECTION_ALIASES) {
+                return parse_tasks_from_section(root, &text, options);
+            }
+        }
+    }
+
+    Vec::new()
+}
+
+/// Parse an importable plan document.
+///
+/// This is the main entry point for parsing AI-generated plan documents.
+///
+/// # Arguments
+/// * `content` - The raw markdown content
+///
+/// # Returns
+/// `Ok(ImportablePlan)` if parsing succeeds, `Err(JanusError::ImportFailed)` if validation fails.
+///
+/// # Validation Rules
+/// 1. Document must have an H1 title
+/// 2. Document must have either phases with tasks OR a Tasks section
+pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
+    let arena = Arena::new();
+    let options = Options::default();
+    let root = parse_document(&arena, content, &options);
+
+    let mut errors: Vec<ImportValidationError> = Vec::new();
+
+    // 1. Extract title
+    let title = match extract_title(root) {
+        Some(t) => t,
+        None => {
+            errors.push(
+                ImportValidationError::new("Missing plan title (expected H1 heading)")
+                    .with_hint("Add \"# Your Plan Title\" at the start of the document"),
+            );
+            String::new()
+        }
+    };
+
+    // 2. Extract description
+    let description = extract_import_description(root, &options);
+
+    // 3. Extract acceptance criteria
+    let acceptance_criteria = extract_import_acceptance_criteria(root);
+
+    // 4. Try to parse as phased plan first
+    let phases = parse_phases(root, &options);
+
+    // 5. If no phases, try to parse as simple plan
+    let tasks = if phases.is_empty() {
+        parse_simple_tasks(root, &options)
+    } else {
+        Vec::new()
+    };
+
+    // 6. Validation: must have either phases with tasks OR simple tasks
+    if phases.is_empty() && tasks.is_empty() {
+        errors.push(
+            ImportValidationError::new("Document has no phases or tasks section")
+                .with_hint("Structure your document with \"## Phase N: Name\" sections or a \"## Tasks\" section"),
+        );
+    }
+
+    // Check for empty phases
+    for phase in &phases {
+        if phase.tasks.is_empty() {
+            errors.push(
+                ImportValidationError::new(format!(
+                    "Phase \"{}\" has no tasks",
+                    if phase.name.is_empty() {
+                        format!("Phase {}", phase.number)
+                    } else {
+                        format!("Phase {}: {}", phase.number, phase.name)
+                    }
+                ))
+                .with_hint("Add ### Task headers or a checklist under the phase"),
+            );
+        }
+    }
+
+    // If there are errors, return them
+    if !errors.is_empty() {
+        let issues: Vec<String> = errors.iter().map(|e| e.to_display_string()).collect();
+        return Err(JanusError::ImportFailed {
+            message: "Validation failed".to_string(),
+            issues,
+        });
+    }
+
+    Ok(ImportablePlan {
+        title,
+        description,
+        acceptance_criteria,
+        phases,
+        tasks,
+    })
 }
 
 #[cfg(test)]
@@ -2004,5 +2650,547 @@ Implement sync logic.
 
         // Total tickets
         assert_eq!(reparsed.all_tickets(), metadata.all_tickets());
+    }
+
+    // ==================== Importable Plan Parser Tests ====================
+
+    #[test]
+    fn test_is_section_alias_acceptance_criteria() {
+        // Exact matches (case-insensitive)
+        assert!(is_section_alias(
+            "acceptance criteria",
+            ACCEPTANCE_CRITERIA_ALIASES
+        ));
+        assert!(is_section_alias(
+            "Acceptance Criteria",
+            ACCEPTANCE_CRITERIA_ALIASES
+        ));
+        assert!(is_section_alias(
+            "ACCEPTANCE CRITERIA",
+            ACCEPTANCE_CRITERIA_ALIASES
+        ));
+        assert!(is_section_alias("goals", ACCEPTANCE_CRITERIA_ALIASES));
+        assert!(is_section_alias("Goals", ACCEPTANCE_CRITERIA_ALIASES));
+        assert!(is_section_alias(
+            "success criteria",
+            ACCEPTANCE_CRITERIA_ALIASES
+        ));
+        assert!(is_section_alias(
+            "deliverables",
+            ACCEPTANCE_CRITERIA_ALIASES
+        ));
+        assert!(is_section_alias(
+            "requirements",
+            ACCEPTANCE_CRITERIA_ALIASES
+        ));
+        assert!(is_section_alias("objectives", ACCEPTANCE_CRITERIA_ALIASES));
+
+        // Non-matches
+        assert!(!is_section_alias("tasks", ACCEPTANCE_CRITERIA_ALIASES));
+        assert!(!is_section_alias("acceptance", ACCEPTANCE_CRITERIA_ALIASES));
+        assert!(!is_section_alias("criteria", ACCEPTANCE_CRITERIA_ALIASES));
+    }
+
+    #[test]
+    fn test_is_section_alias_tasks() {
+        // Exact matches (case-insensitive)
+        assert!(is_section_alias("tasks", TASKS_SECTION_ALIASES));
+        assert!(is_section_alias("Tasks", TASKS_SECTION_ALIASES));
+        assert!(is_section_alias("TASKS", TASKS_SECTION_ALIASES));
+        assert!(is_section_alias("tickets", TASKS_SECTION_ALIASES));
+        assert!(is_section_alias("work items", TASKS_SECTION_ALIASES));
+        assert!(is_section_alias("items", TASKS_SECTION_ALIASES));
+        assert!(is_section_alias("checklist", TASKS_SECTION_ALIASES));
+
+        // Non-matches
+        assert!(!is_section_alias("goal", TASKS_SECTION_ALIASES));
+        assert!(!is_section_alias("task list", TASKS_SECTION_ALIASES));
+    }
+
+    #[test]
+    fn test_is_phase_header_standard() {
+        // Standard format: "Phase N: Name"
+        let result = is_phase_header("Phase 1: Infrastructure");
+        assert_eq!(
+            result,
+            Some(("1".to_string(), "Infrastructure".to_string()))
+        );
+
+        let result = is_phase_header("Phase 2: Implementation");
+        assert_eq!(
+            result,
+            Some(("2".to_string(), "Implementation".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_is_phase_header_dash_separator() {
+        // Dash separator: "Phase N - Name"
+        let result = is_phase_header("Phase 1 - Setup");
+        assert_eq!(result, Some(("1".to_string(), "Setup".to_string())));
+    }
+
+    #[test]
+    fn test_is_phase_header_alphanumeric() {
+        // Alphanumeric phase numbers: "Phase 1a", "Phase 2b"
+        let result = is_phase_header("Phase 1a: Sub-phase A");
+        assert_eq!(result, Some(("1a".to_string(), "Sub-phase A".to_string())));
+
+        let result = is_phase_header("Phase 2b - Sub-phase B");
+        assert_eq!(result, Some(("2b".to_string(), "Sub-phase B".to_string())));
+    }
+
+    #[test]
+    fn test_is_phase_header_multi_digit() {
+        let result = is_phase_header("Phase 10: Final Phase");
+        assert_eq!(result, Some(("10".to_string(), "Final Phase".to_string())));
+    }
+
+    #[test]
+    fn test_is_phase_header_no_name() {
+        let result = is_phase_header("Phase 1:");
+        assert_eq!(result, Some(("1".to_string(), "".to_string())));
+
+        let result = is_phase_header("Phase 1");
+        assert_eq!(result, Some(("1".to_string(), "".to_string())));
+    }
+
+    #[test]
+    fn test_is_phase_header_case_insensitive() {
+        let result = is_phase_header("PHASE 1: Test");
+        assert_eq!(result, Some(("1".to_string(), "Test".to_string())));
+
+        let result = is_phase_header("phase 1: test");
+        assert_eq!(result, Some(("1".to_string(), "test".to_string())));
+    }
+
+    #[test]
+    fn test_is_phase_header_stage_part_step() {
+        // "Stage N", "Part N", "Step N" should also work
+        let result = is_phase_header("Stage 1: Setup");
+        assert_eq!(result, Some(("1".to_string(), "Setup".to_string())));
+
+        let result = is_phase_header("Part 2: Implementation");
+        assert_eq!(
+            result,
+            Some(("2".to_string(), "Implementation".to_string()))
+        );
+
+        let result = is_phase_header("Step 3: Testing");
+        assert_eq!(result, Some(("3".to_string(), "Testing".to_string())));
+    }
+
+    #[test]
+    fn test_is_phase_header_not_a_phase() {
+        // These should NOT match
+        assert!(is_phase_header("Phase Diagrams").is_none());
+        assert!(is_phase_header("Phase without number").is_none());
+        assert!(is_phase_header("Overview").is_none());
+        assert!(is_phase_header("Tasks").is_none());
+    }
+
+    #[test]
+    fn test_is_completed_task_h3_style() {
+        // H3 style: "Task Title [x]"
+        let (title, is_complete) = is_completed_task("Add Caching Support [x]");
+        assert_eq!(title, "Add Caching Support");
+        assert!(is_complete);
+
+        let (title, is_complete) = is_completed_task("Add Caching Support [X]");
+        assert_eq!(title, "Add Caching Support");
+        assert!(is_complete);
+    }
+
+    #[test]
+    fn test_is_completed_task_unchecked() {
+        let (title, is_complete) = is_completed_task("Add Caching Support");
+        assert_eq!(title, "Add Caching Support");
+        assert!(!is_complete);
+    }
+
+    #[test]
+    fn test_is_completed_task_with_whitespace() {
+        let (title, is_complete) = is_completed_task("  Add Caching Support [x]  ");
+        assert_eq!(title, "Add Caching Support");
+        assert!(is_complete);
+    }
+
+    #[test]
+    fn test_parse_importable_plan_simple_h3_tasks() {
+        let content = r#"# Simple Plan Title
+
+This is the plan description.
+
+## Tasks
+
+### Task One
+
+Task one description.
+
+### Task Two
+
+Task two description.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.title, "Simple Plan Title");
+        assert_eq!(
+            plan.description,
+            Some("This is the plan description.".to_string())
+        );
+        assert!(!plan.is_phased());
+        assert!(plan.is_simple());
+        assert_eq!(plan.tasks.len(), 2);
+        assert_eq!(plan.tasks[0].title, "Task One");
+        assert_eq!(
+            plan.tasks[0].body,
+            Some("Task one description.".to_string())
+        );
+        assert_eq!(plan.tasks[1].title, "Task Two");
+    }
+
+    #[test]
+    fn test_parse_importable_plan_simple_checklist() {
+        let content = r#"# Checklist Plan
+
+## Tasks
+
+- [ ] Unchecked task one
+- [x] Completed task two
+- Task without checkbox
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.title, "Checklist Plan");
+        assert!(plan.is_simple());
+        assert_eq!(plan.tasks.len(), 3);
+        assert_eq!(plan.tasks[0].title, "Unchecked task one");
+        assert!(!plan.tasks[0].is_complete);
+        assert_eq!(plan.tasks[1].title, "Completed task two");
+        assert!(plan.tasks[1].is_complete);
+        assert_eq!(plan.tasks[2].title, "Task without checkbox");
+        assert!(!plan.tasks[2].is_complete);
+    }
+
+    #[test]
+    fn test_parse_importable_plan_phased() {
+        let content = r#"# Phased Implementation Plan
+
+Overview of the implementation.
+
+## Acceptance Criteria
+
+- All tests pass
+- Documentation complete
+
+## Phase 1: Infrastructure
+
+Set up the foundational components.
+
+### Add Dependencies
+
+Add the required dependencies to Cargo.toml.
+
+### Create Module Structure
+
+Create the basic module structure.
+
+## Phase 2: Implementation
+
+Implement the core logic.
+
+### Implement Core Function
+
+The main implementation task.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.title, "Phased Implementation Plan");
+        assert_eq!(
+            plan.description,
+            Some("Overview of the implementation.".to_string())
+        );
+        assert!(plan.is_phased());
+        assert!(!plan.is_simple());
+        assert_eq!(plan.phases.len(), 2);
+        assert_eq!(plan.acceptance_criteria.len(), 2);
+        assert_eq!(plan.acceptance_criteria[0], "All tests pass");
+        assert_eq!(plan.acceptance_criteria[1], "Documentation complete");
+
+        // Phase 1
+        assert_eq!(plan.phases[0].number, "1");
+        assert_eq!(plan.phases[0].name, "Infrastructure");
+        assert_eq!(
+            plan.phases[0].description,
+            Some("Set up the foundational components.".to_string())
+        );
+        assert_eq!(plan.phases[0].tasks.len(), 2);
+        assert_eq!(plan.phases[0].tasks[0].title, "Add Dependencies");
+        assert_eq!(plan.phases[0].tasks[1].title, "Create Module Structure");
+
+        // Phase 2
+        assert_eq!(plan.phases[1].number, "2");
+        assert_eq!(plan.phases[1].name, "Implementation");
+        assert_eq!(plan.phases[1].tasks.len(), 1);
+        assert_eq!(plan.phases[1].tasks[0].title, "Implement Core Function");
+    }
+
+    #[test]
+    fn test_parse_importable_plan_phased_checklist() {
+        let content = r#"# Phased Checklist Plan
+
+## Phase 1: Setup
+
+- [x] Task A completed
+- [ ] Task B pending
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert!(plan.is_phased());
+        assert_eq!(plan.phases[0].tasks.len(), 2);
+        assert_eq!(plan.phases[0].tasks[0].title, "Task A completed");
+        assert!(plan.phases[0].tasks[0].is_complete);
+        assert_eq!(plan.phases[0].tasks[1].title, "Task B pending");
+        assert!(!plan.phases[0].tasks[1].is_complete);
+    }
+
+    #[test]
+    fn test_parse_importable_plan_completed_h3_tasks() {
+        let content = r#"# Plan with Completed Tasks
+
+## Tasks
+
+### Task One [x]
+
+This task is done.
+
+### Task Two
+
+This task is pending.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.tasks.len(), 2);
+        assert_eq!(plan.tasks[0].title, "Task One");
+        assert!(plan.tasks[0].is_complete);
+        assert_eq!(plan.tasks[1].title, "Task Two");
+        assert!(!plan.tasks[1].is_complete);
+    }
+
+    #[test]
+    fn test_parse_importable_plan_with_code_blocks() {
+        let content = r#"# Plan with Code
+
+## Tasks
+
+### Add Cache Support
+
+Implement caching in the service.
+
+```rust
+let cache = HashMap::new();
+```
+
+Key changes:
+- Add cache data structure
+- Modify speak() method
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.tasks.len(), 1);
+        assert_eq!(plan.tasks[0].title, "Add Cache Support");
+        let body = plan.tasks[0].body.as_ref().unwrap();
+        assert!(body.contains("Implement caching"));
+        assert!(body.contains("HashMap::new()"));
+        assert!(body.contains("Key changes:"));
+    }
+
+    #[test]
+    fn test_parse_importable_plan_acceptance_criteria_aliases() {
+        // Test "Goals" alias
+        let content = r#"# Plan with Goals
+
+## Goals
+
+- Goal one
+- Goal two
+
+## Tasks
+
+### Do something
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.acceptance_criteria.len(), 2);
+        assert_eq!(plan.acceptance_criteria[0], "Goal one");
+    }
+
+    #[test]
+    fn test_parse_importable_plan_tasks_aliases() {
+        // Test "Checklist" alias
+        let content = r#"# Plan with Checklist
+
+## Checklist
+
+### Item one
+
+Description.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert!(plan.is_simple());
+        assert_eq!(plan.tasks.len(), 1);
+        assert_eq!(plan.tasks[0].title, "Item one");
+    }
+
+    #[test]
+    fn test_parse_importable_plan_missing_title() {
+        let content = r#"Just some content without H1.
+
+## Tasks
+
+### Task one
+"#;
+
+        let result = parse_importable_plan(content);
+        assert!(result.is_err());
+        if let Err(crate::error::JanusError::ImportFailed { issues, .. }) = result {
+            assert!(issues.iter().any(|s| s.contains("Missing plan title")));
+        } else {
+            panic!("Expected ImportFailed error");
+        }
+    }
+
+    #[test]
+    fn test_parse_importable_plan_no_tasks() {
+        let content = r#"# Plan with No Tasks
+
+Just a description with no tasks or phases.
+"#;
+
+        let result = parse_importable_plan(content);
+        assert!(result.is_err());
+        if let Err(crate::error::JanusError::ImportFailed { issues, .. }) = result {
+            assert!(
+                issues
+                    .iter()
+                    .any(|s| s.contains("no phases or tasks section"))
+            );
+        } else {
+            panic!("Expected ImportFailed error");
+        }
+    }
+
+    #[test]
+    fn test_parse_importable_plan_empty_phase() {
+        let content = r#"# Plan with Empty Phase
+
+## Phase 1: Empty
+
+No tasks here.
+"#;
+
+        let result = parse_importable_plan(content);
+        assert!(result.is_err());
+        if let Err(crate::error::JanusError::ImportFailed { issues, .. }) = result {
+            assert!(issues.iter().any(|s| s.contains("has no tasks")));
+        } else {
+            panic!("Expected ImportFailed error");
+        }
+    }
+
+    #[test]
+    fn test_parse_importable_plan_task_count() {
+        let content = r#"# Multi-Phase Plan
+
+## Phase 1: First
+
+### Task 1
+
+### Task 2
+
+## Phase 2: Second
+
+### Task 3
+
+### Task 4
+
+### Task 5
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.task_count(), 5);
+        assert_eq!(plan.all_tasks().len(), 5);
+    }
+
+    #[test]
+    fn test_parse_importable_plan_phases_take_priority() {
+        // If a document has both phases and a Tasks section,
+        // phases should be used (since phases contain the tasks)
+        let content = r#"# Mixed Document
+
+## Phase 1: Implementation
+
+### Task in phase
+
+## Tasks
+
+### Task in tasks section
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        // The document is treated as phased because it has a Phase header
+        assert!(plan.is_phased());
+        assert_eq!(plan.phases.len(), 1);
+        // The Tasks section is NOT treated as a simple plan tasks section
+        // because we already have phases
+        assert!(plan.tasks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_importable_plan_stage_alias() {
+        let content = r#"# Plan with Stages
+
+## Stage 1: Setup
+
+### Configure
+
+### Initialize
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert!(plan.is_phased());
+        assert_eq!(plan.phases[0].number, "1");
+        assert_eq!(plan.phases[0].name, "Setup");
+        assert_eq!(plan.phases[0].tasks.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_importable_plan_multiline_task_body() {
+        let content = r#"# Plan
+
+## Tasks
+
+### Complex Task
+
+This is the first paragraph.
+
+This is the second paragraph with **bold** text.
+
+- A bullet point
+- Another bullet point
+
+#### Sub-heading in task
+
+More content under sub-heading.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        let body = plan.tasks[0].body.as_ref().unwrap();
+        assert!(body.contains("first paragraph"));
+        assert!(body.contains("second paragraph"));
+        assert!(body.contains("**bold**") || body.contains("bold")); // Depends on rendering
+        assert!(body.contains("bullet point"));
+        assert!(body.contains("Sub-heading"));
     }
 }

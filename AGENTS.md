@@ -328,3 +328,19 @@ println!("Progress: {}", status.progress_string()); // e.g., "5/12 (41%)"
 // Get all plans
 let plans = get_all_plans();
 ```
+
+### Plan Import
+
+The plan import feature (`src/commands/plan.rs`: `cmd_plan_import`) parses markdown documents and creates plans with tickets. Key implementation details:
+
+- **Parser**: `parse_importable_plan()` in `src/plan/parser.rs` handles document parsing
+- **Types**: `ImportablePlan`, `ImportablePhase`, `ImportableTask` in `src/plan/types.rs`
+- **Validation errors**: Use `JanusError::ImportFailed` with descriptive `issues` vector
+- **Format spec**: Embedded in `PLAN_FORMAT_SPEC` constant, shown via `janus plan import-spec`
+
+```rust
+use crate::plan::{parse_importable_plan, ImportablePlan};
+
+let plan = parse_importable_plan(&content)?;
+println!("Tasks: {}", plan.task_count());
+```

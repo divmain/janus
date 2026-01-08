@@ -10,6 +10,17 @@ use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::types::{PLANS_DIR, TicketMetadata, TicketStatus};
 
+// Re-export importable plan types for external use
+pub use crate::plan::types::{
+    ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask,
+};
+
+// Re-export parser functions for plan import
+pub use crate::plan::parser::{
+    ACCEPTANCE_CRITERIA_ALIASES, PHASE_PATTERN, TASKS_SECTION_ALIASES, is_completed_task,
+    is_phase_header, is_section_alias, parse_importable_plan,
+};
+
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
     fs::read_dir(PLANS_DIR)

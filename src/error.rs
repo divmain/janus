@@ -1,5 +1,17 @@
 use thiserror::Error;
 
+/// Format the ImportFailed error message with issues
+fn format_import_failed(message: &str, issues: &[String]) -> String {
+    if issues.is_empty() {
+        format!("plan import failed: {message}")
+    } else {
+        format!(
+            "plan import failed: {message}\n  - {}",
+            issues.join("\n  - ")
+        )
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum JanusError {
     #[error("ticket '{0}' not found")]
@@ -102,6 +114,16 @@ pub enum JanusError {
 
     #[error("cache operation failed: {0}")]
     CacheOther(String),
+
+    // Plan import errors
+    #[error("{}", format_import_failed(.message, .issues))]
+    ImportFailed {
+        message: String,
+        issues: Vec<String>,
+    },
+
+    #[error("plan with title '{0}' already exists ({1})")]
+    DuplicatePlanTitle(String, String), // title, existing plan ID
 
     #[error("{0}")]
     Other(String),

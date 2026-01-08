@@ -15,8 +15,12 @@
 //! - `plan rename` - Rename a plan
 //! - `plan next` - Show the next actionable item(s)
 //! - `plan status` - Show plan status summary
+//! - `plan import` - Import an AI-generated plan document
+//! - `plan import-spec` - Show the importable plan format specification
 
+use std::fs;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::process::Command;
 
 use owo_colors::OwoColorize;
@@ -26,12 +30,14 @@ use crate::error::{JanusError, Result};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
 use crate::plan::{
-    Plan, compute_all_phase_statuses, compute_plan_status, ensure_plans_dir, generate_plan_id,
-    get_all_plans,
+    ImportablePlan, Plan, compute_all_phase_statuses, compute_plan_status, ensure_plans_dir,
+    generate_plan_id, get_all_plans, parse_importable_plan,
 };
 use crate::ticket::{Ticket, build_ticket_map};
-use crate::types::{TicketMetadata, TicketStatus};
-use crate::utils::{generate_uuid, is_stdin_tty, iso_date};
+use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketStatus, TicketType};
+use crate::utils::{
+    ensure_dir, generate_id_with_custom_prefix, generate_uuid, is_stdin_tty, iso_date,
+};
 
 /// Create a new plan
 ///
@@ -1732,6 +1738,526 @@ fn print_ticket_line(
         // Missing ticket
         println!("{}. {} {}", index, "[missing]".red(), ticket_id.dimmed());
     }
+}
+
+// ============================================================================
+// Plan Import Commands
+// ============================================================================
+
+/// The Plan Format Specification document.
+///
+/// This constant contains the full documentation for the importable plan format.
+/// It is displayed by `janus plan import-spec`.
+pub const PLAN_FORMAT_SPECIFICATION: &str = r#"# Plan Format Specification
+
+This document describes the format for plan documents that can be imported
+into Janus using `janus plan import`.
+
+## Basic Structure
+
+```markdown
+# Plan Title (required)
+
+Optional description paragraph(s) providing context of the overall plan.
+
+## Acceptance Criteria (optional)
+
+- First criterion
+- Second criterion
+
+## Phase 1: Phase Name
+
+Phase description. Technically optional but should be included.
+
+### Task Title One
+
+Task description, implementation notes, or code examples. Required.
+
+### Task Title Two
+
+Task description, implementation notes, or code examples. Required.
+
+## Phase 2: Another Phase Name
+
+### Another Task
+
+Task description.
+```
+
+## Simple Plans (No Phases)
+
+For plans without phases, tasks can be at the top level:
+
+```markdown
+# Plan Title
+
+Plan description.
+
+## Tasks
+
+### Task One
+
+Task one description.
+
+### Task Two
+
+Task two description.
+```
+
+Or as a simple checklist:
+
+```markdown
+# Plan Title
+
+Plan description
+
+## Tasks
+
+- [ ] Task one
+- [ ] Task two  
+- [x] Completed task
+```
+
+## Element Reference
+
+| Element            | Format                      | Notes                                       |
+|--------------------|-----------------------------|---------------------------------------------|
+| Plan title         | `# Title` (H1)              | Required, must be first heading             |
+| Description        | Paragraphs after H1         | Optional, before first H2                   |
+| Acceptance criteria| `## Acceptance Criteria`    | Also: Goals, Success Criteria, etc.         |
+| Phase              | `## Phase N: Name`          | Also: Stage N, Part N, Step N               |
+| Task (H3)          | `### Task Title`            | Becomes ticket title                        |
+| Task (checklist)   | `- [ ] Title` or `- Title`  | Alternative to H3 tasks                     |
+| Completed task     | `### Title [x]` or `- [x]`  | Created with status: complete               |
+| Task body          | Content after H3            | Becomes ticket description                  |
+
+## Phase Numbering
+
+Phase numbers can be:
+- Numeric: `## Phase 1:`, `## Phase 2:`
+- Alphanumeric: `## Phase 1a:`, `## Phase 2b:`
+- Implicit: Derived from document order if not specified
+
+## Task Content
+
+Content between an H3 task header and the next H3/H2 becomes the ticket body:
+
+```markdown
+### Add Caching Support
+
+Implement caching in the TTS service to avoid redundant synthesis.
+
+Key changes:
+- Add cache data structure
+- Modify speak() method
+
+### Next Task
+```
+
+The above creates a ticket titled "Add Caching Support" with the description
+containing the prose.
+
+## Section Aliases
+
+These section names are recognized (case-insensitive):
+
+**Acceptance Criteria:** Acceptance Criteria, Goals, Success Criteria,
+Deliverables, Requirements, Objectives
+
+**Tasks (simple plan):** Tasks, Tickets, Work Items, Items, Checklist
+
+**Phase:** Phase N, Stage N, Part N, Step N (followed by : or -)
+
+## Examples
+
+See `janus plan import --dry-run <file>` to preview what would be created.
+"#;
+
+/// Show the importable plan format specification
+///
+/// Prints the Plan Format Specification document to stdout.
+pub fn cmd_show_import_spec() -> Result<()> {
+    println!("{}", PLAN_FORMAT_SPECIFICATION);
+    Ok(())
+}
+
+/// Check if a plan with the given title already exists
+///
+/// # Arguments
+/// * `title` - The title to check
+///
+/// # Returns
+/// `Ok(())` if no duplicate exists, `Err(DuplicatePlanTitle)` if one does.
+fn check_duplicate_plan_title(title: &str) -> Result<()> {
+    let existing_plans = get_all_plans();
+
+    for plan in existing_plans {
+        if let Some(ref existing_title) = plan.title
+            && existing_title.eq_ignore_ascii_case(title)
+        {
+            let plan_id = plan.id.unwrap_or_else(|| "unknown".to_string());
+            return Err(JanusError::DuplicatePlanTitle(title.to_string(), plan_id));
+        }
+    }
+
+    Ok(())
+}
+
+/// Format and print the dry-run import summary
+///
+/// # Arguments
+/// * `plan` - The parsed importable plan
+fn print_import_summary(plan: &ImportablePlan) {
+    println!();
+    println!("{}", "Import Summary".bold());
+    println!("{}", "==============".bold());
+    println!();
+
+    // Title
+    println!("{}: {}", "Title".bold(), plan.title);
+
+    // Description (truncated if long)
+    if let Some(ref desc) = plan.description {
+        let desc_preview = if desc.len() > 200 {
+            format!("{}...", &desc[..200])
+        } else {
+            desc.clone()
+        };
+        println!("{}: {}", "Description".bold(), desc_preview);
+    }
+
+    // Acceptance criteria
+    if !plan.acceptance_criteria.is_empty() {
+        println!();
+        println!(
+            "{}: {} items",
+            "Acceptance Criteria".bold(),
+            plan.acceptance_criteria.len()
+        );
+        for criterion in &plan.acceptance_criteria {
+            println!("  - {}", criterion);
+        }
+    }
+
+    // Plan structure
+    println!();
+    if plan.is_phased() {
+        println!("{}: {}", "Phases".bold(), plan.phases.len());
+        println!("{}: {}", "Tasks".bold(), plan.task_count());
+        println!();
+
+        for phase in &plan.phases {
+            let phase_header = if phase.name.is_empty() {
+                format!("Phase {}", phase.number)
+            } else {
+                format!("Phase {}: {}", phase.number, phase.name)
+            };
+            println!("{}", phase_header.cyan());
+
+            for task in &phase.tasks {
+                let marker = if task.is_complete { "[x]" } else { "[ ]" };
+                println!("  {} {}", marker.dimmed(), task.title);
+            }
+        }
+    } else {
+        println!("{}: {}", "Tasks".bold(), plan.task_count());
+        println!();
+
+        for task in &plan.tasks {
+            let marker = if task.is_complete { "[x]" } else { "[ ]" };
+            println!("  {} {}", marker.dimmed(), task.title);
+        }
+    }
+
+    // Summary of what would be created
+    println!();
+    println!("{}", "Would create:".bold());
+    println!("  - 1 plan");
+
+    let new_count = plan.all_tasks().iter().filter(|t| !t.is_complete).count();
+    let complete_count = plan.all_tasks().iter().filter(|t| t.is_complete).count();
+
+    if complete_count > 0 {
+        println!(
+            "  - {} tickets ({} new, {} complete)",
+            plan.task_count(),
+            new_count,
+            complete_count
+        );
+    } else {
+        println!("  - {} tickets (status: new)", plan.task_count());
+    }
+
+    if !plan.acceptance_criteria.is_empty() {
+        println!("  - 1 verification ticket (from acceptance criteria)");
+    }
+
+    println!();
+    println!("Run without --dry-run to import.");
+}
+
+/// Create a ticket from an ImportableTask
+///
+/// Returns (ticket_id, file_path) on success.
+fn create_ticket_from_task(
+    task: &crate::plan::ImportableTask,
+    ticket_type: TicketType,
+    prefix: Option<&str>,
+) -> Result<String> {
+    ensure_dir()?;
+
+    let id = generate_id_with_custom_prefix(prefix)?;
+    let uuid = generate_uuid();
+    let now = iso_date();
+
+    let status = if task.is_complete { "complete" } else { "new" };
+
+    // Build frontmatter
+    let frontmatter_lines = vec![
+        "---".to_string(),
+        format!("id: {}", id),
+        format!("uuid: {}", uuid),
+        format!("status: {}", status),
+        "deps: []".to_string(),
+        "links: []".to_string(),
+        format!("created: {}", now),
+        format!("type: {}", ticket_type),
+        "priority: 2".to_string(),
+        "---".to_string(),
+    ];
+
+    let frontmatter = frontmatter_lines.join("\n");
+
+    // Build body
+    let mut body = format!("# {}", task.title);
+    if let Some(ref task_body) = task.body {
+        body.push_str("\n\n");
+        body.push_str(task_body);
+    }
+
+    let content = format!("{}\n{}\n", frontmatter, body);
+
+    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+    fs::create_dir_all(TICKETS_ITEMS_DIR)?;
+    fs::write(&file_path, content)?;
+
+    Ok(id)
+}
+
+/// Create a verification ticket for acceptance criteria
+fn create_verification_ticket(
+    criteria: &[String],
+    ticket_type: TicketType,
+    prefix: Option<&str>,
+) -> Result<String> {
+    ensure_dir()?;
+
+    let id = generate_id_with_custom_prefix(prefix)?;
+    let uuid = generate_uuid();
+    let now = iso_date();
+
+    // Build frontmatter
+    let frontmatter_lines = vec![
+        "---".to_string(),
+        format!("id: {}", id),
+        format!("uuid: {}", uuid),
+        "status: new".to_string(),
+        "deps: []".to_string(),
+        "links: []".to_string(),
+        format!("created: {}", now),
+        format!("type: {}", ticket_type),
+        "priority: 2".to_string(),
+        "---".to_string(),
+    ];
+
+    let frontmatter = frontmatter_lines.join("\n");
+
+    // Build body with acceptance criteria checklist
+    let mut body = "# Verify Acceptance Criteria\n\n".to_string();
+    body.push_str("Verify that all acceptance criteria have been met:\n\n");
+    for criterion in criteria {
+        body.push_str(&format!("- [ ] {}\n", criterion));
+    }
+
+    let content = format!("{}\n{}\n", frontmatter, body);
+
+    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+    fs::create_dir_all(TICKETS_ITEMS_DIR)?;
+    fs::write(&file_path, content)?;
+
+    Ok(id)
+}
+
+/// Import a plan from a markdown file
+///
+/// # Arguments
+/// * `input` - File path or "-" for stdin
+/// * `dry_run` - If true, validate and show summary without creating anything
+/// * `title_override` - Override the extracted title
+/// * `ticket_type` - Type for created tickets (default: task)
+/// * `prefix` - Custom prefix for ticket IDs
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_import(
+    input: &str,
+    dry_run: bool,
+    title_override: Option<&str>,
+    ticket_type: TicketType,
+    prefix: Option<&str>,
+    output_json: bool,
+) -> Result<()> {
+    // 1. Read content from file or stdin
+    let content = if input == "-" {
+        let mut buffer = String::new();
+        std::io::stdin().read_to_string(&mut buffer)?;
+        buffer
+    } else {
+        fs::read_to_string(input)?
+    };
+
+    // 2. Parse the importable plan
+    let mut plan = parse_importable_plan(&content)?;
+
+    // 3. Apply title override if provided
+    if let Some(title) = title_override {
+        plan.title = title.to_string();
+    }
+
+    // 4. Check for duplicate plan title
+    check_duplicate_plan_title(&plan.title)?;
+
+    // 5. If dry-run, print summary and return
+    if dry_run {
+        if output_json {
+            let json_output = json!({
+                "dry_run": true,
+                "title": plan.title,
+                "description": plan.description,
+                "acceptance_criteria_count": plan.acceptance_criteria.len(),
+                "is_phased": plan.is_phased(),
+                "phase_count": plan.phases.len(),
+                "task_count": plan.task_count(),
+                "would_create": {
+                    "plans": 1,
+                    "tickets": plan.task_count() + if !plan.acceptance_criteria.is_empty() { 1 } else { 0 },
+                }
+            });
+            println!("{}", serde_json::to_string_pretty(&json_output)?);
+        } else {
+            print_import_summary(&plan);
+        }
+        return Ok(());
+    }
+
+    // 6. Create all tickets
+    ensure_plans_dir()?;
+
+    let mut created_ticket_ids: Vec<String> = Vec::new();
+
+    if plan.is_phased() {
+        // Phased plan: create tickets for each phase
+        for phase in &plan.phases {
+            for task in &phase.tasks {
+                let ticket_id = create_ticket_from_task(task, ticket_type, prefix)?;
+                created_ticket_ids.push(ticket_id);
+            }
+        }
+    } else {
+        // Simple plan: create tickets from top-level tasks
+        for task in &plan.tasks {
+            let ticket_id = create_ticket_from_task(task, ticket_type, prefix)?;
+            created_ticket_ids.push(ticket_id);
+        }
+    }
+
+    // 7. Create verification ticket if acceptance criteria exist
+    let verification_ticket_id = if !plan.acceptance_criteria.is_empty() {
+        Some(create_verification_ticket(
+            &plan.acceptance_criteria,
+            ticket_type,
+            prefix,
+        )?)
+    } else {
+        None
+    };
+
+    // 8. Generate plan metadata
+    let plan_id = generate_plan_id();
+    let uuid = generate_uuid();
+    let now = iso_date();
+
+    let mut metadata = PlanMetadata {
+        id: Some(plan_id.clone()),
+        uuid: Some(uuid.clone()),
+        created: Some(now.clone()),
+        title: Some(plan.title.clone()),
+        description: plan.description.clone(),
+        acceptance_criteria: plan.acceptance_criteria.clone(),
+        sections: Vec::new(),
+        file_path: None,
+    };
+
+    // 9. Build sections with ticket IDs
+    if plan.is_phased() {
+        let mut ticket_idx = 0;
+        for import_phase in &plan.phases {
+            let mut phase = Phase::new(import_phase.number.clone(), import_phase.name.clone());
+            phase.description = import_phase.description.clone();
+
+            // Assign ticket IDs to this phase
+            for _ in &import_phase.tasks {
+                phase.tickets.push(created_ticket_ids[ticket_idx].clone());
+                ticket_idx += 1;
+            }
+
+            // Add verification ticket to the last phase if it exists
+            let is_last_phase = plan
+                .phases
+                .last()
+                .map(|p| p.number == import_phase.number)
+                .unwrap_or(false);
+
+            if is_last_phase && let Some(ref v_id) = verification_ticket_id {
+                phase.tickets.push(v_id.clone());
+            }
+
+            metadata.sections.push(PlanSection::Phase(phase));
+        }
+    } else {
+        // Simple plan: Tickets section
+        let mut tickets = created_ticket_ids.clone();
+        if let Some(ref v_id) = verification_ticket_id {
+            tickets.push(v_id.clone());
+        }
+        metadata.sections.push(PlanSection::Tickets(tickets));
+    }
+
+    // 10. Serialize and write plan
+    let plan_content = serialize_plan(&metadata);
+    let plan_handle = Plan::with_id(&plan_id);
+    plan_handle.write(&plan_content)?;
+
+    // 11. Output result
+    if output_json {
+        let tickets_created: Vec<serde_json::Value> = created_ticket_ids
+            .iter()
+            .map(|id| json!({ "id": id }))
+            .collect();
+
+        let output = json!({
+            "id": plan_id,
+            "uuid": uuid,
+            "title": plan.title,
+            "created": now,
+            "is_phased": plan.is_phased(),
+            "tickets_created": tickets_created,
+            "verification_ticket": verification_ticket_id,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("{}", plan_id);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

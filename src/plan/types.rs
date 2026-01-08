@@ -346,6 +346,163 @@ impl PhaseStatus {
     }
 }
 
+// ============================================================
+// Importable Plan Types (for plan import functionality)
+// ============================================================
+
+/// Represents a parsed importable plan before ticket creation.
+///
+/// This is the intermediate representation produced by parsing an AI-generated
+/// plan document. It contains all the information needed to create tickets
+/// and a plan, but has not yet been persisted to disk.
+#[derive(Debug, Clone, Default)]
+pub struct ImportablePlan {
+    /// Plan title (extracted from H1 heading)
+    pub title: String,
+
+    /// Optional description (content between H1 and first H2)
+    pub description: Option<String>,
+
+    /// Acceptance criteria (from `## Acceptance Criteria` or similar section)
+    pub acceptance_criteria: Vec<String>,
+
+    /// Phases for phased plans (mutually exclusive with `tasks`)
+    pub phases: Vec<ImportablePhase>,
+
+    /// Tasks for simple plans without phases (mutually exclusive with `phases`)
+    pub tasks: Vec<ImportableTask>,
+}
+
+impl ImportablePlan {
+    /// Check if this is a phased plan (has phases)
+    pub fn is_phased(&self) -> bool {
+        !self.phases.is_empty()
+    }
+
+    /// Check if this is a simple plan (has top-level tasks, no phases)
+    pub fn is_simple(&self) -> bool {
+        !self.tasks.is_empty() && self.phases.is_empty()
+    }
+
+    /// Get the total number of tasks across all phases (for phased plans)
+    /// or the number of top-level tasks (for simple plans)
+    pub fn task_count(&self) -> usize {
+        if self.is_phased() {
+            self.phases.iter().map(|p| p.tasks.len()).sum()
+        } else {
+            self.tasks.len()
+        }
+    }
+
+    /// Get all tasks from all phases (for phased plans) or top-level tasks (for simple plans)
+    pub fn all_tasks(&self) -> Vec<&ImportableTask> {
+        if self.is_phased() {
+            self.phases.iter().flat_map(|p| p.tasks.iter()).collect()
+        } else {
+            self.tasks.iter().collect()
+        }
+    }
+}
+
+/// Represents a phase within an importable plan.
+///
+/// A phase groups related tasks together and typically represents
+/// a milestone or stage in the implementation.
+#[derive(Debug, Clone, Default)]
+pub struct ImportablePhase {
+    /// Phase number/identifier (e.g., "1", "2a", "3")
+    pub number: String,
+
+    /// Phase name (e.g., "Infrastructure", "Core Implementation")
+    pub name: String,
+
+    /// Optional phase description (content after header, before tasks)
+    pub description: Option<String>,
+
+    /// Tasks within this phase
+    pub tasks: Vec<ImportableTask>,
+}
+
+/// Represents a task within an importable plan.
+///
+/// Each task will become a ticket when the plan is imported.
+#[derive(Debug, Clone, Default)]
+pub struct ImportableTask {
+    /// Task title (becomes ticket title)
+    pub title: String,
+
+    /// Task body/description (becomes ticket body)
+    pub body: Option<String>,
+
+    /// Whether the task is marked as complete (e.g., `[x]` marker)
+    pub is_complete: bool,
+}
+
+/// Detailed validation error for plan import.
+///
+/// This provides structured error information including line numbers
+/// and hints to help users fix their documents.
+#[derive(Debug, Clone)]
+pub struct ImportValidationError {
+    /// Line number where the error occurred (1-indexed), if applicable
+    pub line: Option<usize>,
+
+    /// Error message describing the issue
+    pub message: String,
+
+    /// Optional hint for how to fix the issue
+    pub hint: Option<String>,
+}
+
+impl ImportValidationError {
+    /// Create a new validation error with just a message
+    pub fn new(message: impl Into<String>) -> Self {
+        ImportValidationError {
+            line: None,
+            message: message.into(),
+            hint: None,
+        }
+    }
+
+    /// Create a validation error with a line number
+    pub fn at_line(line: usize, message: impl Into<String>) -> Self {
+        ImportValidationError {
+            line: Some(line),
+            message: message.into(),
+            hint: None,
+        }
+    }
+
+    /// Add a hint to this error
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = Some(hint.into());
+        self
+    }
+
+    /// Format this error for display
+    pub fn to_display_string(&self) -> String {
+        let mut result = String::new();
+
+        if let Some(line) = self.line {
+            result.push_str(&format!("Line {}: ", line));
+        }
+
+        result.push_str(&self.message);
+
+        if let Some(hint) = &self.hint {
+            result.push_str(&format!("\n    Hint: {}", hint));
+        }
+
+        result
+    }
+}
+
+impl std::fmt::Display for ImportValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_display_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -604,5 +761,166 @@ mod tests {
         let tickets = plan.all_tickets();
         assert_eq!(tickets.len(), 2);
         assert!(tickets.contains(&"j-c3d4"));
+    }
+
+    // ============================================================
+    // Importable Plan Types Tests
+    // ============================================================
+
+    #[test]
+    fn test_importable_plan_default() {
+        let plan = ImportablePlan::default();
+        assert!(plan.title.is_empty());
+        assert!(plan.description.is_none());
+        assert!(plan.acceptance_criteria.is_empty());
+        assert!(plan.phases.is_empty());
+        assert!(plan.tasks.is_empty());
+        assert!(!plan.is_phased());
+        assert!(!plan.is_simple());
+        assert_eq!(plan.task_count(), 0);
+    }
+
+    #[test]
+    fn test_importable_plan_phased() {
+        let plan = ImportablePlan {
+            title: "Test Plan".to_string(),
+            description: Some("A test plan".to_string()),
+            acceptance_criteria: vec!["Criterion 1".to_string()],
+            phases: vec![
+                ImportablePhase {
+                    number: "1".to_string(),
+                    name: "Phase One".to_string(),
+                    description: None,
+                    tasks: vec![
+                        ImportableTask {
+                            title: "Task 1".to_string(),
+                            body: Some("Body 1".to_string()),
+                            is_complete: false,
+                        },
+                        ImportableTask {
+                            title: "Task 2".to_string(),
+                            body: None,
+                            is_complete: true,
+                        },
+                    ],
+                },
+                ImportablePhase {
+                    number: "2".to_string(),
+                    name: "Phase Two".to_string(),
+                    description: Some("Second phase".to_string()),
+                    tasks: vec![ImportableTask {
+                        title: "Task 3".to_string(),
+                        body: None,
+                        is_complete: false,
+                    }],
+                },
+            ],
+            tasks: vec![],
+        };
+
+        assert!(plan.is_phased());
+        assert!(!plan.is_simple());
+        assert_eq!(plan.task_count(), 3);
+        assert_eq!(plan.all_tasks().len(), 3);
+        assert_eq!(plan.all_tasks()[0].title, "Task 1");
+        assert_eq!(plan.all_tasks()[1].title, "Task 2");
+        assert_eq!(plan.all_tasks()[2].title, "Task 3");
+    }
+
+    #[test]
+    fn test_importable_plan_simple() {
+        let plan = ImportablePlan {
+            title: "Simple Plan".to_string(),
+            description: None,
+            acceptance_criteria: vec![],
+            phases: vec![],
+            tasks: vec![
+                ImportableTask {
+                    title: "Task A".to_string(),
+                    body: Some("Do thing A".to_string()),
+                    is_complete: false,
+                },
+                ImportableTask {
+                    title: "Task B".to_string(),
+                    body: None,
+                    is_complete: false,
+                },
+            ],
+        };
+
+        assert!(!plan.is_phased());
+        assert!(plan.is_simple());
+        assert_eq!(plan.task_count(), 2);
+        assert_eq!(plan.all_tasks().len(), 2);
+    }
+
+    #[test]
+    fn test_importable_task_default() {
+        let task = ImportableTask::default();
+        assert!(task.title.is_empty());
+        assert!(task.body.is_none());
+        assert!(!task.is_complete);
+    }
+
+    #[test]
+    fn test_importable_phase_default() {
+        let phase = ImportablePhase::default();
+        assert!(phase.number.is_empty());
+        assert!(phase.name.is_empty());
+        assert!(phase.description.is_none());
+        assert!(phase.tasks.is_empty());
+    }
+
+    #[test]
+    fn test_import_validation_error_new() {
+        let err = ImportValidationError::new("Missing title");
+        assert!(err.line.is_none());
+        assert_eq!(err.message, "Missing title");
+        assert!(err.hint.is_none());
+        assert_eq!(err.to_display_string(), "Missing title");
+    }
+
+    #[test]
+    fn test_import_validation_error_at_line() {
+        let err = ImportValidationError::at_line(42, "Invalid syntax");
+        assert_eq!(err.line, Some(42));
+        assert_eq!(err.message, "Invalid syntax");
+        assert!(err.hint.is_none());
+        assert_eq!(err.to_display_string(), "Line 42: Invalid syntax");
+    }
+
+    #[test]
+    fn test_import_validation_error_with_hint() {
+        let err =
+            ImportValidationError::new("Missing plan title").with_hint("Add a # Title heading");
+        assert!(err.line.is_none());
+        assert_eq!(err.message, "Missing plan title");
+        assert_eq!(err.hint, Some("Add a # Title heading".to_string()));
+        assert_eq!(
+            err.to_display_string(),
+            "Missing plan title\n    Hint: Add a # Title heading"
+        );
+    }
+
+    #[test]
+    fn test_import_validation_error_full() {
+        let err = ImportValidationError::at_line(10, "Phase has no tasks")
+            .with_hint("Add ### Task headers under the phase");
+        assert_eq!(err.line, Some(10));
+        assert_eq!(err.message, "Phase has no tasks");
+        assert_eq!(
+            err.hint,
+            Some("Add ### Task headers under the phase".to_string())
+        );
+        assert_eq!(
+            err.to_display_string(),
+            "Line 10: Phase has no tasks\n    Hint: Add ### Task headers under the phase"
+        );
+    }
+
+    #[test]
+    fn test_import_validation_error_display() {
+        let err = ImportValidationError::at_line(5, "Test error");
+        assert_eq!(format!("{}", err), "Line 5: Test error");
     }
 }

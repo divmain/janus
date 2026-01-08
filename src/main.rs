@@ -8,10 +8,11 @@ use janus::commands::{
     cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set,
     cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_edit, cmd_link_add,
     cmd_link_remove, cmd_ls, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
-    cmd_plan_delete, cmd_plan_edit, cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next,
-    cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder,
-    cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_remote_browse, cmd_remote_link,
-    cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync, cmd_view,
+    cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket,
+    cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
+    cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_remote_browse,
+    cmd_remote_link, cmd_reopen, cmd_show, cmd_show_import_spec, cmd_start, cmd_status, cmd_sync,
+    cmd_view,
 };
 use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
 
@@ -655,6 +656,33 @@ enum PlanAction {
         #[arg(long)]
         json: bool,
     },
+    /// Import a plan from a markdown file
+    Import {
+        /// File path (use "-" for stdin)
+        file: String,
+
+        /// Validate and show what would be created without creating anything
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Override the extracted title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Ticket type for created tasks (default: task)
+        #[arg(long = "type", default_value = "task", value_parser = parse_type)]
+        ticket_type: TicketType,
+
+        /// Custom prefix for created ticket IDs
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the importable plan format specification
+    ImportSpec,
 }
 
 fn parse_priority(s: &str) -> Result<TicketPriority, String> {
@@ -901,6 +929,22 @@ async fn main() -> ExitCode {
                 json,
             } => cmd_plan_next(&id, phase, all, count, json).await,
             PlanAction::Status { id, json } => cmd_plan_status(&id, json).await,
+            PlanAction::Import {
+                file,
+                dry_run,
+                title,
+                ticket_type,
+                prefix,
+                json,
+            } => cmd_plan_import(
+                &file,
+                dry_run,
+                title.as_deref(),
+                ticket_type,
+                prefix.as_deref(),
+                json,
+            ),
+            PlanAction::ImportSpec => cmd_show_import_spec(),
         },
 
         Commands::Completions { shell } => {
