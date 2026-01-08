@@ -905,7 +905,7 @@ fn test_ready() {
 
     janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
 
-    let output = janus.run_success(&["ready"]);
+    let output = janus.run_success(&["ls", "--ready"]);
     assert!(output.contains(&dep_id));
     assert!(output.contains(&ready_id));
     assert!(!output.contains(&blocked_id));
@@ -924,14 +924,14 @@ fn test_ready_after_dep_closed() {
     janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
 
     // Initially blocked
-    let output = janus.run_success(&["ready"]);
+    let output = janus.run_success(&["ls", "--ready"]);
     assert!(!output.contains(&blocked_id));
 
     // Close dependency
     janus.run_success(&["close", &dep_id]);
 
     // Now ready
-    let output = janus.run_success(&["ready"]);
+    let output = janus.run_success(&["ls", "--ready"]);
     assert!(output.contains(&blocked_id));
 }
 
@@ -948,7 +948,7 @@ fn test_blocked() {
 
     janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
 
-    let output = janus.run_success(&["blocked"]);
+    let output = janus.run_success(&["ls", "--blocked"]);
 
     // The blocked ticket should appear with its title
     assert!(output.contains(&blocked_id), "Blocked ticket should appear");
@@ -983,7 +983,7 @@ fn test_closed() {
     let id2 = janus.run_success(&["create", "Closed"]).trim().to_string();
     janus.run_success(&["close", &id2]);
 
-    let output = janus.run_success(&["closed"]);
+    let output = janus.run_success(&["ls", "--closed"]);
     assert!(!output.contains(&id1));
     assert!(output.contains(&id2));
 }
@@ -1001,9 +1001,377 @@ fn test_closed_limit() {
         janus.run_success(&["close", &id]);
     }
 
-    let output = janus.run_success(&["closed", "--limit", "2"]);
+    let output = janus.run_success(&["ls", "--closed", "--limit", "2"]);
     let lines: Vec<&str> = output.lines().collect();
     assert_eq!(lines.len(), 2);
+}
+
+// ============================================================================
+// Phase 2: Consolidated ls command tests
+// ============================================================================
+
+#[test]
+fn test_ls_ready_flag() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with no deps (should appear in --ready)
+    let ready_id = janus
+        .run_success(&["create", "Ready ticket"])
+        .trim()
+        .to_string();
+
+    // Create a ticket with incomplete dep (should NOT appear in --ready)
+    let blocking_id = janus
+        .run_success(&["create", "Blocking"])
+        .trim()
+        .to_string();
+    let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
+    janus.run_success(&["dep", "add", &blocked_id, &blocking_id]);
+
+    let output = janus.run_success(&["ls", "--ready"]);
+
+    assert!(output.contains(&ready_id));
+    assert!(output.contains("Ready ticket"));
+    assert!(!output.contains(&blocked_id));
+    assert!(!output.contains("Blocked ticket"));
+}
+
+#[test]
+fn test_ls_blocked_flag() {
+    let janus = JanusTest::new();
+
+    let dep_id = janus
+        .run_success(&["create", "Dependency"])
+        .trim()
+        .to_string();
+    let blocked_id = janus
+        .run_success(&["create", "Blocked ticket"])
+        .trim()
+        .to_string();
+    let ready_id = janus.run_success(&["create", "Ready"]).trim().to_string();
+
+    janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
+
+    let output = janus.run_success(&["ls", "--blocked"]);
+
+    // The blocked ticket should appear
+    assert!(output.contains(&blocked_id));
+    assert!(output.contains("Blocked ticket"));
+
+    // The dependency ticket should not appear as blocked
+    assert!(!output.contains("Dependency"));
+
+    // Ready ticket should not appear
+    assert!(!output.contains(&ready_id));
+    assert!(!output.contains("Ready"));
+}
+
+#[test]
+fn test_ls_closed_flag() {
+    let janus = JanusTest::new();
+
+    let open_id = janus.run_success(&["create", "Open"]).trim().to_string();
+    let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
+    janus.run_success(&["close", &closed_id]);
+
+    let output = janus.run_success(&["ls", "--closed"]);
+
+    assert!(!output.contains(&open_id));
+    assert!(output.contains(&closed_id));
+}
+
+#[test]
+fn test_ls_closed_with_limit() {
+    let janus = JanusTest::new();
+
+    // Create and close 5 tickets
+    for i in 0..5 {
+        let id = janus
+            .run_success(&["create", &format!("Ticket {}", i)])
+            .trim()
+            .to_string();
+        janus.run_success(&["close", &id]);
+    }
+
+    let output = janus.run_success(&["ls", "--closed", "--limit", "2"]);
+    let lines: Vec<&str> = output.lines().collect();
+    assert_eq!(lines.len(), 2);
+
+    // Without --limit, should default to 20 (or all if less than 20)
+    let output = janus.run_success(&["ls", "--closed"]);
+    let lines: Vec<&str> = output.lines().collect();
+    assert_eq!(lines.len(), 5, "All 5 closed tickets should be shown");
+}
+
+#[test]
+fn test_ls_ready_and_blocked_flags() {
+    let janus = JanusTest::new();
+
+    let ready_id = janus.run_success(&["create", "Ready"]).trim().to_string();
+    let dep_id = janus.run_success(&["create", "Dep"]).trim().to_string();
+    let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
+
+    janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
+
+    let output = janus.run_success(&["ls", "--ready", "--blocked"]);
+
+    // Both ready AND blocked tickets should appear (union behavior)
+    assert!(output.contains(&ready_id));
+    assert!(output.contains("Ready"));
+    assert!(output.contains(&blocked_id));
+    assert!(output.contains("Blocked"));
+}
+
+#[test]
+fn test_ls_all_flag() {
+    let janus = JanusTest::new();
+
+    let open_id = janus.run_success(&["create", "Open"]).trim().to_string();
+    let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
+    janus.run_success(&["close", &closed_id]);
+
+    // Without --all, closed tickets should not appear
+    let output_without_all = janus.run_success(&["ls"]);
+    assert!(output_without_all.contains(&open_id));
+    assert!(!output_without_all.contains(&closed_id));
+
+    // With --all, closed tickets should appear
+    let output_with_all = janus.run_success(&["ls", "--all"]);
+    assert!(output_with_all.contains(&open_id));
+    assert!(output_with_all.contains(&closed_id));
+}
+
+#[test]
+fn test_ls_status_conflicts_with_filters() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_failure(&["ls", "--status", "new", "--ready"]);
+    assert!(output.contains("cannot be used with") || output.contains("conflicts"));
+}
+
+#[test]
+fn test_ready_command_removed() {
+    let janus = JanusTest::new();
+
+    let output = janus.run(&["ready"]);
+    // run() doesn't check success, so we need to verify it failed
+    assert!(
+        !output.status.success(),
+        "ready command should fail but succeeded"
+    );
+}
+
+#[test]
+fn test_blocked_command_removed() {
+    let janus = JanusTest::new();
+
+    let output = janus.run(&["blocked"]);
+    assert!(
+        !output.status.success(),
+        "blocked command should fail but succeeded"
+    );
+}
+
+#[test]
+fn test_closed_command_removed() {
+    let janus = JanusTest::new();
+
+    let output = janus.run(&["closed"]);
+    assert!(
+        !output.status.success(),
+        "closed command should fail but succeeded"
+    );
+}
+
+#[test]
+fn test_ls_limit_without_closed() {
+    let janus = JanusTest::new();
+
+    // Create more tickets than the limit
+    for i in 0..10 {
+        janus.run_success(&["create", &format!("Ticket {}", i)]);
+    }
+
+    // Test that --limit now works universally
+    let output = janus.run_success(&["ls", "--limit", "3"]);
+    let line_count = output.lines().count();
+    assert_eq!(
+        line_count, 3,
+        "Should show exactly 3 tickets when --limit 3 is used"
+    );
+}
+
+#[test]
+fn test_ls_unlimited_without_limit_flag() {
+    let janus = JanusTest::new();
+
+    // Create 5 tickets
+    for i in 0..5 {
+        janus.run_success(&["create", &format!("Ticket {}", i)]);
+    }
+
+    // Without --limit, should show all tickets
+    let output = janus.run_success(&["ls"]);
+    let line_count = output.lines().count();
+    assert_eq!(
+        line_count, 5,
+        "Should show all 5 tickets when --limit is not specified"
+    );
+}
+
+#[test]
+fn test_ls_limit_with_ready_flag() {
+    let janus = JanusTest::new();
+
+    // Create multiple ready tickets
+    for i in 0..10 {
+        janus.run_success(&["create", &format!("Ticket {}", i)]);
+    }
+
+    let output = janus.run_success(&["ls", "--ready", "--limit", "3"]);
+    let line_count = output.lines().count();
+    assert_eq!(
+        line_count, 3,
+        "Should show exactly 3 ready tickets when --limit 3 is used with --ready"
+    );
+}
+
+#[test]
+fn test_ls_limit_with_blocked_flag() {
+    let janus = JanusTest::new();
+
+    // Create multiple blocked tickets
+    let dep = janus.run_success(&["create", "Dep"]).trim().to_string();
+    for i in 0..5 {
+        let blocked = janus
+            .run_success(&["create", &format!("Blocked {}", i)])
+            .trim()
+            .to_string();
+        janus.run_success(&["dep", "add", &blocked, &dep]);
+    }
+
+    let output = janus.run_success(&["ls", "--blocked", "--limit", "2"]);
+    let line_count = output.lines().count();
+    assert_eq!(
+        line_count, 2,
+        "Should show exactly 2 blocked tickets when --limit 2 is used with --blocked"
+    );
+}
+
+#[test]
+fn test_ls_closed_default_limit() {
+    let janus = JanusTest::new();
+
+    // Create and close 30 tickets
+    for i in 0..30 {
+        let id = janus
+            .run_success(&["create", &format!("Ticket {}", i)])
+            .trim()
+            .to_string();
+        janus.run_success(&["close", &id]);
+    }
+
+    // --closed without explicit --limit should default to 20
+    let output = janus.run_success(&["ls", "--closed"]);
+    let line_count = output.lines().count();
+    assert_eq!(line_count, 20, "--closed should show 20 tickets by default");
+}
+
+#[test]
+fn test_ls_closed_custom_limit() {
+    let janus = JanusTest::new();
+
+    // Create and close 30 tickets
+    for i in 0..30 {
+        let id = janus
+            .run_success(&["create", &format!("Ticket {}", i)])
+            .trim()
+            .to_string();
+        janus.run_success(&["close", &id]);
+    }
+
+    // --closed --limit 5 should show 5 tickets
+    let output = janus.run_success(&["ls", "--closed", "--limit", "5"]);
+    let line_count = output.lines().count();
+    assert_eq!(
+        line_count, 5,
+        "--closed --limit 5 should show exactly 5 tickets"
+    );
+}
+
+#[test]
+fn test_ls_all_with_other_filters() {
+    let janus = JanusTest::new();
+
+    let open_id = janus
+        .run_success(&["create", "Open ticket"])
+        .trim()
+        .to_string();
+    let closed_id = janus
+        .run_success(&["create", "Closed ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["close", &closed_id]);
+
+    // --all should show all tickets
+    let output = janus.run_success(&["ls", "--all"]);
+    assert!(output.contains(&open_id));
+    assert!(output.contains(&closed_id));
+
+    // --all with --status should still filter by status
+    let output = janus.run_success(&["ls", "--all", "--status", "complete"]);
+    assert!(!output.contains(&open_id));
+    assert!(output.contains(&closed_id));
+}
+
+#[test]
+fn test_ls_all_three_filters_union() {
+    let janus = JanusTest::new();
+
+    // Create a ready ticket (new, no deps)
+    let ready_id = janus.run_success(&["create", "Ready"]).trim().to_string();
+
+    // Create a blocked ticket (new, has incomplete dep)
+    let dep_id = janus.run_success(&["create", "Dep"]).trim().to_string();
+    let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
+    janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
+
+    // Create a closed ticket
+    let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
+    janus.run_success(&["close", &closed_id]);
+
+    // Combine all three filters - should show union of all
+    let output = janus.run_success(&["ls", "--ready", "--blocked", "--closed"]);
+    assert!(output.contains(&ready_id));
+    assert!(output.contains(&blocked_id));
+    assert!(output.contains(&closed_id));
+    assert!(output.contains("Ready"));
+    assert!(output.contains("Blocked"));
+    assert!(output.contains("Closed"));
+}
+
+#[test]
+fn test_ls_json_output_works() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+
+    // Test --json flag with regular ls
+    let output = janus.run_success(&["ls", "--json"]);
+    assert!(output.contains(&id));
+    // JSON output should have status field in format "status": "new"
+    assert!(output.contains("\"status\":"));
+    assert!(output.contains("\"new\""));
+
+    // Test --json flag with --ready
+    let output = janus.run_success(&["ls", "--ready", "--json"]);
+    assert!(output.contains(&id));
+    assert!(output.contains("\"status\":"));
+    assert!(output.contains("\"new\""));
+
+    // Test --json flag with --blocked
+    let _output = janus.run_success(&["ls", "--blocked", "--json"]);
+    // No blocked tickets, so should be empty or just contain the ready one
 }
 
 // ============================================================================
@@ -1177,7 +1545,7 @@ fn test_ready_sorted_by_priority() {
         .trim()
         .to_string();
 
-    let output = janus.run_success(&["ready"]);
+    let output = janus.run_success(&["ls", "--ready"]);
     let lines: Vec<&str> = output.lines().collect();
 
     // Find positions
@@ -1293,7 +1661,7 @@ fn test_config_file_created() {
 fn test_adopt_invalid_ref() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["adopt", "invalid"]);
+    let stderr = janus.run_failure(&["remote", "adopt", "invalid"]);
     assert!(stderr.contains("invalid") || stderr.contains("expected"));
 }
 
@@ -1301,7 +1669,13 @@ fn test_adopt_invalid_ref() {
 fn test_adopt_with_reserved_prefix_fails() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["adopt", "github:test/test/123", "--prefix", "plan"]);
+    let stderr = janus.run_failure(&[
+        "remote",
+        "adopt",
+        "github:test/test/123",
+        "--prefix",
+        "plan",
+    ]);
     assert!(
         stderr.contains("reserved"),
         "Error should mention the prefix is reserved, got: {}",
@@ -1314,6 +1688,7 @@ fn test_adopt_with_invalid_prefix_characters_fails() {
     let janus = JanusTest::new();
 
     let stderr = janus.run_failure(&[
+        "remote",
         "adopt",
         "github:test/test/123",
         "--prefix",
@@ -1331,7 +1706,7 @@ fn test_push_not_configured() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    let stderr = janus.run_failure(&["push", &id]);
+    let stderr = janus.run_failure(&["remote", "push", &id]);
     // Should fail due to no default_remote config
     assert!(
         stderr.contains("not configured") || stderr.contains("default_remote"),
@@ -1345,7 +1720,7 @@ fn test_remote_link_invalid_ref() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    let stderr = janus.run_failure(&["remote-link", &id, "invalid"]);
+    let stderr = janus.run_failure(&["remote", "link", &id, "invalid"]);
     assert!(stderr.contains("invalid") || stderr.contains("expected"));
 }
 
@@ -1354,7 +1729,7 @@ fn test_sync_not_linked() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    let stderr = janus.run_failure(&["sync", &id]);
+    let stderr = janus.run_failure(&["remote", "sync", &id]);
     assert!(stderr.contains("not linked"));
 }
 
@@ -1363,14 +1738,62 @@ fn test_help_shows_new_commands() {
     let janus = JanusTest::new();
 
     let output = janus.run_success(&["--help"]);
-    assert!(output.contains("adopt"), "Should show adopt command");
-    assert!(output.contains("push"), "Should show push command");
-    assert!(
-        output.contains("remote-link"),
-        "Should show remote-link command"
-    );
-    assert!(output.contains("sync"), "Should show sync command");
+    assert!(output.contains("remote"), "Should show remote command");
     assert!(output.contains("config"), "Should show config command");
+}
+
+// ============================================================================
+// Cache command and error handling tests (Phase 6)
+// ============================================================================
+
+// ============================================================================
+// Completions command tests (Phase 1)
+// ============================================================================
+
+#[test]
+fn test_completions_bash() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["completions", "bash"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("_janus"));
+}
+
+#[test]
+fn test_completions_zsh() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["completions", "zsh"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("#compdef janus"));
+}
+
+#[test]
+fn test_completions_fish() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["completions", "fish"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("complete -c janus"));
+}
+
+#[test]
+fn test_completions_invalid_shell() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["completions", "invalid"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
 }
 
 // ============================================================================
@@ -4413,4 +4836,169 @@ fn test_plan_reorder_phases_no_phases() {
             || stderr.contains("terminal"),
         "Should handle plan without phases gracefully"
     );
+}
+
+// ============================================================================
+// Remote command consolidation (Phase 3)
+// ============================================================================
+
+#[test]
+fn test_remote_browse_help() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["remote", "browse", "--help"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_remote_adopt_help() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["remote", "adopt", "--help"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("REMOTE_REF"));
+}
+
+#[test]
+fn test_remote_push_help() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["remote", "push", "--help"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_remote_link_help() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["remote", "link", "--help"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("REMOTE_REF"));
+}
+
+#[test]
+fn test_remote_sync_help() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["remote", "sync", "--help"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_adopt_command_removed() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["adopt", "github:foo/bar/1"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_push_command_removed() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["push", "j-1234"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_remote_link_command_removed() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["remote-link", "j-1234", "github:foo/bar/1"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_sync_command_removed() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["sync", "j-1234"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_remote_no_subcommand_non_pty() {
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["remote"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("Failed to execute command");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{}{}", stdout, stderr);
+    assert!(combined.contains("subcommand") || combined.contains("browse"));
+}
+
+#[test]
+#[ignore]
+fn test_help_has_command_groups() {
+    // NOTE: clap's next_help_heading attribute does NOT work with subcommands at the
+    // time of this writing. It is a known limitation documented in GitHub issue #5828:
+    // https://github.com/clap-rs/clap/issues/5828
+    //
+    // There is an open PR that would add this functionality:
+    // https://github.com/clap-rs/clap/pull/6183
+    //
+    // The test is ignored because the feature is not supported by clap yet.
+    // Once that PR is merged and clap is updated, this test can be enabled and
+    // the next_help_heading attributes can be added back to src/main.rs.
+
+    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+        .args(["--help"])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Ticket Commands"));
+    assert!(stdout.contains("Status Commands"));
+    assert!(stdout.contains("List & Query"));
+    assert!(stdout.contains("Relationships"));
+}
+
+// ============================================================================
+// Alias tests (Phase 5)
+// ============================================================================
+
+#[test]
+fn test_edit_alias() {
+    let janus = JanusTest::new();
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["e", &id, "--json"]);
+    assert!(output.contains(&id));
+    assert!(output.contains(".janus"));
+}
+
+#[test]
+fn test_ls_alias() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["l"]);
+    assert!(output.trim().is_empty() || output.contains("No tickets"));
 }

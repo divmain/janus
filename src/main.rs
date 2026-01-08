@@ -1,16 +1,17 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
+use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 
 use janus::commands::{
-    CreateOptions, cmd_add_note, cmd_adopt, cmd_blocked, cmd_board, cmd_cache_clear,
-    cmd_cache_path, cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_closed, cmd_config_get,
-    cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree,
-    cmd_edit, cmd_link_add, cmd_link_remove, cmd_ls, cmd_plan_add_phase, cmd_plan_add_ticket,
-    cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_ls, cmd_plan_move_ticket,
-    cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
-    cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_ready,
-    cmd_remote_link, cmd_remote_tui, cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync,
-    cmd_view,
+    CreateOptions, cmd_add_note, cmd_adopt, cmd_board, cmd_cache_clear, cmd_cache_path,
+    cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set,
+    cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_edit, cmd_link_add,
+    cmd_link_remove, cmd_ls, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
+    cmd_plan_delete, cmd_plan_edit, cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next,
+    cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder,
+    cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_remote_browse, cmd_remote_link,
+    cmd_reopen, cmd_show, cmd_start, cmd_status, cmd_sync, cmd_view,
 };
 use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
 
@@ -84,6 +85,7 @@ enum Commands {
     },
 
     /// Open ticket in $EDITOR
+    #[command(visible_alias = "e")]
     Edit {
         /// Ticket ID (can be partial)
         id: String,
@@ -181,36 +183,32 @@ enum Commands {
         id2: String,
     },
 
-    /// List all tickets
+    /// List tickets with optional filters
+    #[command(visible_alias = "l")]
     Ls {
-        /// Filter by status
+        /// Show tickets ready to work on (no incomplete deps, status=new|next)
         #[arg(long)]
+        ready: bool,
+
+        /// Show tickets with incomplete dependencies
+        #[arg(long)]
+        blocked: bool,
+
+        /// Show recently closed/cancelled tickets
+        #[arg(long)]
+        closed: bool,
+
+        /// Include closed/cancelled tickets in output
+        #[arg(long)]
+        all: bool,
+
+        /// Filter by specific status
+        #[arg(long, conflicts_with_all = ["ready", "blocked", "closed"])]
         status: Option<String>,
 
-        /// Output as JSON
+        /// Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
         #[arg(long)]
-        json: bool,
-    },
-
-    /// List tickets ready to work on
-    Ready {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// List blocked tickets
-    Blocked {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// List recently closed tickets
-    Closed {
-        /// Maximum number of tickets to show
-        #[arg(long, default_value = "20")]
-        limit: usize,
+        limit: Option<usize>,
 
         /// Output as JSON
         #[arg(long)]
@@ -229,58 +227,10 @@ enum Commands {
     /// View issues on a Kanban board
     Board,
 
-    // Remote sync commands
-    /// Adopt a remote issue and create a local ticket
-    Adopt {
-        /// Remote reference (e.g., github:owner/repo/123 or linear:org/PROJ-123)
-        remote_ref: String,
-
-        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
-        #[arg(long)]
-        prefix: Option<String>,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Push a local ticket to create a remote issue
-    Push {
-        /// Local ticket ID (can be partial)
-        id: String,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Link a local ticket to an existing remote issue
-    RemoteLink {
-        /// Local ticket ID (can be partial)
-        id: String,
-        /// Remote reference (e.g., github:owner/repo/123 or linear:org/PROJ-123)
-        remote_ref: String,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Sync a local ticket with its remote issue
-    Sync {
-        /// Local ticket ID (can be partial)
-        id: String,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// TUI for managing remote issues
+    /// Manage remote issues (use --help for subcommands)
     Remote {
-        /// Optional provider override (github or linear)
-        #[arg(value_name = "provider")]
-        provider: Option<String>,
+        #[command(subcommand)]
+        action: Option<RemoteAction>,
     },
 
     /// Manage configuration
@@ -299,6 +249,12 @@ enum Commands {
     Plan {
         #[command(subcommand)]
         action: PlanAction,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for [possible values: bash, zsh, fish, powershell, elvish]
+        shell: Shell,
     },
 }
 
@@ -410,6 +366,62 @@ enum CacheAction {
     },
     /// Print path to cache database
     Path {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RemoteAction {
+    /// Browse remote issues in TUI
+    Browse {
+        /// Optional provider override (github or linear)
+        provider: Option<String>,
+    },
+
+    /// Import a remote issue and create a local ticket
+    Adopt {
+        /// Remote reference (e.g., github:owner/repo/123)
+        remote_ref: String,
+
+        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Push a local ticket to create a remote issue
+    Push {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Link a local ticket to an existing remote issue
+    Link {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Remote reference
+        remote_ref: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Sync a local ticket with its remote issue
+    Sync {
+        /// Local ticket ID (can be partial)
+        id: String,
+
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -732,10 +744,15 @@ async fn main() -> ExitCode {
         },
         Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2, false),
 
-        Commands::Ls { status, json } => cmd_ls(status.as_deref(), json).await,
-        Commands::Ready { json } => cmd_ready(json).await,
-        Commands::Blocked { json } => cmd_blocked(json).await,
-        Commands::Closed { limit, json } => cmd_closed(limit, json),
+        Commands::Ls {
+            ready,
+            blocked,
+            closed,
+            all,
+            status,
+            limit,
+            json,
+        } => cmd_ls(ready, blocked, closed, all, status.as_deref(), limit, json).await,
 
         Commands::Query { filter } => cmd_query(filter.as_deref()).await,
 
@@ -743,20 +760,40 @@ async fn main() -> ExitCode {
         Commands::View => cmd_view(),
         Commands::Board => cmd_board(),
 
-        // Remote sync commands
-        Commands::Adopt {
-            remote_ref,
-            prefix,
-            json,
-        } => cmd_adopt(&remote_ref, prefix.as_deref(), json).await,
-        Commands::Push { id, json } => cmd_push(&id, json).await,
-        Commands::RemoteLink {
-            id,
-            remote_ref,
-            json,
-        } => cmd_remote_link(&id, &remote_ref, json).await,
-        Commands::Sync { id, json } => cmd_sync(&id, json).await,
-        Commands::Remote { provider } => cmd_remote_tui(provider.as_deref()),
+        // Remote commands
+        Commands::Remote { action } => match action {
+            Some(RemoteAction::Browse { provider }) => cmd_remote_browse(provider.as_deref()),
+            Some(RemoteAction::Adopt {
+                remote_ref,
+                prefix,
+                json,
+            }) => cmd_adopt(&remote_ref, prefix.as_deref(), json).await,
+            Some(RemoteAction::Push { id, json }) => cmd_push(&id, json).await,
+            Some(RemoteAction::Link {
+                id,
+                remote_ref,
+                json,
+            }) => cmd_remote_link(&id, &remote_ref, json).await,
+            Some(RemoteAction::Sync { id, json }) => cmd_sync(&id, json).await,
+            None => {
+                // No subcommand - check if PTY
+                if std::io::stdin().is_terminal() {
+                    cmd_remote_browse(None)
+                } else {
+                    eprintln!("Cannot open TUI in non-interactive session.");
+                    eprintln!();
+                    eprintln!("Available subcommands:");
+                    eprintln!("  janus remote browse [provider]   Browse remote issues in TUI");
+                    eprintln!("  janus remote adopt <ref>         Import a remote issue");
+                    eprintln!("  janus remote push <id>           Push local ticket to remote");
+                    eprintln!("  janus remote link <id> <ref>     Link local to existing remote");
+                    eprintln!("  janus remote sync <id>           Sync local with remote");
+                    eprintln!();
+                    eprintln!("Run 'janus remote --help' for more information.");
+                    Ok(())
+                }
+            }
+        },
 
         // Configuration commands
         Commands::Config { action } => match action {
@@ -865,6 +902,12 @@ async fn main() -> ExitCode {
             } => cmd_plan_next(&id, phase, all, count, json).await,
             PlanAction::Status { id, json } => cmd_plan_status(&id, json).await,
         },
+
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "janus", &mut io::stdout());
+            Ok(())
+        }
     };
 
     match result {

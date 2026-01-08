@@ -1,7 +1,7 @@
 use crate::error::{JanusError, Result};
 
 /// TUI for managing remote issues
-pub fn cmd_remote_tui(provider: Option<&str>) -> Result<()> {
+pub fn cmd_remote_browse(provider: Option<&str>) -> Result<()> {
     use crate::tui::remote::RemoteTui;
     use iocraft::prelude::*;
 

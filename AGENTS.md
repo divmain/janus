@@ -96,7 +96,7 @@ src/
     ├── dep.rs           # Dependency management
     ├── edit.rs          # Open ticket in $EDITOR
     ├── link.rs          # Link management
-    ├── ls.rs            # List commands (ls, ready, blocked, closed)
+    ├── ls.rs            # List commands (ls with --ready, --blocked, --closed flags)
     ├── plan.rs          # Plan CLI commands
     ├── query.rs         # JSON query output
     ├── show.rs          # Display ticket details

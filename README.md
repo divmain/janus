@@ -153,13 +153,13 @@ janus config set default_remote github:myorg/myrepo
 janus create "Add OAuth flow" --description "Implement Google OAuth login"
 
 # Push it to GitHub (creates a new issue)
-janus push j-a1b2
+janus remote push j-a1b2
 
 # Or adopt an existing GitHub issue
-janus adopt github:myorg/myrepo/123
+janus remote adopt github:myorg/myrepo/123
 
 # Sync changes between local and remote
-janus sync j-a1b2
+janus remote sync j-a1b2
 ```
 
 ### Linear Setup
@@ -189,13 +189,13 @@ janus config set default_remote linear:myorg
 janus create "Add user dashboard" --description "Build dashboard UI"
 
 # Push it to Linear (creates a new issue)
-janus push j-a1b2
+janus remote push j-a1b2
 
 # Or adopt an existing Linear issue
-janus adopt linear:myorg/PROJ-123
+janus remote adopt linear:myorg/PROJ-123
 
 # Sync changes between local and remote
-janus sync j-a1b2
+janus remote sync j-a1b2
 ```
 
 ### Sync Workflows
@@ -205,22 +205,22 @@ janus sync j-a1b2
 ```bash
 # Option 1: Push a local ticket to create a new remote issue
 janus create "Fix authentication bug" --priority 1
-janus push j-abc1
+janus remote push j-abc1
 # Creates a new issue on GitHub/Linear and links it
 
 # Option 2: Link an existing local ticket to an existing remote issue
 janus create "Update API docs"
-janus remote-link j-abc2 github:myorg/myrepo/456
+janus remote link j-abc2 github:myorg/myrepo/456
 ```
 
-#### Adapting existing issues
+#### Adopting existing issues
 
 ```bash
 # Adopt an existing GitHub issue as a local ticket
-janus adopt github:facebook/react/1234
+janus remote adopt github:facebook/react/1234
 
 # Adopt an existing Linear issue
-janus adopt linear:mycompany/ENG-456
+janus remote adopt linear:mycompany/ENG-456
 ```
 
 Both commands create a local ticket with:
@@ -232,7 +232,7 @@ Both commands create a local ticket with:
 
 ```bash
 # When local and remote get out of sync
-janus sync j-abc1
+janus remote sync j-abc1
 
 # For each field that differs, you'll be prompted:
 # [l]ocal->remote  - push local changes to remote
@@ -279,11 +279,11 @@ janus config set github.token ghp_xxxxxxxxxxxx
 janus config set linear.api_key lin_api_xxxxxxxxxxxx
 
 # Use full references to avoid ambiguity
-janus adopt github:myorg/repo/123
-janus adopt linear:myorg/PROJ-456
+janus remote adopt github:myorg/repo/123
+janus remote adopt linear:myorg/PROJ-456
 ```
 
-The `default_remote` setting only affects `janus push` (where platform must be inferred). Always use full references format for `janus adopt` and `janus remote-link`.
+The `default_remote` setting only affects `janus remote push` (where platform must be inferred). Always use full references format for `janus remote adopt` and `janus remote link`.
 
 ## First-Time Use Tutorial
 
@@ -395,10 +395,10 @@ Check which tickets are blocked by dependencies:
 
 ```bash
 # Tickets waiting for dependencies to be closed
-janus blocked
+janus ls --blocked
 
 # Tickets ready to be worked on (no unresolved dependencies)
-janus ready
+janus ls --ready
 ```
 
 ### 8. Query and Export
@@ -462,7 +462,7 @@ janus show <ID>
 
 ID can be partial - first few unique characters are sufficient.
 
-#### `janus edit`
+#### `janus edit` / `janus e`
 
 Open ticket in `$EDITOR` for manual editing.
 
@@ -570,43 +570,31 @@ janus link remove <ID1> <ID2>
 
 ### Listing
 
-#### `janus ls`
+#### `janus ls` / `janus l`
 
-List all tickets, optionally filtered by status.
+List tickets with optional filters.
 
 ```bash
-janus ls [--status <STATUS>]
+janus ls [OPTIONS]
+
+Options:
+      --ready          Show tickets ready to work on (no incomplete deps, status=new|next)
+      --blocked        Show tickets with incomplete dependencies
+      --closed         Show recently closed/cancelled tickets
+      --all            Include closed/cancelled tickets in output
+      --status <STATUS> Filter by specific status
+      --limit <N>      Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
+      --json           Output as JSON
 
 # Examples
-janus ls
-janus ls --status next
-janus ls --status in_progress
-```
-
-#### `janus ready`
-
-List tickets ready to be worked on (no unresolved dependencies).
-
-```bash
-janus ready
-```
-
-#### `janus blocked`
-
-List tickets blocked by dependencies.
-
-```bash
-janus blocked
-```
-
-#### `janus closed`
-
-List recently closed tickets.
-
-```bash
-janus closed [--limit <N>]
-
-# Default: show last 20 tickets
+janus ls                              # All open tickets
+janus ls --ready                      # Tickets ready to work on
+janus ls --blocked                    # Tickets blocked by dependencies
+janus ls --closed                     # Recently closed tickets (limit 20)
+janus ls --closed --limit 50          # Recently closed tickets (limit 50)
+janus ls --status next                # Filter by specific status
+janus ls --ready --blocked            # Show union of ready AND blocked tickets
+janus ls --limit 10                   # Any tickets (limit 10)
 ```
 
 #### `janus query`
@@ -640,43 +628,73 @@ Kanban board view organized by status.
 
 ### Remote Sync
 
-#### `janus adopt`
+#### `janus remote`
 
-Adopt a remote issue and create a local ticket.
+Manage remote issues (use --help for subcommands).
 
 ```bash
-janus adopt <REMOTE_REF>
+janus remote [COMMAND]
 
-# Examples
-janus adopt github:owner/repo/123
-janus adopt linear:org/PROJ-123
+Commands:
+  browse  Browse remote issues in TUI
+  adopt   Import a remote issue and create a local ticket
+  push    Push a local ticket to create a remote issue
+  link    Link a local ticket to an existing remote issue
+  sync    Sync a local ticket with its remote issue
 ```
 
-#### `janus push`
+**Note:** When `janus remote` is invoked without a subcommand in an interactive terminal, it launches the TUI browser (equivalent to `janus remote browse`).
+
+#### `janus remote adopt`
+
+Import a remote issue and create a local ticket.
+
+```bash
+janus remote adopt [OPTIONS] <REMOTE_REF>
+
+Options:
+      --prefix <PREFIX>  Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+      --json             Output as JSON
+
+# Examples
+janus remote adopt github:owner/repo/123
+janus remote adopt linear:org/PROJ-123
+```
+
+#### `janus remote push`
 
 Push a local ticket to create a remote issue.
 
 ```bash
-janus push <ID>
+janus remote push [OPTIONS] <ID>
+
+Options:
+      --json   Output as JSON
 ```
 
-#### `janus remote-link`
+#### `janus remote link`
 
 Link a local ticket to an existing remote issue.
 
 ```bash
-janus remote-link <ID> <REMOTE_REF>
+janus remote link [OPTIONS] <ID> <REMOTE_REF>
+
+Options:
+      --json   Output as JSON
 
 # Example
-janus remote-link j-a1b2 github:myorg/myrepo/456
+janus remote link j-a1b2 github:myorg/myrepo/456
 ```
 
-#### `janus sync`
+#### `janus remote sync`
 
 Sync a local ticket with its remote issue.
 
 ```bash
-janus sync <ID>
+janus remote sync [OPTIONS] <ID>
+
+Options:
+      --json   Output as JSON
 ```
 
 ### Configuration
@@ -719,6 +737,50 @@ Display current configuration.
 
 ```bash
 janus config show
+```
+
+### Shell Completions
+
+#### `janus completions`
+
+Generate shell completion scripts for bash, zsh, fish, and PowerShell.
+
+```bash
+janus completions <SHELL>
+
+# Supported shells: bash, zsh, fish, powershell, elvish
+```
+
+#### Installation
+
+**Bash**
+```bash
+# Add to ~/.bashrc
+eval "$(janus completions bash)"
+
+# Or save to file
+janus completions bash > ~/.local/share/bash-completion/completions/janus
+```
+
+**Zsh**
+```bash
+# Add to ~/.zshrc (before compinit)
+eval "$(janus completions zsh)"
+
+# Or save to fpath
+janus completions zsh > ~/.zfunc/_janus
+# Then in ~/.zshrc: fpath=(~/.zfunc $fpath); autoload -Uz compinit; compinit
+```
+
+**Fish**
+```bash
+janus completions fish > ~/.config/fish/completions/janus.fish
+```
+
+**PowerShell**
+```powershell
+# Add to $PROFILE
+Invoke-Expression (& janus completions powershell | Out-String)
 ```
 
 ## Ticket Statuses
@@ -907,8 +969,8 @@ Plans can also include free-form sections (e.g., `## Technical Details`, `## Ope
 
 - **Partial IDs**: Only need first 2-3 characters of ticket ID (e.g., `j-a1` instead of `j-a1b2`)
 - **Dependencies**: Use `janus dep tree` to visualize complex dependency chains
-- **Aliases**: Common commands have short aliases (`janus c` for `create`, `janus s` for `show`)
+- **Aliases**: Common commands have short aliases (`janus c` for `create`, `janus s` for `show`, `janus e` for `edit`, `janus l` for `ls`)
 - **TUI**: Use `janus view` for quick navigation and `janus board` for status management
 - **Remote sync**: Use environment variables for sensitive credentials (`GITHUB_TOKEN`, `LINEAR_API_KEY`) instead of storing in config files
-- **Bi-directional sync**: Run `janus sync` regularly when collaborating via GitHub/Linear to keep local and remote in sync
+- **Bi-directional sync**: Run `janus remote sync` regularly when collaborating via GitHub/Linear to keep local and remote in sync
 - **Short references**: once `default_remote` is set, use short formats (e.g., `ENG-123` for Linear instead of `linear:org/ENG-123`)
