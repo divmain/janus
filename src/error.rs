@@ -1,4 +1,3 @@
-use crate::cache_error::CacheError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -86,8 +85,23 @@ pub enum JanusError {
     Http(#[from] reqwest::Error),
 
     // Cache errors
-    #[error("cache error: {0}")]
-    Cache(#[from] CacheError),
+    #[error("cache database corrupted: {0}")]
+    CacheCorrupted(String),
+
+    #[error("cache database version mismatch: expected {expected}, found {found}")]
+    CacheVersionMismatch { expected: String, found: String },
+
+    #[error("cannot access cache directory: {0}")]
+    CacheAccessDenied(std::path::PathBuf),
+
+    #[error("cache database error: {0}")]
+    CacheDatabase(#[from] turso::Error),
+
+    #[error("cache serde JSON error: {0}")]
+    CacheSerdeJson(serde_json::Error),
+
+    #[error("cache operation failed: {0}")]
+    CacheOther(String),
 
     #[error("{0}")]
     Other(String),

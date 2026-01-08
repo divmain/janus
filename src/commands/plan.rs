@@ -23,12 +23,12 @@ use owo_colors::OwoColorize;
 use serde_json::json;
 
 use crate::error::{JanusError, Result};
+use crate::plan::parser::serialize_plan;
+use crate::plan::types::{Phase, PlanMetadata, PlanSection};
 use crate::plan::{
     Plan, compute_all_phase_statuses, compute_plan_status, ensure_plans_dir, generate_plan_id,
     get_all_plans,
 };
-use crate::plan_parser::serialize_plan;
-use crate::plan_types::{Phase, PlanMetadata, PlanSection};
 use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::{TicketMetadata, TicketStatus};
 use crate::utils::{generate_uuid, is_stdin_tty, iso_date};
@@ -295,7 +295,7 @@ pub async fn cmd_plan_ls(status_filter: Option<&str>, format: &str) -> Result<()
     let filter_status: Option<TicketStatus> = status_filter.and_then(|s| s.parse().ok());
 
     // Collect filtered plans with their statuses
-    let mut filtered_plans: Vec<(&PlanMetadata, crate::plan_types::PlanStatus)> = Vec::new();
+    let mut filtered_plans: Vec<(&PlanMetadata, crate::plan::types::PlanStatus)> = Vec::new();
 
     for metadata in &plans {
         let plan_status = compute_plan_status(metadata, &ticket_map);
@@ -1448,11 +1448,11 @@ fn get_next_items_simple(
 fn compute_phase_status_for_phase(
     phase: &Phase,
     ticket_map: &std::collections::HashMap<String, TicketMetadata>,
-) -> crate::plan_types::PhaseStatus {
+) -> crate::plan::types::PhaseStatus {
     let total_count = phase.tickets.len();
 
     if total_count == 0 {
-        return crate::plan_types::PhaseStatus {
+        return crate::plan::types::PhaseStatus {
             phase_number: phase.number.clone(),
             phase_name: phase.name.clone(),
             status: TicketStatus::New,
@@ -1476,7 +1476,7 @@ fn compute_phase_status_for_phase(
 
     let status = compute_aggregate_status_local(&statuses);
 
-    crate::plan_types::PhaseStatus {
+    crate::plan::types::PhaseStatus {
         phase_number: phase.number.clone(),
         phase_name: phase.name.clone(),
         status,

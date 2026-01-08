@@ -82,13 +82,17 @@ src/
 ├── ticket.rs            # Ticket operations (read, write, find)
 ├── types.rs             # Core types (TicketStatus, TicketType, etc.)
 ├── utils.rs             # Utility functions (ID generation, dates)
-├── plan.rs              # Plan operations (find, read, write, status computation)
-├── plan_types.rs        # Plan data structures (PlanMetadata, Phase, etc.)
-├── plan_parser.rs       # Plan file parsing and serialization
+├── plan/                # Plan module
+│   ├── mod.rs           # Plan operations (find, read, write, status computation)
+│   ├── parser.rs        # Plan file parsing and serialization
+│   └── types.rs         # Plan data structures (PlanMetadata, Phase, etc.)
+├── cache/               # Cache module
+│   └── mod.rs           # Core caching logic with Turso async API
 └── commands/
     ├── mod.rs           # Command module exports and shared formatting
     ├── add_note.rs      # Add timestamped notes
     ├── create.rs        # Create new tickets
+    ├── cache.rs         # Cache CLI commands
     ├── dep.rs           # Dependency management
     ├── edit.rs          # Open ticket in $EDITOR
     ├── link.rs          # Link management
@@ -211,8 +215,7 @@ janus cache path     # Print path to cache DB file
 ### Cache Implementation
 
 The cache is implemented in:
-- `src/cache.rs` - Core caching logic with Turso async API
-- `src/cache_error.rs` - Cache-specific error types
+- `src/cache/mod.rs` - Core caching logic with Turso async API
 - `src/commands/cache.rs` - CLI command handlers
 
 The cache:
@@ -301,7 +304,7 @@ Plans are hierarchical structures organizing tickets toward a larger goal. They 
 
 ```rust
 use crate::plan::{Plan, compute_plan_status, get_all_plans};
-use crate::plan_types::{PlanMetadata, Phase, PlanSection};
+use crate::plan::types::{PlanMetadata, Phase, PlanSection};
 
 // Find and read a plan
 let plan = Plan::find("partial-id")?;

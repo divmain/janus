@@ -1,10 +1,13 @@
+pub mod parser;
+pub mod types;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 use crate::error::{JanusError, Result};
-use crate::plan_parser::parse_plan_content;
-use crate::plan_types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
+use crate::plan::parser::parse_plan_content;
+use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::types::{PLANS_DIR, TicketMetadata, TicketStatus};
 
 /// Find all plan files in the plans directory
@@ -481,7 +484,7 @@ This is the description.
 
     #[test]
     fn test_compute_plan_status_with_tickets() {
-        use crate::plan_types::PlanSection;
+        use crate::plan::types::PlanSection;
 
         let mut metadata = PlanMetadata::default();
         metadata.sections.push(PlanSection::Tickets(vec![
@@ -624,7 +627,7 @@ This is the description.
 
     /// Helper to create a phased plan with given phase tickets
     fn make_phased_plan(phases: Vec<(&str, &str, Vec<&str>)>) -> PlanMetadata {
-        use crate::plan_types::PlanSection;
+        use crate::plan::types::PlanSection;
 
         let mut metadata = PlanMetadata::default();
         for (number, name, tickets) in phases {
@@ -811,7 +814,7 @@ This is the description.
     #[test]
     fn test_compute_all_phase_statuses_simple_plan() {
         // Simple plan (no phases) should return empty vec
-        use crate::plan_types::PlanSection;
+        use crate::plan::types::PlanSection;
 
         let mut metadata = PlanMetadata::default();
         metadata.sections.push(PlanSection::Tickets(vec![

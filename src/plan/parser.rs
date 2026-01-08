@@ -11,7 +11,7 @@ use comrak::{Arena, Options, parse_document};
 use regex::Regex;
 
 use crate::error::{JanusError, Result};
-use crate::plan_types::{FreeFormSection, Phase, PlanMetadata, PlanSection};
+use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection};
 
 /// Parse a plan file's content into PlanMetadata
 ///

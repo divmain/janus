@@ -9,10 +9,10 @@ use tokio::sync::OnceCell;
 use turso::transaction::Transaction;
 use turso::{Builder, Connection, Database, params};
 
-use crate::cache_error::{CacheError, Result as CacheResult};
+use crate::error::{JanusError as CacheError, Result};
 use crate::parser::parse_ticket_content;
-use crate::plan_parser::parse_plan_content;
-use crate::plan_types::PlanMetadata;
+use crate::plan::parser::parse_plan_content;
+use crate::plan::types::PlanMetadata;
 use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
 
 #[cfg(test)]
@@ -104,7 +104,7 @@ pub struct TicketCache {
 }
 
 impl TicketCache {
-    pub async fn open() -> CacheResult<Self> {
+    pub async fn open() -> Result<Self> {
         let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
 
         let repo_hash = repo_hash(&repo_path);
@@ -113,7 +113,7 @@ impl TicketCache {
         let cache_dir = cache_dir();
         if !cache_dir.exists() {
             fs::create_dir_all(&cache_dir)
-                .map_err(|_e| CacheError::AccessDenied(cache_dir.clone()))?;
+                .map_err(|_e| CacheError::CacheAccessDenied(cache_dir.clone()))?;
         }
 
         let db_path_str = db_path.to_string_lossy();
@@ -133,7 +133,7 @@ impl TicketCache {
         Ok(cache)
     }
 
-    async fn open_with_corruption_handling() -> CacheResult<Self> {
+    async fn open_with_corruption_handling() -> Result<Self> {
         let repo_hash = {
             let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
             repo_hash(&repo_path)
@@ -174,7 +174,7 @@ impl TicketCache {
         result
     }
 
-    async fn initialize_database(&self) -> CacheResult<()> {
+    async fn initialize_database(&self) -> Result<()> {
         self.conn
             .execute(
                 "CREATE TABLE IF NOT EXISTS meta (
@@ -256,7 +256,7 @@ impl TicketCache {
         Ok(())
     }
 
-    async fn store_repo_path(&self, repo_path: &Path) -> CacheResult<()> {
+    async fn store_repo_path(&self, repo_path: &Path) -> Result<()> {
         let path_str = repo_path.to_string_lossy().to_string();
         self.conn
             .execute(
@@ -282,7 +282,7 @@ impl TicketCache {
     /// Sync both tickets and plans from disk to cache
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync(&mut self) -> CacheResult<bool> {
+    pub async fn sync(&mut self) -> Result<bool> {
         let tickets_changed = self.sync_tickets().await?;
         let plans_changed = self.sync_plans().await?;
         Ok(tickets_changed || plans_changed)
@@ -291,7 +291,7 @@ impl TicketCache {
     /// Sync tickets from disk to cache
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync_tickets(&mut self) -> CacheResult<bool> {
+    pub async fn sync_tickets(&mut self) -> Result<bool> {
         let tickets_dir = PathBuf::from(TICKETS_ITEMS_DIR);
 
         if !tickets_dir.exists() {
@@ -352,7 +352,7 @@ impl TicketCache {
         Ok(true)
     }
 
-    fn scan_directory(&self, tickets_dir: &Path) -> CacheResult<HashMap<String, i64>> {
+    fn scan_directory(&self, tickets_dir: &Path) -> Result<HashMap<String, i64>> {
         let mut files = HashMap::new();
 
         let entries = fs::read_dir(tickets_dir).map_err(CacheError::Io)?;
@@ -384,7 +384,7 @@ impl TicketCache {
         Ok(files)
     }
 
-    async fn get_cached_mtimes(&self) -> CacheResult<HashMap<String, i64>> {
+    async fn get_cached_mtimes(&self) -> Result<HashMap<String, i64>> {
         let mut mtimes = HashMap::new();
 
         let mut rows = self
@@ -401,7 +401,7 @@ impl TicketCache {
         Ok(mtimes)
     }
 
-    fn read_and_parse_ticket_static(ticket_id: &str) -> CacheResult<(TicketMetadata, i64)> {
+    fn read_and_parse_ticket_static(ticket_id: &str) -> Result<(TicketMetadata, i64)> {
         let ticket_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", ticket_id));
 
         let content = fs::read_to_string(&ticket_path).map_err(CacheError::Io)?;
@@ -426,7 +426,7 @@ impl TicketCache {
         tx: &Transaction<'a>,
         metadata: &TicketMetadata,
         mtime_ns: i64,
-    ) -> CacheResult<()> {
+    ) -> Result<()> {
         let ticket_id = metadata.id.clone().unwrap_or_default();
         let uuid = metadata.uuid.clone();
         let status = metadata.status.map(|s| s.to_string());
@@ -463,7 +463,7 @@ impl TicketCache {
         Ok(())
     }
 
-    fn serialize_array(arr: &[String]) -> CacheResult<Option<String>> {
+    fn serialize_array(arr: &[String]) -> Result<Option<String>> {
         if arr.is_empty() {
             Ok(None)
         } else {
@@ -480,7 +480,7 @@ impl TicketCache {
     /// Sync plans from disk to cache
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync_plans(&mut self) -> CacheResult<bool> {
+    pub async fn sync_plans(&mut self) -> Result<bool> {
         let plans_dir = PathBuf::from(PLANS_DIR);
 
         if !plans_dir.exists() {
@@ -540,7 +540,7 @@ impl TicketCache {
         Ok(true)
     }
 
-    fn scan_plans_directory(&self, plans_dir: &Path) -> CacheResult<HashMap<String, i64>> {
+    fn scan_plans_directory(&self, plans_dir: &Path) -> Result<HashMap<String, i64>> {
         let mut files = HashMap::new();
 
         let entries = match fs::read_dir(plans_dir) {
@@ -576,7 +576,7 @@ impl TicketCache {
         Ok(files)
     }
 
-    async fn get_cached_plan_mtimes(&self) -> CacheResult<HashMap<String, i64>> {
+    async fn get_cached_plan_mtimes(&self) -> Result<HashMap<String, i64>> {
         let mut mtimes = HashMap::new();
 
         let mut rows = self
@@ -593,7 +593,7 @@ impl TicketCache {
         Ok(mtimes)
     }
 
-    fn read_and_parse_plan_static(plan_id: &str) -> CacheResult<(PlanMetadata, i64)> {
+    fn read_and_parse_plan_static(plan_id: &str) -> Result<(PlanMetadata, i64)> {
         let plan_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", plan_id));
 
         let content = fs::read_to_string(&plan_path).map_err(CacheError::Io)?;
@@ -618,7 +618,7 @@ impl TicketCache {
         tx: &Transaction<'a>,
         metadata: &PlanMetadata,
         mtime_ns: i64,
-    ) -> CacheResult<()> {
+    ) -> Result<()> {
         let plan_id = metadata.id.clone().unwrap_or_default();
         let uuid = metadata.uuid.clone();
         let title = metadata.title.clone();
@@ -669,7 +669,7 @@ impl TicketCache {
     }
 
     /// Get all cached plans
-    pub async fn get_all_plans(&self) -> CacheResult<Vec<CachedPlanMetadata>> {
+    pub async fn get_all_plans(&self) -> Result<Vec<CachedPlanMetadata>> {
         let mut rows = self
             .conn
             .query(
@@ -688,7 +688,7 @@ impl TicketCache {
     }
 
     /// Get a single plan by ID
-    pub async fn get_plan(&self, id: &str) -> CacheResult<Option<CachedPlanMetadata>> {
+    pub async fn get_plan(&self, id: &str) -> Result<Option<CachedPlanMetadata>> {
         let mut rows = self
             .conn
             .query(
@@ -707,7 +707,7 @@ impl TicketCache {
     }
 
     /// Find plans by partial ID
-    pub async fn find_plan_by_partial_id(&self, partial: &str) -> CacheResult<Vec<String>> {
+    pub async fn find_plan_by_partial_id(&self, partial: &str) -> Result<Vec<String>> {
         let mut rows = self
             .conn
             .query(
@@ -724,7 +724,7 @@ impl TicketCache {
         Ok(matches)
     }
 
-    async fn row_to_plan_metadata(row: &turso::Row) -> CacheResult<CachedPlanMetadata> {
+    async fn row_to_plan_metadata(row: &turso::Row) -> Result<CachedPlanMetadata> {
         let id: Option<String> = row.get(0).ok();
         let uuid: Option<String> = row.get(1).ok();
         let title: Option<String> = row.get(2).ok();
@@ -756,7 +756,7 @@ impl TicketCache {
         })
     }
 
-    fn deserialize_array(s: Option<&str>) -> CacheResult<Vec<String>> {
+    fn deserialize_array(s: Option<&str>) -> Result<Vec<String>> {
         match s {
             Some(json_str) if !json_str.is_empty() => serde_json::from_str(json_str).map_err(|e| {
                 CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
@@ -765,7 +765,7 @@ impl TicketCache {
         }
     }
 
-    async fn row_to_metadata(row: &turso::Row) -> CacheResult<TicketMetadata> {
+    async fn row_to_metadata(row: &turso::Row) -> Result<TicketMetadata> {
         let id: Option<String> = row.get(0).ok();
         let uuid: Option<String> = row.get(1).ok();
         let status_str: Option<String> = row.get(2).ok();
@@ -816,7 +816,7 @@ impl TicketCache {
         })
     }
 
-    pub async fn get_all_tickets(&self) -> CacheResult<Vec<TicketMetadata>> {
+    pub async fn get_all_tickets(&self) -> Result<Vec<TicketMetadata>> {
         let mut rows = self
             .conn
             .query(
@@ -835,7 +835,7 @@ impl TicketCache {
         Ok(tickets)
     }
 
-    pub async fn get_ticket(&self, id: &str) -> CacheResult<Option<TicketMetadata>> {
+    pub async fn get_ticket(&self, id: &str) -> Result<Option<TicketMetadata>> {
         let mut rows = self
             .conn
             .query(
@@ -854,7 +854,7 @@ impl TicketCache {
         }
     }
 
-    pub async fn find_by_partial_id(&self, partial: &str) -> CacheResult<Vec<String>> {
+    pub async fn find_by_partial_id(&self, partial: &str) -> Result<Vec<String>> {
         let mut rows = self
             .conn
             .query(
@@ -871,7 +871,7 @@ impl TicketCache {
         Ok(matches)
     }
 
-    pub async fn build_ticket_map(&self) -> CacheResult<HashMap<String, TicketMetadata>> {
+    pub async fn build_ticket_map(&self) -> Result<HashMap<String, TicketMetadata>> {
         let tickets = self.get_all_tickets().await?;
 
         let mut map = HashMap::new();
