@@ -85,7 +85,7 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
         Err(e) => {
             let error_str = e.to_string();
             if error_str.contains("AccessDenied") || error_str.contains("Permission") {
-                return Err(e.into());
+                return Err(e);
             }
 
             if db_path_from_current_dir().exists() {
@@ -211,7 +211,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                         }
                     }
 
-                    return Err(e.into());
+                    return Err(e);
                 }
             }
         }
@@ -227,7 +227,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 }
             }
 
-            return Err(e.into());
+            return Err(e);
         }
     }
 
