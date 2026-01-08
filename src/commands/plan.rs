@@ -20,6 +20,7 @@ use std::io::{Read, Write};
 use std::process::Command;
 
 use owo_colors::OwoColorize;
+use serde_json::json;
 
 use crate::error::{JanusError, Result};
 use crate::plan::{
@@ -37,7 +38,8 @@ use crate::utils::{generate_uuid, is_stdin_tty, iso_date};
 /// # Arguments
 /// * `title` - The plan title
 /// * `phases` - Optional list of initial phase names (creates a phased plan if provided)
-pub fn cmd_plan_create(title: &str, phases: &[String]) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Result<()> {
     ensure_plans_dir()?;
 
     let id = generate_plan_id();
@@ -47,8 +49,8 @@ pub fn cmd_plan_create(title: &str, phases: &[String]) -> Result<()> {
     // Build the plan metadata
     let mut metadata = PlanMetadata {
         id: Some(id.clone()),
-        uuid: Some(uuid),
-        created: Some(now),
+        uuid: Some(uuid.clone()),
+        created: Some(now.clone()),
         title: Some(title.to_string()),
         description: None,
         acceptance_criteria: Vec::new(),
@@ -73,7 +75,19 @@ pub fn cmd_plan_create(title: &str, phases: &[String]) -> Result<()> {
     let plan = Plan::with_id(&id);
     plan.write(&content)?;
 
-    println!("{}", id);
+    if output_json {
+        let output = json!({
+            "id": id,
+            "uuid": uuid,
+            "title": title,
+            "created": now,
+            "is_phased": !phases.is_empty(),
+            "phases": phases,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("{}", id);
+    }
     Ok(())
 }
 
@@ -238,8 +252,19 @@ pub async fn cmd_plan_show(
 ///
 /// # Arguments
 /// * `id` - The plan ID (can be partial)
-pub fn cmd_plan_edit(id: &str) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
     let plan = Plan::find(id)?;
+
+    if output_json {
+        let output = json!({
+            "id": plan.id,
+            "file_path": plan.file_path.to_string_lossy(),
+            "action": "edit",
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
 
     if is_stdin_tty() {
         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
@@ -344,12 +369,14 @@ pub async fn cmd_plan_ls(status_filter: Option<&str>, format: &str) -> Result<()
 /// * `phase` - Optional phase name/number (required for phased plans)
 /// * `after` - Optional ticket ID to insert after
 /// * `position` - Optional position (1-indexed)
+/// * `output_json` - If true, output result as JSON
 pub async fn cmd_plan_add_ticket(
     plan_id: &str,
     ticket_id: &str,
     phase: Option<&str>,
     after: Option<&str>,
     position: Option<usize>,
+    output_json: bool,
 ) -> Result<()> {
     // Validate ticket exists
     let ticket = Ticket::find_async(ticket_id).await?;
@@ -364,6 +391,10 @@ pub async fn cmd_plan_add_ticket(
         return Err(JanusError::TicketAlreadyInPlan(resolved_ticket_id));
     }
 
+    let mut added_to_phase: Option<String> = None;
+    #[allow(unused_assignments)]
+    let mut added_position: Option<usize> = None;
+
     if metadata.is_phased() {
         // Phased plan: require --phase option
         let phase_identifier = phase.ok_or(JanusError::PhasedPlanRequiresPhase)?;
@@ -372,15 +403,23 @@ pub async fn cmd_plan_add_ticket(
             .find_phase_mut(phase_identifier)
             .ok_or_else(|| JanusError::PhaseNotFound(phase_identifier.to_string()))?;
 
+        added_to_phase = Some(phase_obj.name.clone());
+
         // Add ticket to phase
         if let Some(after_id) = after {
             if !phase_obj.add_ticket_after(&resolved_ticket_id, after_id) {
                 return Err(JanusError::TicketNotFound(after_id.to_string()));
             }
+            added_position = phase_obj
+                .tickets
+                .iter()
+                .position(|t| t == &resolved_ticket_id);
         } else if let Some(pos) = position {
             phase_obj.add_ticket_at_position(&resolved_ticket_id, pos);
+            added_position = Some(pos.saturating_sub(1));
         } else {
             phase_obj.add_ticket(&resolved_ticket_id);
+            added_position = Some(phase_obj.tickets.len().saturating_sub(1));
         }
     } else if metadata.is_simple() {
         // Simple plan: --phase option is not allowed
@@ -396,6 +435,7 @@ pub async fn cmd_plan_add_ticket(
         if let Some(after_id) = after {
             if let Some(pos) = tickets.iter().position(|t| t == after_id) {
                 tickets.insert(pos + 1, resolved_ticket_id.clone());
+                added_position = Some(pos + 1);
             } else {
                 return Err(JanusError::TicketNotFound(after_id.to_string()));
             }
@@ -403,11 +443,14 @@ pub async fn cmd_plan_add_ticket(
             let index = pos.saturating_sub(1);
             if index >= tickets.len() {
                 tickets.push(resolved_ticket_id.clone());
+                added_position = Some(tickets.len().saturating_sub(1));
             } else {
                 tickets.insert(index, resolved_ticket_id.clone());
+                added_position = Some(index);
             }
         } else {
             tickets.push(resolved_ticket_id.clone());
+            added_position = Some(tickets.len().saturating_sub(1));
         }
     } else {
         return Err(JanusError::Other(
@@ -419,7 +462,18 @@ pub async fn cmd_plan_add_ticket(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    println!("Added {} to plan {}", resolved_ticket_id, plan.id);
+    if output_json {
+        let output = json!({
+            "plan_id": plan.id,
+            "ticket_id": resolved_ticket_id,
+            "action": "ticket_added",
+            "phase": added_to_phase,
+            "position": added_position,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Added {} to plan {}", resolved_ticket_id, plan.id);
+    }
     Ok(())
 }
 
@@ -428,7 +482,12 @@ pub async fn cmd_plan_add_ticket(
 /// # Arguments
 /// * `plan_id` - The plan ID (can be partial)
 /// * `ticket_id` - The ticket ID to remove
-pub async fn cmd_plan_remove_ticket(plan_id: &str, ticket_id: &str) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub async fn cmd_plan_remove_ticket(
+    plan_id: &str,
+    ticket_id: &str,
+    output_json: bool,
+) -> Result<()> {
     let plan = Plan::find(plan_id)?;
     let mut metadata = plan.read()?;
 
@@ -439,6 +498,7 @@ pub async fn cmd_plan_remove_ticket(plan_id: &str, ticket_id: &str) -> Result<()
     };
 
     let mut found = false;
+    let mut removed_from_phase: Option<String> = None;
 
     // Search in phases
     for section in &mut metadata.sections {
@@ -446,6 +506,7 @@ pub async fn cmd_plan_remove_ticket(plan_id: &str, ticket_id: &str) -> Result<()
             PlanSection::Phase(phase) => {
                 if phase.remove_ticket(&resolved_id) {
                     found = true;
+                    removed_from_phase = Some(phase.name.clone());
                     break;
                 }
             }
@@ -468,7 +529,17 @@ pub async fn cmd_plan_remove_ticket(plan_id: &str, ticket_id: &str) -> Result<()
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    println!("Removed {} from plan {}", resolved_id, plan.id);
+    if output_json {
+        let output = json!({
+            "plan_id": plan.id,
+            "ticket_id": resolved_id,
+            "action": "ticket_removed",
+            "phase": removed_from_phase,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Removed {} from plan {}", resolved_id, plan.id);
+    }
     Ok(())
 }
 
@@ -480,12 +551,14 @@ pub async fn cmd_plan_remove_ticket(plan_id: &str, ticket_id: &str) -> Result<()
 /// * `to_phase` - Target phase name/number
 /// * `after` - Optional ticket ID to insert after in target phase
 /// * `position` - Optional position in target phase (1-indexed)
+/// * `output_json` - If true, output result as JSON
 pub async fn cmd_plan_move_ticket(
     plan_id: &str,
     ticket_id: &str,
     to_phase: &str,
     after: Option<&str>,
     position: Option<usize>,
+    output_json: bool,
 ) -> Result<()> {
     let plan = Plan::find(plan_id)?;
     let mut metadata = plan.read()?;
@@ -534,10 +607,21 @@ pub async fn cmd_plan_move_ticket(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    println!(
-        "Moved {} to phase '{}' in plan {}",
-        resolved_id, to_phase, plan.id
-    );
+    if output_json {
+        let output = json!({
+            "plan_id": plan.id,
+            "ticket_id": resolved_id,
+            "action": "ticket_moved",
+            "from_phase": found_in_phase,
+            "to_phase": to_phase,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!(
+            "Moved {} to phase '{}' in plan {}",
+            resolved_id, to_phase, plan.id
+        );
+    }
     Ok(())
 }
 
@@ -548,11 +632,13 @@ pub async fn cmd_plan_move_ticket(
 /// * `phase_name` - Name for the new phase
 /// * `after` - Optional phase name/number to insert after
 /// * `position` - Optional position (1-indexed)
+/// * `output_json` - If true, output result as JSON
 pub fn cmd_plan_add_phase(
     plan_id: &str,
     phase_name: &str,
     after: Option<&str>,
     position: Option<usize>,
+    output_json: bool,
 ) -> Result<()> {
     let plan = Plan::find(plan_id)?;
     let mut metadata = plan.read()?;
@@ -629,10 +715,20 @@ pub fn cmd_plan_add_phase(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    println!(
-        "Added phase '{}' (Phase {}) to plan {}",
-        phase_name, next_number, plan.id
-    );
+    if output_json {
+        let output = json!({
+            "plan_id": plan.id,
+            "action": "phase_added",
+            "phase_number": next_number.to_string(),
+            "phase_name": phase_name,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!(
+            "Added phase '{}' (Phase {}) to plan {}",
+            phase_name, next_number, plan.id
+        );
+    }
     Ok(())
 }
 
@@ -643,11 +739,13 @@ pub fn cmd_plan_add_phase(
 /// * `phase` - Phase name or number to remove
 /// * `force` - Force removal even if phase contains tickets
 /// * `migrate` - Optional target phase to migrate tickets to
+/// * `output_json` - If true, output result as JSON
 pub fn cmd_plan_remove_phase(
     plan_id: &str,
     phase: &str,
     force: bool,
     migrate: Option<&str>,
+    output_json: bool,
 ) -> Result<()> {
     let plan = Plan::find(plan_id)?;
     let mut metadata = plan.read()?;
@@ -656,6 +754,7 @@ pub fn cmd_plan_remove_phase(
     let mut phase_idx = None;
     let mut phase_tickets: Vec<String> = Vec::new();
     let mut phase_name = String::new();
+    let mut phase_number = String::new();
 
     for (i, section) in metadata.sections.iter().enumerate() {
         if let PlanSection::Phase(p) = section
@@ -664,11 +763,14 @@ pub fn cmd_plan_remove_phase(
             phase_idx = Some(i);
             phase_tickets = p.tickets.clone();
             phase_name = p.name.clone();
+            phase_number = p.number.clone();
             break;
         }
     }
 
     let idx = phase_idx.ok_or_else(|| JanusError::PhaseNotFound(phase.to_string()))?;
+
+    let mut migrated_tickets = 0;
 
     // Check if phase has tickets
     if !phase_tickets.is_empty() {
@@ -681,11 +783,13 @@ pub fn cmd_plan_remove_phase(
             for ticket_id in &phase_tickets {
                 target_phase.add_ticket(ticket_id.clone());
             }
-            println!(
-                "Migrated {} tickets to phase '{}'",
-                phase_tickets.len(),
-                migrate_to
-            );
+            migrated_tickets = phase_tickets.len();
+            if !output_json {
+                println!(
+                    "Migrated {} tickets to phase '{}'",
+                    migrated_tickets, migrate_to
+                );
+            }
         } else if !force {
             return Err(JanusError::PhaseNotEmpty(phase_name));
         }
@@ -698,7 +802,18 @@ pub fn cmd_plan_remove_phase(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    println!("Removed phase '{}' from plan {}", phase, plan.id);
+    if output_json {
+        let output = json!({
+            "plan_id": plan.id,
+            "action": "phase_removed",
+            "phase_number": phase_number,
+            "phase_name": phase_name,
+            "migrated_tickets": migrated_tickets,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Removed phase '{}' from plan {}", phase, plan.id);
+    }
     Ok(())
 }
 
@@ -708,7 +823,13 @@ pub fn cmd_plan_remove_phase(
 /// * `plan_id` - The plan ID (can be partial)
 /// * `phase` - Optional phase to reorder tickets within
 /// * `reorder_phases` - If true, reorder phases instead of tickets
-pub fn cmd_plan_reorder(plan_id: &str, phase: Option<&str>, reorder_phases: bool) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_reorder(
+    plan_id: &str,
+    phase: Option<&str>,
+    reorder_phases: bool,
+    output_json: bool,
+) -> Result<()> {
     let plan = Plan::find(plan_id)?;
     let mut metadata = plan.read()?;
 
@@ -915,7 +1036,17 @@ pub fn cmd_plan_reorder(plan_id: &str, phase: Option<&str>, reorder_phases: bool
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    println!("Reorder complete for plan {}", plan.id);
+    if output_json {
+        let output = json!({
+            "plan_id": plan.id,
+            "action": "reordered",
+            "type": if reorder_phases { "phases" } else { "tickets" },
+            "phase": phase,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Reorder complete for plan {}", plan.id);
+    }
     Ok(())
 }
 
@@ -924,10 +1055,11 @@ pub fn cmd_plan_reorder(plan_id: &str, phase: Option<&str>, reorder_phases: bool
 /// # Arguments
 /// * `id` - The plan ID (can be partial)
 /// * `force` - Skip confirmation prompt
-pub fn cmd_plan_delete(id: &str, force: bool) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result<()> {
     let plan = Plan::find(id)?;
 
-    if !force && is_stdin_tty() {
+    if !force && !output_json && is_stdin_tty() {
         // Prompt for confirmation
         print!("Delete plan {}? [y/N] ", plan.id);
         std::io::stdout().flush()?;
@@ -941,8 +1073,19 @@ pub fn cmd_plan_delete(id: &str, force: bool) -> Result<()> {
         }
     }
 
+    let plan_id = plan.id.clone();
     plan.delete()?;
-    println!("Deleted plan {}", plan.id);
+
+    if output_json {
+        let output = json!({
+            "plan_id": plan_id,
+            "action": "deleted",
+            "success": true,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Deleted plan {}", plan_id);
+    }
     Ok(())
 }
 
@@ -951,7 +1094,8 @@ pub fn cmd_plan_delete(id: &str, force: bool) -> Result<()> {
 /// # Arguments
 /// * `id` - The plan ID (can be partial)
 /// * `new_title` - The new title
-pub fn cmd_plan_rename(id: &str, new_title: &str) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Result<()> {
     let plan = Plan::find(id)?;
     let mut metadata = plan.read()?;
 
@@ -962,10 +1106,20 @@ pub fn cmd_plan_rename(id: &str, new_title: &str) -> Result<()> {
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    println!(
-        "Renamed plan {} from '{}' to '{}'",
-        plan.id, old_title, new_title
-    );
+    if output_json {
+        let output = json!({
+            "plan_id": plan.id,
+            "action": "renamed",
+            "old_title": old_title,
+            "new_title": new_title,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!(
+            "Renamed plan {} from '{}' to '{}'",
+            plan.id, old_title, new_title
+        );
+    }
     Ok(())
 }
 
@@ -980,7 +1134,14 @@ pub fn cmd_plan_rename(id: &str, new_title: &str) -> Result<()> {
 /// * `phase_only` - If true, show next item in current (first incomplete) phase only
 /// * `all` - If true, show next item for each incomplete phase
 /// * `count` - Number of next items to show
-pub async fn cmd_plan_next(id: &str, phase_only: bool, all: bool, count: usize) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub async fn cmd_plan_next(
+    id: &str,
+    phase_only: bool,
+    all: bool,
+    count: usize,
+    output_json: bool,
+) -> Result<()> {
     let plan = Plan::find(id)?;
     let metadata = plan.read()?;
     let ticket_map = build_ticket_map().await;
@@ -991,6 +1152,41 @@ pub async fn cmd_plan_next(id: &str, phase_only: bool, all: bool, count: usize) 
     } else {
         get_next_items_simple(&metadata, &ticket_map, count)
     };
+
+    if output_json {
+        let next_items_json: Vec<_> = next_items
+            .iter()
+            .map(|item| {
+                let tickets_json: Vec<_> = item
+                    .tickets
+                    .iter()
+                    .map(|(ticket_id, ticket_meta)| {
+                        json!({
+                            "id": ticket_id,
+                            "title": ticket_meta.as_ref().and_then(|t| t.title.clone()),
+                            "status": ticket_meta.as_ref().and_then(|t| t.status).map(|s| s.to_string()),
+                            "priority": ticket_meta.as_ref().and_then(|t| t.priority).map(|p| p.as_num()),
+                            "deps": ticket_meta.as_ref().map(|t| &t.deps).cloned().unwrap_or_default(),
+                            "exists": ticket_meta.is_some(),
+                        })
+                    })
+                    .collect();
+
+                json!({
+                    "phase_number": item.phase_number,
+                    "phase_name": item.phase_name,
+                    "tickets": tickets_json,
+                })
+            })
+            .collect();
+
+        let output = json!({
+            "plan_id": plan.id,
+            "next_items": next_items_json,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
 
     if next_items.is_empty() {
         println!("No actionable items remaining");
@@ -1055,13 +1251,42 @@ pub async fn cmd_plan_next(id: &str, phase_only: bool, all: bool, count: usize) 
 ///
 /// # Arguments
 /// * `id` - The plan ID (can be partial)
-pub async fn cmd_plan_status(id: &str) -> Result<()> {
+/// * `output_json` - If true, output result as JSON
+pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
     let plan = Plan::find(id)?;
     let metadata = plan.read()?;
     let ticket_map = build_ticket_map().await;
 
     // Compute overall plan status
     let plan_status = compute_plan_status(&metadata, &ticket_map);
+
+    if output_json {
+        let phase_statuses = compute_all_phase_statuses(&metadata, &ticket_map);
+        let phases_json: Vec<_> = phase_statuses
+            .iter()
+            .map(|ps| {
+                json!({
+                    "number": ps.phase_number,
+                    "name": ps.phase_name,
+                    "status": ps.status.to_string(),
+                    "completed_count": ps.completed_count,
+                    "total_count": ps.total_count,
+                })
+            })
+            .collect();
+
+        let output = json!({
+            "plan_id": plan.id,
+            "title": metadata.title,
+            "status": plan_status.status.to_string(),
+            "completed_count": plan_status.completed_count,
+            "total_count": plan_status.total_count,
+            "progress_percent": plan_status.progress_percent(),
+            "phases": phases_json,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
 
     // Print header
     let title = metadata.title.as_deref().unwrap_or("Untitled");

@@ -66,6 +66,10 @@ enum Commands {
         /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
         #[arg(long)]
         prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Display ticket with relationships
@@ -73,12 +77,20 @@ enum Commands {
     Show {
         /// Ticket ID (can be partial)
         id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Open ticket in $EDITOR
     Edit {
         /// Ticket ID (can be partial)
         id: String,
+
+        /// Output as JSON (prints file path as JSON instead of opening editor)
+        #[arg(long)]
+        json: bool,
     },
 
     /// Add timestamped note to ticket
@@ -89,24 +101,40 @@ enum Commands {
         /// Note text (reads from stdin if not provided)
         #[arg(trailing_var_arg = true)]
         text: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Mark ticket as in-progress
     Start {
         /// Ticket ID (can be partial)
         id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Mark ticket as complete
     Close {
         /// Ticket ID (can be partial)
         id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Reopen a closed ticket
     Reopen {
         /// Ticket ID (can be partial)
         id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Set ticket status
@@ -117,6 +145,10 @@ enum Commands {
         /// New status (new, next, in_progress, complete, cancelled)
         #[arg(value_parser = parse_status)]
         status: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Manage dependencies
@@ -154,19 +186,35 @@ enum Commands {
         /// Filter by status
         #[arg(long)]
         status: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// List tickets ready to work on
-    Ready,
+    Ready {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// List blocked tickets
-    Blocked,
+    Blocked {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// List recently closed tickets
     Closed {
         /// Maximum number of tickets to show
         #[arg(long, default_value = "20")]
         limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Output tickets as JSON, optionally filtered with jq syntax
@@ -190,12 +238,20 @@ enum Commands {
         /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
         #[arg(long)]
         prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Push a local ticket to create a remote issue
     Push {
         /// Local ticket ID (can be partial)
         id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Link a local ticket to an existing remote issue
@@ -204,12 +260,20 @@ enum Commands {
         id: String,
         /// Remote reference (e.g., github:owner/repo/123 or linear:org/PROJ-123)
         remote_ref: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Sync a local ticket with its remote issue
     Sync {
         /// Local ticket ID (can be partial)
         id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// TUI for managing remote issues
@@ -246,6 +310,9 @@ enum DepAction {
         id: String,
         /// Dependency ID (ticket that must be completed first)
         dep_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Remove a dependency
     Remove {
@@ -253,6 +320,9 @@ enum DepAction {
         id: String,
         /// Dependency ID to remove
         dep_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Show dependency tree
     Tree {
@@ -261,6 +331,9 @@ enum DepAction {
         /// Show full tree (including duplicate nodes)
         #[arg(long)]
         full: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -271,6 +344,9 @@ enum LinkAction {
         /// Ticket IDs to link
         #[arg(required = true, num_args = 2..)]
         ids: Vec<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Remove link between tickets
     Remove {
@@ -278,37 +354,66 @@ enum LinkAction {
         id1: String,
         /// Second ticket ID
         id2: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
 #[derive(Subcommand)]
 enum ConfigAction {
     /// Show current configuration
-    Show,
+    Show {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Set a configuration value
     Set {
         /// Configuration key (github.token, linear.api_key, default_remote)
         key: String,
         /// Value to set
         value: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Get a configuration value
     Get {
         /// Configuration key (github.token, linear.api_key, default_remote)
         key: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
 #[derive(Subcommand)]
 enum CacheAction {
     /// Show cache status
-    Status,
+    Status {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Clear cache for current repo
-    Clear,
+    Clear {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Force full cache rebuild
-    Rebuild,
+    Rebuild {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Print path to cache database
-    Path,
+    Path {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -321,6 +426,10 @@ enum PlanAction {
         /// Add initial phase (creates a phased plan), can be repeated
         #[arg(long = "phase", action = clap::ArgAction::Append)]
         phases: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Display a plan with full details
     Show {
@@ -347,6 +456,10 @@ enum PlanAction {
     Edit {
         /// Plan ID (can be partial)
         id: String,
+
+        /// Output as JSON (prints file path as JSON instead of opening editor)
+        #[arg(long)]
+        json: bool,
     },
     /// List all plans
     Ls {
@@ -377,6 +490,10 @@ enum PlanAction {
         /// Insert at position (1-indexed)
         #[arg(long)]
         position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Remove a ticket from a plan
     RemoveTicket {
@@ -385,6 +502,10 @@ enum PlanAction {
 
         /// Ticket ID to remove
         ticket_id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Move a ticket between phases
     MoveTicket {
@@ -405,6 +526,10 @@ enum PlanAction {
         /// Insert at position in target phase (1-indexed)
         #[arg(long)]
         position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Add a new phase to a plan
     AddPhase {
@@ -421,6 +546,10 @@ enum PlanAction {
         /// Insert at position (1-indexed)
         #[arg(long)]
         position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Remove a phase from a plan
     RemovePhase {
@@ -437,6 +566,10 @@ enum PlanAction {
         /// Move tickets to another phase instead of removing
         #[arg(long)]
         migrate: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Reorder tickets or phases
     Reorder {
@@ -450,6 +583,10 @@ enum PlanAction {
         /// Reorder the phases themselves (not tickets within a phase)
         #[arg(long = "reorder-phases")]
         reorder_phases: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Delete a plan
     Delete {
@@ -459,6 +596,10 @@ enum PlanAction {
         /// Skip confirmation prompt
         #[arg(long)]
         force: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Rename a plan (update its title)
     Rename {
@@ -467,6 +608,10 @@ enum PlanAction {
 
         /// New title
         new_title: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Show the next actionable item(s) in a plan
     Next {
@@ -484,11 +629,19 @@ enum PlanAction {
         /// Number of next items to show (default: 1)
         #[arg(long, default_value = "1")]
         count: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Show plan status summary
     Status {
         /// Plan ID (can be partial)
         id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -533,52 +686,56 @@ async fn main() -> ExitCode {
             external_ref,
             parent,
             prefix,
-        } => cmd_create(CreateOptions {
-            title,
-            description,
-            design,
-            acceptance,
-            priority,
-            ticket_type,
-            assignee,
-            external_ref,
-            parent,
-            prefix,
-        }),
+            json,
+        } => cmd_create(
+            CreateOptions {
+                title,
+                description,
+                design,
+                acceptance,
+                priority,
+                ticket_type,
+                assignee,
+                external_ref,
+                parent,
+                prefix,
+            },
+            json,
+        ),
 
-        Commands::Show { id } => cmd_show(&id).await,
-        Commands::Edit { id } => cmd_edit(&id),
-        Commands::AddNote { id, text } => {
+        Commands::Show { id, json } => cmd_show(&id, json).await,
+        Commands::Edit { id, json } => cmd_edit(&id, json),
+        Commands::AddNote { id, text, json } => {
             let note_text = if text.is_empty() {
                 None
             } else {
                 Some(text.join(" "))
             };
-            cmd_add_note(&id, note_text.as_deref())
+            cmd_add_note(&id, note_text.as_deref(), json)
         }
 
-        Commands::Start { id } => cmd_start(&id),
-        Commands::Close { id } => cmd_close(&id),
-        Commands::Reopen { id } => cmd_reopen(&id),
-        Commands::Status { id, status } => cmd_status(&id, &status),
+        Commands::Start { id, json } => cmd_start(&id, json),
+        Commands::Close { id, json } => cmd_close(&id, json),
+        Commands::Reopen { id, json } => cmd_reopen(&id, json),
+        Commands::Status { id, status, json } => cmd_status(&id, &status, json),
 
         Commands::Dep { action } => match action {
-            DepAction::Add { id, dep_id } => cmd_dep_add(&id, &dep_id),
-            DepAction::Remove { id, dep_id } => cmd_dep_remove(&id, &dep_id),
-            DepAction::Tree { id, full } => cmd_dep_tree(&id, full).await,
+            DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json),
+            DepAction::Remove { id, dep_id, json } => cmd_dep_remove(&id, &dep_id, json),
+            DepAction::Tree { id, full, json } => cmd_dep_tree(&id, full, json).await,
         },
-        Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id),
+        Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id, false),
 
         Commands::Link { action } => match action {
-            LinkAction::Add { ids } => cmd_link_add(&ids),
-            LinkAction::Remove { id1, id2 } => cmd_link_remove(&id1, &id2),
+            LinkAction::Add { ids, json } => cmd_link_add(&ids, json),
+            LinkAction::Remove { id1, id2, json } => cmd_link_remove(&id1, &id2, json),
         },
-        Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2),
+        Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2, false),
 
-        Commands::Ls { status } => cmd_ls(status.as_deref()).await,
-        Commands::Ready => cmd_ready().await,
-        Commands::Blocked => cmd_blocked().await,
-        Commands::Closed { limit } => cmd_closed(limit),
+        Commands::Ls { status, json } => cmd_ls(status.as_deref(), json).await,
+        Commands::Ready { json } => cmd_ready(json).await,
+        Commands::Blocked { json } => cmd_blocked(json).await,
+        Commands::Closed { limit, json } => cmd_closed(limit, json),
 
         Commands::Query { filter } => cmd_query(filter.as_deref()).await,
 
@@ -587,30 +744,42 @@ async fn main() -> ExitCode {
         Commands::Board => cmd_board(),
 
         // Remote sync commands
-        Commands::Adopt { remote_ref, prefix } => cmd_adopt(&remote_ref, prefix.as_deref()).await,
-        Commands::Push { id } => cmd_push(&id).await,
-        Commands::RemoteLink { id, remote_ref } => cmd_remote_link(&id, &remote_ref).await,
-        Commands::Sync { id } => cmd_sync(&id).await,
+        Commands::Adopt {
+            remote_ref,
+            prefix,
+            json,
+        } => cmd_adopt(&remote_ref, prefix.as_deref(), json).await,
+        Commands::Push { id, json } => cmd_push(&id, json).await,
+        Commands::RemoteLink {
+            id,
+            remote_ref,
+            json,
+        } => cmd_remote_link(&id, &remote_ref, json).await,
+        Commands::Sync { id, json } => cmd_sync(&id, json).await,
         Commands::Remote { provider } => cmd_remote_tui(provider.as_deref()),
 
         // Configuration commands
         Commands::Config { action } => match action {
-            ConfigAction::Show => cmd_config_show(),
-            ConfigAction::Set { key, value } => cmd_config_set(&key, &value),
-            ConfigAction::Get { key } => cmd_config_get(&key),
+            ConfigAction::Show { json } => cmd_config_show(json),
+            ConfigAction::Set { key, value, json } => cmd_config_set(&key, &value, json),
+            ConfigAction::Get { key, json } => cmd_config_get(&key, json),
         },
 
         // Cache commands
         Commands::Cache { action } => match action {
-            CacheAction::Status => cmd_cache_status().await,
-            CacheAction::Clear => cmd_cache_clear().await,
-            CacheAction::Rebuild => cmd_cache_rebuild().await,
-            CacheAction::Path => cmd_cache_path().await,
+            CacheAction::Status { json } => cmd_cache_status(json).await,
+            CacheAction::Clear { json } => cmd_cache_clear(json).await,
+            CacheAction::Rebuild { json } => cmd_cache_rebuild(json).await,
+            CacheAction::Path { json } => cmd_cache_path(json).await,
         },
 
         // Plan commands
         Commands::Plan { action } => match action {
-            PlanAction::Create { title, phases } => cmd_plan_create(&title, &phases),
+            PlanAction::Create {
+                title,
+                phases,
+                json,
+            } => cmd_plan_create(&title, &phases, json),
             PlanAction::Show {
                 id,
                 raw,
@@ -618,7 +787,7 @@ async fn main() -> ExitCode {
                 phases_only,
                 format,
             } => cmd_plan_show(&id, raw, tickets_only, phases_only, &format).await,
-            PlanAction::Edit { id } => cmd_plan_edit(&id),
+            PlanAction::Edit { id, json } => cmd_plan_edit(&id, json),
             PlanAction::Ls { status, format } => cmd_plan_ls(status.as_deref(), &format).await,
             PlanAction::AddTicket {
                 plan_id,
@@ -626,6 +795,7 @@ async fn main() -> ExitCode {
                 phase,
                 after,
                 position,
+                json,
             } => {
                 cmd_plan_add_ticket(
                     &plan_id,
@@ -633,48 +803,67 @@ async fn main() -> ExitCode {
                     phase.as_deref(),
                     after.as_deref(),
                     position,
+                    json,
                 )
                 .await
             }
-            PlanAction::RemoveTicket { plan_id, ticket_id } => {
-                cmd_plan_remove_ticket(&plan_id, &ticket_id).await
-            }
+            PlanAction::RemoveTicket {
+                plan_id,
+                ticket_id,
+                json,
+            } => cmd_plan_remove_ticket(&plan_id, &ticket_id, json).await,
             PlanAction::MoveTicket {
                 plan_id,
                 ticket_id,
                 to_phase,
                 after,
                 position,
+                json,
             } => {
-                cmd_plan_move_ticket(&plan_id, &ticket_id, &to_phase, after.as_deref(), position)
-                    .await
+                cmd_plan_move_ticket(
+                    &plan_id,
+                    &ticket_id,
+                    &to_phase,
+                    after.as_deref(),
+                    position,
+                    json,
+                )
+                .await
             }
             PlanAction::AddPhase {
                 plan_id,
                 phase_name,
                 after,
                 position,
-            } => cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position),
+                json,
+            } => cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position, json),
             PlanAction::RemovePhase {
                 plan_id,
                 phase,
                 force,
                 migrate,
-            } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref()),
+                json,
+            } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), json),
             PlanAction::Reorder {
                 plan_id,
                 phase,
                 reorder_phases,
-            } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases),
-            PlanAction::Delete { id, force } => cmd_plan_delete(&id, force),
-            PlanAction::Rename { id, new_title } => cmd_plan_rename(&id, &new_title),
+                json,
+            } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases, json),
+            PlanAction::Delete { id, force, json } => cmd_plan_delete(&id, force, json),
+            PlanAction::Rename {
+                id,
+                new_title,
+                json,
+            } => cmd_plan_rename(&id, &new_title, json),
             PlanAction::Next {
                 id,
                 phase,
                 all,
                 count,
-            } => cmd_plan_next(&id, phase, all, count).await,
-            PlanAction::Status { id } => cmd_plan_status(&id).await,
+                json,
+            } => cmd_plan_next(&id, phase, all, count, json).await,
+            PlanAction::Status { id, json } => cmd_plan_status(&id, json).await,
         },
     };
 

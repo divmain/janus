@@ -4,13 +4,35 @@
 //! - `config show`: Display current configuration
 
 use owo_colors::OwoColorize;
+use serde_json::json;
 
 use crate::error::{JanusError, Result};
 use crate::remote::config::{Config, Platform};
 
 /// Show current configuration
-pub fn cmd_config_show() -> Result<()> {
+pub fn cmd_config_show(output_json: bool) -> Result<()> {
     let config = Config::load()?;
+
+    if output_json {
+        let default_remote_json = config.default_remote.as_ref().map(|d| {
+            json!({
+                "platform": d.platform.to_string(),
+                "org": d.org,
+                "repo": d.repo,
+            })
+        });
+
+        let output = json!({
+            "default_remote": default_remote_json,
+            "auth": {
+                "github_token_configured": config.github_token().is_some(),
+                "linear_api_key_configured": config.linear_api_key().is_some(),
+            },
+            "config_file": Config::config_path().to_string_lossy(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
 
     println!("{}", "Configuration:".cyan().bold());
     println!();
@@ -62,19 +84,37 @@ pub fn cmd_config_show() -> Result<()> {
 }
 
 /// Set a configuration value
-pub fn cmd_config_set(key: &str, value: &str) -> Result<()> {
+pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
     let mut config = Config::load()?;
 
     match key {
         "github.token" => {
             config.set_github_token(value.to_string());
             config.save()?;
-            println!("Set {}", "github.token".cyan());
+            if output_json {
+                let output = json!({
+                    "action": "config_set",
+                    "key": key,
+                    "success": true,
+                });
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            } else {
+                println!("Set {}", "github.token".cyan());
+            }
         }
         "linear.api_key" => {
             config.set_linear_api_key(value.to_string());
             config.save()?;
-            println!("Set {}", "linear.api_key".cyan());
+            if output_json {
+                let output = json!({
+                    "action": "config_set",
+                    "key": key,
+                    "success": true,
+                });
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            } else {
+                println!("Set {}", "linear.api_key".cyan());
+            }
         }
         "default_remote" => {
             // Format: "platform:org" or "platform:org/repo"
@@ -88,7 +128,15 @@ pub fn cmd_config_set(key: &str, value: &str) -> Result<()> {
             config.set_default_remote(platform, org.clone(), repo.clone());
             config.save()?;
 
-            if let Some(r) = repo {
+            if output_json {
+                let output = json!({
+                    "action": "config_set",
+                    "key": key,
+                    "value": value,
+                    "success": true,
+                });
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            } else if let Some(r) = repo {
                 println!(
                     "Set {} to {}:{}/{}",
                     "default_remote".cyan(),
@@ -134,7 +182,7 @@ fn parse_default_remote(value: &str) -> Result<(Platform, String)> {
 }
 
 /// Get a specific configuration value
-pub fn cmd_config_get(key: &str) -> Result<()> {
+pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
     let config = Config::load()?;
 
     match key {
@@ -146,30 +194,58 @@ pub fn cmd_config_get(key: &str) -> Result<()> {
                 } else {
                     "****".to_string()
                 };
-                println!("{}", masked);
+                if output_json {
+                    let output = json!({
+                        "key": key,
+                        "value": masked,
+                        "configured": true,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                } else {
+                    println!("{}", masked);
+                }
             } else {
                 return Err(JanusError::Config("github.token not set".to_string()));
             }
         }
         "linear.api_key" => {
-            if let Some(key) = config.linear_api_key() {
+            if let Some(api_key) = config.linear_api_key() {
                 // Show partially masked key for security
-                let masked = if key.len() > 8 {
-                    format!("{}...{}", &key[..4], &key[key.len() - 4..])
+                let masked = if api_key.len() > 8 {
+                    format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..])
                 } else {
                     "****".to_string()
                 };
-                println!("{}", masked);
+                if output_json {
+                    let output = json!({
+                        "key": key,
+                        "value": masked,
+                        "configured": true,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                } else {
+                    println!("{}", masked);
+                }
             } else {
                 return Err(JanusError::Config("linear.api_key not set".to_string()));
             }
         }
         "default_remote" => {
             if let Some(ref default) = config.default_remote {
-                if let Some(ref repo) = default.repo {
-                    println!("{}:{}/{}", default.platform, default.org, repo);
+                let value = if let Some(ref repo) = default.repo {
+                    format!("{}:{}/{}", default.platform, default.org, repo)
                 } else {
-                    println!("{}:{}", default.platform, default.org);
+                    format!("{}:{}", default.platform, default.org)
+                };
+                if output_json {
+                    let output = json!({
+                        "key": key,
+                        "value": value,
+                        "configured": true,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                } else {
+                    println!("{}", value);
                 }
             } else {
                 return Err(JanusError::Config("default_remote not set".to_string()));

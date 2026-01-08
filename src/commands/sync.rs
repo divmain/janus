@@ -10,6 +10,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use owo_colors::OwoColorize;
+use serde_json::json;
 
 use crate::error::{JanusError, Result};
 use crate::remote::config::Config;
@@ -21,7 +22,11 @@ use crate::types::TICKETS_ITEMS_DIR;
 use crate::utils::{ensure_dir, generate_id_with_custom_prefix, get_git_user_name, iso_date};
 
 /// Adopt a remote issue and create a local ticket
-pub async fn cmd_adopt(remote_ref_str: &str, prefix: Option<&str>) -> Result<()> {
+pub async fn cmd_adopt(
+    remote_ref_str: &str,
+    prefix: Option<&str>,
+    output_json: bool,
+) -> Result<()> {
     // Validate prefix before attempting to fetch remote issue
     if let Some(p) = prefix {
         crate::utils::validate_prefix(p)?;
@@ -45,9 +50,22 @@ pub async fn cmd_adopt(remote_ref_str: &str, prefix: Option<&str>) -> Result<()>
     // Create the local ticket
     let id = create_ticket_from_remote(&remote_issue, &remote_ref, prefix)?;
 
-    println!("Created {} from {}", id.cyan(), remote_ref);
-    println!("  Title: {}", remote_issue.title);
-    println!("  URL: {}", remote_issue.url.dimmed());
+    if output_json {
+        let status = remote_issue.status.to_ticket_status();
+        let output = json!({
+            "id": id,
+            "action": "adopted",
+            "remote_ref": remote_ref.to_string(),
+            "title": remote_issue.title,
+            "url": remote_issue.url,
+            "status": status.to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Created {} from {}", id.cyan(), remote_ref);
+        println!("  Title: {}", remote_issue.title);
+        println!("  URL: {}", remote_issue.url.dimmed());
+    }
 
     Ok(())
 }
@@ -108,7 +126,7 @@ fn create_ticket_from_remote(
 }
 
 /// Push a local ticket to create a remote issue
-pub async fn cmd_push(local_id: &str) -> Result<()> {
+pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
     let config = Config::load()?;
 
     // Find and read the local ticket
@@ -149,14 +167,27 @@ pub async fn cmd_push(local_id: &str) -> Result<()> {
     // Update the local ticket with the remote reference
     ticket.update_field("remote", &remote_ref.to_string())?;
 
-    println!("Created {}", remote_ref.to_string().green());
-    println!("Updated {} -> remote: {}", ticket.id.cyan(), remote_ref);
+    if output_json {
+        let output = json!({
+            "id": ticket.id,
+            "action": "pushed",
+            "remote_ref": remote_ref.to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Created {}", remote_ref.to_string().green());
+        println!("Updated {} -> remote: {}", ticket.id.cyan(), remote_ref);
+    }
 
     Ok(())
 }
 
 /// Link a local ticket to an existing remote issue
-pub async fn cmd_remote_link(local_id: &str, remote_ref_str: &str) -> Result<()> {
+pub async fn cmd_remote_link(
+    local_id: &str,
+    remote_ref_str: &str,
+    output_json: bool,
+) -> Result<()> {
     let config = Config::load()?;
 
     // Find the local ticket
@@ -188,17 +219,26 @@ pub async fn cmd_remote_link(local_id: &str, remote_ref_str: &str) -> Result<()>
     // Update the local ticket
     ticket.update_field("remote", &remote_ref.to_string())?;
 
-    println!(
-        "Linked {} -> {}",
-        ticket.id.cyan(),
-        remote_ref.to_string().green()
-    );
+    if output_json {
+        let output = json!({
+            "id": ticket.id,
+            "action": "remote_linked",
+            "remote_ref": remote_ref.to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!(
+            "Linked {} -> {}",
+            ticket.id.cyan(),
+            remote_ref.to_string().green()
+        );
+    }
 
     Ok(())
 }
 
 /// Sync a local ticket with its remote issue
-pub async fn cmd_sync(local_id: &str) -> Result<()> {
+pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
     let config = Config::load()?;
 
     // Find and read the local ticket
@@ -226,6 +266,37 @@ pub async fn cmd_sync(local_id: &str) -> Result<()> {
     let local_status = metadata.status.unwrap_or_default();
     let local_content = ticket.read_content()?;
     let _local_body = extract_body(&local_content);
+
+    // For JSON output, just report differences without making changes
+    if output_json {
+        let remote_status = remote_issue.status.to_ticket_status();
+        let mut differences: Vec<serde_json::Value> = Vec::new();
+
+        if local_title != remote_issue.title {
+            differences.push(json!({
+                "field": "title",
+                "local": local_title,
+                "remote": remote_issue.title,
+            }));
+        }
+
+        if local_status != remote_status {
+            differences.push(json!({
+                "field": "status",
+                "local": local_status.to_string(),
+                "remote": remote_status.to_string(),
+            }));
+        }
+
+        let output = json!({
+            "id": ticket.id,
+            "remote_ref": remote_ref.to_string(),
+            "already_in_sync": differences.is_empty(),
+            "differences": differences,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
 
     // Track changes
     let mut changes_made = false;

@@ -1,8 +1,10 @@
+use serde_json::json;
+
 use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 
 /// Add symmetric links between tickets
-pub fn cmd_link_add(ids: &[String]) -> Result<()> {
+pub fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
     if ids.len() < 2 {
         return Err(JanusError::Other(
             "At least two ticket IDs are required".to_string(),
@@ -26,7 +28,21 @@ pub fn cmd_link_add(ids: &[String]) -> Result<()> {
         }
     }
 
-    if added_count == 0 {
+    if output_json {
+        let mut links_updated = serde_json::Map::new();
+        for ticket in &tickets {
+            let metadata = ticket.read()?;
+            links_updated.insert(ticket.id.clone(), json!(metadata.links));
+        }
+        let ticket_ids: Vec<_> = tickets.iter().map(|t| &t.id).collect();
+        let output = json!({
+            "action": if added_count > 0 { "linked" } else { "already_linked" },
+            "tickets": ticket_ids,
+            "links_added": added_count,
+            "links_updated": links_updated,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else if added_count == 0 {
         println!("All links already exist");
     } else {
         println!(
@@ -40,7 +56,7 @@ pub fn cmd_link_add(ids: &[String]) -> Result<()> {
 }
 
 /// Remove symmetric links between two tickets
-pub fn cmd_link_remove(id1: &str, id2: &str) -> Result<()> {
+pub fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<()> {
     let ticket1 = Ticket::find(id1)?;
     let ticket2 = Ticket::find(id2)?;
 
@@ -57,7 +73,22 @@ pub fn cmd_link_remove(id1: &str, id2: &str) -> Result<()> {
         return Err(JanusError::Other("Link not found".to_string()));
     }
 
-    println!("Removed link: {} <-> {}", ticket1.id, ticket2.id);
+    if output_json {
+        let metadata1 = ticket1.read()?;
+        let metadata2 = ticket2.read()?;
+        let mut links_updated = serde_json::Map::new();
+        links_updated.insert(ticket1.id.clone(), json!(metadata1.links));
+        links_updated.insert(ticket2.id.clone(), json!(metadata2.links));
+
+        let output = json!({
+            "action": "unlinked",
+            "tickets": [ticket1.id, ticket2.id],
+            "links_updated": links_updated,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Removed link: {} <-> {}", ticket1.id, ticket2.id);
+    }
 
     Ok(())
 }

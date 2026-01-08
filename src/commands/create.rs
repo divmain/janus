@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use serde_json::json;
+
 use crate::error::Result;
 use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketType};
 use crate::utils::{
@@ -39,7 +41,7 @@ impl Default for CreateOptions {
 }
 
 /// Create a new ticket and print its ID
-pub fn cmd_create(options: CreateOptions) -> Result<()> {
+pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
     ensure_dir()?;
 
     let assignee = options.assignee.or_else(get_git_user_name);
@@ -77,13 +79,13 @@ pub fn cmd_create(options: CreateOptions) -> Result<()> {
     // Build body sections
     let mut sections = vec![format!("# {}", options.title)];
 
-    if let Some(desc) = options.description {
+    if let Some(ref desc) = options.description {
         sections.push(format!("\n{}", desc));
     }
-    if let Some(design) = options.design {
+    if let Some(ref design) = options.design {
         sections.push(format!("\n## Design\n\n{}", design));
     }
-    if let Some(acceptance) = options.acceptance {
+    if let Some(ref acceptance) = options.acceptance {
         sections.push(format!("\n## Acceptance Criteria\n\n{}", acceptance));
     }
 
@@ -92,8 +94,23 @@ pub fn cmd_create(options: CreateOptions) -> Result<()> {
 
     let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
     fs::create_dir_all(TICKETS_ITEMS_DIR)?;
-    fs::write(file_path, content)?;
+    fs::write(&file_path, content)?;
 
-    println!("{}", id);
+    if output_json {
+        let output = json!({
+            "id": id,
+            "uuid": uuid,
+            "title": options.title,
+            "status": "new",
+            "type": options.ticket_type.to_string(),
+            "priority": options.priority.as_num(),
+            "assignee": assignee,
+            "created": now,
+            "file_path": file_path.to_string_lossy(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("{}", id);
+    }
     Ok(())
 }

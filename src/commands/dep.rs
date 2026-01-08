@@ -1,21 +1,32 @@
 use std::collections::{HashMap, HashSet};
 
 use owo_colors::OwoColorize;
+use serde_json::json;
 
 use crate::error::{JanusError, Result};
 use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::TicketMetadata;
 
 /// Add a dependency to a ticket
-pub fn cmd_dep_add(id: &str, dep_id: &str) -> Result<()> {
+pub fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id)?;
 
     // Validate that the dependency exists
-    Ticket::find(dep_id)?;
+    let dep_ticket = Ticket::find(dep_id)?;
 
-    let added = ticket.add_to_array_field("deps", dep_id)?;
-    if added {
-        println!("Added dependency: {} -> {}", ticket.id, dep_id);
+    let added = ticket.add_to_array_field("deps", &dep_ticket.id)?;
+    let metadata = ticket.read()?;
+
+    if output_json {
+        let output = json!({
+            "id": ticket.id,
+            "action": if added { "dep_added" } else { "dep_already_exists" },
+            "dep_id": dep_ticket.id,
+            "current_deps": metadata.deps,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else if added {
+        println!("Added dependency: {} -> {}", ticket.id, dep_ticket.id);
     } else {
         println!("Dependency already exists");
     }
@@ -24,12 +35,23 @@ pub fn cmd_dep_add(id: &str, dep_id: &str) -> Result<()> {
 }
 
 /// Remove a dependency from a ticket
-pub fn cmd_dep_remove(id: &str, dep_id: &str) -> Result<()> {
+pub fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id)?;
 
     let removed = ticket.remove_from_array_field("deps", dep_id)?;
     if removed {
-        println!("Removed dependency: {} -/-> {}", ticket.id, dep_id);
+        let metadata = ticket.read()?;
+        if output_json {
+            let output = json!({
+                "id": ticket.id,
+                "action": "dep_removed",
+                "dep_id": dep_id,
+                "current_deps": metadata.deps,
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        } else {
+            println!("Removed dependency: {} -/-> {}", ticket.id, dep_id);
+        }
     } else {
         return Err(JanusError::Other("Dependency not found".to_string()));
     }
@@ -38,7 +60,7 @@ pub fn cmd_dep_remove(id: &str, dep_id: &str) -> Result<()> {
 }
 
 /// Display the dependency tree for a ticket
-pub async fn cmd_dep_tree(id: &str, full_mode: bool) -> Result<()> {
+pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Result<()> {
     let ticket_map = build_ticket_map().await;
 
     // Find the matching ticket ID
@@ -52,6 +74,57 @@ pub async fn cmd_dep_tree(id: &str, full_mode: bool) -> Result<()> {
     }
 
     let root = matching_ids[0].clone();
+
+    // Handle JSON output
+    if output_json {
+        fn build_tree_json(
+            id: &str,
+            _depth: usize,
+            path: &mut HashSet<String>,
+            ticket_map: &HashMap<String, TicketMetadata>,
+        ) -> serde_json::Value {
+            let ticket = ticket_map.get(id);
+            let status = ticket
+                .and_then(|t| t.status)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            let title = ticket
+                .and_then(|t| t.title.as_ref())
+                .cloned()
+                .unwrap_or_default();
+
+            let deps_json: Vec<serde_json::Value> = if path.contains(id) {
+                // Circular reference, don't recurse
+                vec![]
+            } else {
+                path.insert(id.to_string());
+                let deps = ticket_map
+                    .get(id)
+                    .map(|t| &t.deps)
+                    .cloned()
+                    .unwrap_or_default();
+                let result: Vec<_> = deps
+                    .iter()
+                    .map(|dep| build_tree_json(dep, _depth + 1, path, ticket_map))
+                    .collect();
+                path.remove(id);
+                result
+            };
+
+            json!({
+                "id": id,
+                "title": title,
+                "status": status,
+                "deps": deps_json,
+            })
+        }
+
+        let mut path = HashSet::new();
+        let tree = build_tree_json(&root, 0, &mut path, &ticket_map);
+        let output = json!({ "root": tree });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
 
     // Calculate the maximum depth at which each node appears
     let mut max_depth: HashMap<String, usize> = HashMap::new();

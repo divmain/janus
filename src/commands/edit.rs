@@ -1,12 +1,24 @@
 use std::process::Command;
 
+use serde_json::json;
+
 use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::utils::is_stdin_tty;
 
 /// Open a ticket in the default editor
-pub fn cmd_edit(id: &str) -> Result<()> {
+pub fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id)?;
+
+    if output_json {
+        let output = json!({
+            "id": ticket.id,
+            "file_path": ticket.file_path.to_string_lossy(),
+            "action": "edit",
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
 
     if is_stdin_tty() {
         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());

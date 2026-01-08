@@ -1,4 +1,5 @@
 use owo_colors::OwoColorize;
+use serde_json::json;
 
 use crate::commands::format_ticket_bullet;
 use crate::error::Result;
@@ -6,7 +7,7 @@ use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::{TicketMetadata, TicketStatus};
 
 /// Display a ticket with its relationships
-pub async fn cmd_show(id: &str) -> Result<()> {
+pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find_async(id).await?;
     let content = ticket.read_content()?;
     let metadata = ticket.read()?;
@@ -39,6 +40,78 @@ pub async fn cmd_show(id: &str) -> Result<()> {
         {
             blockers.push(dep);
         }
+    }
+
+    if output_json {
+        let blockers_json: Vec<_> = blockers
+            .iter()
+            .map(|t| {
+                json!({
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.map(|s| s.to_string()),
+                })
+            })
+            .collect();
+
+        let blocking_json: Vec<_> = blocking
+            .iter()
+            .map(|t| {
+                json!({
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.map(|s| s.to_string()),
+                })
+            })
+            .collect();
+
+        let children_json: Vec<_> = children
+            .iter()
+            .map(|t| {
+                json!({
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.map(|s| s.to_string()),
+                })
+            })
+            .collect();
+
+        let linked_json: Vec<_> = metadata
+            .links
+            .iter()
+            .filter_map(|link_id| ticket_map.get(link_id))
+            .map(|t| {
+                json!({
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.map(|s| s.to_string()),
+                })
+            })
+            .collect();
+
+        let output = json!({
+            "id": metadata.id,
+            "uuid": metadata.uuid,
+            "title": metadata.title,
+            "status": metadata.status.map(|s| s.to_string()),
+            "type": metadata.ticket_type.map(|t| t.to_string()),
+            "priority": metadata.priority.map(|p| p.as_num()),
+            "assignee": metadata.assignee,
+            "created": metadata.created,
+            "deps": metadata.deps,
+            "links": metadata.links,
+            "parent": metadata.parent,
+            "external_ref": metadata.external_ref,
+            "remote": metadata.remote,
+            "file_path": metadata.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+            "completion_summary": metadata.completion_summary,
+            "blockers": blockers_json,
+            "blocking": blocking_json,
+            "children": children_json,
+            "linked": linked_json,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
     }
 
     // Print the raw content

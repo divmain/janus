@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use serde_json::json;
+
 use crate::commands::{FormatOptions, format_deps, format_ticket_line, sort_by_priority};
 use crate::error::Result;
 use crate::parser::parse_ticket_content;
@@ -8,18 +10,28 @@ use crate::ticket::{build_ticket_map, get_all_tickets, get_file_mtime};
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketStatus};
 
 /// List all tickets, optionally filtered by status
-pub async fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
+pub async fn cmd_ls(status_filter: Option<&str>, output_json: bool) -> Result<()> {
     let tickets = get_all_tickets().await;
 
-    for t in &tickets {
-        // Filter by status if provided
-        if let Some(filter) = status_filter {
-            let ticket_status = t.status.map(|s| s.to_string()).unwrap_or_default();
-            if ticket_status != filter {
-                continue;
+    let filtered: Vec<_> = tickets
+        .iter()
+        .filter(|t| {
+            if let Some(filter) = status_filter {
+                let ticket_status = t.status.map(|s| s.to_string()).unwrap_or_default();
+                ticket_status == filter
+            } else {
+                true
             }
-        }
+        })
+        .collect();
 
+    if output_json {
+        let json_tickets: Vec<_> = filtered.iter().map(|t| ticket_to_json(t)).collect();
+        println!("{}", serde_json::to_string_pretty(&json_tickets)?);
+        return Ok(());
+    }
+
+    for t in filtered {
         let opts = FormatOptions {
             suffix: Some(format_deps(&t.deps)),
             ..Default::default()
@@ -31,7 +43,7 @@ pub async fn cmd_ls(status_filter: Option<&str>) -> Result<()> {
 }
 
 /// List tickets that are ready to work on (new or next status, all deps complete)
-pub async fn cmd_ready() -> Result<()> {
+pub async fn cmd_ready(output_json: bool) -> Result<()> {
     let ticket_map = build_ticket_map().await;
 
     let mut ready: Vec<TicketMetadata> = ticket_map
@@ -55,6 +67,12 @@ pub async fn cmd_ready() -> Result<()> {
 
     sort_by_priority(&mut ready);
 
+    if output_json {
+        let json_tickets: Vec<_> = ready.iter().map(ticket_to_json).collect();
+        println!("{}", serde_json::to_string_pretty(&json_tickets)?);
+        return Ok(());
+    }
+
     for t in &ready {
         let opts = FormatOptions {
             show_priority: true,
@@ -67,7 +85,7 @@ pub async fn cmd_ready() -> Result<()> {
 }
 
 /// List tickets that are blocked (have incomplete deps)
-pub async fn cmd_blocked() -> Result<()> {
+pub async fn cmd_blocked(output_json: bool) -> Result<()> {
     let ticket_map = build_ticket_map().await;
 
     let mut blocked: Vec<(TicketMetadata, Vec<String>)> = Vec::new();
@@ -112,6 +130,19 @@ pub async fn cmd_blocked() -> Result<()> {
         }
     });
 
+    if output_json {
+        let json_tickets: Vec<_> = blocked
+            .iter()
+            .map(|(t, blockers)| {
+                let mut obj = ticket_to_json(t);
+                obj["blockers"] = json!(blockers);
+                obj
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&json_tickets)?);
+        return Ok(());
+    }
+
     for (t, blockers) in &blocked {
         let opts = FormatOptions {
             show_priority: true,
@@ -124,7 +155,7 @@ pub async fn cmd_blocked() -> Result<()> {
 }
 
 /// List recently closed tickets
-pub fn cmd_closed(limit: usize) -> Result<()> {
+pub fn cmd_closed(limit: usize, output_json: bool) -> Result<()> {
     let files: Vec<String> = fs::read_dir(TICKETS_ITEMS_DIR)
         .ok()
         .map(|entries| {
@@ -174,9 +205,35 @@ pub fn cmd_closed(limit: usize) -> Result<()> {
         }
     }
 
+    if output_json {
+        let json_tickets: Vec<_> = closed_tickets.iter().map(ticket_to_json).collect();
+        println!("{}", serde_json::to_string_pretty(&json_tickets)?);
+        return Ok(());
+    }
+
     for t in &closed_tickets {
         println!("{}", format_ticket_line(t, FormatOptions::default()));
     }
 
     Ok(())
+}
+
+/// Convert a ticket metadata to JSON value
+fn ticket_to_json(t: &TicketMetadata) -> serde_json::Value {
+    json!({
+        "id": t.id,
+        "uuid": t.uuid,
+        "title": t.title,
+        "status": t.status.map(|s| s.to_string()),
+        "type": t.ticket_type.map(|tt| tt.to_string()),
+        "priority": t.priority.map(|p| p.as_num()),
+        "assignee": t.assignee,
+        "created": t.created,
+        "deps": t.deps,
+        "links": t.links,
+        "parent": t.parent,
+        "external_ref": t.external_ref,
+        "remote": t.remote,
+        "completion_summary": t.completion_summary,
+    })
 }

@@ -1,11 +1,13 @@
 use std::fs;
 
+use serde_json::json;
+
 use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, iso_date, read_stdin};
 
 /// Add a timestamped note to a ticket
-pub fn cmd_add_note(id: &str, note_text: Option<&str>) -> Result<()> {
+pub fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id)?;
 
     // Get note text from argument or stdin
@@ -29,7 +31,18 @@ pub fn cmd_add_note(id: &str, note_text: Option<&str>) -> Result<()> {
     content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
 
     fs::write(&ticket.file_path, content)?;
-    println!("Note added to {}", ticket.id);
+
+    if output_json {
+        let output = json!({
+            "id": ticket.id,
+            "action": "note_added",
+            "timestamp": timestamp,
+            "note": note,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Note added to {}", ticket.id);
+    }
 
     Ok(())
 }
