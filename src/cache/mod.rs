@@ -4,10 +4,14 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use tokio::sync::OnceCell;
 use turso::transaction::Transaction;
 use turso::{Builder, Connection, Database, params};
+
+/// Busy timeout for SQLite operations when multiple processes access the cache.
+/// This allows concurrent janus processes to wait for locks rather than failing immediately.
+const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
 use crate::error::{JanusError as CacheError, Result};
 use crate::parser::parse_ticket_content;
@@ -119,6 +123,10 @@ impl TicketCache {
         let db_path_str = db_path.to_string_lossy();
         let db = Builder::new_local(&db_path_str).build().await?;
         let conn = db.connect()?;
+
+        // Set busy timeout to handle concurrent access from multiple janus processes.
+        // This causes SQLite to retry with exponential backoff rather than failing immediately.
+        conn.busy_timeout(BUSY_TIMEOUT)?;
 
         let cache = Self {
             db,

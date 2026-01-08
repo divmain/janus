@@ -57,6 +57,20 @@ janus cache path
 
 The cache is particularly valuable when working with large repositories (1000+ tickets) or using the TUI frequently.
 
+### Concurrency
+
+Janus is designed to handle multiple concurrent processes safely:
+
+- **Multiple processes**: You can run multiple `janus` commands simultaneously (e.g., a TUI in one terminal and CLI commands in another). The cache uses SQLite's WAL mode with a busy timeout, allowing processes to wait briefly for locks rather than failing immediately.
+
+- **Source of truth**: The Markdown files in `.janus/` are always authoritative. The cache is a derived read-replica that accelerates lookups but never contains data that isn't in the files.
+
+- **Graceful degradation**: If a cache operation fails due to contention, janus falls back to reading directly from the filesystem. Operations always succeed; only performance may be affected.
+
+- **Cache consistency**: The cache may become temporarily stale if concurrent syncs conflict, but it will never be corrupted. Running any `janus` command will re-sync the cache with the current filesystem state.
+
+- **What to expect**: In typical usage (occasional concurrent commands), you won't notice any issues. In heavy concurrent scenarios (many simultaneous writes), some commands may run slower due to cache fallback, but data integrity is always maintained.
+
 ## Installation
 
 ### Homebrew (macOS)
