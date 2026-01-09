@@ -204,7 +204,7 @@ impl StatusCounts {
     }
 }
 
-/// Get the git user name for default assignee
+/// Get the git user name (utility function)
 pub fn get_git_user_name() -> Option<String> {
     std::process::Command::new("git")
         .args(["config", "user.name"])

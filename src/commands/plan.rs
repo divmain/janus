@@ -104,13 +104,13 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
 /// * `raw` - If true, show raw file content instead of enhanced output
 /// * `tickets_only` - If true, show only the ticket list with statuses
 /// * `phases_only` - If true, show only phase summary (phased plans)
-/// * `format` - Output format ("text" or "json")
+/// * `output_json` - If true, output as JSON
 pub async fn cmd_plan_show(
     id: &str,
     raw: bool,
     tickets_only: bool,
     phases_only: bool,
-    format: &str,
+    output_json: bool,
 ) -> Result<()> {
     let plan = Plan::find(id)?;
 
@@ -125,7 +125,7 @@ pub async fn cmd_plan_show(
     let ticket_map = build_ticket_map().await;
 
     // Handle JSON output format
-    if format == "json" {
+    if output_json {
         return show_plan_json(&metadata, &ticket_map);
     }
 
@@ -292,8 +292,8 @@ pub fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
 ///
 /// # Arguments
 /// * `status_filter` - Optional status to filter by
-/// * `format` - Output format ("text" or "json")
-pub async fn cmd_plan_ls(status_filter: Option<&str>, format: &str) -> Result<()> {
+/// * `output_json` - If true, output as JSON
+pub async fn cmd_plan_ls(status_filter: Option<&str>, output_json: bool) -> Result<()> {
     let plans = get_all_plans();
     let ticket_map = build_ticket_map().await;
 
@@ -317,7 +317,7 @@ pub async fn cmd_plan_ls(status_filter: Option<&str>, format: &str) -> Result<()
     }
 
     // Handle JSON output
-    if format == "json" {
+    if output_json {
         use serde_json::json;
 
         let json_plans: Vec<serde_json::Value> = filtered_plans

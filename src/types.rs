@@ -168,9 +168,6 @@ pub struct TicketMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<TicketPriority>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub assignee: Option<String>,
-
     #[serde(rename = "external-ref", skip_serializing_if = "Option::is_none")]
     pub external_ref: Option<String>,
 

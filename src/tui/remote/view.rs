@@ -1588,7 +1588,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                                                 Text(content: format!("Status: {}", status), color: theme.status_color(status))
                                                 Text(content: format!("Type: {:?}", ticket.ticket_type), color: theme.text)
                                                 Text(content: format!("Priority: {:?}", ticket.priority), color: theme.text)
-                                                Text(content: format!("Assignee: {:?}", ticket.assignee), color: theme.text)
                                             }
                                         }
                                     })

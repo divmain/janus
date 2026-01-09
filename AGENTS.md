@@ -251,7 +251,6 @@ links: []
 created: 2024-01-01T00:00:00Z
 type: task
 priority: 2
-assignee: John Doe
 ---
 # Ticket Title
 

@@ -55,7 +55,6 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
                 "priority" => {
                     metadata.priority = value.parse::<TicketPriority>().ok();
                 }
-                "assignee" => metadata.assignee = Some(value.to_string()),
                 "external-ref" => metadata.external_ref = Some(value.to_string()),
                 "remote" => metadata.remote = Some(value.to_string()),
                 "parent" => metadata.parent = Some(value.to_string()),
@@ -114,7 +113,6 @@ links: []
 created: 2024-01-01T00:00:00Z
 type: task
 priority: 2
-assignee: John Doe
 ---
 # Test Ticket
 
@@ -127,7 +125,6 @@ This is the description.
         assert_eq!(metadata.title, Some("Test Ticket".to_string()));
         assert_eq!(metadata.ticket_type, Some(TicketType::Task));
         assert_eq!(metadata.priority, Some(TicketPriority::P2));
-        assert_eq!(metadata.assignee, Some("John Doe".to_string()));
         assert!(metadata.deps.is_empty());
     }
 

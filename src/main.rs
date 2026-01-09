@@ -11,8 +11,8 @@ use janus::commands::{
     cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket,
     cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
     cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_remote_browse,
-    cmd_remote_link, cmd_reopen, cmd_show, cmd_show_import_spec, cmd_start, cmd_status, cmd_sync,
-    cmd_view,
+    cmd_remote_link, cmd_reopen, cmd_set, cmd_show, cmd_show_import_spec, cmd_start, cmd_status,
+    cmd_sync, cmd_view,
 };
 use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
 
@@ -52,10 +52,6 @@ enum Commands {
         /// Type: bug, feature, task, epic, chore (default: task)
         #[arg(short = 't', long = "type", default_value = "task", value_parser = parse_type)]
         ticket_type: TicketType,
-
-        /// Assignee (default: git user.name)
-        #[arg(short, long)]
-        assignee: Option<String>,
 
         /// External reference (e.g., gh-123)
         #[arg(long)]
@@ -148,6 +144,22 @@ enum Commands {
         /// New status (new, next, in_progress, complete, cancelled)
         #[arg(value_parser = parse_status)]
         status: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Set a ticket field (priority, type, parent)
+    Set {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Field name to update (priority, type, parent)
+        field: String,
+
+        /// New value (use empty string to clear parent)
+        value: String,
 
         /// Output as JSON
         #[arg(long)]
@@ -461,9 +473,9 @@ enum PlanAction {
         #[arg(long = "phases-only")]
         phases_only: bool,
 
-        /// Output format (text, json)
-        #[arg(long, default_value = "text")]
-        format: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Open plan in $EDITOR
     Edit {
@@ -480,9 +492,9 @@ enum PlanAction {
         #[arg(long)]
         status: Option<String>,
 
-        /// Output format (text, json)
-        #[arg(long, default_value = "text")]
-        format: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Add a ticket to a plan
     AddTicket {
@@ -722,7 +734,6 @@ async fn main() -> ExitCode {
             acceptance,
             priority,
             ticket_type,
-            assignee,
             external_ref,
             parent,
             prefix,
@@ -735,7 +746,6 @@ async fn main() -> ExitCode {
                 acceptance,
                 priority,
                 ticket_type,
-                assignee,
                 external_ref,
                 parent,
                 prefix,
@@ -758,6 +768,12 @@ async fn main() -> ExitCode {
         Commands::Close { id, json } => cmd_close(&id, json),
         Commands::Reopen { id, json } => cmd_reopen(&id, json),
         Commands::Status { id, status, json } => cmd_status(&id, &status, json),
+        Commands::Set {
+            id,
+            field,
+            value,
+            json,
+        } => cmd_set(&id, &field, &value, json),
 
         Commands::Dep { action } => match action {
             DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json),
@@ -850,10 +866,10 @@ async fn main() -> ExitCode {
                 raw,
                 tickets_only,
                 phases_only,
-                format,
-            } => cmd_plan_show(&id, raw, tickets_only, phases_only, &format).await,
+                json,
+            } => cmd_plan_show(&id, raw, tickets_only, phases_only, json).await,
             PlanAction::Edit { id, json } => cmd_plan_edit(&id, json),
-            PlanAction::Ls { status, format } => cmd_plan_ls(status.as_deref(), &format).await,
+            PlanAction::Ls { status, json } => cmd_plan_ls(status.as_deref(), json).await,
             PlanAction::AddTicket {
                 plan_id,
                 ticket_id,

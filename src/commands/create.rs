@@ -5,9 +5,7 @@ use serde_json::json;
 
 use crate::error::Result;
 use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketType};
-use crate::utils::{
-    ensure_dir, generate_id_with_custom_prefix, generate_uuid, get_git_user_name, iso_date,
-};
+use crate::utils::{ensure_dir, generate_id_with_custom_prefix, generate_uuid, iso_date};
 
 /// Options for creating a new ticket
 pub struct CreateOptions {
@@ -17,7 +15,6 @@ pub struct CreateOptions {
     pub acceptance: Option<String>,
     pub priority: TicketPriority,
     pub ticket_type: TicketType,
-    pub assignee: Option<String>,
     pub external_ref: Option<String>,
     pub parent: Option<String>,
     pub prefix: Option<String>,
@@ -32,7 +29,6 @@ impl Default for CreateOptions {
             acceptance: None,
             priority: TicketPriority::P2,
             ticket_type: TicketType::Task,
-            assignee: None,
             external_ref: None,
             parent: None,
             prefix: None,
@@ -44,7 +40,6 @@ impl Default for CreateOptions {
 pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
     ensure_dir()?;
 
-    let assignee = options.assignee.or_else(get_git_user_name);
     let id = generate_id_with_custom_prefix(options.prefix.as_deref())?;
     let uuid = generate_uuid();
     let now = iso_date();
@@ -62,9 +57,6 @@ pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
         format!("priority: {}", options.priority),
     ];
 
-    if let Some(ref a) = assignee {
-        frontmatter_lines.push(format!("assignee: {}", a));
-    }
     if let Some(ref ext) = options.external_ref {
         frontmatter_lines.push(format!("external-ref: {}", ext));
     }
@@ -104,7 +96,6 @@ pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
             "status": "new",
             "type": options.ticket_type.to_string(),
             "priority": options.priority.as_num(),
-            "assignee": assignee,
             "created": now,
             "file_path": file_path.to_string_lossy(),
         });

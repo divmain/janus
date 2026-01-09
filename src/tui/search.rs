@@ -23,7 +23,7 @@ pub struct FilteredTicket {
 /// Filter tickets by a fuzzy search query
 ///
 /// Supports:
-/// - Fuzzy matching across id, title, type, and assignee
+/// - Fuzzy matching across id, title, and type
 /// - Priority shorthand: `p0`, `p1`, `p2`, `p3`, `p4` filters by priority
 /// - Smart case: case-insensitive unless query contains uppercase
 pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTicket> {
@@ -57,14 +57,13 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
         .filter_map(|ticket| {
             // Build searchable text from multiple fields
             let search_text = format!(
-                "{} {} {} {}",
+                "{} {} {}",
                 ticket.id.as_deref().unwrap_or(""),
                 ticket.title.as_deref().unwrap_or(""),
                 ticket
                     .ticket_type
                     .map(|t| t.to_string())
                     .unwrap_or_default(),
-                ticket.assignee.as_deref().unwrap_or(""),
             );
 
             // Strip priority shorthand from query for fuzzy match

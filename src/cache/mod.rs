@@ -22,7 +22,7 @@ use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
 #[cfg(test)]
 use serial_test::serial;
 
-const CACHE_VERSION: &str = "4";
+const CACHE_VERSION: &str = "5";
 
 /// Cached plan metadata - a lightweight representation for fast queries
 #[derive(Debug, Clone)]
@@ -203,7 +203,6 @@ impl TicketCache {
                 title TEXT,
                 priority INTEGER,
                 ticket_type TEXT,
-                assignee TEXT,
                 deps TEXT,
                 links TEXT,
                 parent TEXT,
@@ -445,9 +444,9 @@ impl TicketCache {
 
         tx.execute(
             "INSERT OR REPLACE INTO tickets (
-                ticket_id, uuid, mtime_ns, status, title, priority, ticket_type, assignee,
+                ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 ticket_id,
                 uuid,
@@ -456,7 +455,6 @@ impl TicketCache {
                 metadata.title.clone(),
                 priority,
                 ticket_type,
-                metadata.assignee.clone(),
                 deps_json,
                 links_json,
                 metadata.parent.clone(),
@@ -780,14 +778,13 @@ impl TicketCache {
         let title: Option<String> = row.get(3).ok();
         let priority_num: Option<i64> = row.get(4).ok();
         let type_str: Option<String> = row.get(5).ok();
-        let assignee: Option<String> = row.get(6).ok();
-        let deps_json: Option<String> = row.get(7).ok();
-        let links_json: Option<String> = row.get(8).ok();
-        let parent: Option<String> = row.get(9).ok();
-        let created: Option<String> = row.get(10).ok();
-        let external_ref: Option<String> = row.get(11).ok();
-        let remote: Option<String> = row.get(12).ok();
-        let completion_summary: Option<String> = row.get(13).ok();
+        let deps_json: Option<String> = row.get(6).ok();
+        let links_json: Option<String> = row.get(7).ok();
+        let parent: Option<String> = row.get(8).ok();
+        let created: Option<String> = row.get(9).ok();
+        let external_ref: Option<String> = row.get(10).ok();
+        let remote: Option<String> = row.get(11).ok();
+        let completion_summary: Option<String> = row.get(12).ok();
 
         let status = status_str.and_then(|s| s.parse().ok());
 
@@ -812,7 +809,6 @@ impl TicketCache {
             status,
             priority,
             ticket_type,
-            assignee,
             deps,
             links,
             parent,
@@ -828,7 +824,7 @@ impl TicketCache {
         let mut rows = self
             .conn
             .query(
-                "SELECT ticket_id, uuid, status, title, priority, ticket_type, assignee,
+                "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                     deps, links, parent, created, external_ref, remote, completion_summary
              FROM tickets",
                 (),
@@ -847,7 +843,7 @@ impl TicketCache {
         let mut rows = self
             .conn
             .query(
-                "SELECT ticket_id, uuid, status, title, priority, ticket_type, assignee,
+                "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                     deps, links, parent, created, external_ref, remote, completion_summary
              FROM tickets WHERE ticket_id = ?1",
                 [id],
@@ -1488,7 +1484,6 @@ links: []
 created: 2024-06-15T10:30:00Z
 type: bug
 priority: 0
-assignee: John Doe
 parent: j-parent
 external-ref: GH-123
 remote: github
@@ -1504,7 +1499,7 @@ remote: github
         let mut rows = cache
             .conn()
             .query(
-                "SELECT status, title, priority, ticket_type, assignee, parent, external_ref, remote 
+                "SELECT status, title, priority, ticket_type, parent, external_ref, remote 
                  FROM tickets WHERE ticket_id = ?1",
                 ["j-full"],
             )
@@ -1516,16 +1511,14 @@ remote: github
         let title: Option<String> = row.get(1).ok();
         let priority: Option<i64> = row.get(2).ok();
         let ticket_type: Option<String> = row.get(3).ok();
-        let assignee: Option<String> = row.get(4).ok();
-        let parent: Option<String> = row.get(5).ok();
-        let external_ref: Option<String> = row.get(6).ok();
-        let remote: Option<String> = row.get(7).ok();
+        let parent: Option<String> = row.get(4).ok();
+        let external_ref: Option<String> = row.get(5).ok();
+        let remote: Option<String> = row.get(6).ok();
 
         assert_eq!(status, Some("in_progress".to_string()));
         assert_eq!(title, Some("Full Ticket".to_string()));
         assert_eq!(priority, Some(0));
         assert_eq!(ticket_type, Some("bug".to_string()));
-        assert_eq!(assignee, Some("John Doe".to_string()));
         assert_eq!(parent, Some("j-parent".to_string()));
         assert_eq!(external_ref, Some("GH-123".to_string()));
         assert_eq!(remote, Some("github".to_string()));
@@ -1835,7 +1828,6 @@ links: ["j-link1"]
 created: 2024-06-15T10:30:00Z
 type: bug
 priority: 0
-assignee: John Doe
 parent: j-parent
 external-ref: GH-123
 remote: github
@@ -1856,7 +1848,6 @@ remote: github
         assert_eq!(ticket.status, Some(crate::types::TicketStatus::InProgress));
         assert_eq!(ticket.ticket_type, Some(crate::types::TicketType::Bug));
         assert_eq!(ticket.priority, Some(crate::types::TicketPriority::P0));
-        assert_eq!(ticket.assignee, Some("John Doe".to_string()));
         assert_eq!(ticket.parent, Some("j-parent".to_string()));
         assert_eq!(ticket.external_ref, Some("GH-123".to_string()));
         assert_eq!(ticket.remote, Some("github".to_string()));

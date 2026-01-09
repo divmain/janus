@@ -16,7 +16,6 @@ fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
         "created": ticket.created,
         "type": ticket.ticket_type.map(|t| t.to_string()),
         "priority": ticket.priority.map(|p| p.to_string()),
-        "assignee": ticket.assignee,
         "external-ref": ticket.external_ref,
         "parent": ticket.parent,
         "filePath": ticket.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),

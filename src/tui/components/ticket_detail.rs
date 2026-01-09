@@ -57,7 +57,6 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
     let status = ticket.status.unwrap_or_default();
     let ticket_type = ticket.ticket_type;
     let priority = ticket.priority;
-    let assignee = ticket.assignee.clone();
     let created = ticket.created.clone();
     let deps = ticket.deps.clone();
     let links = ticket.links.clone();
@@ -80,7 +79,6 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
     let priority_str = priority
         .map(|p| format!("P{}", p.as_num()))
         .unwrap_or_else(|| "-".to_string());
-    let assignee_str = assignee.unwrap_or_else(|| "-".to_string());
     let created_str = created
         .map(|c| format_date(&c))
         .unwrap_or_else(|| "-".to_string());
@@ -162,24 +160,20 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                     }
                 }
 
-                // Row 2: Priority and Assignee
+                // Row 2: Priority and Created
                 View(flex_direction: FlexDirection::Row, height: 1) {
                     View(width: 50pct, flex_direction: FlexDirection::Row) {
                         Text(content: "Priority: ", color: theme.text_dimmed)
                         Text(content: priority_str, color: priority_color)
                     }
                     View(width: 50pct, flex_direction: FlexDirection::Row) {
-                        Text(content: "Assignee: ", color: theme.text_dimmed)
-                        Text(content: assignee_str, color: theme.text)
+                        Text(content: "Created: ", color: theme.text_dimmed)
+                        Text(content: created_str.clone(), color: theme.text)
                     }
                 }
 
-                // Row 3: Created and Parent
+                // Row 3: Parent
                 View(flex_direction: FlexDirection::Row, height: 1) {
-                    View(width: 50pct, flex_direction: FlexDirection::Row) {
-                        Text(content: "Created: ", color: theme.text_dimmed)
-                        Text(content: created_str, color: theme.text)
-                    }
                     View(width: 50pct, flex_direction: FlexDirection::Row) {
                         Text(content: "Parent: ", color: theme.text_dimmed)
                         Text(content: parent_str, color: theme.id_color)

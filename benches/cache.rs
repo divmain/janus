@@ -33,7 +33,6 @@ id: {}
 status: new
 type: task
 priority: 2
-assignee: Test User
 created: 2024-01-01T00:00:00Z
 deps: []
 links: []
@@ -55,7 +54,6 @@ id: {}
 status: in_progress
 type: task
 priority: 1
-assignee: Modified User
 created: 2024-01-01T00:00:00Z
 deps: []
 links: []

@@ -96,7 +96,6 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
             "status": metadata.status.map(|s| s.to_string()),
             "type": metadata.ticket_type.map(|t| t.to_string()),
             "priority": metadata.priority.map(|p| p.as_num()),
-            "assignee": metadata.assignee,
             "created": metadata.created,
             "deps": metadata.deps,
             "links": metadata.links,

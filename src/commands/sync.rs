@@ -19,7 +19,7 @@ use crate::remote::linear::LinearProvider;
 use crate::remote::{IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
 use crate::ticket::Ticket;
 use crate::types::TICKETS_ITEMS_DIR;
-use crate::utils::{ensure_dir, generate_id_with_custom_prefix, get_git_user_name, iso_date};
+use crate::utils::{ensure_dir, generate_id_with_custom_prefix, iso_date};
 
 /// Adopt a remote issue and create a local ticket
 pub async fn cmd_adopt(
@@ -78,7 +78,6 @@ fn create_ticket_from_remote(
 ) -> Result<String> {
     ensure_dir()?;
 
-    let assignee = remote_issue.assignee.clone().or_else(get_git_user_name);
     let id = generate_id_with_custom_prefix(prefix)?;
     let now = iso_date();
 
@@ -99,10 +98,6 @@ fn create_ticket_from_remote(
         "type: task".to_string(),
         format!("priority: {}", priority),
     ];
-
-    if let Some(ref a) = assignee {
-        frontmatter_lines.push(format!("assignee: {}", a));
-    }
 
     frontmatter_lines.push(format!("remote: {}", remote_ref));
     frontmatter_lines.push("---".to_string());

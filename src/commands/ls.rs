@@ -120,7 +120,6 @@ fn ticket_to_json(t: &TicketMetadata) -> serde_json::Value {
         "status": t.status.map(|s| s.to_string()),
         "type": t.ticket_type.map(|tt| tt.to_string()),
         "priority": t.priority.map(|p| p.as_num()),
-        "assignee": t.assignee,
         "created": t.created,
         "deps": t.deps,
         "links": t.links,

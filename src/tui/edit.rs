@@ -1,7 +1,7 @@
 //! Edit form modal for creating and editing tickets
 //!
 //! Provides a full-featured form for editing all ticket fields including
-//! title, status, type, priority, assignee, and body content.
+//! title, status, type, priority, and body content.
 
 use std::fs;
 use std::path::PathBuf;
@@ -10,7 +10,6 @@ use iocraft::prelude::*;
 
 use crate::ticket::Ticket;
 use crate::tui::components::{Footer, Selectable, edit_shortcuts, options_for};
-use crate::tui::state::get_git_user_name;
 use crate::tui::theme::theme;
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus, TicketType};
 use crate::utils::{generate_id, iso_date};
@@ -23,7 +22,6 @@ pub enum EditField {
     Status,
     Type,
     Priority,
-    Assignee,
     Body,
 }
 
@@ -34,8 +32,7 @@ impl EditField {
             EditField::Title => EditField::Status,
             EditField::Status => EditField::Type,
             EditField::Type => EditField::Priority,
-            EditField::Priority => EditField::Assignee,
-            EditField::Assignee => EditField::Body,
+            EditField::Priority => EditField::Body,
             EditField::Body => EditField::Title,
         }
     }
@@ -47,8 +44,7 @@ impl EditField {
             EditField::Status => EditField::Title,
             EditField::Type => EditField::Status,
             EditField::Priority => EditField::Type,
-            EditField::Assignee => EditField::Priority,
-            EditField::Body => EditField::Assignee,
+            EditField::Body => EditField::Priority,
         }
     }
 }
@@ -94,13 +90,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     let mut ticket_type =
         hooks.use_state(|| initial_ticket.ticket_type.unwrap_or(TicketType::Task));
     let mut priority = hooks.use_state(|| initial_ticket.priority.unwrap_or(TicketPriority::P2));
-    let mut assignee = hooks.use_state(|| {
-        initial_ticket
-            .assignee
-            .clone()
-            .or_else(get_git_user_name)
-            .unwrap_or_default()
-    });
     let mut body = hooks.use_state(|| props.initial_body.clone().unwrap_or_default());
 
     // UI state
@@ -127,7 +116,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                     status.get(),
                     ticket_type.get(),
                     priority.get(),
-                    &assignee.to_string(),
                     &body.to_string(),
                 )
             } else {
@@ -137,7 +125,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                     status.get(),
                     ticket_type.get(),
                     priority.get(),
-                    &assignee.to_string(),
                     &body.to_string(),
                 )
             };
@@ -207,7 +194,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                 // Field-specific handling
                 match focused_field.get() {
                     EditField::Title => handle_text_input(&mut title, code),
-                    EditField::Assignee => handle_text_input(&mut assignee, code),
                     EditField::Body => handle_multiline_input(&mut body, code),
                     EditField::Status => handle_select_input(&mut status, code),
                     EditField::Type => handle_select_input(&mut ticket_type, code),
@@ -397,7 +383,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                             }
                         }
 
-                        // Row: Priority and Assignee
+                        // Row: Priority
                         View(flex_direction: FlexDirection::Row, gap: 2) {
                             // Priority selector
                             View(flex_direction: FlexDirection::Row, gap: 1) {
@@ -427,38 +413,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                         )
                                         Text(content: "v", color: theme.text_dimmed)
                                     }
-                                }
-                            }
-
-                            // Assignee field
-                            View(flex_direction: FlexDirection::Row, gap: 1, flex_grow: 1.0) {
-                                Text(
-                                    content: "Assignee:",
-                                    color: if focused_field.get() == EditField::Assignee {
-                                        theme.border_focused
-                                    } else {
-                                        theme.text_dimmed
-                                    },
-                                )
-                                View(
-                                    border_style: BorderStyle::Round,
-                                    border_color: if focused_field.get() == EditField::Assignee {
-                                        theme.border_focused
-                                    } else {
-                                        theme.border
-                                    },
-                                    padding_left: 1,
-                                    padding_right: 1,
-                                    flex_grow: 1.0,
-                                ) {
-                                    Text(
-                                        content: if focused_field.get() == EditField::Assignee {
-                                            format!("{}_", assignee)
-                                        } else {
-                                            assignee.to_string()
-                                        },
-                                        color: theme.text,
-                                    )
                                 }
                             }
                         }
@@ -579,14 +533,13 @@ fn save_new_ticket(
     status: TicketStatus,
     ticket_type: TicketType,
     priority: TicketPriority,
-    assignee: &str,
     body: &str,
 ) -> Result<String, String> {
     let id = generate_id();
     let now = iso_date();
 
     // Build frontmatter
-    let mut frontmatter_lines = vec![
+    let frontmatter_lines = vec![
         "---".to_string(),
         format!("id: {}", id),
         format!("status: {}", status),
@@ -595,13 +548,8 @@ fn save_new_ticket(
         format!("created: {}", now),
         format!("type: {}", ticket_type),
         format!("priority: {}", priority),
+        "---".to_string(),
     ];
-
-    if !assignee.is_empty() {
-        frontmatter_lines.push(format!("assignee: {}", assignee));
-    }
-
-    frontmatter_lines.push("---".to_string());
 
     let frontmatter = frontmatter_lines.join("\n");
 
@@ -630,7 +578,6 @@ fn save_existing_ticket(
     status: TicketStatus,
     ticket_type: TicketType,
     priority: TicketPriority,
-    assignee: &str,
     body: &str,
 ) -> Result<String, String> {
     let ticket = Ticket::find(id).map_err(|e| e.to_string())?;
@@ -645,12 +592,6 @@ fn save_existing_ticket(
     ticket
         .update_field("priority", &priority.to_string())
         .map_err(|e| e.to_string())?;
-
-    if !assignee.is_empty() {
-        ticket
-            .update_field("assignee", assignee)
-            .map_err(|e| e.to_string())?;
-    }
 
     // Now update title and body by rewriting the file
     let content = ticket.read_content().map_err(|e| e.to_string())?;

@@ -59,10 +59,6 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
 
     crate::utils::ensure_dir()?;
 
-    let assignee = remote_issue
-        .assignee
-        .clone()
-        .or_else(crate::utils::get_git_user_name);
     let id = crate::utils::generate_id();
     let now = crate::utils::iso_date();
 
@@ -79,10 +75,6 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
         "type: task".to_string(),
         format!("priority: {}", priority),
     ];
-
-    if let Some(ref a) = assignee {
-        frontmatter_lines.push(format!("assignee: {}", a));
-    }
 
     frontmatter_lines.push(format!("remote: {}", remote_ref));
     frontmatter_lines.push("---".to_string());
@@ -399,21 +391,6 @@ pub fn build_sync_changes(
         }
     }
 
-    // Compare assignee
-    let local_assignee = ticket.assignee.as_deref().unwrap_or("");
-    let remote_assignee = issue.assignee.as_deref().unwrap_or("");
-    if !local_assignee.is_empty()
-        && !remote_assignee.is_empty()
-        && local_assignee != remote_assignee
-    {
-        changes.push(SyncChange {
-            field_name: "Assignee".to_string(),
-            local_value: local_assignee.to_string(),
-            remote_value: remote_assignee.to_string(),
-            direction: SyncDirection::RemoteToLocal,
-        });
-    }
-
     changes
 }
 
@@ -436,9 +413,6 @@ pub fn apply_sync_change_to_local(ticket_id: &str, change: &SyncChange) -> Resul
         }
         "Priority" => {
             ticket.update_field("priority", &change.remote_value)?;
-        }
-        "Assignee" => {
-            ticket.update_field("assignee", &change.remote_value)?;
         }
         _ => {
             return Err(JanusError::Other(format!(

@@ -10,6 +10,7 @@ mod ls;
 mod plan;
 mod query;
 mod remote_browse;
+mod set;
 mod show;
 mod status;
 mod sync;
@@ -32,6 +33,7 @@ pub use plan::{
 };
 pub use query::cmd_query;
 pub use remote_browse::cmd_remote_browse;
+pub use set::cmd_set;
 pub use show::cmd_show;
 pub use status::{cmd_close, cmd_reopen, cmd_start, cmd_status};
 pub use sync::{cmd_adopt, cmd_push, cmd_remote_link, cmd_sync};

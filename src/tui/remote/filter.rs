@@ -43,14 +43,13 @@ pub fn filter_local_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<Filt
         .iter()
         .filter_map(|ticket| {
             let search_text = format!(
-                "{} {} {} {} {}",
+                "{} {} {} {}",
                 ticket.id.as_deref().unwrap_or(""),
                 ticket.title.as_deref().unwrap_or(""),
                 ticket
                     .ticket_type
                     .map(|t| t.to_string())
                     .unwrap_or_default(),
-                ticket.assignee.as_deref().unwrap_or(""),
                 ticket.status.unwrap_or_default(),
             );
 

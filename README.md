@@ -6,7 +6,7 @@ Plain-text issue tracking with TUI interfaces and remote synchronization.
 
 - **Local-first storage**: Tickets stored as Markdown files with YAML frontmatter in `.janus/`
 - **High-performance cache**: SQLite-based caching makes lookups ~100x faster
-- **Rich ticket metadata**: Status, type, priority, assignee, dependencies, links, and more
+- **Rich ticket metadata**: Status, type, priority, dependencies, links, and more
 - **Interactive TUI**: Browse issues with fuzzy search or view on a Kanban board
 - **Remote sync**: Two-way sync with GitHub Issues and Linear
 - **CLI-first**: All operations available via command line with aliases
@@ -225,7 +225,7 @@ janus remote adopt linear:mycompany/ENG-456
 
 Both commands create a local ticket with:
 - Remote reference stored in `remote:` field
-- Title, description, status, priority, assignee imported
+- Title, description, status, priority imported
 - URL displayed for easy reference
 
 #### Bi-directional sync
@@ -447,9 +447,9 @@ Options:
       --acceptance <TEXT>     Acceptance criteria
   -p, --priority <0-4>        Priority level (default: 2, 0 = highest)
   -t, --type <TYPE>           Type: bug, feature, task, epic, chore (default: task)
-  -a, --assignee <NAME>       Assignee (defaults to git user.name)
       --external-ref <REF>    External reference (e.g., gh-123)
       --parent <ID>           Parent ticket ID
+      --prefix <PREFIX>       Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
 ```
 
 #### `janus show` / `janus s`
@@ -609,7 +609,7 @@ janus query                               # all tickets as JSON
 janus query '.status == "new"'            # filter by status
 janus query '.type == "bug"'              # filter by type
 janus query '.priority <= 1'              # high priority only
-janus query '.assignee == "Alice Smith"'  # filter by assignee
+janus query '.type == "feature"'          # filter by type
 ```
 
 ### TUI Interfaces
@@ -817,7 +817,6 @@ id: j-a1b2
 status: new
 type: feature
 priority: 1
-assignee: John Doe
 created: 2024-01-01T00:00:00Z
 deps: []
 links: []

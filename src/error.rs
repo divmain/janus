@@ -12,6 +12,25 @@ fn format_import_failed(message: &str, issues: &[String]) -> String {
     }
 }
 
+/// Format the InvalidField error message
+fn format_invalid_field(field: &str, valid_fields: &[String]) -> String {
+    format!(
+        "invalid field '{}': must be one of: {}",
+        field,
+        valid_fields.join(", ")
+    )
+}
+
+/// Format the InvalidFieldValue error message
+fn format_invalid_field_value(field: &str, value: &str, valid_values: &[String]) -> String {
+    format!(
+        "invalid value '{}' for field '{}': must be one of: {}",
+        value,
+        field,
+        valid_values.join(", ")
+    )
+}
+
 #[derive(Error, Debug)]
 pub enum JanusError {
     #[error("ticket '{0}' not found")]
@@ -55,6 +74,19 @@ pub enum JanusError {
 
     #[error("invalid status '{0}'")]
     InvalidStatus(String),
+
+    #[error("{}", format_invalid_field(.field, .valid_fields))]
+    InvalidField {
+        field: String,
+        valid_fields: Vec<String>,
+    },
+
+    #[error("{}", format_invalid_field_value(.field, .value, .valid_values))]
+    InvalidFieldValue {
+        field: String,
+        value: String,
+        valid_values: Vec<String>,
+    },
 
     #[error("invalid prefix '{0}': {1}")]
     InvalidPrefix(String, String),
