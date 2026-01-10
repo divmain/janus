@@ -5160,18 +5160,26 @@ fn test_help_has_command_groups() {
 fn test_import_simple_plan() {
     let janus = JanusTest::new();
 
-    // Create a simple importable plan document
+    // Create an importable plan document using the new format
     let plan_doc = r#"# Simple Import Test Plan
 
 This is the plan description.
 
-## Tasks
+## Design
 
-### Task One
+This is the design section with architecture details.
+
+## Implementation
+
+### Phase 1: Setup
+
+Phase description.
+
+#### Task One
 
 First task description.
 
-### Task Two
+#### Task Two
 
 Second task description.
 "#;
@@ -5193,11 +5201,10 @@ Second task description.
     assert!(content.contains("# Simple Import Test Plan"));
     assert!(content.contains("This is the plan description."));
 
-    // Verify tickets were created (check that they're referenced in the plan)
-    // The plan should have a Tickets section with the created ticket IDs
+    // Verify phase was created with tickets
     assert!(
-        content.contains("## Tickets"),
-        "Should have a Tickets section"
+        content.contains("## Phase 1"),
+        "Should have a Phase section"
     );
 }
 
@@ -5205,33 +5212,39 @@ Second task description.
 fn test_import_phased_plan() {
     let janus = JanusTest::new();
 
-    // Create a phased importable plan document
+    // Create a phased importable plan document using the new format
     let plan_doc = r#"# Phased Import Test Plan
 
 Overview of the implementation.
+
+## Design
+
+This is the design section.
 
 ## Acceptance Criteria
 
 - All tests pass
 - Documentation complete
 
-## Phase 1: Infrastructure
+## Implementation
+
+### Phase 1: Infrastructure
 
 Set up the foundational components.
 
-### Add Dependencies
+#### Add Dependencies
 
 Add the required dependencies.
 
-### Create Module Structure
+#### Create Module Structure
 
 Create the basic module structure.
 
-## Phase 2: Implementation
+### Phase 2: Core Logic
 
 Implement the core logic.
 
-### Implement Core Function
+#### Implement Core Function
 
 The main implementation task.
 "#;
@@ -5249,7 +5262,7 @@ The main implementation task.
     // Verify plan is phased
     let content = janus.read_plan(plan_id);
     assert!(content.contains("## Phase 1: Infrastructure"));
-    assert!(content.contains("## Phase 2: Implementation"));
+    assert!(content.contains("## Phase 2: Core Logic"));
     assert!(content.contains("## Acceptance Criteria"));
     assert!(content.contains("- All tests pass"));
     assert!(content.contains("- Documentation complete"));
@@ -5259,14 +5272,28 @@ The main implementation task.
 fn test_import_checklist_tasks() {
     let janus = JanusTest::new();
 
-    // Create a plan with checklist-style tasks
+    // Create a plan with H4 tasks (checklist-style no longer supported)
     let plan_doc = r#"# Checklist Plan
 
-## Tasks
+## Design
 
-- [ ] Unchecked task one
-- [x] Completed task two
-- Task without checkbox
+Design details.
+
+## Implementation
+
+### Phase 1: Tasks
+
+#### Unchecked task one
+
+Description.
+
+#### Completed task two [x]
+
+Description.
+
+#### Task three
+
+Description.
 "#;
 
     let plan_path = janus.temp_dir.path().join("checklist_plan.md");
@@ -5287,13 +5314,19 @@ fn test_import_completed_tasks() {
     // Create a plan with completed tasks marked [x]
     let plan_doc = r#"# Plan with Completed Tasks
 
-## Tasks
+## Design
 
-### Completed Task [x]
+Design info.
+
+## Implementation
+
+### Phase 1: Tasks
+
+#### Completed Task [x]
 
 This task is done.
 
-### Pending Task
+#### Pending Task
 
 This task is not done.
 "#;
@@ -5324,15 +5357,21 @@ fn test_import_with_acceptance_criteria() {
     // Create a plan with acceptance criteria
     let plan_doc = r#"# Plan with Acceptance Criteria
 
-## Goals
+## Design
+
+Design details.
+
+## Acceptance Criteria
 
 - Performance improved by 50%
 - All tests pass
 - Code coverage above 80%
 
-## Tasks
+## Implementation
 
-### Implement optimization
+### Phase 1: Optimization
+
+#### Implement optimization
 
 Add the optimization code.
 "#;
@@ -5363,16 +5402,22 @@ Add the optimization code.
 fn test_import_dry_run() {
     let janus = JanusTest::new();
 
-    // Create a simple plan document
+    // Create a plan document using the new format
     let plan_doc = r#"# Dry Run Test Plan
 
-## Tasks
+## Design
 
-### Task One
+Design details.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task One
 
 Description.
 
-### Task Two
+#### Task Two
 
 Description.
 "#;
@@ -5408,9 +5453,15 @@ fn test_import_duplicate_title_error() {
     // Create a plan with a specific title
     let plan_doc1 = r#"# Duplicate Title Plan
 
-## Tasks
+## Design
 
-### Task One
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task One
 
 Description.
 "#;
@@ -5424,9 +5475,15 @@ Description.
     // Try to import a plan with the same title
     let plan_doc2 = r#"# Duplicate Title Plan
 
-## Tasks
+## Design
 
-### Task Two
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task Two
 
 Different description.
 "#;
@@ -5449,9 +5506,15 @@ fn test_import_title_override() {
     // Create the first plan
     let plan_doc1 = r#"# Original Title
 
-## Tasks
+## Design
 
-### Task One
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task One
 
 Description.
 "#;
@@ -5465,9 +5528,15 @@ Description.
     // Create second plan with same original title but use --title override
     let plan_doc2 = r#"# Original Title
 
-## Tasks
+## Design
 
-### Task Two
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task Two
 
 Different task.
 "#;
@@ -5500,9 +5569,17 @@ fn test_import_invalid_format_no_title() {
     // Create an invalid plan document (no H1 title)
     let plan_doc = r#"Just some content without H1.
 
-## Tasks
+## Design
 
-### Task one
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task one
+
+Description.
 "#;
 
     let plan_path = janus.temp_dir.path().join("invalid_plan.md");
@@ -5520,10 +5597,14 @@ fn test_import_invalid_format_no_title() {
 fn test_import_invalid_format_no_tasks() {
     let janus = JanusTest::new();
 
-    // Create a plan with no tasks
+    // Create a plan with no tasks (missing Implementation section)
     let plan_doc = r#"# Plan with No Tasks
 
 Just a description with no tasks or phases.
+
+## Design
+
+Design info.
 "#;
 
     let plan_path = janus.temp_dir.path().join("no_tasks_plan.md");
@@ -5532,8 +5613,8 @@ Just a description with no tasks or phases.
     // Import should fail
     let output = janus.run_failure(&["plan", "import", plan_path.to_str().unwrap()]);
     assert!(
-        output.contains("tasks") || output.contains("phases"),
-        "Error should mention missing tasks/phases"
+        output.contains("Implementation"),
+        "Error should mention missing Implementation section"
     );
 }
 
@@ -5541,12 +5622,18 @@ Just a description with no tasks or phases.
 fn test_import_with_custom_type() {
     let janus = JanusTest::new();
 
-    // Create a simple plan document
+    // Create a plan document using the new format
     let plan_doc = r#"# Feature Plan
 
-## Tasks
+## Design
 
-### Implement feature
+Design details.
+
+## Implementation
+
+### Phase 1: Features
+
+#### Implement feature
 
 Add the new feature.
 "#;
@@ -5568,7 +5655,7 @@ Add the new feature.
     assert!(janus.plan_exists(plan_id), "Plan file should exist");
 
     // Find the ticket and verify its type
-    // The ticket should be referenced in the plan's Tickets section
+    // The ticket should be referenced in the plan's Phase section
     let content = janus.read_plan(plan_id);
     // Extract ticket ID from the plan content
     if let Some(pos) = content.find("1. ") {
@@ -5588,12 +5675,18 @@ Add the new feature.
 fn test_import_with_custom_prefix() {
     let janus = JanusTest::new();
 
-    // Create a simple plan document
+    // Create a plan document using the new format
     let plan_doc = r#"# Prefix Test Plan
 
-## Tasks
+## Design
 
-### Task with custom prefix
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task with custom prefix
 
 Description.
 "#;
@@ -5635,7 +5728,7 @@ fn test_import_spec_command() {
         "Should output the format specification"
     );
     assert!(
-        output.contains("## Tasks") || output.contains("## Phase"),
+        output.contains("## Design") || output.contains("## Implementation"),
         "Should include section formats"
     );
 }
@@ -5644,12 +5737,18 @@ fn test_import_spec_command() {
 fn test_import_json_output() {
     let janus = JanusTest::new();
 
-    // Create a simple plan document
+    // Create a plan document using the new format
     let plan_doc = r#"# JSON Output Test Plan
 
-## Tasks
+## Design
 
-### Task One
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task One
 
 Description.
 "#;
@@ -5672,16 +5771,22 @@ Description.
 fn test_import_dry_run_json_output() {
     let janus = JanusTest::new();
 
-    // Create a simple plan document
+    // Create a plan document using the new format
     let plan_doc = r#"# Dry Run JSON Test
 
-## Tasks
+## Design
 
-### Task One
+Design.
+
+## Implementation
+
+### Phase 1: Work
+
+#### Task One
 
 Description.
 
-### Task Two
+#### Task Two
 
 Description.
 "#;
@@ -5713,9 +5818,15 @@ fn test_import_plan_with_code_blocks() {
     // Create a plan with code blocks in task descriptions
     let plan_doc = r#"# Plan with Code
 
-## Tasks
+## Design
 
-### Add Cache Support
+Technical design.
+
+## Implementation
+
+### Phase 1: Caching
+
+#### Add Cache Support
 
 Implement caching in the service.
 

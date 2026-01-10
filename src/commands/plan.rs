@@ -1758,92 +1758,83 @@ into Janus using `janus plan import`.
 ```markdown
 # Plan Title (required)
 
-Optional description paragraph(s) providing context of the overall plan.
+Introductory paragraph(s) providing a description of the overall plan.
+
+## Design
+
+Comprehensive description of the desired end-state when the multi-phase plan
+is complete. This section should contain multiple sections breaking down the
+design, key technical decisions, architecture, reasoning behind the design,
+and the final acceptance criteria for the entire plan.
 
 ## Acceptance Criteria (optional)
 
 - First criterion
 - Second criterion
 
-## Phase 1: Phase Name
+## Implementation
 
-Phase description. Technically optional but should be included.
+### Phase 1: Phase Name
 
-### Task Title One
+Multi-paragraph description of what should be accomplished in Phase 1.
 
-Task description, implementation notes, or code examples. Required.
+#### The Title of the First Task in Phase One
 
-### Task Title Two
+The first task's description, implementation notes, or code examples. Required.
+Must be comprehensive -- bullet points are acceptable, as are multiple paragraphs.
+Must include code samples if required for clarity. Must include acceptance
+criteria for the task.
 
-Task description, implementation notes, or code examples. Required.
+#### The Title of the Second Task in Phase One
 
-## Phase 2: Another Phase Name
+The second task's description. All task descriptions must be comprehensive.
 
-### Another Task
+### Phase 2: Another Phase Name
+
+#### The Title of the First Task in Phase Two
 
 Task description.
 ```
 
-## Simple Plans (No Phases)
+## Required Sections
 
-For plans without phases, tasks can be at the top level:
+The following sections are **required**:
 
-```markdown
-# Plan Title
+1. **`# Plan Title`** (H1) - The plan title, must be first heading
+2. **`## Design`** (H2) - Design details, architecture, and reasoning
+3. **`## Implementation`** (H2) - Contains all phase definitions
 
-Plan description.
+## Optional Sections
 
-## Tasks
-
-### Task One
-
-Task one description.
-
-### Task Two
-
-Task two description.
-```
-
-Or as a simple checklist:
-
-```markdown
-# Plan Title
-
-Plan description
-
-## Tasks
-
-- [ ] Task one
-- [ ] Task two  
-- [x] Completed task
-```
+- **`## Acceptance Criteria`** (H2) - If present, creates a verification ticket
 
 ## Element Reference
 
-| Element            | Format                      | Notes                                       |
-|--------------------|-----------------------------|---------------------------------------------|
-| Plan title         | `# Title` (H1)              | Required, must be first heading             |
-| Description        | Paragraphs after H1         | Optional, before first H2                   |
-| Acceptance criteria| `## Acceptance Criteria`    | Also: Goals, Success Criteria, etc.         |
-| Phase              | `## Phase N: Name`          | Also: Stage N, Part N, Step N               |
-| Task (H3)          | `### Task Title`            | Becomes ticket title                        |
-| Task (checklist)   | `- [ ] Title` or `- Title`  | Alternative to H3 tasks                     |
-| Completed task     | `### Title [x]` or `- [x]`  | Created with status: complete               |
-| Task body          | Content after H3            | Becomes ticket description                  |
+| Element             | Format                      | Notes                                       |
+|---------------------|-----------------------------|---------------------------------------------|
+| Plan title          | `# Title` (H1)              | Required, must be first heading             |
+| Description         | Paragraphs after H1         | Optional, before first H2                   |
+| Design              | `## Design`                 | Required, contains design details           |
+| Acceptance criteria | `## Acceptance Criteria`    | Optional, creates verification ticket       |
+| Implementation      | `## Implementation`         | Required, contains all phases               |
+| Phase               | `### Phase N: Name`         | Under Implementation; also: Stage N, etc.   |
+| Task                | `#### Task Title`           | Under a phase, becomes ticket title         |
+| Completed task      | `#### Title [x]`            | Created with status: complete               |
+| Task body           | Content after H4            | Becomes ticket description                  |
 
 ## Phase Numbering
 
 Phase numbers can be:
-- Numeric: `## Phase 1:`, `## Phase 2:`
-- Alphanumeric: `## Phase 1a:`, `## Phase 2b:`
-- Implicit: Derived from document order if not specified
+- Numeric: `### Phase 1:`, `### Phase 2:`
+- Alphanumeric: `### Phase 1a:`, `### Phase 2b:`
+- Keywords: Phase, Stage, Part, Step (followed by number and optional name)
 
 ## Task Content
 
-Content between an H3 task header and the next H3/H2 becomes the ticket body:
+Content between an H4 task header and the next H4/H3 becomes the ticket body:
 
 ```markdown
-### Add Caching Support
+#### Add Caching Support
 
 Implement caching in the TTS service to avoid redundant synthesis.
 
@@ -1851,22 +1842,15 @@ Key changes:
 - Add cache data structure
 - Modify speak() method
 
-### Next Task
+**Acceptance Criteria:**
+- Cache hits return in <5ms
+- Cache invalidation works correctly
+
+#### Next Task
 ```
 
 The above creates a ticket titled "Add Caching Support" with the description
-containing the prose.
-
-## Section Aliases
-
-These section names are recognized (case-insensitive):
-
-**Acceptance Criteria:** Acceptance Criteria, Goals, Success Criteria,
-Deliverables, Requirements, Objectives
-
-**Tasks (simple plan):** Tasks, Tickets, Work Items, Items, Checklist
-
-**Phase:** Phase N, Stage N, Part N, Step N (followed by : or -)
+containing all the prose, bullet points, and acceptance criteria.
 
 ## Examples
 
@@ -1941,29 +1925,19 @@ fn print_import_summary(plan: &ImportablePlan) {
 
     // Plan structure
     println!();
-    if plan.is_phased() {
-        println!("{}: {}", "Phases".bold(), plan.phases.len());
-        println!("{}: {}", "Tasks".bold(), plan.task_count());
-        println!();
+    println!("{}: {}", "Phases".bold(), plan.phases.len());
+    println!("{}: {}", "Tasks".bold(), plan.task_count());
+    println!();
 
-        for phase in &plan.phases {
-            let phase_header = if phase.name.is_empty() {
-                format!("Phase {}", phase.number)
-            } else {
-                format!("Phase {}: {}", phase.number, phase.name)
-            };
-            println!("{}", phase_header.cyan());
+    for phase in &plan.phases {
+        let phase_header = if phase.name.is_empty() {
+            format!("Phase {}", phase.number)
+        } else {
+            format!("Phase {}: {}", phase.number, phase.name)
+        };
+        println!("{}", phase_header.cyan());
 
-            for task in &phase.tasks {
-                let marker = if task.is_complete { "[x]" } else { "[ ]" };
-                println!("  {} {}", marker.dimmed(), task.title);
-            }
-        }
-    } else {
-        println!("{}: {}", "Tasks".bold(), plan.task_count());
-        println!();
-
-        for task in &plan.tasks {
+        for task in &phase.tasks {
             let marker = if task.is_complete { "[x]" } else { "[ ]" };
             println!("  {} {}", marker.dimmed(), task.title);
         }
@@ -2153,17 +2127,9 @@ pub fn cmd_plan_import(
 
     let mut created_ticket_ids: Vec<String> = Vec::new();
 
-    if plan.is_phased() {
-        // Phased plan: create tickets for each phase
-        for phase in &plan.phases {
-            for task in &phase.tasks {
-                let ticket_id = create_ticket_from_task(task, ticket_type, prefix)?;
-                created_ticket_ids.push(ticket_id);
-            }
-        }
-    } else {
-        // Simple plan: create tickets from top-level tasks
-        for task in &plan.tasks {
+    // Create tickets for each phase
+    for phase in &plan.phases {
+        for task in &phase.tasks {
             let ticket_id = create_ticket_from_task(task, ticket_type, prefix)?;
             created_ticket_ids.push(ticket_id);
         }
@@ -2197,38 +2163,29 @@ pub fn cmd_plan_import(
     };
 
     // 9. Build sections with ticket IDs
-    if plan.is_phased() {
-        let mut ticket_idx = 0;
-        for import_phase in &plan.phases {
-            let mut phase = Phase::new(import_phase.number.clone(), import_phase.name.clone());
-            phase.description = import_phase.description.clone();
+    let mut ticket_idx = 0;
+    for import_phase in &plan.phases {
+        let mut phase = Phase::new(import_phase.number.clone(), import_phase.name.clone());
+        phase.description = import_phase.description.clone();
 
-            // Assign ticket IDs to this phase
-            for _ in &import_phase.tasks {
-                phase.tickets.push(created_ticket_ids[ticket_idx].clone());
-                ticket_idx += 1;
-            }
-
-            // Add verification ticket to the last phase if it exists
-            let is_last_phase = plan
-                .phases
-                .last()
-                .map(|p| p.number == import_phase.number)
-                .unwrap_or(false);
-
-            if is_last_phase && let Some(ref v_id) = verification_ticket_id {
-                phase.tickets.push(v_id.clone());
-            }
-
-            metadata.sections.push(PlanSection::Phase(phase));
+        // Assign ticket IDs to this phase
+        for _ in &import_phase.tasks {
+            phase.tickets.push(created_ticket_ids[ticket_idx].clone());
+            ticket_idx += 1;
         }
-    } else {
-        // Simple plan: Tickets section
-        let mut tickets = created_ticket_ids.clone();
-        if let Some(ref v_id) = verification_ticket_id {
-            tickets.push(v_id.clone());
+
+        // Add verification ticket to the last phase if it exists
+        let is_last_phase = plan
+            .phases
+            .last()
+            .map(|p| p.number == import_phase.number)
+            .unwrap_or(false);
+
+        if is_last_phase && let Some(ref v_id) = verification_ticket_id {
+            phase.tickets.push(v_id.clone());
         }
-        metadata.sections.push(PlanSection::Tickets(tickets));
+
+        metadata.sections.push(PlanSection::Phase(phase));
     }
 
     // 10. Serialize and write plan

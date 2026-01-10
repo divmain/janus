@@ -355,6 +355,15 @@ impl PhaseStatus {
 /// This is the intermediate representation produced by parsing an AI-generated
 /// plan document. It contains all the information needed to create tickets
 /// and a plan, but has not yet been persisted to disk.
+///
+/// The expected document format is:
+/// - `# Title` (H1) - Required plan title
+/// - Description paragraphs after title
+/// - `## Design` - Required design section
+/// - `## Acceptance Criteria` - Optional, creates verification ticket
+/// - `## Implementation` - Required, contains all phases
+///   - `### Phase N: Name` (H3) - Phases under Implementation
+///     - `#### Task Title` (H4) - Tasks under each phase
 #[derive(Debug, Clone, Default)]
 pub struct ImportablePlan {
     /// Plan title (extracted from H1 heading)
@@ -363,44 +372,30 @@ pub struct ImportablePlan {
     /// Optional description (content between H1 and first H2)
     pub description: Option<String>,
 
-    /// Acceptance criteria (from `## Acceptance Criteria` or similar section)
+    /// Design section content (from `## Design` section) - required
+    pub design: Option<String>,
+
+    /// Acceptance criteria (from `## Acceptance Criteria` section)
     pub acceptance_criteria: Vec<String>,
 
-    /// Phases for phased plans (mutually exclusive with `tasks`)
+    /// Phases containing tasks (under `## Implementation` section)
     pub phases: Vec<ImportablePhase>,
-
-    /// Tasks for simple plans without phases (mutually exclusive with `phases`)
-    pub tasks: Vec<ImportableTask>,
 }
 
 impl ImportablePlan {
-    /// Check if this is a phased plan (has phases)
+    /// Check if this plan has phases (it always does in the new format)
     pub fn is_phased(&self) -> bool {
         !self.phases.is_empty()
     }
 
-    /// Check if this is a simple plan (has top-level tasks, no phases)
-    pub fn is_simple(&self) -> bool {
-        !self.tasks.is_empty() && self.phases.is_empty()
-    }
-
-    /// Get the total number of tasks across all phases (for phased plans)
-    /// or the number of top-level tasks (for simple plans)
+    /// Get the total number of tasks across all phases
     pub fn task_count(&self) -> usize {
-        if self.is_phased() {
-            self.phases.iter().map(|p| p.tasks.len()).sum()
-        } else {
-            self.tasks.len()
-        }
+        self.phases.iter().map(|p| p.tasks.len()).sum()
     }
 
-    /// Get all tasks from all phases (for phased plans) or top-level tasks (for simple plans)
+    /// Get all tasks from all phases
     pub fn all_tasks(&self) -> Vec<&ImportableTask> {
-        if self.is_phased() {
-            self.phases.iter().flat_map(|p| p.tasks.iter()).collect()
-        } else {
-            self.tasks.iter().collect()
-        }
+        self.phases.iter().flat_map(|p| p.tasks.iter()).collect()
     }
 }
 
@@ -774,17 +769,16 @@ mod tests {
         assert!(plan.description.is_none());
         assert!(plan.acceptance_criteria.is_empty());
         assert!(plan.phases.is_empty());
-        assert!(plan.tasks.is_empty());
-        assert!(!plan.is_phased());
-        assert!(!plan.is_simple());
+        assert!(plan.design.is_none());
         assert_eq!(plan.task_count(), 0);
     }
 
     #[test]
-    fn test_importable_plan_phased() {
+    fn test_importable_plan_with_phases() {
         let plan = ImportablePlan {
             title: "Test Plan".to_string(),
             description: Some("A test plan".to_string()),
+            design: Some("Design details".to_string()),
             acceptance_criteria: vec!["Criterion 1".to_string()],
             phases: vec![
                 ImportablePhase {
@@ -815,43 +809,13 @@ mod tests {
                     }],
                 },
             ],
-            tasks: vec![],
         };
 
-        assert!(plan.is_phased());
-        assert!(!plan.is_simple());
         assert_eq!(plan.task_count(), 3);
         assert_eq!(plan.all_tasks().len(), 3);
         assert_eq!(plan.all_tasks()[0].title, "Task 1");
         assert_eq!(plan.all_tasks()[1].title, "Task 2");
         assert_eq!(plan.all_tasks()[2].title, "Task 3");
-    }
-
-    #[test]
-    fn test_importable_plan_simple() {
-        let plan = ImportablePlan {
-            title: "Simple Plan".to_string(),
-            description: None,
-            acceptance_criteria: vec![],
-            phases: vec![],
-            tasks: vec![
-                ImportableTask {
-                    title: "Task A".to_string(),
-                    body: Some("Do thing A".to_string()),
-                    is_complete: false,
-                },
-                ImportableTask {
-                    title: "Task B".to_string(),
-                    body: None,
-                    is_complete: false,
-                },
-            ],
-        };
-
-        assert!(!plan.is_phased());
-        assert!(plan.is_simple());
-        assert_eq!(plan.task_count(), 2);
-        assert_eq!(plan.all_tasks().len(), 2);
     }
 
     #[test]

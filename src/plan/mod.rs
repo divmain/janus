@@ -17,8 +17,8 @@ pub use crate::plan::types::{
 
 // Re-export parser functions for plan import
 pub use crate::plan::parser::{
-    ACCEPTANCE_CRITERIA_ALIASES, PHASE_PATTERN, TASKS_SECTION_ALIASES, is_completed_task,
-    is_phase_header, is_section_alias, parse_importable_plan,
+    ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME, PHASE_PATTERN,
+    is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
 };
 
 /// Find all plan files in the plans directory
