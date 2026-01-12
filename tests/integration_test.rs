@@ -4846,6 +4846,242 @@ fn test_plan_ls_json_format_with_status_filter() {
 }
 
 // ============================================================================
+// Plan Show --verbose-phase Tests
+// ============================================================================
+
+#[test]
+fn test_plan_show_verbose_phase_shows_full_summary() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with a multi-line completion summary
+    let ticket_content = r#"---
+id: j-verbose
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Task with Long Summary
+
+Description.
+
+## Completion Summary
+
+Line 1 of the completion summary.
+Line 2 of the completion summary.
+Line 3 of the completion summary.
+Line 4 of the completion summary.
+Line 5 of the completion summary.
+"#;
+    janus.write_ticket("j-verbose", ticket_content);
+
+    // Create a phased plan with the ticket
+    let plan_content = r#"---
+id: plan-verbose
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Verbose Phase Test
+
+Test plan.
+
+## Phase 1: Test Phase
+
+Description.
+
+### Tickets
+
+1. j-verbose
+"#;
+    janus.write_plan("plan-verbose", plan_content);
+
+    // Without --verbose-phase, should only show first 2 lines
+    let output = janus.run_success(&["plan", "show", "plan-verbose"]);
+    assert!(output.contains("Line 1 of the completion summary"));
+    assert!(output.contains("Line 2 of the completion summary"));
+    assert!(
+        !output.contains("Line 3 of the completion summary"),
+        "Should not show line 3 without --verbose-phase"
+    );
+
+    // With --verbose-phase 1, should show all lines
+    let output = janus.run_success(&["plan", "show", "plan-verbose", "--verbose-phase", "1"]);
+    assert!(output.contains("Line 1 of the completion summary"));
+    assert!(output.contains("Line 2 of the completion summary"));
+    assert!(output.contains("Line 3 of the completion summary"));
+    assert!(output.contains("Line 4 of the completion summary"));
+    assert!(output.contains("Line 5 of the completion summary"));
+}
+
+#[test]
+fn test_plan_show_verbose_phase_multiple_phases() {
+    let janus = JanusTest::new();
+
+    // Create tickets with completion summaries
+    let ticket1_content = r#"---
+id: j-phase1
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Phase 1 Task
+
+## Completion Summary
+
+Phase 1 line 1.
+Phase 1 line 2.
+Phase 1 line 3.
+"#;
+    janus.write_ticket("j-phase1", ticket1_content);
+
+    let ticket2_content = r#"---
+id: j-phase2
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Phase 2 Task
+
+## Completion Summary
+
+Phase 2 line 1.
+Phase 2 line 2.
+Phase 2 line 3.
+"#;
+    janus.write_ticket("j-phase2", ticket2_content);
+
+    // Create a phased plan
+    let plan_content = r#"---
+id: plan-multi
+uuid: 550e8400-e29b-41d4-a716-446655440001
+created: 2024-01-01T00:00:00Z
+---
+# Multi Phase Test
+
+## Phase 1: First
+
+### Tickets
+
+1. j-phase1
+
+## Phase 2: Second
+
+### Tickets
+
+1. j-phase2
+"#;
+    janus.write_plan("plan-multi", plan_content);
+
+    // With --verbose-phase for only phase 1, phase 2 should be truncated
+    let output = janus.run_success(&["plan", "show", "plan-multi", "--verbose-phase", "1"]);
+    assert!(
+        output.contains("Phase 1 line 3"),
+        "Phase 1 should show full summary"
+    );
+    assert!(
+        !output.contains("Phase 2 line 3"),
+        "Phase 2 should be truncated"
+    );
+
+    // With --verbose-phase for both phases
+    let output = janus.run_success(&[
+        "plan",
+        "show",
+        "plan-multi",
+        "--verbose-phase",
+        "1",
+        "--verbose-phase",
+        "2",
+    ]);
+    assert!(
+        output.contains("Phase 1 line 3"),
+        "Phase 1 should show full summary"
+    );
+    assert!(
+        output.contains("Phase 2 line 3"),
+        "Phase 2 should show full summary"
+    );
+}
+
+#[test]
+fn test_plan_show_verbose_phase_on_simple_plan_fails() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan (no phases)
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // --verbose-phase should fail on a simple plan
+    let error = janus.run_failure(&["plan", "show", &plan_id, "--verbose-phase", "1"]);
+    assert!(
+        error.contains("--verbose-phase can only be used with phased plans"),
+        "Should error when using --verbose-phase on simple plan: {}",
+        error
+    );
+}
+
+#[test]
+fn test_plan_show_verbose_phase_nonexistent_phase() {
+    let janus = JanusTest::new();
+
+    // Create a ticket
+    let ticket_content = r#"---
+id: j-test
+status: complete
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test Task
+
+## Completion Summary
+
+Summary line 1.
+Summary line 2.
+Summary line 3.
+"#;
+    janus.write_ticket("j-test", ticket_content);
+
+    // Create a phased plan with only phase 1
+    let plan_content = r#"---
+id: plan-one
+uuid: 550e8400-e29b-41d4-a716-446655440002
+created: 2024-01-01T00:00:00Z
+---
+# One Phase Plan
+
+## Phase 1: Only Phase
+
+### Tickets
+
+1. j-test
+"#;
+    janus.write_plan("plan-one", plan_content);
+
+    // --verbose-phase 99 should not fail, just not match any phase
+    // Phase 1 tickets should still show truncated summary
+    let output = janus.run_success(&["plan", "show", "plan-one", "--verbose-phase", "99"]);
+    assert!(output.contains("Summary line 1"));
+    assert!(output.contains("Summary line 2"));
+    assert!(
+        !output.contains("Summary line 3"),
+        "Should not show line 3 when phase doesn't match"
+    );
+}
+
+// ============================================================================
 // Plan Reorder Tests
 // ============================================================================
 

@@ -473,6 +473,10 @@ enum PlanAction {
         #[arg(long = "phases-only")]
         phases_only: bool,
 
+        /// Show full completion summaries for tickets in specified phase(s)
+        #[arg(long = "verbose-phase", action = clap::ArgAction::Append)]
+        verbose_phases: Vec<String>,
+
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -866,8 +870,9 @@ async fn main() -> ExitCode {
                 raw,
                 tickets_only,
                 phases_only,
+                verbose_phases,
                 json,
-            } => cmd_plan_show(&id, raw, tickets_only, phases_only, json).await,
+            } => cmd_plan_show(&id, raw, tickets_only, phases_only, &verbose_phases, json).await,
             PlanAction::Edit { id, json } => cmd_plan_edit(&id, json),
             PlanAction::Ls { status, json } => cmd_plan_ls(status.as_deref(), json).await,
             PlanAction::AddTicket {

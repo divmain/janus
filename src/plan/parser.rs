@@ -998,11 +998,11 @@ fn parse_phases_from_implementation<'a>(
     // Find all H3 phase headers within the Implementation section
     let mut phase_indices: Vec<(usize, String, String)> = Vec::new(); // (index, number, name)
 
-    for idx in (impl_start + 1)..impl_end {
-        if let NodeValue::Heading(heading) = &nodes[idx].data.borrow().value
+    for (idx, node) in nodes.iter().enumerate().take(impl_end).skip(impl_start + 1) {
+        if let NodeValue::Heading(heading) = &node.data.borrow().value
             && heading.level == 3
         {
-            let text = extract_text_content(nodes[idx]);
+            let text = extract_text_content(node);
             if let Some((number, name)) = is_phase_header(&text) {
                 phase_indices.push((idx, number, name));
             }
@@ -1022,11 +1022,11 @@ fn parse_phases_from_implementation<'a>(
         let mut description_parts = Vec::new();
 
         for node in &nodes[start_idx + 1..end_idx] {
-            if let NodeValue::Heading(h) = &node.data.borrow().value {
-                if h.level == 4 {
-                    // Hit first H4 task header, stop collecting description
-                    break;
-                }
+            if let NodeValue::Heading(h) = &node.data.borrow().value
+                && h.level == 4
+            {
+                // Hit first H4 task header, stop collecting description
+                break;
             }
             description_parts.push(render_node_to_markdown(node, options));
         }
