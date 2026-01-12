@@ -104,12 +104,14 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
 /// * `raw` - If true, show raw file content instead of enhanced output
 /// * `tickets_only` - If true, show only the ticket list with statuses
 /// * `phases_only` - If true, show only phase summary (phased plans)
+/// * `verbose_phases` - Phase numbers for which to show full completion summaries
 /// * `output_json` - If true, output as JSON
 pub async fn cmd_plan_show(
     id: &str,
     raw: bool,
     tickets_only: bool,
     phases_only: bool,
+    verbose_phases: &[String],
     output_json: bool,
 ) -> Result<()> {
     let plan = Plan::find(id)?;
@@ -122,6 +124,12 @@ pub async fn cmd_plan_show(
     }
 
     let metadata = plan.read()?;
+
+    // Validate --verbose-phase usage
+    if !verbose_phases.is_empty() && !metadata.is_phased() {
+        return Err(JanusError::VerbosePhaseRequiresPhasedPlan);
+    }
+
     let ticket_map = build_ticket_map().await;
 
     // Handle JSON output format
@@ -227,8 +235,9 @@ pub async fn cmd_plan_show(
                     println!();
                     println!("{}", "### Tickets".bold());
                     println!();
+                    let full_summary = verbose_phases.contains(&phase.number);
                     for (i, ticket_id) in phase.tickets.iter().enumerate() {
-                        print_ticket_line(i + 1, ticket_id, &ticket_map);
+                        print_ticket_line(i + 1, ticket_id, &ticket_map, full_summary);
                     }
                 }
             }
@@ -237,7 +246,7 @@ pub async fn cmd_plan_show(
                 println!("{}", "## Tickets".bold());
                 println!();
                 for (i, ticket_id) in tickets.iter().enumerate() {
-                    print_ticket_line(i + 1, ticket_id, &ticket_map);
+                    print_ticket_line(i + 1, ticket_id, &ticket_map, false);
                 }
             }
             PlanSection::FreeForm(freeform) => {
@@ -1610,7 +1619,7 @@ fn show_tickets_only(
     }
 
     for (i, ticket_id) in all_tickets.iter().enumerate() {
-        print_ticket_line(i + 1, ticket_id, ticket_map);
+        print_ticket_line(i + 1, ticket_id, ticket_map, false);
     }
 
     Ok(())
@@ -1707,10 +1716,17 @@ fn format_status_badge(status: TicketStatus) -> String {
 }
 
 /// Print a ticket line with status for plan show command
+///
+/// # Arguments
+/// * `index` - The 1-based index of the ticket in the list
+/// * `ticket_id` - The ticket ID
+/// * `ticket_map` - Map of ticket IDs to metadata
+/// * `full_summary` - If true, show full completion summary; if false, show only first 2 lines
 fn print_ticket_line(
     index: usize,
     ticket_id: &str,
     ticket_map: &std::collections::HashMap<String, crate::types::TicketMetadata>,
+    full_summary: bool,
 ) {
     if let Some(ticket) = ticket_map.get(ticket_id) {
         let status = ticket.status.unwrap_or_default();
@@ -1730,8 +1746,16 @@ fn print_ticket_line(
             && let Some(ref summary) = ticket.completion_summary
         {
             // Print as indented blockquote
-            for line in summary.lines().take(2) {
-                println!("   > {}", line.dimmed());
+            if full_summary {
+                // Print all lines
+                for line in summary.lines() {
+                    println!("   > {}", line.dimmed());
+                }
+            } else {
+                // Print only first 2 lines
+                for line in summary.lines().take(2) {
+                    println!("   > {}", line.dimmed());
+                }
             }
         }
     } else {

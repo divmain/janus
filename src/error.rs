@@ -157,6 +157,9 @@ pub enum JanusError {
     #[error("plan with title '{0}' already exists ({1})")]
     DuplicatePlanTitle(String, String), // title, existing plan ID
 
+    #[error("--verbose-phase can only be used with phased plans")]
+    VerbosePhaseRequiresPhasedPlan,
+
     #[error("{0}")]
     Other(String),
 }
