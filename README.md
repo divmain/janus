@@ -73,6 +73,10 @@ Janus is designed to handle multiple concurrent processes safely:
 
 ## Installation
 
+### Requirements
+
+Janus requires a Unix-like shell environment (Linux, macOS, or Windows with WSL). The `janus edit` and `janus plan edit` commands require `sh` to open files in your configured `$EDITOR`.
+
 ### Homebrew (macOS)
 
 ```bash

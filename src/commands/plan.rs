@@ -21,7 +21,6 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::Command;
 
 use owo_colors::OwoColorize;
 use serde_json::json;
@@ -37,6 +36,7 @@ use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketStatus, TicketType};
 use crate::utils::{
     ensure_dir, generate_id_with_custom_prefix, generate_uuid, is_stdin_tty, iso_date,
+    open_in_editor,
 };
 
 /// Create a new plan
@@ -282,13 +282,7 @@ pub fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
     }
 
     if is_stdin_tty() {
-        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-
-        let status = Command::new(&editor).arg(&plan.file_path).status()?;
-
-        if !status.success() {
-            eprintln!("Editor exited with code {:?}", status.code());
-        }
+        open_in_editor(&plan.file_path)?;
     } else {
         // Non-interactive mode: just print the file path
         println!("Edit plan file: {}", plan.file_path.display());
@@ -1686,15 +1680,7 @@ fn edit_in_editor(content: &str) -> Result<String> {
     let temp_path = temp_file.path().to_path_buf();
 
     // Open in editor
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-    let status = Command::new(&editor).arg(&temp_path).status()?;
-
-    if !status.success() {
-        return Err(JanusError::Other(format!(
-            "Editor exited with code {:?}",
-            status.code()
-        )));
-    }
+    open_in_editor(&temp_path)?;
 
     // Read the edited content
     let mut edited = String::new();

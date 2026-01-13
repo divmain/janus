@@ -1,10 +1,8 @@
-use std::process::Command;
-
 use serde_json::json;
 
 use crate::error::Result;
 use crate::ticket::Ticket;
-use crate::utils::is_stdin_tty;
+use crate::utils::{is_stdin_tty, open_in_editor};
 
 /// Open a ticket in the default editor
 pub fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
@@ -21,13 +19,7 @@ pub fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
     }
 
     if is_stdin_tty() {
-        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-
-        let status = Command::new(&editor).arg(&ticket.file_path).status()?;
-
-        if !status.success() {
-            eprintln!("Editor exited with code {:?}", status.code());
-        }
+        open_in_editor(&ticket.file_path)?;
     } else {
         // Non-interactive mode: just print the file path
         println!("Edit ticket file: {}", ticket.file_path.display());

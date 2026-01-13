@@ -186,6 +186,27 @@ pub fn truncate_string(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Open a file in the user's preferred editor ($EDITOR, defaulting to vi)
+///
+/// Executes the editor through a shell to support EDITOR values with arguments
+/// (e.g., "subl -w", "code --wait").
+pub fn open_in_editor(path: &Path) -> io::Result<()> {
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(format!("{} \"$1\"", editor))
+        .arg("--")
+        .arg(path)
+        .status()?;
+
+    if !status.success() {
+        eprintln!("Editor exited with code {:?}", status.code());
+    }
+
+    Ok(())
+}
+
 #[cfg(unix)]
 fn atty_check() -> bool {
     use std::os::unix::io::AsRawFd;
