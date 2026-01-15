@@ -2,6 +2,17 @@
 
 This document covers development workflows for Janus, including building, testing, and releasing.
 
+## Additional Developer Resources
+
+See [AGENTS.md](AGENTS.md) for detailed information on:
+- Project overview and technology stack
+- Comprehensive build, test, and lint commands
+- Project structure and file organization
+- Code style guidelines and conventions
+- Caching architecture and implementation
+- Domain concepts (tickets, plans, statuses, etc.)
+- Common patterns for working with tickets and plans
+
 ## Prerequisites
 
 - Rust toolchain (stable)
@@ -9,21 +20,15 @@ This document covers development workflows for Janus, including building, testin
 
 ## Building
 
+For detailed information on building, testing, and linting commands, see [AGENTS.md](AGENTS.md).
+
+Basic commands:
 ```bash
 # Debug build
 cargo build
 
 # Release build
 cargo build --release
-
-# Run tests
-cargo test
-
-# Run lints
-cargo clippy
-
-# Format code
-cargo fmt
 ```
 
 ## Local Development
