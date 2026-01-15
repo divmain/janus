@@ -1,0 +1,16 @@
+# Auto-Label Hook Recipe Configuration
+# Automatically adds labels to tickets based on content patterns
+
+name: auto-label
+description: Automatically add labels/tags to tickets based on content patterns
+version: "1.0"
+
+hooks:
+  post_write:
+    - files/hooks/auto-label.sh
+
+files:
+  - source: files/label-rules.yaml
+    destination: label-rules.yaml
+  - source: files/hooks/auto-label.sh
+    destination: .janus/hooks/post_write/auto-label.sh

@@ -4,6 +4,7 @@
 //! - Default remote platform and organization
 //! - Authentication tokens for GitHub and Linear
 
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -23,6 +24,10 @@ pub struct Config {
     /// Authentication tokens
     #[serde(default)]
     pub auth: AuthConfig,
+
+    /// Hooks configuration
+    #[serde(default, skip_serializing_if = "HooksConfig::is_default")]
+    pub hooks: HooksConfig,
 }
 
 /// Default remote configuration
@@ -88,6 +93,54 @@ pub struct GitHubAuth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinearAuth {
     pub api_key: String,
+}
+
+/// Hooks configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HooksConfig {
+    /// Whether hooks are enabled (default: true)
+    #[serde(default = "default_hooks_enabled")]
+    pub enabled: bool,
+
+    /// Timeout in seconds for hook scripts (default: 30, 0 = no timeout)
+    #[serde(default = "default_hooks_timeout")]
+    pub timeout: u64,
+
+    /// Mapping of event names to script paths (relative to .janus/hooks/)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub scripts: HashMap<String, String>,
+}
+
+fn default_hooks_enabled() -> bool {
+    true
+}
+
+fn default_hooks_timeout() -> u64 {
+    30
+}
+
+impl Default for HooksConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_hooks_enabled(),
+            timeout: default_hooks_timeout(),
+            scripts: HashMap::new(),
+        }
+    }
+}
+
+impl HooksConfig {
+    /// Check if this config is the default (for serialization skip)
+    pub fn is_default(&self) -> bool {
+        self.enabled == default_hooks_enabled()
+            && self.timeout == default_hooks_timeout()
+            && self.scripts.is_empty()
+    }
+
+    /// Get the script path for a given event name
+    pub fn get_script(&self, event_name: &str) -> Option<&String> {
+        self.scripts.get(event_name)
+    }
 }
 
 impl Config {

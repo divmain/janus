@@ -1,0 +1,5 @@
+hooks:
+  scripts:
+    ticket_created: slack-notify.sh
+    ticket_updated: slack-notify.sh
+    plan_created: slack-notify.sh

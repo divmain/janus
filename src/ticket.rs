@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cache;
 use crate::error::{JanusError, Result};
+use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::parser::parse_ticket_content;
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
 
@@ -144,16 +145,215 @@ impl Ticket {
     }
 
     /// Write content to the ticket file
+    ///
+    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
+    /// hooks after successful write.
     pub fn write(&self, content: &str) -> Result<()> {
+        // Build hook context
+        let context = HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path);
+
+        // Run pre-write hook (can abort)
+        run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+        // Perform the write
         if let Some(parent) = self.file_path.parent() {
             fs::create_dir_all(parent)?;
         }
         fs::write(&self.file_path, content)?;
+
+        // Run post-write hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostWrite, &context);
+        run_post_hooks(HookEvent::TicketUpdated, &context);
+
         Ok(())
     }
 
     /// Update a single field in the frontmatter
+    ///
+    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
+    /// hooks after successful write. The hook context includes field_name, old_value, and new_value.
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
+        let content = fs::read_to_string(&self.file_path)?;
+        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
+
+        // Extract old value if field exists
+        let old_value = field_pattern.find(&content).map(|m| {
+            m.as_str()
+                .split(':')
+                .nth(1)
+                .map(|v| v.trim().to_string())
+                .unwrap_or_default()
+        });
+
+        // Build hook context with field info
+        let mut context = HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path)
+            .with_field_name(field)
+            .with_new_value(value);
+
+        if let Some(ref old_val) = old_value {
+            context = context.with_old_value(old_val);
+        }
+
+        // Run pre-write hook (can abort)
+        run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+        let new_content = if field_pattern.is_match(&content) {
+            field_pattern
+                .replace(&content, format!("{}: {}", field, value))
+                .into_owned()
+        } else {
+            // Add field after opening ---
+            content.replacen("---\n", &format!("---\n{}: {}\n", field, value), 1)
+        };
+
+        fs::write(&self.file_path, new_content)?;
+
+        // Run post-write hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostWrite, &context);
+        run_post_hooks(HookEvent::TicketUpdated, &context);
+
+        Ok(())
+    }
+
+    /// Remove a field from the frontmatter
+    ///
+    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
+    /// hooks after successful write. The hook context includes field_name and old_value.
+    pub fn remove_field(&self, field: &str) -> Result<()> {
+        let content = fs::read_to_string(&self.file_path)?;
+        let field_pattern =
+            Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
+
+        // Extract old value if field exists
+        let old_value = field_pattern.find(&content).map(|m| {
+            m.as_str()
+                .split(':')
+                .nth(1)
+                .map(|v| v.trim().trim_end_matches('\n').to_string())
+                .unwrap_or_default()
+        });
+
+        // Build hook context with field info
+        let mut context = HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path)
+            .with_field_name(field);
+
+        if let Some(ref old_val) = old_value {
+            context = context.with_old_value(old_val);
+        }
+
+        // Run pre-write hook (can abort)
+        run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+        let new_content = field_pattern.replace(&content, "").into_owned();
+
+        fs::write(&self.file_path, new_content)?;
+
+        // Run post-write hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostWrite, &context);
+        run_post_hooks(HookEvent::TicketUpdated, &context);
+
+        Ok(())
+    }
+
+    /// Add a value to an array field (deps, links)
+    ///
+    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
+    /// hooks after successful write. The hook context includes field_name and new_value.
+    pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        let metadata = self.read()?;
+        let current_array = match field {
+            "deps" => &metadata.deps,
+            "links" => &metadata.links,
+            _ => return Err(JanusError::Other(format!("unknown array field: {}", field))),
+        };
+
+        if current_array.contains(&value.to_string()) {
+            return Ok(false);
+        }
+
+        // Build hook context with field info
+        let context = HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path)
+            .with_field_name(field)
+            .with_new_value(value);
+
+        // Run pre-write hook (can abort)
+        run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+        let mut new_array = current_array.clone();
+        new_array.push(value.to_string());
+
+        // Use internal update that doesn't trigger hooks again
+        self.update_field_internal(field, &serde_json::to_string(&new_array)?)?;
+
+        // Run post-write hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostWrite, &context);
+        run_post_hooks(HookEvent::TicketUpdated, &context);
+
+        Ok(true)
+    }
+
+    /// Remove a value from an array field (deps, links)
+    ///
+    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
+    /// hooks after successful write. The hook context includes field_name and old_value.
+    pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        let metadata = self.read()?;
+        let current_array = match field {
+            "deps" => &metadata.deps,
+            "links" => &metadata.links,
+            _ => return Err(JanusError::Other(format!("unknown array field: {}", field))),
+        };
+
+        if !current_array.contains(&value.to_string()) {
+            return Ok(false);
+        }
+
+        // Build hook context with field info
+        let context = HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path)
+            .with_field_name(field)
+            .with_old_value(value);
+
+        // Run pre-write hook (can abort)
+        run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+        let new_array: Vec<_> = current_array
+            .iter()
+            .filter(|v| v.as_str() != value)
+            .collect();
+        let json_value = if new_array.is_empty() {
+            "[]".to_string()
+        } else {
+            serde_json::to_string(&new_array)?
+        };
+
+        // Use internal update that doesn't trigger hooks again
+        self.update_field_internal(field, &json_value)?;
+
+        // Run post-write hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostWrite, &context);
+        run_post_hooks(HookEvent::TicketUpdated, &context);
+
+        Ok(true)
+    }
+
+    /// Internal method to update a field without triggering hooks.
+    /// Used by array field methods which handle their own hook calls.
+    fn update_field_internal(&self, field: &str, value: &str) -> Result<()> {
         let content = fs::read_to_string(&self.file_path)?;
         let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
 
@@ -168,63 +368,6 @@ impl Ticket {
 
         fs::write(&self.file_path, new_content)?;
         Ok(())
-    }
-
-    /// Remove a field from the frontmatter
-    pub fn remove_field(&self, field: &str) -> Result<()> {
-        let content = fs::read_to_string(&self.file_path)?;
-        let field_pattern =
-            Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
-
-        let new_content = field_pattern.replace(&content, "").into_owned();
-
-        fs::write(&self.file_path, new_content)?;
-        Ok(())
-    }
-
-    /// Add a value to an array field (deps, links)
-    pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        let metadata = self.read()?;
-        let current_array = match field {
-            "deps" => &metadata.deps,
-            "links" => &metadata.links,
-            _ => return Err(JanusError::Other(format!("unknown array field: {}", field))),
-        };
-
-        if current_array.contains(&value.to_string()) {
-            return Ok(false);
-        }
-
-        let mut new_array = current_array.clone();
-        new_array.push(value.to_string());
-        self.update_field(field, &serde_json::to_string(&new_array)?)?;
-        Ok(true)
-    }
-
-    /// Remove a value from an array field (deps, links)
-    pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        let metadata = self.read()?;
-        let current_array = match field {
-            "deps" => &metadata.deps,
-            "links" => &metadata.links,
-            _ => return Err(JanusError::Other(format!("unknown array field: {}", field))),
-        };
-
-        if !current_array.contains(&value.to_string()) {
-            return Ok(false);
-        }
-
-        let new_array: Vec<_> = current_array
-            .iter()
-            .filter(|v| v.as_str() != value)
-            .collect();
-        let json_value = if new_array.is_empty() {
-            "[]".to_string()
-        } else {
-            serde_json::to_string(&new_array)?
-        };
-        self.update_field(field, &json_value)?;
-        Ok(true)
     }
 }
 

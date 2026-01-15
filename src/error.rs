@@ -160,8 +160,108 @@ pub enum JanusError {
     #[error("--verbose-phase can only be used with phased plans")]
     VerbosePhaseRequiresPhasedPlan,
 
+    // Hook errors
+    #[error("pre-hook '{hook_name}' failed with exit code {exit_code}: {message}")]
+    PreHookFailed {
+        hook_name: String,
+        exit_code: i32,
+        message: String,
+    },
+
+    #[error("post-hook '{hook_name}' failed: {message}")]
+    PostHookFailed { hook_name: String, message: String },
+
+    #[error("hook script not found: {0}")]
+    HookScriptNotFound(std::path::PathBuf),
+
+    #[error("hook '{hook_name}' timed out after {seconds} seconds")]
+    HookTimeout { hook_name: String, seconds: u64 },
+
+    #[error("invalid hook event '{0}'")]
+    InvalidHookEvent(String),
+
+    #[error("hook recipe '{0}' not found")]
+    HookRecipeNotFound(String),
+
+    #[error("failed to fetch hook: {0}")]
+    HookFetchFailed(String),
+
     #[error("{0}")]
     Other(String),
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_pre_hook_failed_error_message() {
+        let error = JanusError::PreHookFailed {
+            hook_name: "pre-write.sh".to_string(),
+            exit_code: 42,
+            message: "validation failed".to_string(),
+        };
+        let msg = error.to_string();
+        assert!(msg.contains("pre-write.sh"));
+        assert!(msg.contains("42"));
+        assert!(msg.contains("validation failed"));
+    }
+
+    #[test]
+    fn test_post_hook_failed_error_message() {
+        let error = JanusError::PostHookFailed {
+            hook_name: "post-write.sh".to_string(),
+            message: "notification failed".to_string(),
+        };
+        let msg = error.to_string();
+        assert!(msg.contains("post-write.sh"));
+        assert!(msg.contains("notification failed"));
+    }
+
+    #[test]
+    fn test_hook_script_not_found_error_message() {
+        let error = JanusError::HookScriptNotFound(PathBuf::from("/path/to/missing.sh"));
+        let msg = error.to_string();
+        assert!(msg.contains("missing.sh"));
+        assert!(msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_hook_timeout_error_message() {
+        let error = JanusError::HookTimeout {
+            hook_name: "slow-hook.sh".to_string(),
+            seconds: 30,
+        };
+        let msg = error.to_string();
+        assert!(msg.contains("slow-hook.sh"));
+        assert!(msg.contains("30"));
+        assert!(msg.contains("timed out"));
+    }
+
+    #[test]
+    fn test_invalid_hook_event_error_message() {
+        let error = JanusError::InvalidHookEvent("bad_event".to_string());
+        let msg = error.to_string();
+        assert!(msg.contains("bad_event"));
+        assert!(msg.contains("invalid"));
+    }
+
+    #[test]
+    fn test_hook_recipe_not_found_error_message() {
+        let error = JanusError::HookRecipeNotFound("nonexistent-recipe".to_string());
+        let msg = error.to_string();
+        assert!(msg.contains("nonexistent-recipe"));
+        assert!(msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_hook_fetch_failed_error_message() {
+        let error = JanusError::HookFetchFailed("connection refused".to_string());
+        let msg = error.to_string();
+        assert!(msg.contains("connection refused"));
+        assert!(msg.contains("failed to fetch"));
+    }
+}

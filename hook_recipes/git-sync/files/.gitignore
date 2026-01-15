@@ -1,0 +1,3 @@
+# Local-only files (not synced between machines)
+hooks/
+config.yaml

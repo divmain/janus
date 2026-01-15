@@ -1,0 +1,3 @@
+hooks:
+  scripts:
+    ticket_updated: track-blocked.sh

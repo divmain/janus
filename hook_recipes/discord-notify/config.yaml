@@ -1,0 +1,18 @@
+# Discord Notify Hook Recipe
+# Sends Discord notifications for important ticket events
+
+name: discord-notify
+description: Send Discord notifications when tickets or plans are created/updated
+version: "1.0"
+
+hooks:
+  ticket_created:
+    - files/hooks/discord-notify.sh
+  ticket_updated:
+    - files/hooks/discord-notify.sh
+  plan_created:
+    - files/hooks/discord-notify.sh
+
+env:
+  required:
+    - DISCORD_WEBHOOK_URL

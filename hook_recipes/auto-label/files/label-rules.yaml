@@ -1,0 +1,48 @@
+# Label Rules Configuration
+# Define patterns that automatically apply labels to tickets
+#
+# Each rule has:
+#   - label: the label to apply
+#   - patterns: list of substrings to match (case-insensitive)
+#
+# If any pattern matches the ticket content (title or body),
+# the label is added to the ticket's labels field.
+
+rules:
+  - label: security
+    patterns:
+      - "auth"
+      - "password"
+      - "encryption"
+      - "vulnerability"
+      - "CVE-"
+
+  - label: database
+    patterns:
+      - "SQL"
+      - "database"
+      - "migration"
+      - "schema"
+
+  - label: ui
+    patterns:
+      - "button"
+      - "modal"
+      - "CSS"
+      - "layout"
+      - "responsive"
+
+  - label: api
+    patterns:
+      - "endpoint"
+      - "REST"
+      - "GraphQL"
+      - "API"
+
+  - label: performance
+    patterns:
+      - "slow"
+      - "timeout"
+      - "optimize"
+      - "cache"
+      - "latency"

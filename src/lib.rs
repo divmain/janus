@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod commands;
 pub mod error;
+pub mod hooks;
 pub mod parser;
 pub mod plan;
 pub mod remote;
@@ -10,6 +11,7 @@ pub mod types;
 pub mod utils;
 
 pub use error::{JanusError, Result};
+pub use hooks::{HookContext, HookEvent, ItemType, context_to_env, run_post_hooks, run_pre_hooks};
 pub use plan::parser::parse_plan_content;
 pub use plan::types::{FreeFormSection, Phase, PhaseStatus, PlanMetadata, PlanSection, PlanStatus};
 pub use plan::{

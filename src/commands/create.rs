@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use serde_json::json;
 
 use crate::error::Result;
+use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketType};
 use crate::utils::{ensure_dir, generate_id_with_custom_prefix, generate_uuid, iso_date};
 
@@ -85,8 +86,22 @@ pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
     let content = format!("{}\n{}\n", frontmatter, body);
 
     let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+
+    // Build hook context for ticket creation
+    let context = HookContext::new()
+        .with_item_type(ItemType::Ticket)
+        .with_item_id(&id)
+        .with_file_path(&file_path);
+
+    // Run pre-write hook (can abort)
+    run_pre_hooks(HookEvent::PreWrite, &context)?;
+
     fs::create_dir_all(TICKETS_ITEMS_DIR)?;
-    fs::write(&file_path, content)?;
+    fs::write(&file_path, &content)?;
+
+    // Run post-write hooks (fire-and-forget)
+    run_post_hooks(HookEvent::PostWrite, &context);
+    run_post_hooks(HookEvent::TicketCreated, &context);
 
     if output_json {
         let output = json!({

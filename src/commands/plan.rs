@@ -26,6 +26,7 @@ use owo_colors::OwoColorize;
 use serde_json::json;
 
 use crate::error::{JanusError, Result};
+use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
 use crate::plan::{
@@ -79,7 +80,22 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
     // Serialize and write the plan
     let content = serialize_plan(&metadata);
     let plan = Plan::with_id(&id);
-    plan.write(&content)?;
+
+    // Build hook context for plan creation
+    let context = HookContext::new()
+        .with_item_type(ItemType::Plan)
+        .with_item_id(&id)
+        .with_file_path(&plan.file_path);
+
+    // Run pre-write hook (can abort)
+    run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+    // Write without internal hooks (we handle them here with PlanCreated instead of PlanUpdated)
+    plan.write_without_hooks(&content)?;
+
+    // Run post-write hooks (fire-and-forget)
+    run_post_hooks(HookEvent::PostWrite, &context);
+    run_post_hooks(HookEvent::PlanCreated, &context);
 
     if output_json {
         let output = json!({
@@ -2022,8 +2038,22 @@ fn create_ticket_from_task(
     let content = format!("{}\n{}\n", frontmatter, body);
 
     let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+
+    // Build hook context for ticket creation
+    let context = HookContext::new()
+        .with_item_type(ItemType::Ticket)
+        .with_item_id(&id)
+        .with_file_path(&file_path);
+
+    // Run pre-write hook (can abort)
+    run_pre_hooks(HookEvent::PreWrite, &context)?;
+
     fs::create_dir_all(TICKETS_ITEMS_DIR)?;
     fs::write(&file_path, content)?;
+
+    // Run post-write hooks (fire-and-forget)
+    run_post_hooks(HookEvent::PostWrite, &context);
+    run_post_hooks(HookEvent::TicketCreated, &context);
 
     Ok(id)
 }
@@ -2066,8 +2096,22 @@ fn create_verification_ticket(
     let content = format!("{}\n{}\n", frontmatter, body);
 
     let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+
+    // Build hook context for ticket creation
+    let context = HookContext::new()
+        .with_item_type(ItemType::Ticket)
+        .with_item_id(&id)
+        .with_file_path(&file_path);
+
+    // Run pre-write hook (can abort)
+    run_pre_hooks(HookEvent::PreWrite, &context)?;
+
     fs::create_dir_all(TICKETS_ITEMS_DIR)?;
     fs::write(&file_path, content)?;
+
+    // Run post-write hooks (fire-and-forget)
+    run_post_hooks(HookEvent::PostWrite, &context);
+    run_post_hooks(HookEvent::TicketCreated, &context);
 
     Ok(id)
 }
@@ -2201,7 +2245,22 @@ pub fn cmd_plan_import(
     // 10. Serialize and write plan
     let plan_content = serialize_plan(&metadata);
     let plan_handle = Plan::with_id(&plan_id);
-    plan_handle.write(&plan_content)?;
+
+    // Build hook context for plan creation
+    let context = HookContext::new()
+        .with_item_type(ItemType::Plan)
+        .with_item_id(&plan_id)
+        .with_file_path(&plan_handle.file_path);
+
+    // Run pre-write hook (can abort)
+    run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+    // Write without internal hooks (we handle them here with PlanCreated instead of PlanUpdated)
+    plan_handle.write_without_hooks(&plan_content)?;
+
+    // Run post-write hooks (fire-and-forget)
+    run_post_hooks(HookEvent::PostWrite, &context);
+    run_post_hooks(HookEvent::PlanCreated, &context);
 
     // 11. Output result
     if output_json {

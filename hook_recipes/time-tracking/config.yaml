@@ -1,0 +1,3 @@
+hooks:
+  - event: ticket_updated
+    script: hooks/time-tracker.sh

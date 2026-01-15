@@ -1,0 +1,16 @@
+# Daily Digest Hook Recipe
+# Logs activity for daily standup digest generation
+
+name: daily-digest
+description: Log ticket and plan activity for daily standup digests
+version: "1.0"
+
+hooks:
+  - event: ticket_created
+    script: hooks/log-activity.sh
+
+  - event: ticket_updated
+    script: hooks/log-activity.sh
+
+  - event: plan_created
+    script: hooks/log-activity.sh

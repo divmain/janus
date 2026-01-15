@@ -60,6 +60,9 @@ comrak = "0.34"
 # Temp files for editor workflows
 tempfile = "3"
 
+# Timeout support for child processes
+wait-timeout = "0.2"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

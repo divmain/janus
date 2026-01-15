@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::error::{JanusError, Result};
+use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::types::{PLANS_DIR, TicketMetadata, TicketStatus};
@@ -114,7 +115,37 @@ impl Plan {
     }
 
     /// Write content to the plan file
+    ///
+    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `PlanUpdated`
+    /// hooks after successful write.
     pub fn write(&self, content: &str) -> Result<()> {
+        // Build hook context
+        let context = HookContext::new()
+            .with_item_type(ItemType::Plan)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path);
+
+        // Run pre-write hook (can abort)
+        run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+        // Perform the write
+        if let Some(parent) = self.file_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&self.file_path, content)?;
+
+        // Run post-write hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostWrite, &context);
+        run_post_hooks(HookEvent::PlanUpdated, &context);
+
+        Ok(())
+    }
+
+    /// Write content to the plan file without triggering hooks.
+    ///
+    /// Used internally when hooks should be handled at a higher level
+    /// (e.g., plan creation where PlanCreated should be fired instead of PlanUpdated).
+    pub fn write_without_hooks(&self, content: &str) -> Result<()> {
         if let Some(parent) = self.file_path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -123,10 +154,30 @@ impl Plan {
     }
 
     /// Delete the plan file
+    ///
+    /// This method triggers `PreDelete` hook before deletion, and `PostDelete` + `PlanDeleted`
+    /// hooks after successful deletion.
     pub fn delete(&self) -> Result<()> {
-        if self.file_path.exists() {
-            fs::remove_file(&self.file_path)?;
+        if !self.file_path.exists() {
+            return Ok(());
         }
+
+        // Build hook context
+        let context = HookContext::new()
+            .with_item_type(ItemType::Plan)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path);
+
+        // Run pre-delete hook (can abort)
+        run_pre_hooks(HookEvent::PreDelete, &context)?;
+
+        // Perform the delete
+        fs::remove_file(&self.file_path)?;
+
+        // Run post-delete hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostDelete, &context);
+        run_post_hooks(HookEvent::PlanDeleted, &context);
+
         Ok(())
     }
 

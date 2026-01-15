@@ -1,0 +1,3 @@
+hooks:
+  scripts:
+    post_write: post-write.sh

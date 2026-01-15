@@ -1,0 +1,10 @@
+# Changelog Hook Recipe
+# Automatically updates CHANGELOG.md when tickets are completed
+
+name: changelog
+description: Automatically update CHANGELOG.md when tickets are completed
+version: "1.0"
+
+hooks:
+  - event: ticket_updated
+    script: hooks/update-changelog.sh

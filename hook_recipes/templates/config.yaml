@@ -1,0 +1,3 @@
+hooks:
+  scripts:
+    pre_write: validate-template.sh
