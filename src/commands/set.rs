@@ -1,5 +1,6 @@
 use serde_json::json;
 
+use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 use crate::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_TYPES};
@@ -65,14 +66,13 @@ pub fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> Result<
     }
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "action": "field_updated",
             "field": field,
             "previous_value": previous_value,
             "new_value": new_value,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         let prev_display = previous_value.as_deref().unwrap_or("(none)");
         let new_display = if new_value.is_empty() {

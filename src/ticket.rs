@@ -8,6 +8,7 @@ use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::parser::parse_ticket_content;
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
+use crate::utils;
 
 /// Find all ticket files in the tickets directory
 fn find_tickets() -> Vec<String> {
@@ -144,31 +145,55 @@ impl Ticket {
         Ok(fs::read_to_string(&self.file_path)?)
     }
 
+    /// Execute a write operation surrounded by hooks
+    ///
+    /// This method encapsulates the standard hook lifecycle:
+    /// 1. Run PreWrite hook
+    /// 2. Execute the provided operation
+    /// 3. Run PostWrite hook
+    /// 4. Run TicketUpdated hook (or a custom post-hook event)
+    fn with_write_hooks<F>(
+        &self,
+        context: HookContext,
+        operation: F,
+        post_hook_event: Option<HookEvent>,
+    ) -> Result<()>
+    where
+        F: FnOnce() -> Result<()>,
+    {
+        run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+        operation()?;
+
+        run_post_hooks(HookEvent::PostWrite, &context);
+        if let Some(event) = post_hook_event {
+            run_post_hooks(event, &context);
+        }
+
+        Ok(())
+    }
+
     /// Write content to the ticket file
     ///
     /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
     /// hooks after successful write.
     pub fn write(&self, content: &str) -> Result<()> {
-        // Build hook context
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
             .with_item_id(&self.id)
             .with_file_path(&self.file_path);
 
-        // Run pre-write hook (can abort)
-        run_pre_hooks(HookEvent::PreWrite, &context)?;
-
-        // Perform the write
-        if let Some(parent) = self.file_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&self.file_path, content)?;
-
-        // Run post-write hooks (fire-and-forget)
-        run_post_hooks(HookEvent::PostWrite, &context);
-        run_post_hooks(HookEvent::TicketUpdated, &context);
-
-        Ok(())
+        self.with_write_hooks(
+            context,
+            || {
+                if let Some(parent) = self.file_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&self.file_path, content)?;
+                Ok(())
+            },
+            Some(HookEvent::TicketUpdated),
+        )
     }
 
     /// Update a single field in the frontmatter
@@ -179,7 +204,6 @@ impl Ticket {
         let content = fs::read_to_string(&self.file_path)?;
         let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
 
-        // Extract old value if field exists
         let old_value = field_pattern.find(&content).map(|m| {
             m.as_str()
                 .split(':')
@@ -188,7 +212,6 @@ impl Ticket {
                 .unwrap_or_default()
         });
 
-        // Build hook context with field info
         let mut context = HookContext::new()
             .with_item_type(ItemType::Ticket)
             .with_item_id(&self.id)
@@ -200,25 +223,22 @@ impl Ticket {
             context = context.with_old_value(old_val);
         }
 
-        // Run pre-write hook (can abort)
-        run_pre_hooks(HookEvent::PreWrite, &context)?;
+        self.with_write_hooks(
+            context,
+            || {
+                let new_content = if field_pattern.is_match(&content) {
+                    field_pattern
+                        .replace(&content, format!("{}: {}", field, value))
+                        .into_owned()
+                } else {
+                    content.replacen("---\n", &format!("---\n{}: {}\n", field, value), 1)
+                };
 
-        let new_content = if field_pattern.is_match(&content) {
-            field_pattern
-                .replace(&content, format!("{}: {}", field, value))
-                .into_owned()
-        } else {
-            // Add field after opening ---
-            content.replacen("---\n", &format!("---\n{}: {}\n", field, value), 1)
-        };
-
-        fs::write(&self.file_path, new_content)?;
-
-        // Run post-write hooks (fire-and-forget)
-        run_post_hooks(HookEvent::PostWrite, &context);
-        run_post_hooks(HookEvent::TicketUpdated, &context);
-
-        Ok(())
+                fs::write(&self.file_path, new_content)?;
+                Ok(())
+            },
+            Some(HookEvent::TicketUpdated),
+        )
     }
 
     /// Remove a field from the frontmatter
@@ -230,7 +250,6 @@ impl Ticket {
         let field_pattern =
             Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
 
-        // Extract old value if field exists
         let old_value = field_pattern.find(&content).map(|m| {
             m.as_str()
                 .split(':')
@@ -239,7 +258,6 @@ impl Ticket {
                 .unwrap_or_default()
         });
 
-        // Build hook context with field info
         let mut context = HookContext::new()
             .with_item_type(ItemType::Ticket)
             .with_item_id(&self.id)
@@ -250,18 +268,15 @@ impl Ticket {
             context = context.with_old_value(old_val);
         }
 
-        // Run pre-write hook (can abort)
-        run_pre_hooks(HookEvent::PreWrite, &context)?;
-
-        let new_content = field_pattern.replace(&content, "").into_owned();
-
-        fs::write(&self.file_path, new_content)?;
-
-        // Run post-write hooks (fire-and-forget)
-        run_post_hooks(HookEvent::PostWrite, &context);
-        run_post_hooks(HookEvent::TicketUpdated, &context);
-
-        Ok(())
+        self.with_write_hooks(
+            context,
+            || {
+                let new_content = field_pattern.replace(&content, "").into_owned();
+                fs::write(&self.file_path, new_content)?;
+                Ok(())
+            },
+            Some(HookEvent::TicketUpdated),
+        )
     }
 
     /// Add a value to an array field (deps, links)
@@ -280,7 +295,6 @@ impl Ticket {
             return Ok(false);
         }
 
-        // Build hook context with field info
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
             .with_item_id(&self.id)
@@ -288,18 +302,15 @@ impl Ticket {
             .with_field_name(field)
             .with_new_value(value);
 
-        // Run pre-write hook (can abort)
-        run_pre_hooks(HookEvent::PreWrite, &context)?;
-
-        let mut new_array = current_array.clone();
-        new_array.push(value.to_string());
-
-        // Use internal update that doesn't trigger hooks again
-        self.update_field_internal(field, &serde_json::to_string(&new_array)?)?;
-
-        // Run post-write hooks (fire-and-forget)
-        run_post_hooks(HookEvent::PostWrite, &context);
-        run_post_hooks(HookEvent::TicketUpdated, &context);
+        self.with_write_hooks(
+            context,
+            || {
+                let mut new_array = current_array.clone();
+                new_array.push(value.to_string());
+                self.update_field_internal(field, &serde_json::to_string(&new_array)?)
+            },
+            Some(HookEvent::TicketUpdated),
+        )?;
 
         Ok(true)
     }
@@ -320,7 +331,6 @@ impl Ticket {
             return Ok(false);
         }
 
-        // Build hook context with field info
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
             .with_item_id(&self.id)
@@ -328,25 +338,23 @@ impl Ticket {
             .with_field_name(field)
             .with_old_value(value);
 
-        // Run pre-write hook (can abort)
-        run_pre_hooks(HookEvent::PreWrite, &context)?;
+        self.with_write_hooks(
+            context,
+            || {
+                let new_array: Vec<_> = current_array
+                    .iter()
+                    .filter(|v| v.as_str() != value)
+                    .collect();
+                let json_value = if new_array.is_empty() {
+                    "[]".to_string()
+                } else {
+                    serde_json::to_string(&new_array)?
+                };
 
-        let new_array: Vec<_> = current_array
-            .iter()
-            .filter(|v| v.as_str() != value)
-            .collect();
-        let json_value = if new_array.is_empty() {
-            "[]".to_string()
-        } else {
-            serde_json::to_string(&new_array)?
-        };
-
-        // Use internal update that doesn't trigger hooks again
-        self.update_field_internal(field, &json_value)?;
-
-        // Run post-write hooks (fire-and-forget)
-        run_post_hooks(HookEvent::PostWrite, &context);
-        run_post_hooks(HookEvent::TicketUpdated, &context);
+                self.update_field_internal(field, &json_value)
+            },
+            Some(HookEvent::TicketUpdated),
+        )?;
 
         Ok(true)
     }
@@ -466,4 +474,212 @@ pub fn build_ticket_map_sync() -> HashMap<String, TicketMetadata> {
 /// Get file stats (modification time) for a path
 pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
     fs::metadata(path).ok().and_then(|m| m.modified().ok())
+}
+
+/// Builder for creating new tickets with customizable fields
+pub struct TicketBuilder {
+    title: String,
+    description: Option<String>,
+    design: Option<String>,
+    acceptance: Option<String>,
+    prefix: Option<String>,
+    ticket_type: Option<String>,
+    status: Option<String>,
+    priority: Option<String>,
+    external_ref: Option<String>,
+    parent: Option<String>,
+    remote: Option<String>,
+    include_uuid: bool,
+    uuid: Option<String>,
+    created: Option<String>,
+    run_hooks: bool,
+}
+
+impl TicketBuilder {
+    /// Create a new ticket builder with a title
+    pub fn new(title: impl Into<String>) -> Self {
+        TicketBuilder {
+            title: title.into(),
+            description: None,
+            design: None,
+            acceptance: None,
+            prefix: None,
+            ticket_type: None,
+            status: None,
+            priority: None,
+            external_ref: None,
+            parent: None,
+            remote: None,
+            include_uuid: true,
+            uuid: None,
+            created: None,
+            run_hooks: true,
+        }
+    }
+
+    /// Set the description
+    pub fn description(mut self, desc: Option<impl Into<String>>) -> Self {
+        self.description = desc.map(|d| d.into());
+        self
+    }
+
+    /// Set the design section
+    pub fn design(mut self, design: Option<impl Into<String>>) -> Self {
+        self.design = design.map(|d| d.into());
+        self
+    }
+
+    /// Set the acceptance criteria section
+    pub fn acceptance(mut self, acceptance: Option<impl Into<String>>) -> Self {
+        self.acceptance = acceptance.map(|a| a.into());
+        self
+    }
+
+    /// Set the custom prefix for ticket ID
+    pub fn prefix(mut self, prefix: Option<impl Into<String>>) -> Self {
+        self.prefix = prefix.map(|p| p.into());
+        self
+    }
+
+    /// Set the ticket type
+    pub fn ticket_type(mut self, ticket_type: impl Into<String>) -> Self {
+        self.ticket_type = Some(ticket_type.into());
+        self
+    }
+
+    /// Set the status
+    pub fn status(mut self, status: impl Into<String>) -> Self {
+        self.status = Some(status.into());
+        self
+    }
+
+    /// Set the priority
+    pub fn priority(mut self, priority: impl Into<String>) -> Self {
+        self.priority = Some(priority.into());
+        self
+    }
+
+    /// Set the external reference
+    pub fn external_ref(mut self, external_ref: Option<impl Into<String>>) -> Self {
+        self.external_ref = external_ref.map(|r| r.into());
+        self
+    }
+
+    /// Set the parent ticket
+    pub fn parent(mut self, parent: Option<impl Into<String>>) -> Self {
+        self.parent = parent.map(|p| p.into());
+        self
+    }
+
+    /// Set the remote reference
+    pub fn remote(mut self, remote: Option<impl Into<String>>) -> Self {
+        self.remote = remote.map(|r| r.into());
+        self
+    }
+
+    /// Set whether to include a UUID (true by default)
+    pub fn include_uuid(mut self, include_uuid: bool) -> Self {
+        self.include_uuid = include_uuid;
+        self
+    }
+
+    /// Set the UUID (optional, will generate if include_uuid is true and not set)
+    pub fn uuid(mut self, uuid: Option<impl Into<String>>) -> Self {
+        self.uuid = uuid.map(|u| u.into());
+        self
+    }
+
+    /// Set the creation timestamp (optional, will use current time if not set)
+    pub fn created(mut self, created: Option<impl Into<String>>) -> Self {
+        self.created = created.map(|c| c.into());
+        self
+    }
+
+    /// Enable or disable hook execution (enabled by default)
+    pub fn run_hooks(mut self, run_hooks: bool) -> Self {
+        self.run_hooks = run_hooks;
+        self
+    }
+
+    /// Build the ticket and write it to disk
+    pub fn build(self) -> Result<(String, PathBuf)> {
+        utils::ensure_dir()?;
+
+        let id = utils::generate_id_with_custom_prefix(self.prefix.as_deref())?;
+        let uuid = if self.include_uuid {
+            Some(self.uuid.unwrap_or_else(utils::generate_uuid))
+        } else {
+            self.uuid
+        };
+        let now = self.created.unwrap_or_else(utils::iso_date);
+        let status = self.status.unwrap_or_else(|| "new".to_string());
+        let ticket_type = self.ticket_type.unwrap_or_else(|| "task".to_string());
+        let priority = self.priority.unwrap_or_else(|| "2".to_string());
+
+        let mut frontmatter_lines = vec![
+            "---".to_string(),
+            format!("id: {}", id),
+            format!("status: {}", status),
+            "deps: []".to_string(),
+            "links: []".to_string(),
+            format!("created: {}", now),
+            format!("type: {}", ticket_type),
+            format!("priority: {}", priority),
+        ];
+
+        if let Some(ref uuid_val) = uuid {
+            frontmatter_lines.insert(2, format!("uuid: {}", uuid_val));
+        }
+
+        if let Some(ref ext) = self.external_ref {
+            frontmatter_lines.push(format!("external-ref: {}", ext));
+        }
+        if let Some(ref parent) = self.parent {
+            frontmatter_lines.push(format!("parent: {}", parent));
+        }
+        if let Some(ref remote) = self.remote {
+            frontmatter_lines.push(format!("remote: {}", remote));
+        }
+
+        frontmatter_lines.push("---".to_string());
+
+        let frontmatter = frontmatter_lines.join("\n");
+
+        let mut sections = vec![format!("# {}", self.title)];
+
+        if let Some(ref desc) = self.description {
+            sections.push(format!("\n{}", desc));
+        }
+        if let Some(ref design) = self.design {
+            sections.push(format!("\n## Design\n\n{}", design));
+        }
+        if let Some(ref acceptance) = self.acceptance {
+            sections.push(format!("\n## Acceptance Criteria\n\n{}", acceptance));
+        }
+
+        let body = sections.join("\n");
+        let content = format!("{}\n{}\n", frontmatter, body);
+
+        let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+
+        if self.run_hooks {
+            let context = HookContext::new()
+                .with_item_type(ItemType::Ticket)
+                .with_item_id(&id)
+                .with_file_path(&file_path);
+
+            run_pre_hooks(HookEvent::PreWrite, &context)?;
+
+            fs::create_dir_all(TICKETS_ITEMS_DIR)?;
+            fs::write(&file_path, &content)?;
+
+            run_post_hooks(HookEvent::PostWrite, &context);
+            run_post_hooks(HookEvent::TicketCreated, &context);
+        } else {
+            fs::create_dir_all(TICKETS_ITEMS_DIR)?;
+            fs::write(&file_path, &content)?;
+        }
+
+        Ok((id, file_path))
+    }
 }

@@ -1,6 +1,6 @@
-use serde_json::json;
-
-use crate::commands::{FormatOptions, format_deps, format_ticket_line, sort_by_priority};
+use super::{
+    FormatOptions, format_deps, format_ticket_line, print_json, sort_by_priority, ticket_to_json,
+};
 use crate::error::Result;
 use crate::ticket::{build_ticket_map, get_all_tickets};
 use crate::types::{TicketMetadata, TicketStatus};
@@ -96,7 +96,7 @@ pub async fn cmd_ls(
 
     if output_json {
         let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
-        println!("{}", serde_json::to_string_pretty(&json_tickets)?);
+        print_json(&serde_json::Value::Array(json_tickets))?;
         return Ok(());
     }
 
@@ -109,23 +109,4 @@ pub async fn cmd_ls(
     }
 
     Ok(())
-}
-
-/// Convert a ticket metadata to JSON value
-fn ticket_to_json(t: &TicketMetadata) -> serde_json::Value {
-    json!({
-        "id": t.id,
-        "uuid": t.uuid,
-        "title": t.title,
-        "status": t.status.map(|s| s.to_string()),
-        "type": t.ticket_type.map(|tt| tt.to_string()),
-        "priority": t.priority.map(|p| p.as_num()),
-        "created": t.created,
-        "deps": t.deps,
-        "links": t.links,
-        "parent": t.parent,
-        "external_ref": t.external_ref,
-        "remote": t.remote,
-        "completion_summary": t.completion_summary,
-    })
 }

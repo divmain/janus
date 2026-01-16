@@ -41,8 +41,39 @@ pub use status::{cmd_close, cmd_reopen, cmd_start, cmd_status};
 pub use sync::{cmd_adopt, cmd_push, cmd_remote_link, cmd_sync};
 pub use view::cmd_view;
 
+use crate::error::Result;
 use crate::types::{TicketMetadata, TicketStatus};
 use owo_colors::OwoColorize;
+use serde_json::json;
+
+/// Print a JSON value as pretty-printed output
+///
+/// This helper centralizes JSON output formatting for all commands,
+/// ensuring consistent output structure and reducing boilerplate.
+pub fn print_json(value: &serde_json::Value) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+/// Convert a ticket metadata to JSON value
+pub fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
+    json!({
+        "id": ticket.id,
+        "uuid": ticket.uuid,
+        "title": ticket.title,
+        "status": ticket.status.map(|s| s.to_string()),
+        "deps": ticket.deps,
+        "links": ticket.links,
+        "created": ticket.created,
+        "type": ticket.ticket_type.map(|t| t.to_string()),
+        "priority": ticket.priority.map(|p| p.to_string()),
+        "external-ref": ticket.external_ref,
+        "parent": ticket.parent,
+        "filePath": ticket.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+        "remote": ticket.remote,
+        "completion_summary": ticket.completion_summary,
+    })
+}
 
 /// Format options for ticket display
 #[derive(Default)]

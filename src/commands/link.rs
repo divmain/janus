@@ -1,5 +1,6 @@
 use serde_json::json;
 
+use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 
@@ -35,13 +36,12 @@ pub fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
             links_updated.insert(ticket.id.clone(), json!(metadata.links));
         }
         let ticket_ids: Vec<_> = tickets.iter().map(|t| &t.id).collect();
-        let output = json!({
+        print_json(&json!({
             "action": if added_count > 0 { "linked" } else { "already_linked" },
             "tickets": ticket_ids,
             "links_added": added_count,
             "links_updated": links_updated,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else if added_count == 0 {
         println!("All links already exist");
     } else {
@@ -80,12 +80,11 @@ pub fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<()> {
         links_updated.insert(ticket1.id.clone(), json!(metadata1.links));
         links_updated.insert(ticket2.id.clone(), json!(metadata2.links));
 
-        let output = json!({
+        print_json(&json!({
             "action": "unlinked",
             "tickets": [ticket1.id, ticket2.id],
             "links_updated": links_updated,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("Removed link: {} <-> {}", ticket1.id, ticket2.id);
     }

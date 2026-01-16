@@ -1,5 +1,6 @@
 use serde_json::json;
 
+use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 use crate::types::{TicketStatus, VALID_STATUSES};
@@ -13,13 +14,12 @@ fn update_status(id: &str, new_status: TicketStatus, output_json: bool) -> Resul
     ticket.update_field("status", &new_status.to_string())?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "action": "status_changed",
             "previous_status": previous_status.to_string(),
             "new_status": new_status.to_string(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("Updated {} -> {}", ticket.id, new_status);
     }

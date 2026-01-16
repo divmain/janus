@@ -1,6 +1,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use super::print_json;
 use crate::commands::format_ticket_bullet;
 use crate::error::Result;
 use crate::ticket::{Ticket, build_ticket_map};
@@ -89,7 +90,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
             })
             .collect();
 
-        let output = json!({
+        print_json(&json!({
             "id": metadata.id,
             "uuid": metadata.uuid,
             "title": metadata.title,
@@ -108,8 +109,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
             "blocking": blocking_json,
             "children": children_json,
             "linked": linked_json,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
         return Ok(());
     }
 

@@ -1,3 +1,7 @@
+mod traits;
+
+pub use traits::CacheableItem;
+
 use base64::Engine;
 use serde_json;
 use sha2::{Digest, Sha256};
@@ -6,18 +10,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tokio::sync::OnceCell;
-use turso::transaction::Transaction;
-use turso::{Builder, Connection, Database, params};
+use turso::{Builder, Connection, Database};
 
 /// Busy timeout for SQLite operations when multiple processes access the cache.
 /// This allows concurrent janus processes to wait for locks rather than failing immediately.
 const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
 use crate::error::{JanusError as CacheError, Result};
-use crate::parser::parse_ticket_content;
-use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
-use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
+use crate::types::TicketMetadata;
 
 #[cfg(test)]
 use serial_test::serial;
@@ -299,246 +300,70 @@ impl TicketCache {
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
     pub async fn sync_tickets(&mut self) -> Result<bool> {
-        let tickets_dir = PathBuf::from(TICKETS_ITEMS_DIR);
-
-        if !tickets_dir.exists() {
-            fs::create_dir_all(&tickets_dir).map_err(CacheError::Io)?;
-            return Ok(false);
-        }
-
-        let disk_files = self.scan_directory(&tickets_dir)?;
-
-        let cached_mt = self.get_cached_mtimes().await?;
-
-        let mut added_tickets = Vec::new();
-        let mut modified_tickets = Vec::new();
-        let mut removed_tickets = Vec::new();
-
-        for (ticket_id, disk_mtime) in &disk_files {
-            if let Some(&cache_mtime) = cached_mt.get(ticket_id) {
-                if *disk_mtime != cache_mtime {
-                    modified_tickets.push(ticket_id.clone());
-                }
-            } else {
-                added_tickets.push(ticket_id.clone());
-            }
-        }
-
-        for ticket_id in cached_mt.keys() {
-            if !disk_files.contains_key(ticket_id) {
-                removed_tickets.push(ticket_id.clone());
-            }
-        }
-
-        if added_tickets.is_empty() && modified_tickets.is_empty() && removed_tickets.is_empty() {
-            return Ok(false);
-        }
-
-        // Read and parse tickets before starting the transaction to avoid borrow issues
-        let mut tickets_to_upsert = Vec::new();
-        for id in added_tickets.iter().chain(modified_tickets.iter()) {
-            if let Ok((metadata, mtime_ns)) = Self::read_and_parse_ticket_static(id) {
-                tickets_to_upsert.push((metadata, mtime_ns));
-            }
-        }
-
-        // Use transaction for atomicity
-        let tx = self.conn.transaction().await?;
-
-        for (metadata, mtime_ns) in &tickets_to_upsert {
-            Self::insert_or_replace_ticket_tx(&tx, metadata, *mtime_ns).await?;
-        }
-
-        for id in &removed_tickets {
-            tx.execute("DELETE FROM tickets WHERE ticket_id = ?1", [id.as_str()])
-                .await?;
-        }
-
-        tx.commit().await?;
-
-        Ok(true)
+        self.sync_items::<TicketMetadata>().await
     }
 
-    fn scan_directory(&self, tickets_dir: &Path) -> Result<HashMap<String, i64>> {
-        let mut files = HashMap::new();
-
-        let entries = fs::read_dir(tickets_dir).map_err(CacheError::Io)?;
-
-        for entry in entries {
-            let entry = entry.map_err(CacheError::Io)?;
-            let path = entry.path();
-
-            if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
-                continue;
-            }
-
-            let metadata = entry.metadata().map_err(CacheError::Io)?;
-            let mtime = metadata.modified().map_err(CacheError::Io)?;
-            let mtime_ns = mtime
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
-                .as_nanos() as i64;
-
-            if let Some(ticket_id) = path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .map(|s| s.to_string())
-            {
-                files.insert(ticket_id, mtime_ns);
-            }
-        }
-
-        Ok(files)
-    }
-
-    async fn get_cached_mtimes(&self) -> Result<HashMap<String, i64>> {
-        let mut mtimes = HashMap::new();
-
-        let mut rows = self
-            .conn
-            .query("SELECT ticket_id, mtime_ns FROM tickets", ())
-            .await?;
-
-        while let Some(row) = rows.next().await? {
-            let id: String = row.get(0)?;
-            let mtime: i64 = row.get(1)?;
-            mtimes.insert(id, mtime);
-        }
-
-        Ok(mtimes)
-    }
-
-    fn read_and_parse_ticket_static(ticket_id: &str) -> Result<(TicketMetadata, i64)> {
-        let ticket_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", ticket_id));
-
-        let content = fs::read_to_string(&ticket_path).map_err(CacheError::Io)?;
-
-        let metadata = parse_ticket_content(&content)
-            .map_err(|e| CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
-
-        let file_mtime = fs::metadata(&ticket_path)
-            .map_err(CacheError::Io)?
-            .modified()
-            .map_err(CacheError::Io)?;
-
-        let mtime_ns = file_mtime
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
-            .as_nanos() as i64;
-
-        Ok((metadata, mtime_ns))
-    }
-
-    async fn insert_or_replace_ticket_tx<'a>(
-        tx: &Transaction<'a>,
-        metadata: &TicketMetadata,
-        mtime_ns: i64,
-    ) -> Result<()> {
-        let ticket_id = metadata.id.clone().unwrap_or_default();
-        let uuid = metadata.uuid.clone();
-        let status = metadata.status.map(|s| s.to_string());
-        let priority = metadata.priority.map(|p| p.as_num() as i64);
-        let ticket_type = metadata.ticket_type.map(|t| t.to_string());
-        let deps_json = Self::serialize_array(&metadata.deps)?;
-        let links_json = Self::serialize_array(&metadata.links)?;
-
-        tx.execute(
-            "INSERT OR REPLACE INTO tickets (
-                ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
-                deps, links, parent, created, external_ref, remote, completion_summary
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![
-                ticket_id,
-                uuid,
-                mtime_ns,
-                status,
-                metadata.title.clone(),
-                priority,
-                ticket_type,
-                deps_json,
-                links_json,
-                metadata.parent.clone(),
-                metadata.created.clone(),
-                metadata.external_ref.clone(),
-                metadata.remote.clone(),
-                metadata.completion_summary.clone(),
-            ],
-        )
-        .await?;
-
-        Ok(())
-    }
-
-    fn serialize_array(arr: &[String]) -> Result<Option<String>> {
-        if arr.is_empty() {
-            Ok(None)
-        } else {
-            serde_json::to_string(arr).map(Some).map_err(|e| {
-                CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-            })
-        }
-    }
-
-    // =========================================================================
-    // Plan caching methods
-    // =========================================================================
-
-    /// Sync plans from disk to cache
+    /// Generic sync implementation for any CacheableItem type.
     ///
-    /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync_plans(&mut self) -> Result<bool> {
-        let plans_dir = PathBuf::from(PLANS_DIR);
+    /// Scans the item's directory, compares mtimes with cached values,
+    /// and updates the cache with any changes.
+    async fn sync_items<T: CacheableItem>(&mut self) -> Result<bool> {
+        let dir = PathBuf::from(T::directory());
 
-        if !plans_dir.exists() {
-            fs::create_dir_all(&plans_dir).map_err(CacheError::Io)?;
+        if !dir.exists() {
+            fs::create_dir_all(&dir).map_err(CacheError::Io)?;
             return Ok(false);
         }
 
-        let disk_files = self.scan_plans_directory(&plans_dir)?;
-        let cached_mt = self.get_cached_plan_mtimes().await?;
+        let disk_files = Self::scan_directory_static(&dir)?;
+        let cached_mtimes = self.get_cached_mtimes_for::<T>().await?;
 
-        let mut added_plans = Vec::new();
-        let mut modified_plans = Vec::new();
-        let mut removed_plans = Vec::new();
+        let mut added = Vec::new();
+        let mut modified = Vec::new();
+        let mut removed = Vec::new();
 
-        for (plan_id, disk_mtime) in &disk_files {
-            if let Some(&cache_mtime) = cached_mt.get(plan_id) {
+        for (id, disk_mtime) in &disk_files {
+            if let Some(&cache_mtime) = cached_mtimes.get(id) {
                 if *disk_mtime != cache_mtime {
-                    modified_plans.push(plan_id.clone());
+                    modified.push(id.clone());
                 }
             } else {
-                added_plans.push(plan_id.clone());
+                added.push(id.clone());
             }
         }
 
-        for plan_id in cached_mt.keys() {
-            if !disk_files.contains_key(plan_id) {
-                removed_plans.push(plan_id.clone());
+        for id in cached_mtimes.keys() {
+            if !disk_files.contains_key(id) {
+                removed.push(id.clone());
             }
         }
 
-        if added_plans.is_empty() && modified_plans.is_empty() && removed_plans.is_empty() {
+        if added.is_empty() && modified.is_empty() && removed.is_empty() {
             return Ok(false);
         }
 
-        // Read and parse plans before starting the transaction
-        let mut plans_to_upsert = Vec::new();
-        for id in added_plans.iter().chain(modified_plans.iter()) {
-            if let Ok((metadata, mtime_ns)) = Self::read_and_parse_plan_static(id) {
-                plans_to_upsert.push((metadata, mtime_ns));
+        // Read and parse items before starting the transaction
+        let mut items_to_upsert = Vec::new();
+        for id in added.iter().chain(modified.iter()) {
+            if let Ok((metadata, mtime_ns)) = T::parse_from_file(id) {
+                items_to_upsert.push((metadata, mtime_ns));
             }
         }
 
         // Use transaction for atomicity
         let tx = self.conn.transaction().await?;
 
-        for (metadata, mtime_ns) in &plans_to_upsert {
-            Self::insert_or_replace_plan_tx(&tx, metadata, *mtime_ns).await?;
+        for (metadata, mtime_ns) in &items_to_upsert {
+            metadata.insert_into_cache(&tx, *mtime_ns).await?;
         }
 
-        for id in &removed_plans {
-            tx.execute("DELETE FROM plans WHERE plan_id = ?1", [id.as_str()])
-                .await?;
+        let delete_sql = format!(
+            "DELETE FROM {} WHERE {} = ?1",
+            T::table_name(),
+            T::id_column()
+        );
+        for id in &removed {
+            tx.execute(&delete_sql, [id.as_str()]).await?;
         }
 
         tx.commit().await?;
@@ -546,10 +371,11 @@ impl TicketCache {
         Ok(true)
     }
 
-    fn scan_plans_directory(&self, plans_dir: &Path) -> Result<HashMap<String, i64>> {
+    /// Scan a directory for .md files and return their IDs and mtimes
+    fn scan_directory_static(dir: &Path) -> Result<HashMap<String, i64>> {
         let mut files = HashMap::new();
 
-        let entries = match fs::read_dir(plans_dir) {
+        let entries = match fs::read_dir(dir) {
             Ok(e) => e,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(files),
             Err(e) => return Err(CacheError::Io(e)),
@@ -570,25 +396,28 @@ impl TicketCache {
                 .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
                 .as_nanos() as i64;
 
-            if let Some(plan_id) = path
+            if let Some(id) = path
                 .file_stem()
                 .and_then(|stem| stem.to_str())
                 .map(|s| s.to_string())
             {
-                files.insert(plan_id, mtime_ns);
+                files.insert(id, mtime_ns);
             }
         }
 
         Ok(files)
     }
 
-    async fn get_cached_plan_mtimes(&self) -> Result<HashMap<String, i64>> {
+    /// Get cached mtimes for a specific item type
+    async fn get_cached_mtimes_for<T: CacheableItem>(&self) -> Result<HashMap<String, i64>> {
         let mut mtimes = HashMap::new();
 
-        let mut rows = self
-            .conn
-            .query("SELECT plan_id, mtime_ns FROM plans", ())
-            .await?;
+        let query = format!(
+            "SELECT {}, mtime_ns FROM {}",
+            T::id_column(),
+            T::table_name()
+        );
+        let mut rows = self.conn.query(&query, ()).await?;
 
         while let Some(row) = rows.next().await? {
             let id: String = row.get(0)?;
@@ -599,79 +428,15 @@ impl TicketCache {
         Ok(mtimes)
     }
 
-    fn read_and_parse_plan_static(plan_id: &str) -> Result<(PlanMetadata, i64)> {
-        let plan_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", plan_id));
+    // =========================================================================
+    // Plan caching methods
+    // =========================================================================
 
-        let content = fs::read_to_string(&plan_path).map_err(CacheError::Io)?;
-
-        let metadata = parse_plan_content(&content)
-            .map_err(|e| CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
-
-        let file_mtime = fs::metadata(&plan_path)
-            .map_err(CacheError::Io)?
-            .modified()
-            .map_err(CacheError::Io)?;
-
-        let mtime_ns = file_mtime
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
-            .as_nanos() as i64;
-
-        Ok((metadata, mtime_ns))
-    }
-
-    async fn insert_or_replace_plan_tx<'a>(
-        tx: &Transaction<'a>,
-        metadata: &PlanMetadata,
-        mtime_ns: i64,
-    ) -> Result<()> {
-        let plan_id = metadata.id.clone().unwrap_or_default();
-        let uuid = metadata.uuid.clone();
-        let title = metadata.title.clone();
-        let created = metadata.created.clone();
-
-        // Determine structure type and serialize tickets/phases
-        let (structure_type, tickets_json, phases_json) = if metadata.is_phased() {
-            let phases = metadata.phases();
-            let phases_data: Vec<_> = phases
-                .iter()
-                .map(|p| {
-                    serde_json::json!({
-                        "number": p.number,
-                        "name": p.name,
-                        "tickets": p.tickets
-                    })
-                })
-                .collect();
-            let phases_json = serde_json::to_string(&phases_data).ok();
-            ("phased".to_string(), None, phases_json)
-        } else if metadata.is_simple() {
-            let tickets = metadata.all_tickets();
-            let tickets_json = serde_json::to_string(&tickets).ok();
-            ("simple".to_string(), tickets_json, None)
-        } else {
-            // Empty plan
-            ("empty".to_string(), None, None)
-        };
-
-        tx.execute(
-            "INSERT OR REPLACE INTO plans (
-                plan_id, uuid, mtime_ns, title, created, structure_type, tickets_json, phases_json
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                plan_id,
-                uuid,
-                mtime_ns,
-                title,
-                created,
-                structure_type,
-                tickets_json,
-                phases_json,
-            ],
-        )
-        .await?;
-
-        Ok(())
+    /// Sync plans from disk to cache
+    ///
+    /// Returns true if any changes were made, false if cache was already up to date.
+    pub async fn sync_plans(&mut self) -> Result<bool> {
+        self.sync_items::<PlanMetadata>().await
     }
 
     /// Get all cached plans
@@ -768,6 +533,19 @@ impl TicketCache {
                 CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
             }),
             _ => Ok(vec![]),
+        }
+    }
+
+    /// Serialize an array to JSON, returning None for empty arrays.
+    /// Exposed for testing purposes.
+    #[cfg(test)]
+    pub(crate) fn serialize_array(arr: &[String]) -> Result<Option<String>> {
+        if arr.is_empty() {
+            Ok(None)
+        } else {
+            serde_json::to_string(arr).map(Some).map_err(|e| {
+                CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            })
         }
     }
 
@@ -1343,7 +1121,7 @@ priority: 2
         fs::write(&non_md_file, "not a ticket").unwrap();
 
         let cache = TicketCache::open().await.unwrap();
-        let files = cache.scan_directory(&tickets_dir).unwrap();
+        let files = TicketCache::scan_directory_static(&tickets_dir).unwrap();
 
         assert_eq!(files.len(), 2);
         assert!(files.contains_key("j-a1b2"));

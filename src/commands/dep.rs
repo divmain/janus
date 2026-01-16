@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::TicketMetadata;
@@ -18,13 +19,12 @@ pub fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
     let metadata = ticket.read()?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "action": if added { "dep_added" } else { "dep_already_exists" },
             "dep_id": dep_ticket.id,
             "current_deps": metadata.deps,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else if added {
         println!("Added dependency: {} -> {}", ticket.id, dep_ticket.id);
     } else {
@@ -42,13 +42,12 @@ pub fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
     if removed {
         let metadata = ticket.read()?;
         if output_json {
-            let output = json!({
+            print_json(&json!({
                 "id": ticket.id,
                 "action": "dep_removed",
                 "dep_id": dep_id,
                 "current_deps": metadata.deps,
-            });
-            println!("{}", serde_json::to_string_pretty(&output)?);
+            }))?;
         } else {
             println!("Removed dependency: {} -/-> {}", ticket.id, dep_id);
         }
@@ -121,8 +120,7 @@ pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Resul
 
         let mut path = HashSet::new();
         let tree = build_tree_json(&root, 0, &mut path, &ticket_map);
-        let output = json!({ "root": tree });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        print_json(&json!({ "root": tree }))?;
         return Ok(());
     }
 

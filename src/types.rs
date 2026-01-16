@@ -20,6 +20,20 @@ pub enum TicketStatus {
     Cancelled,
 }
 
+impl TicketStatus {
+    /// Returns true if this status represents a terminal state (complete or cancelled).
+    /// Terminal states indicate no further work is expected on the ticket.
+    pub fn is_terminal(self) -> bool {
+        matches!(self, TicketStatus::Complete | TicketStatus::Cancelled)
+    }
+
+    /// Returns true if this status indicates work has not yet started (new or next).
+    /// These are pre-work states where the ticket is queued but not actively being worked on.
+    pub fn is_not_started(self) -> bool {
+        matches!(self, TicketStatus::New | TicketStatus::Next)
+    }
+}
+
 impl fmt::Display for TicketStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -199,4 +213,27 @@ impl TicketMetadata {
 pub struct TicketWithBlockers {
     pub metadata: TicketMetadata,
     pub open_blockers: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ticket_status_is_terminal() {
+        assert!(TicketStatus::Complete.is_terminal());
+        assert!(TicketStatus::Cancelled.is_terminal());
+        assert!(!TicketStatus::New.is_terminal());
+        assert!(!TicketStatus::Next.is_terminal());
+        assert!(!TicketStatus::InProgress.is_terminal());
+    }
+
+    #[test]
+    fn test_ticket_status_is_not_started() {
+        assert!(TicketStatus::New.is_not_started());
+        assert!(TicketStatus::Next.is_not_started());
+        assert!(!TicketStatus::InProgress.is_not_started());
+        assert!(!TicketStatus::Complete.is_not_started());
+        assert!(!TicketStatus::Cancelled.is_not_started());
+    }
 }

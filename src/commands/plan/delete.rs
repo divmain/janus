@@ -1,0 +1,82 @@
+//! Plan delete and rename commands
+
+use std::io::Write;
+
+use serde_json::json;
+
+use crate::commands::print_json;
+use crate::error::Result;
+use crate::plan::Plan;
+use crate::plan::parser::serialize_plan;
+use crate::utils::is_stdin_tty;
+
+/// Delete a plan
+///
+/// # Arguments
+/// * `id` - The plan ID (can be partial)
+/// * `force` - Skip confirmation prompt
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result<()> {
+    let plan = Plan::find(id)?;
+
+    if !force && !output_json && is_stdin_tty() {
+        // Prompt for confirmation
+        print!("Delete plan {}? [y/N] ", plan.id);
+        std::io::stdout().flush()?;
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Cancelled");
+            return Ok(());
+        }
+    }
+
+    let plan_id = plan.id.clone();
+    plan.delete()?;
+
+    if output_json {
+        print_json(&json!({
+            "plan_id": plan_id,
+            "action": "deleted",
+            "success": true,
+        }))?;
+    } else {
+        println!("Deleted plan {}", plan_id);
+    }
+    Ok(())
+}
+
+/// Rename a plan (update its title)
+///
+/// # Arguments
+/// * `id` - The plan ID (can be partial)
+/// * `new_title` - The new title
+/// * `output_json` - If true, output result as JSON
+pub fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Result<()> {
+    let plan = Plan::find(id)?;
+    let mut metadata = plan.read()?;
+
+    let old_title = metadata.title.clone().unwrap_or_default();
+    metadata.title = Some(new_title.to_string());
+
+    // Write updated plan
+    let content = serialize_plan(&metadata);
+    plan.write(&content)?;
+
+    if output_json {
+        print_json(&json!({
+            "plan_id": plan.id,
+            "action": "renamed",
+            "old_title": old_title,
+            "new_title": new_title,
+        }))?;
+    } else {
+        println!(
+            "Renamed plan {} from '{}' to '{}'",
+            plan.id, old_title, new_title
+        );
+    }
+    Ok(())
+}

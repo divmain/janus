@@ -1,26 +1,9 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+use crate::commands::ticket_to_json;
 use crate::error::Result;
 use crate::ticket::get_all_tickets;
-use crate::types::TicketMetadata;
-
-/// Convert TicketMetadata to a serde_json::Value for jq processing
-fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
-    serde_json::json!({
-        "id": ticket.id,
-        "title": ticket.title,
-        "status": ticket.status.map(|s| s.to_string()),
-        "deps": ticket.deps,
-        "links": ticket.links,
-        "created": ticket.created,
-        "type": ticket.ticket_type.map(|t| t.to_string()),
-        "priority": ticket.priority.map(|p| p.to_string()),
-        "external-ref": ticket.external_ref,
-        "parent": ticket.parent,
-        "filePath": ticket.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
-    })
-}
 
 /// Output tickets as JSON, optionally filtered with jq syntax
 pub async fn cmd_query(filter: Option<&str>) -> Result<()> {

@@ -16,6 +16,7 @@ use owo_colors::OwoColorize;
 use serde::Deserialize;
 use serde_json::json;
 
+use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
 use crate::hooks::{HookContext, ItemType, context_to_env};
@@ -64,12 +65,11 @@ pub fn cmd_hook_list(output_json: bool) -> Result<()> {
             scripts_map.insert(event.clone(), json!(script));
         }
 
-        let output = json!({
+        print_json(&json!({
             "enabled": config.hooks.enabled,
             "timeout": config.hooks.timeout,
             "scripts": scripts_map,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         let status = if config.hooks.enabled {
             "enabled".green().to_string()
@@ -401,11 +401,10 @@ pub fn cmd_hook_enable(output_json: bool) -> Result<()> {
     config.save()?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "action": "enabled",
             "hooks_enabled": true,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("{} Hooks enabled", "✓".green());
     }
@@ -420,11 +419,10 @@ pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
     config.save()?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "action": "disabled",
             "hooks_enabled": false,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("{} Hooks disabled", "✓".red());
     }

@@ -9,12 +9,24 @@
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::{Arena, Options, parse_document};
 use regex::Regex;
+use serde::Deserialize;
 
 use crate::error::{JanusError, Result};
 use crate::plan::types::{
     FreeFormSection, ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask, Phase,
     PlanMetadata, PlanSection,
 };
+
+/// Plan frontmatter struct for YAML deserialization
+#[derive(Debug, Deserialize, Default)]
+struct PlanFrontmatter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uuid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created: Option<String>,
+}
 
 // ============================================================================
 // Section Alias Constants (for plan import)
@@ -98,162 +110,178 @@ fn split_frontmatter(content: &str) -> Result<(&str, &str)> {
 
 /// Parse YAML frontmatter into PlanMetadata fields
 fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
-    let mut metadata = PlanMetadata::default();
+    let frontmatter: PlanFrontmatter = serde_yaml_ng::from_str(yaml)
+        .map_err(|e| JanusError::InvalidFormat(format!("YAML parsing error: {}", e)))?;
 
-    let line_re = Regex::new(r"^(\w[-\w]*):\s*(.*)$").unwrap();
-
-    for line in yaml.lines() {
-        if let Some(caps) = line_re.captures(line) {
-            let key = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let value = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-
-            match key {
-                "id" => metadata.id = Some(value.to_string()),
-                "uuid" => metadata.uuid = Some(value.to_string()),
-                "created" => metadata.created = Some(value.to_string()),
-                _ => {} // Ignore unknown fields
-            }
-        }
-    }
+    let metadata = PlanMetadata {
+        id: frontmatter.id,
+        uuid: frontmatter.uuid,
+        created: frontmatter.created,
+        ..Default::default()
+    };
 
     Ok(metadata)
 }
 
 /// Parse the markdown body to extract title, description, and sections
 fn parse_body(body: &str, metadata: &mut PlanMetadata) -> Result<()> {
-    // Use comrak to parse markdown into AST
     let arena = Arena::new();
     let options = Options::default();
     let root = parse_document(&arena, body, &options);
 
-    // Extract content by walking the AST
-    let mut current_h2: Option<H2Section> = None;
-    let mut current_h3: Option<H3Section> = None;
-    let mut preamble_content = String::new();
-    let mut in_preamble = true;
-    let mut found_acceptance_criteria = false;
-    let mut found_tickets_section = false;
+    // Collect all sections from the document
+    let (title, preamble, h2_sections) = collect_document_sections(root, &options);
 
-    for node in root.children() {
-        match &node.data.borrow().value {
-            NodeValue::Heading(heading) => {
-                let level = heading.level;
-                let heading_text = extract_text_content(node);
-
-                match level {
-                    1 => {
-                        // H1: Plan title
-                        metadata.title = Some(heading_text.trim().to_string());
-                    }
-                    2 => {
-                        // End preamble
-                        in_preamble = false;
-
-                        // Finalize any pending H3 section
-                        if let Some(h3) = current_h3.take()
-                            && let Some(ref mut h2) = current_h2
-                        {
-                            h2.h3_sections.push(h3);
-                        }
-
-                        // Finalize any pending H2 section
-                        if let Some(h2) = current_h2.take() {
-                            process_h2_section(
-                                h2,
-                                metadata,
-                                &mut found_acceptance_criteria,
-                                &mut found_tickets_section,
-                            );
-                        }
-
-                        // Start new H2 section
-                        current_h2 = Some(H2Section {
-                            heading: heading_text.trim().to_string(),
-                            content: String::new(),
-                            h3_sections: Vec::new(),
-                        });
-                    }
-                    3 => {
-                        // Finalize any pending H3 section
-                        if let Some(h3) = current_h3.take()
-                            && let Some(ref mut h2) = current_h2
-                        {
-                            h2.h3_sections.push(h3);
-                        }
-
-                        // Start new H3 section
-                        current_h3 = Some(H3Section {
-                            heading: heading_text.trim().to_string(),
-                            content: String::new(),
-                        });
-                    }
-                    _ => {
-                        // H4+ are treated as content
-                        let rendered = render_node_to_markdown(node, &options);
-                        if let Some(ref mut h3) = current_h3 {
-                            h3.content.push_str(&rendered);
-                        } else if let Some(ref mut h2) = current_h2 {
-                            h2.content.push_str(&rendered);
-                        } else if in_preamble {
-                            preamble_content.push_str(&rendered);
-                        }
-                    }
-                }
-            }
-            _ => {
-                // Non-heading content
-                let rendered = render_node_to_markdown(node, &options);
-
-                if let Some(ref mut h3) = current_h3 {
-                    h3.content.push_str(&rendered);
-                } else if let Some(ref mut h2) = current_h2 {
-                    h2.content.push_str(&rendered);
-                } else if in_preamble {
-                    preamble_content.push_str(&rendered);
-                }
-            }
+    // Set title and description
+    metadata.title = title;
+    if let Some(preamble_text) = preamble {
+        let trimmed = preamble_text.trim();
+        if !trimmed.is_empty() {
+            metadata.description = Some(trimmed.to_string());
         }
     }
 
-    // Finalize any pending sections
-    if let Some(h3) = current_h3.take()
-        && let Some(ref mut h2) = current_h2
-    {
-        h2.h3_sections.push(h3);
-    }
-    if let Some(h2) = current_h2.take() {
-        process_h2_section(
-            h2,
+    // Process H2 sections
+    let mut found_acceptance_criteria = false;
+    let mut found_tickets_section = false;
+
+    for section in h2_sections {
+        classify_and_add_section(
+            section,
             metadata,
             &mut found_acceptance_criteria,
             &mut found_tickets_section,
         );
     }
 
-    // Set description from preamble
-    let preamble_trimmed = preamble_content.trim();
-    if !preamble_trimmed.is_empty() {
-        metadata.description = Some(preamble_trimmed.to_string());
-    }
-
     Ok(())
 }
 
-/// Temporary structure for collecting H2 section content
-struct H2Section {
-    heading: String,
-    content: String,
-    h3_sections: Vec<H3Section>,
+/// Collect document sections by heading level.
+///
+/// Returns (title, preamble, h2_sections) tuple where:
+/// - title: The H1 heading text if present
+/// - preamble: Content between H1 and first H2
+/// - h2_sections: All H2 sections with their nested H3 content
+fn collect_document_sections<'a>(
+    root: &'a AstNode<'a>,
+    options: &Options,
+) -> (Option<String>, Option<String>, Vec<H2Section>) {
+    let mut title = None;
+    let mut preamble = String::new();
+    let mut h2_sections = Vec::new();
+    let mut collector = SectionCollector::new();
+
+    for node in root.children() {
+        match &node.data.borrow().value {
+            NodeValue::Heading(heading) => {
+                let heading_text = extract_text_content(node);
+
+                match heading.level {
+                    1 => {
+                        title = Some(heading_text.trim().to_string());
+                    }
+                    2 => {
+                        // Finalize any pending section before starting new one
+                        if let Some(section) = collector.finalize_h2() {
+                            h2_sections.push(section);
+                        }
+                        collector.start_h2(heading_text.trim().to_string());
+                    }
+                    3 => {
+                        collector.start_h3(heading_text.trim().to_string());
+                    }
+                    _ => {
+                        // H4+ treated as content
+                        let rendered = render_node_to_markdown(node, options);
+                        collector.append_content(&rendered, &mut preamble);
+                    }
+                }
+            }
+            _ => {
+                let rendered = render_node_to_markdown(node, options);
+                collector.append_content(&rendered, &mut preamble);
+            }
+        }
+    }
+
+    // Finalize last section
+    if let Some(section) = collector.finalize_h2() {
+        h2_sections.push(section);
+    }
+
+    let preamble_opt = if preamble.is_empty() {
+        None
+    } else {
+        Some(preamble)
+    };
+
+    (title, preamble_opt, h2_sections)
 }
 
-/// Temporary structure for collecting H3 section content
-struct H3Section {
-    heading: String,
-    content: String,
+/// Helper struct to track section collection state
+struct SectionCollector {
+    current_h2: Option<H2Section>,
+    current_h3: Option<H3Section>,
+    in_preamble: bool,
 }
 
-/// Process a collected H2 section and add it to metadata
-fn process_h2_section(
+impl SectionCollector {
+    fn new() -> Self {
+        Self {
+            current_h2: None,
+            current_h3: None,
+            in_preamble: true,
+        }
+    }
+
+    fn start_h2(&mut self, heading: String) {
+        self.in_preamble = false;
+        self.current_h2 = Some(H2Section {
+            heading,
+            content: String::new(),
+            h3_sections: Vec::new(),
+        });
+    }
+
+    fn start_h3(&mut self, heading: String) {
+        // Push any pending H3 to current H2
+        if let Some(h3) = self.current_h3.take()
+            && let Some(ref mut h2) = self.current_h2
+        {
+            h2.h3_sections.push(h3);
+        }
+
+        self.current_h3 = Some(H3Section {
+            heading,
+            content: String::new(),
+        });
+    }
+
+    fn append_content(&mut self, content: &str, preamble: &mut String) {
+        if let Some(ref mut h3) = self.current_h3 {
+            h3.content.push_str(content);
+        } else if let Some(ref mut h2) = self.current_h2 {
+            h2.content.push_str(content);
+        } else if self.in_preamble {
+            preamble.push_str(content);
+        }
+    }
+
+    fn finalize_h2(&mut self) -> Option<H2Section> {
+        // Push any pending H3 to current H2
+        if let Some(h3) = self.current_h3.take()
+            && let Some(ref mut h2) = self.current_h2
+        {
+            h2.h3_sections.push(h3);
+        }
+
+        self.current_h2.take()
+    }
+}
+
+/// Classify an H2 section and add it to metadata
+fn classify_and_add_section(
     section: H2Section,
     metadata: &mut PlanMetadata,
     found_acceptance_criteria: &mut bool,
@@ -291,6 +319,19 @@ fn process_h2_section(
             heading: section.heading,
             content: full_content,
         }));
+}
+
+/// Temporary structure for collecting H2 section content
+struct H2Section {
+    heading: String,
+    content: String,
+    h3_sections: Vec<H3Section>,
+}
+
+/// Temporary structure for collecting H3 section content
+struct H3Section {
+    heading: String,
+    content: String,
 }
 
 /// Try to parse a heading as a phase header
@@ -967,103 +1008,172 @@ fn parse_phases_from_implementation<'a>(
     root: &'a AstNode<'a>,
     options: &Options,
 ) -> Vec<ImportablePhase> {
-    let mut phases = Vec::new();
     let nodes: Vec<_> = root.children().collect();
 
-    // Find the Implementation section
-    let mut impl_start: Option<usize> = None;
-    let mut impl_end: Option<usize> = None;
+    // Find the Implementation section boundaries
+    let Some((impl_start, impl_end)) = find_implementation_section_bounds(&nodes) else {
+        return Vec::new();
+    };
+
+    // Collect phase header positions
+    let phase_headers = collect_phase_headers(&nodes, impl_start, impl_end);
+    if phase_headers.is_empty() {
+        return Vec::new();
+    }
+
+    // Build phases from the collected headers
+    build_phases_from_headers(&nodes, &phase_headers, impl_end, options)
+}
+
+/// Find the start and end indices of the Implementation section.
+///
+/// Returns `Some((start, end))` where:
+/// - `start` is the index of the `## Implementation` heading
+/// - `end` is the index of the next H2 heading (or end of document)
+fn find_implementation_section_bounds<'a>(nodes: &[&'a AstNode<'a>]) -> Option<(usize, usize)> {
+    let mut impl_start = None;
 
     for (idx, node) in nodes.iter().enumerate() {
-        if let NodeValue::Heading(heading) = &node.data.borrow().value
-            && heading.level == 2
-        {
-            let text = extract_text_content(node);
-            if text.trim().to_lowercase() == IMPLEMENTATION_SECTION_NAME {
-                impl_start = Some(idx);
-            } else if impl_start.is_some() && impl_end.is_none() {
-                // Found another H2 after Implementation, that's the end
-                impl_end = Some(idx);
-                break;
-            }
+        let NodeValue::Heading(heading) = &node.data.borrow().value else {
+            continue;
+        };
+        if heading.level != 2 {
+            continue;
+        }
+
+        let text = extract_text_content(node);
+        if text.trim().to_lowercase() == IMPLEMENTATION_SECTION_NAME {
+            impl_start = Some(idx);
+        } else if impl_start.is_some() {
+            // Found another H2 after Implementation
+            return Some((impl_start.unwrap(), idx));
         }
     }
 
-    let impl_start = match impl_start {
-        Some(idx) => idx,
-        None => return phases, // No Implementation section found
-    };
-    let impl_end = impl_end.unwrap_or(nodes.len());
+    // Implementation section extends to end of document
+    impl_start.map(|start| (start, nodes.len()))
+}
 
-    // Find all H3 phase headers within the Implementation section
-    let mut phase_indices: Vec<(usize, String, String)> = Vec::new(); // (index, number, name)
+/// A phase header with its position and parsed info
+struct PhaseHeader {
+    index: usize,
+    number: String,
+    name: String,
+}
 
-    for (idx, node) in nodes.iter().enumerate().take(impl_end).skip(impl_start + 1) {
-        if let NodeValue::Heading(heading) = &node.data.borrow().value
-            && heading.level == 3
-        {
-            let text = extract_text_content(node);
-            if let Some((number, name)) = is_phase_header(&text) {
-                phase_indices.push((idx, number, name));
-            }
-        }
-    }
-
-    // Process each phase
-    for (i, (start_idx, number, name)) in phase_indices.iter().enumerate() {
-        // Find the end of this phase (next H3 or end of Implementation section)
-        let end_idx = if i + 1 < phase_indices.len() {
-            phase_indices[i + 1].0
-        } else {
-            impl_end
-        };
-
-        // Extract phase description (content between H3 header and first H4)
-        let mut description_parts = Vec::new();
-
-        for node in &nodes[start_idx + 1..end_idx] {
-            if let NodeValue::Heading(h) = &node.data.borrow().value
-                && h.level == 4
-            {
-                // Hit first H4 task header, stop collecting description
-                break;
-            }
-            description_parts.push(render_node_to_markdown(node, options));
-        }
-
-        let description = description_parts.join("").trim().to_string();
-        let description = if description.is_empty() {
-            None
-        } else {
-            Some(description)
-        };
-
-        // Parse tasks (H4 headers) from this phase
-        let mut tasks = parse_tasks_from_phase_h4(&nodes, *start_idx + 1, end_idx, options);
-
-        // If no H4 tasks found, create a fallback task from the phase description
-        if tasks.is_empty() {
-            let fallback_title = if name.is_empty() {
-                format!("Implement Phase {}", number)
-            } else {
-                format!("Implement Phase {}: {}", number, name)
+/// Collect all H3 phase headers within the Implementation section.
+fn collect_phase_headers<'a>(
+    nodes: &[&'a AstNode<'a>],
+    impl_start: usize,
+    impl_end: usize,
+) -> Vec<PhaseHeader> {
+    nodes[impl_start + 1..impl_end]
+        .iter()
+        .enumerate()
+        .filter_map(|(relative_idx, node)| {
+            let NodeValue::Heading(heading) = &node.data.borrow().value else {
+                return None;
             };
-            tasks.push(ImportableTask {
-                title: fallback_title,
-                body: description.clone(),
-                is_complete: false,
-            });
-        }
+            if heading.level != 3 {
+                return None;
+            }
 
-        phases.push(ImportablePhase {
-            number: number.clone(),
-            name: name.clone(),
-            description,
-            tasks,
-        });
+            let text = extract_text_content(node);
+            let (number, name) = is_phase_header(&text)?;
+
+            Some(PhaseHeader {
+                index: impl_start + 1 + relative_idx,
+                number,
+                name,
+            })
+        })
+        .collect()
+}
+
+/// Build ImportablePhase structs from collected phase headers.
+fn build_phases_from_headers<'a>(
+    nodes: &[&'a AstNode<'a>],
+    phase_headers: &[PhaseHeader],
+    impl_end: usize,
+    options: &Options,
+) -> Vec<ImportablePhase> {
+    phase_headers
+        .iter()
+        .enumerate()
+        .map(|(i, header)| {
+            // Phase content ends at the next phase header or end of Implementation section
+            let end_idx = phase_headers
+                .get(i + 1)
+                .map(|h| h.index)
+                .unwrap_or(impl_end);
+
+            build_single_phase(nodes, header, end_idx, options)
+        })
+        .collect()
+}
+
+/// Build a single ImportablePhase from a phase header.
+fn build_single_phase<'a>(
+    nodes: &[&'a AstNode<'a>],
+    header: &PhaseHeader,
+    end_idx: usize,
+    options: &Options,
+) -> ImportablePhase {
+    let phase_nodes = &nodes[header.index + 1..end_idx];
+    let description = extract_phase_description(phase_nodes, options);
+    let mut tasks = parse_tasks_from_phase_h4(nodes, header.index + 1, end_idx, options);
+
+    // Create fallback task if no H4 tasks found
+    if tasks.is_empty() {
+        tasks.push(create_fallback_task(
+            &header.number,
+            &header.name,
+            &description,
+        ));
     }
 
-    phases
+    ImportablePhase {
+        number: header.number.clone(),
+        name: header.name.clone(),
+        description,
+        tasks,
+    }
+}
+
+/// Extract phase description (content between H3 header and first H4).
+fn extract_phase_description<'a>(nodes: &[&'a AstNode<'a>], options: &Options) -> Option<String> {
+    let description: String = nodes
+        .iter()
+        .take_while(|node| {
+            !matches!(
+                &node.data.borrow().value,
+                NodeValue::Heading(h) if h.level == 4
+            )
+        })
+        .map(|node| render_node_to_markdown(node, options))
+        .collect();
+
+    let trimmed = description.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Create a fallback task when a phase has no H4 tasks.
+fn create_fallback_task(number: &str, name: &str, description: &Option<String>) -> ImportableTask {
+    let title = if name.is_empty() {
+        format!("Implement Phase {}", number)
+    } else {
+        format!("Implement Phase {}: {}", number, name)
+    };
+
+    ImportableTask {
+        title,
+        body: description.clone(),
+        is_complete: false,
+    }
 }
 
 /// Parse tasks from H4 headers within a phase section.

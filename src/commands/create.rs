@@ -1,12 +1,9 @@
-use std::fs;
-use std::path::PathBuf;
-
 use serde_json::json;
 
+use super::print_json;
 use crate::error::Result;
-use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
-use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketType};
-use crate::utils::{ensure_dir, generate_id_with_custom_prefix, generate_uuid, iso_date};
+use crate::ticket::TicketBuilder;
+use crate::types::{TicketPriority, TicketType};
 
 /// Options for creating a new ticket
 pub struct CreateOptions {
@@ -39,82 +36,27 @@ impl Default for CreateOptions {
 
 /// Create a new ticket and print its ID
 pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
-    ensure_dir()?;
-
-    let id = generate_id_with_custom_prefix(options.prefix.as_deref())?;
-    let uuid = generate_uuid();
-    let now = iso_date();
-
-    // Build frontmatter
-    let mut frontmatter_lines = vec![
-        "---".to_string(),
-        format!("id: {}", id),
-        format!("uuid: {}", uuid),
-        "status: new".to_string(),
-        "deps: []".to_string(),
-        "links: []".to_string(),
-        format!("created: {}", now),
-        format!("type: {}", options.ticket_type),
-        format!("priority: {}", options.priority),
-    ];
-
-    if let Some(ref ext) = options.external_ref {
-        frontmatter_lines.push(format!("external-ref: {}", ext));
-    }
-    if let Some(ref parent) = options.parent {
-        frontmatter_lines.push(format!("parent: {}", parent));
-    }
-
-    frontmatter_lines.push("---".to_string());
-
-    let frontmatter = frontmatter_lines.join("\n");
-
-    // Build body sections
-    let mut sections = vec![format!("# {}", options.title)];
-
-    if let Some(ref desc) = options.description {
-        sections.push(format!("\n{}", desc));
-    }
-    if let Some(ref design) = options.design {
-        sections.push(format!("\n## Design\n\n{}", design));
-    }
-    if let Some(ref acceptance) = options.acceptance {
-        sections.push(format!("\n## Acceptance Criteria\n\n{}", acceptance));
-    }
-
-    let body = sections.join("\n");
-    let content = format!("{}\n{}\n", frontmatter, body);
-
-    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
-
-    // Build hook context for ticket creation
-    let context = HookContext::new()
-        .with_item_type(ItemType::Ticket)
-        .with_item_id(&id)
-        .with_file_path(&file_path);
-
-    // Run pre-write hook (can abort)
-    run_pre_hooks(HookEvent::PreWrite, &context)?;
-
-    fs::create_dir_all(TICKETS_ITEMS_DIR)?;
-    fs::write(&file_path, &content)?;
-
-    // Run post-write hooks (fire-and-forget)
-    run_post_hooks(HookEvent::PostWrite, &context);
-    run_post_hooks(HookEvent::TicketCreated, &context);
+    let (id, file_path) = TicketBuilder::new(&options.title)
+        .description(options.description.as_deref())
+        .design(options.design.as_deref())
+        .acceptance(options.acceptance.as_deref())
+        .prefix(options.prefix.as_deref())
+        .ticket_type(options.ticket_type.to_string())
+        .priority(options.priority.as_num().to_string())
+        .external_ref(options.external_ref.as_deref())
+        .parent(options.parent.as_deref())
+        .run_hooks(true)
+        .build()?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": id,
-            "uuid": uuid,
             "title": options.title,
             "status": "new",
             "type": options.ticket_type.to_string(),
             "priority": options.priority.as_num(),
-            "created": now,
             "file_path": file_path.to_string_lossy(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("{}", id);
     }

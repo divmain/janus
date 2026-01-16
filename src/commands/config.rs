@@ -6,6 +6,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::remote::config::{Config, Platform};
 
@@ -22,15 +23,14 @@ pub fn cmd_config_show(output_json: bool) -> Result<()> {
             })
         });
 
-        let output = json!({
+        print_json(&json!({
             "default_remote": default_remote_json,
             "auth": {
                 "github_token_configured": config.github_token().is_some(),
                 "linear_api_key_configured": config.linear_api_key().is_some(),
             },
             "config_file": Config::config_path().to_string_lossy(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
         return Ok(());
     }
 
@@ -92,12 +92,11 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
             config.set_github_token(value.to_string());
             config.save()?;
             if output_json {
-                let output = json!({
+                print_json(&json!({
                     "action": "config_set",
                     "key": key,
                     "success": true,
-                });
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                }))?;
             } else {
                 println!("Set {}", "github.token".cyan());
             }
@@ -106,12 +105,11 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
             config.set_linear_api_key(value.to_string());
             config.save()?;
             if output_json {
-                let output = json!({
+                print_json(&json!({
                     "action": "config_set",
                     "key": key,
                     "success": true,
-                });
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                }))?;
             } else {
                 println!("Set {}", "linear.api_key".cyan());
             }
@@ -129,13 +127,12 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
             config.save()?;
 
             if output_json {
-                let output = json!({
+                print_json(&json!({
                     "action": "config_set",
                     "key": key,
                     "value": value,
                     "success": true,
-                });
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                }))?;
             } else if let Some(r) = repo {
                 println!(
                     "Set {} to {}:{}/{}",
@@ -217,12 +214,11 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                     "****".to_string()
                 };
                 if output_json {
-                    let output = json!({
+                    print_json(&json!({
                         "key": key,
                         "value": masked,
                         "configured": true,
-                    });
-                    println!("{}", serde_json::to_string_pretty(&output)?);
+                    }))?;
                 } else {
                     println!("{}", masked);
                 }
@@ -238,12 +234,11 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                     format!("{}:{}", default.platform, default.org)
                 };
                 if output_json {
-                    let output = json!({
+                    print_json(&json!({
                         "key": key,
                         "value": value,
                         "configured": true,
-                    });
-                    println!("{}", serde_json::to_string_pretty(&output)?);
+                    }))?;
                 } else {
                     println!("{}", value);
                 }

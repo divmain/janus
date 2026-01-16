@@ -2,6 +2,7 @@ use std::fs;
 
 use serde_json::json;
 
+use super::print_json;
 use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, iso_date, read_stdin};
@@ -33,13 +34,12 @@ pub fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) -> Res
     fs::write(&ticket.file_path, content)?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "action": "note_added",
             "timestamp": timestamp,
             "note": note,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("Note added to {}", ticket.id);
     }

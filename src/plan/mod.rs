@@ -272,7 +272,7 @@ pub fn compute_plan_status(
 /// Compute the status of a single phase
 ///
 /// Missing tickets are skipped with a warning printed to stderr.
-fn compute_phase_status_impl(
+pub fn compute_phase_status_impl(
     phase: &Phase,
     ticket_map: &HashMap<String, TicketMetadata>,
 ) -> PhaseStatus {
@@ -353,36 +353,38 @@ pub fn compute_all_phase_statuses(
 
 /// Compute aggregate status from a list of ticket statuses.
 ///
-/// Rules:
-/// 1. If all tickets are `complete` → `complete`
-/// 2. If all tickets are `cancelled` → `cancelled`
-/// 3. If all tickets are `complete` or `cancelled` (mixed) → `complete`
-/// 4. If all tickets are `new` or `next` (not started) → `new`
-/// 5. Otherwise (some started, some not started) → `in_progress`
-fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
+/// # Truth Table
+///
+/// | Condition                              | Result        |
+/// |----------------------------------------|---------------|
+/// | Empty list                             | `new`         |
+/// | All `complete`                         | `complete`    |
+/// | All `cancelled`                        | `cancelled`   |
+/// | All terminal (mixed complete/cancelled)| `complete`    |
+/// | All not started (new/next)             | `new`         |
+/// | Any other combination                  | `in_progress` |
+///
+/// Note: "Terminal" means `complete` or `cancelled` (see `TicketStatus::is_terminal`).
+/// "Not started" means `new` or `next` (see `TicketStatus::is_not_started`).
+pub fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
     if statuses.is_empty() {
         return TicketStatus::New;
     }
 
-    let all_complete = statuses.iter().all(|s| *s == TicketStatus::Complete);
-    let all_cancelled = statuses.iter().all(|s| *s == TicketStatus::Cancelled);
-    let all_finished = statuses
-        .iter()
-        .all(|s| *s == TicketStatus::Complete || *s == TicketStatus::Cancelled);
-    let all_not_started = statuses
-        .iter()
-        .all(|s| *s == TicketStatus::New || *s == TicketStatus::Next);
+    let all_terminal = statuses.iter().all(|s| s.is_terminal());
+    let all_not_started = statuses.iter().all(|s| s.is_not_started());
+    let has_complete = statuses.contains(&TicketStatus::Complete);
+    let has_cancelled = statuses.contains(&TicketStatus::Cancelled);
 
-    if all_complete {
-        TicketStatus::Complete
-    } else if all_cancelled {
-        TicketStatus::Cancelled
-    } else if all_finished {
-        TicketStatus::Complete
-    } else if all_not_started {
-        TicketStatus::New
-    } else {
-        TicketStatus::InProgress
+    match (all_terminal, all_not_started, has_complete, has_cancelled) {
+        // All tickets finished: determine if pure complete, pure cancelled, or mixed
+        (true, _, true, false) => TicketStatus::Complete,
+        (true, _, false, true) => TicketStatus::Cancelled,
+        (true, _, true, true) => TicketStatus::Complete, // Mixed terminal → complete
+        // All tickets not yet started
+        (_, true, _, _) => TicketStatus::New,
+        // Some work has started but not all finished
+        _ => TicketStatus::InProgress,
     }
 }
 

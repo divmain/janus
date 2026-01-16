@@ -1,25 +1,22 @@
 //! Commands for syncing with remote issue trackers.
 //!
 //! - `adopt`: Fetch a remote issue and create a local ticket
-//! - `push`: Create a remote issue from a local ticket  
+//! - `push`: Create a remote issue from a local ticket
 //! - `remote-link`: Link a local ticket to an existing remote issue
 //! - `sync`: Synchronize state between local and remote
 
-use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
 
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::remote::config::Config;
 use crate::remote::github::GitHubProvider;
 use crate::remote::linear::LinearProvider;
 use crate::remote::{IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
-use crate::ticket::Ticket;
-use crate::types::TICKETS_ITEMS_DIR;
-use crate::utils::{ensure_dir, generate_id_with_custom_prefix, iso_date};
+use crate::ticket::{Ticket, TicketBuilder};
 
 /// Adopt a remote issue and create a local ticket
 pub async fn cmd_adopt(
@@ -52,15 +49,14 @@ pub async fn cmd_adopt(
 
     if output_json {
         let status = remote_issue.status.to_ticket_status();
-        let output = json!({
+        print_json(&json!({
             "id": id,
             "action": "adopted",
             "remote_ref": remote_ref.to_string(),
             "title": remote_issue.title,
             "url": remote_issue.url,
             "status": status.to_string(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("Created {} from {}", id.cyan(), remote_ref);
         println!("  Title: {}", remote_issue.title);
@@ -76,46 +72,26 @@ fn create_ticket_from_remote(
     remote_ref: &RemoteRef,
     prefix: Option<&str>,
 ) -> Result<String> {
-    ensure_dir()?;
-
-    let id = generate_id_with_custom_prefix(prefix)?;
-    let now = iso_date();
-
-    // Map remote status to local status
     let status = remote_issue.status.to_ticket_status();
 
-    // Map priority (default to P2)
     let priority = remote_issue.priority.unwrap_or(2);
 
-    // Build frontmatter
-    let mut frontmatter_lines = vec![
-        "---".to_string(),
-        format!("id: {}", id),
-        format!("status: {}", status),
-        "deps: []".to_string(),
-        "links: []".to_string(),
-        format!("created: {}", now),
-        "type: task".to_string(),
-        format!("priority: {}", priority),
-    ];
-
-    frontmatter_lines.push(format!("remote: {}", remote_ref));
-    frontmatter_lines.push("---".to_string());
-
-    let frontmatter = frontmatter_lines.join("\n");
-
-    // Build body
     let body = if remote_issue.body.is_empty() {
-        format!("# {}\n", remote_issue.title)
+        None
     } else {
-        format!("# {}\n\n{}\n", remote_issue.title, remote_issue.body)
+        Some(remote_issue.body.clone())
     };
 
-    let content = format!("{}\n{}", frontmatter, body);
-
-    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
-    fs::create_dir_all(TICKETS_ITEMS_DIR)?;
-    fs::write(file_path, content)?;
+    let (id, _file_path) = TicketBuilder::new(&remote_issue.title)
+        .description(body)
+        .prefix(prefix)
+        .ticket_type("task")
+        .status(status.to_string())
+        .priority(priority.to_string())
+        .remote(Some(remote_ref.to_string()))
+        .include_uuid(false)
+        .run_hooks(false)
+        .build()?;
 
     Ok(id)
 }
@@ -163,12 +139,11 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
     ticket.update_field("remote", &remote_ref.to_string())?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "action": "pushed",
             "remote_ref": remote_ref.to_string(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("Created {}", remote_ref.to_string().green());
         println!("Updated {} -> remote: {}", ticket.id.cyan(), remote_ref);
@@ -215,12 +190,11 @@ pub async fn cmd_remote_link(
     ticket.update_field("remote", &remote_ref.to_string())?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "action": "remote_linked",
             "remote_ref": remote_ref.to_string(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!(
             "Linked {} -> {}",
@@ -283,13 +257,12 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
             }));
         }
 
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "remote_ref": remote_ref.to_string(),
             "already_in_sync": differences.is_empty(),
             "differences": differences,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
         return Ok(());
     }
 

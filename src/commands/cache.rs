@@ -1,8 +1,9 @@
 use serde_json::json;
+use std::fs;
 
+use super::print_json;
 use crate::cache::TicketCache;
 use crate::error::Result;
-use std::fs;
 
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     match TicketCache::open().await {
@@ -24,7 +25,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                     }
                 }
 
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                print_json(&output)?;
             } else {
                 println!("Cache status:");
                 println!("  Database path: {}", db_path.display());
@@ -51,11 +52,10 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                     "not_available"
                 };
 
-                let output = json!({
+                print_json(&json!({
                     "status": status,
                     "error": error_str,
-                });
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                }))?;
             } else if error_str.contains("corrupted") || error_str.contains("CORRUPT") {
                 println!("Cache database is corrupted and cannot be opened.");
                 println!("\nTo fix this issue:");
@@ -92,12 +92,11 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
                 db_path_from_current_dir()
             } else {
                 if output_json {
-                    let output = json!({
+                    print_json(&json!({
                         "action": "cache_clear",
                         "success": true,
                         "message": "Cache does not exist or has already been cleared",
-                    });
-                    println!("{}", serde_json::to_string_pretty(&output)?);
+                    }))?;
                 } else {
                     println!("Cache does not exist or has already been cleared.");
                     println!(
@@ -125,12 +124,11 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
     }
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "action": "cache_cleared",
             "database_path": db_path.to_string_lossy(),
             "success": true,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("Cache cleared successfully.");
         println!("\nNote: The cache will be rebuilt automatically on the next janus command.");
@@ -180,14 +178,13 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                     let total_duration = start_total.elapsed();
 
                     if output_json {
-                        let output = json!({
+                        print_json(&json!({
                             "action": "cache_rebuilt",
                             "ticket_count": ticket_count,
                             "sync_time_ms": sync_duration.as_millis(),
                             "total_time_ms": total_duration.as_millis(),
                             "success": true,
-                        });
-                        println!("{}", serde_json::to_string_pretty(&output)?);
+                        }))?;
                     } else {
                         println!("Cache rebuilt successfully:");
                         println!("  Tickets cached: {}", ticket_count);
@@ -249,10 +246,9 @@ pub async fn cmd_cache_path(output_json: bool) -> Result<()> {
     let path = cache.cache_db_path();
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "path": path.to_string_lossy(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
     } else {
         println!("{}", path.display());
     }

@@ -1,5 +1,6 @@
 use serde_json::json;
 
+use super::print_json;
 use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, open_in_editor};
@@ -9,12 +10,11 @@ pub fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id)?;
 
     if output_json {
-        let output = json!({
+        print_json(&json!({
             "id": ticket.id,
             "file_path": ticket.file_path.to_string_lossy(),
             "action": "edit",
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        }))?;
         return Ok(());
     }
 

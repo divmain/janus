@@ -68,6 +68,23 @@ impl GitHubProvider {
         self.default_repo = Some(repo);
         self
     }
+
+    /// Get default owner and repo, returning an error if not configured
+    fn get_default_owner_repo(&self) -> Result<(&str, &str)> {
+        let owner = self.default_owner.as_ref().ok_or_else(|| {
+            JanusError::Config(
+                "No default GitHub owner configured. Set default_remote in config.".to_string(),
+            )
+        })?;
+
+        let repo = self.default_repo.as_ref().ok_or_else(|| {
+            JanusError::Config(
+                "No default GitHub repo configured. Set default_remote.repo in config.".to_string(),
+            )
+        })?;
+
+        Ok((owner.as_str(), repo.as_str()))
+    }
 }
 
 impl RemoteProvider for GitHubProvider {
@@ -126,17 +143,7 @@ impl RemoteProvider for GitHubProvider {
     }
 
     async fn create_issue(&self, title: &str, body: &str) -> Result<RemoteRef> {
-        let owner = self.default_owner.as_ref().ok_or_else(|| {
-            JanusError::Config(
-                "No default GitHub owner configured. Set default_remote in config.".to_string(),
-            )
-        })?;
-
-        let repo = self.default_repo.as_ref().ok_or_else(|| {
-            JanusError::Config(
-                "No default GitHub repo configured. Set default_remote.repo in config.".to_string(),
-            )
-        })?;
+        let (owner, repo) = self.get_default_owner_repo()?;
 
         let issue = self
             .client
@@ -148,8 +155,8 @@ impl RemoteProvider for GitHubProvider {
             .map_err(|e| JanusError::Api(format!("Failed to create GitHub issue: {}", e)))?;
 
         Ok(RemoteRef::GitHub {
-            owner: owner.clone(),
-            repo: repo.clone(),
+            owner: owner.to_string(),
+            repo: repo.to_string(),
             issue_number: issue.number,
         })
     }
@@ -210,17 +217,7 @@ impl RemoteProvider for GitHubProvider {
         &self,
         query: &RemoteQuery,
     ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
-        let owner = self.default_owner.as_ref().ok_or_else(|| {
-            JanusError::Config(
-                "No default GitHub owner configured. Set default_remote in config.".to_string(),
-            )
-        })?;
-
-        let repo = self.default_repo.as_ref().ok_or_else(|| {
-            JanusError::Config(
-                "No default GitHub repo configured. Set default_remote.repo in config.".to_string(),
-            )
-        })?;
+        let (owner, repo) = self.get_default_owner_repo()?;
 
         let issues_handler = self.client.issues(owner, repo);
         let result = issues_handler
@@ -244,17 +241,7 @@ impl RemoteProvider for GitHubProvider {
         text: &str,
         limit: u32,
     ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
-        let owner = self.default_owner.as_ref().ok_or_else(|| {
-            JanusError::Config(
-                "No default GitHub owner configured. Set default_remote in config.".to_string(),
-            )
-        })?;
-
-        let repo = self.default_repo.as_ref().ok_or_else(|| {
-            JanusError::Config(
-                "No default GitHub repo configured. Set default_remote.repo in config.".to_string(),
-            )
-        })?;
+        let (owner, repo) = self.get_default_owner_repo()?;
 
         // Build search query: search in the specific repo for issues containing the text
         let query = format!("repo:{}/{} is:issue {}", owner, repo, text);

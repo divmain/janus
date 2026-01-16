@@ -8,6 +8,7 @@ mod error_modal;
 mod error_toast;
 mod filter;
 mod filter_modal;
+mod handlers;
 mod help_modal;
 mod link_mode;
 mod operations;
