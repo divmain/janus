@@ -138,10 +138,13 @@ pub async fn cmd_plan_remove_ticket(
     let plan = Plan::find(plan_id)?;
     let mut metadata = plan.read()?;
 
-    // Try to resolve the ticket ID (but don't fail if ticket doesn't exist)
+    // Try to resolve the ticket ID, warning if not found
     let resolved_id = match Ticket::find_async(ticket_id).await {
         Ok(t) => t.id,
-        Err(_) => ticket_id.to_string(), // Use as-is if ticket not found
+        Err(_) => {
+            eprintln!("Warning: ticket '{}' not found, using ID as-is", ticket_id);
+            ticket_id.to_string()
+        }
     };
 
     let mut found = false;
@@ -213,10 +216,13 @@ pub async fn cmd_plan_move_ticket(
         return Err(JanusError::CannotMoveInSimplePlan);
     }
 
-    // Try to resolve the ticket ID
+    // Try to resolve the ticket ID, warning if not found
     let resolved_id = match Ticket::find_async(ticket_id).await {
         Ok(t) => t.id,
-        Err(_) => ticket_id.to_string(),
+        Err(_) => {
+            eprintln!("Warning: ticket '{}' not found, using ID as-is", ticket_id);
+            ticket_id.to_string()
+        }
     };
 
     // Find and remove the ticket from its current phase

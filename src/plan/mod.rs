@@ -12,6 +12,27 @@ use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::types::{PLANS_DIR, TicketMetadata, TicketStatus};
 
+// ============================================================================
+// Missing Ticket Policy
+// ============================================================================
+// When a ticket referenced in a plan does not exist in the ticket database,
+// the behavior is **consistent across all code paths**:
+//
+// 1. **Warning**: A warning is printed to stderr (via `eprintln!`)
+// 2. **Graceful degradation**: Operations continue with the ticket treated as missing
+// 3. **No errors**: Missing ticket references do not cause commands to fail
+//
+// This policy ensures that:
+// - Users are informed about missing tickets
+// - Plans remain functional even with stale ticket references
+// - Display commands show `[missing]` badges for visual feedback
+// - Status computation skips missing tickets (they don't affect the computed status)
+//
+// Implementation: Use `resolve_ticket_or_warn()` to look up tickets with consistent
+// behavior. For operations that modify plans (like `janus plan add-ticket`), ticket
+// existence is validated before the operation proceeds.
+// ============================================================================
+
 // Re-export importable plan types for external use
 pub use crate::plan::types::{
     ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask,
@@ -273,6 +294,35 @@ impl Plan {
     }
 }
 
+/// Resolve a ticket from the ticket map, warning if missing
+///
+/// This provides consistent behavior across all code paths that need to look up tickets
+/// referenced in plans. Missing tickets are logged to stderr and None is returned.
+///
+/// # Arguments
+/// * `ticket_id` - The ID of the ticket to look up
+/// * `ticket_map` - Map of ticket IDs to metadata
+/// * `context` - Optional context string for the warning message (e.g., "in phase X")
+///
+/// # Returns
+/// * `Some(ticket)` if found
+/// * `None` if not found (warning printed to stderr)
+pub fn resolve_ticket_or_warn<'a>(
+    ticket_id: &str,
+    ticket_map: &'a HashMap<String, TicketMetadata>,
+    context: Option<&str>,
+) -> Option<&'a TicketMetadata> {
+    let ticket = ticket_map.get(ticket_id);
+    if ticket.is_none() {
+        let context_str = match context {
+            Some(ctx) => format!(" {}", ctx),
+            None => String::new(),
+        };
+        eprintln!("Warning: ticket '{}' not found{}", ticket_id, context_str);
+    }
+    ticket
+}
+
 /// Compute the status of a plan based on its constituent tickets.
 ///
 /// Status computation rules:
@@ -298,19 +348,16 @@ pub fn compute_plan_status(
         };
     }
 
+    let plan_id = metadata.id.as_deref().unwrap_or("unknown");
+
     // Collect statuses of all referenced tickets, warning about missing ones
     let mut statuses: Vec<TicketStatus> = Vec::new();
-    for id in &all_ticket_ids {
-        if let Some(ticket) = ticket_map.get(*id) {
-            if let Some(status) = ticket.status {
-                statuses.push(status);
-            }
-        } else {
-            eprintln!(
-                "Warning: ticket '{}' referenced in plan '{}' not found",
-                id,
-                metadata.id.as_deref().unwrap_or("unknown")
-            );
+    for id in all_ticket_ids.iter() {
+        if let Some(ticket) =
+            resolve_ticket_or_warn(id, ticket_map, Some(&format!("in plan '{}'", plan_id)))
+            && let Some(status) = ticket.status
+        {
+            statuses.push(status);
         }
     }
 
@@ -364,15 +411,17 @@ fn compute_phase_status_impl_inner(
     // Collect statuses of all referenced tickets, warning about missing ones
     let mut statuses: Vec<TicketStatus> = Vec::new();
     for id in &phase.tickets {
-        if let Some(ticket) = ticket_map.get(id) {
-            if let Some(status) = ticket.status {
+        if warn_missing {
+            if let Some(ticket) =
+                resolve_ticket_or_warn(id, ticket_map, Some(&format!("in phase '{}'", phase.name)))
+                && let Some(status) = ticket.status
+            {
                 statuses.push(status);
             }
-        } else if warn_missing {
-            eprintln!(
-                "Warning: ticket '{}' referenced in phase '{}' not found",
-                id, phase.name
-            );
+        } else if let Some(ticket) = ticket_map.get(id)
+            && let Some(status) = ticket.status
+        {
+            statuses.push(status);
         }
     }
 
