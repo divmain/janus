@@ -185,9 +185,8 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
     match key {
         "github.token" => {
             if let Some(token) = config.github_token() {
-                // Show partially masked token for security
-                let masked = if token.len() > 8 {
-                    format!("{}...{}", &token[..4], &token[token.len() - 4..])
+                let masked = if token.len() > 4 {
+                    format!("{}...{}", &token[..2], &token[token.len() - 2..])
                 } else {
                     "****".to_string()
                 };
@@ -196,10 +195,14 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                         "key": key,
                         "value": masked,
                         "configured": true,
+                        "masked": true,
                     });
                     println!("{}", serde_json::to_string_pretty(&output)?);
                 } else {
-                    println!("{}", masked);
+                    println!(
+                        "{} (masked - showing first 2 and last 2 characters)",
+                        masked
+                    );
                 }
             } else {
                 return Err(JanusError::Config("github.token not set".to_string()));
@@ -207,9 +210,8 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
         }
         "linear.api_key" => {
             if let Some(api_key) = config.linear_api_key() {
-                // Show partially masked key for security
-                let masked = if api_key.len() > 8 {
-                    format!("{}...{}", &api_key[..4], &api_key[api_key.len() - 4..])
+                let masked = if api_key.len() > 4 {
+                    format!("{}...{}", &api_key[..2], &api_key[api_key.len() - 2..])
                 } else {
                     "****".to_string()
                 };
@@ -218,9 +220,13 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                         "key": key,
                         "value": masked,
                         "configured": true,
+                        "masked": true,
                     }))?;
                 } else {
-                    println!("{}", masked);
+                    println!(
+                        "{} (masked - showing first 2 and last 2 characters)",
+                        masked
+                    );
                 }
             } else {
                 return Err(JanusError::Config("linear.api_key not set".to_string()));
