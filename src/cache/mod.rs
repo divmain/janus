@@ -345,8 +345,18 @@ impl TicketCache {
         // Read and parse items before starting the transaction
         let mut items_to_upsert = Vec::new();
         for id in added.iter().chain(modified.iter()) {
-            if let Ok((metadata, mtime_ns)) = T::parse_from_file(id) {
-                items_to_upsert.push((metadata, mtime_ns));
+            match T::parse_from_file(id) {
+                Ok((metadata, mtime_ns)) => {
+                    items_to_upsert.push((metadata, mtime_ns));
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: failed to parse {} '{}': {}. Skipping...",
+                        T::item_name(),
+                        id,
+                        e
+                    );
+                }
             }
         }
 
@@ -2142,5 +2152,64 @@ Description of the plan.
         assert_eq!(all, vec!["t1", "t2", "t3"]);
         assert!(!plan.is_phased());
         assert!(plan.is_simple());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_logs_warnings_for_parse_errors() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_parse_errors");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        // Create a valid ticket
+        create_test_ticket(&repo_path, "j-valid", "Valid Ticket");
+
+        // Create an invalid ticket (missing YAML frontmatter - just plain text)
+        let invalid_path = tickets_dir.join("j-invalid.md");
+        let invalid_content =
+            "This is not a valid ticket file - no frontmatter\n\n# Invalid Ticket\n";
+        fs::write(&invalid_path, invalid_content).unwrap();
+
+        // Capture stderr to verify warning is logged
+        let mut cache = TicketCache::open().await.unwrap();
+
+        // Sync should succeed and log a warning about the invalid ticket
+        let changed = cache.sync().await.unwrap();
+        assert!(changed);
+
+        // Verify the valid ticket was synced
+        let mut rows = cache
+            .conn()
+            .query(
+                "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
+                ["j-valid"],
+            )
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count: i64 = row.get(0).unwrap();
+        assert_eq!(count, 1);
+
+        // Verify the invalid ticket was not synced
+        let mut rows = cache
+            .conn()
+            .query(
+                "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
+                ["j-invalid"],
+            )
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count: i64 = row.get(0).unwrap();
+        assert_eq!(count, 0);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
     }
 }

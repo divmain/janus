@@ -26,6 +26,9 @@ pub trait CacheableItem: Sized {
     /// The name of the database table (e.g., "tickets")
     fn table_name() -> &'static str;
 
+    /// The human-readable name of this item type (e.g., "ticket", "plan")
+    fn item_name() -> &'static str;
+
     /// Parse an item from its file on disk.
     /// Returns the parsed item and the file's mtime in nanoseconds.
     fn parse_from_file(id: &str) -> Result<(Self, i64)>;
@@ -53,6 +56,10 @@ impl CacheableItem for TicketMetadata {
 
     fn table_name() -> &'static str {
         "tickets"
+    }
+
+    fn item_name() -> &'static str {
+        "ticket"
     }
 
     fn parse_from_file(id: &str) -> Result<(Self, i64)> {
@@ -140,6 +147,10 @@ impl CacheableItem for PlanMetadata {
 
     fn table_name() -> &'static str {
         "plans"
+    }
+
+    fn item_name() -> &'static str {
+        "plan"
     }
 
     fn parse_from_file(id: &str) -> Result<(Self, i64)> {
