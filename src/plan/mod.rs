@@ -278,7 +278,7 @@ impl Plan {
         phase: &Phase,
         ticket_map: &HashMap<String, TicketMetadata>,
     ) -> PhaseStatus {
-        compute_phase_status_impl(phase, ticket_map)
+        compute_phase_status_impl(phase, ticket_map, true)
     }
 
     /// Compute the status of all phases in this plan
@@ -375,23 +375,13 @@ pub fn compute_plan_status(
     }
 }
 
-/// Compute the status of a single phase
-///
-/// Missing tickets are skipped with a warning printed to stderr.
-pub fn compute_phase_status_impl(
-    phase: &Phase,
-    ticket_map: &HashMap<String, TicketMetadata>,
-) -> PhaseStatus {
-    compute_phase_status_impl_inner(phase, ticket_map, true)
-}
-
 /// Compute the status of a single phase (internal implementation)
 ///
 /// # Arguments
 /// * `phase` - The phase to compute status for
 /// * `ticket_map` - Map of ticket IDs to metadata
 /// * `warn_missing` - If true, print warnings for missing tickets to stderr
-fn compute_phase_status_impl_inner(
+fn compute_phase_status_impl(
     phase: &Phase,
     ticket_map: &HashMap<String, TicketMetadata>,
     warn_missing: bool,
@@ -450,13 +440,23 @@ pub fn compute_all_phase_statuses(
     metadata: &PlanMetadata,
     ticket_map: &HashMap<String, TicketMetadata>,
 ) -> Vec<PhaseStatus> {
-    // Use the inner function without warnings since compute_plan_status
+    // Use the impl function without warnings since compute_plan_status
     // already warns about missing tickets at the plan level
     metadata
         .phases()
         .iter()
-        .map(|phase| compute_phase_status_impl_inner(phase, ticket_map, false))
+        .map(|phase| compute_phase_status_impl(phase, ticket_map, false))
         .collect()
+}
+
+/// Compute the status of a single phase
+///
+/// Missing tickets are skipped with a warning printed to stderr.
+pub fn compute_phase_status(
+    phase: &Phase,
+    ticket_map: &HashMap<String, TicketMetadata>,
+) -> PhaseStatus {
+    compute_phase_status_impl(phase, ticket_map, true)
 }
 
 /// Compute aggregate status from a list of ticket statuses.
@@ -778,7 +778,7 @@ This is the description.
             },
         );
 
-        let status = compute_phase_status_impl(&phase, &ticket_map);
+        let status = compute_phase_status(&phase, &ticket_map);
         assert_eq!(status.phase_number, "1");
         assert_eq!(status.phase_name, "Infrastructure");
         assert_eq!(status.status, TicketStatus::Complete);
@@ -810,7 +810,7 @@ This is the description.
         );
         // j-missing is not added
 
-        let status = compute_phase_status_impl(&phase, &ticket_map);
+        let status = compute_phase_status(&phase, &ticket_map);
         // Missing tickets are skipped, so we only see the one that exists
         assert_eq!(status.status, TicketStatus::Complete);
         assert_eq!(status.completed_count, 1);
@@ -1064,7 +1064,7 @@ This is the description.
         };
 
         let ticket_map = HashMap::new();
-        let status = compute_phase_status_impl(&phase, &ticket_map);
+        let status = compute_phase_status(&phase, &ticket_map);
 
         assert_eq!(status.status, TicketStatus::New);
         assert_eq!(status.completed_count, 0);

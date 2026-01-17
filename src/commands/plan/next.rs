@@ -9,7 +9,7 @@ use super::format_status_badge;
 use crate::commands::print_json;
 use crate::error::Result;
 use crate::plan::types::PlanMetadata;
-use crate::plan::{Plan, compute_phase_status_impl};
+use crate::plan::{Plan, compute_phase_status};
 use crate::ticket::build_ticket_map;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -152,7 +152,7 @@ fn get_next_items_phased(
 
     for phase in &phases {
         // Compute phase status
-        let phase_status = compute_phase_status_impl(phase, ticket_map);
+        let phase_status = compute_phase_status(phase, ticket_map);
 
         // Skip completed/cancelled phases
         if phase_status.status == TicketStatus::Complete
