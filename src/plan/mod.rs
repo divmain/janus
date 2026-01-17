@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
@@ -43,7 +44,29 @@ fn find_plans() -> Vec<String> {
 }
 
 /// Find a plan file by partial ID
-pub fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
+pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
+    // Try cache first
+    if let Some(cache) = cache::get_or_init_cache().await {
+        // Exact match check - file exists?
+        let exact_match_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", partial_id));
+        if exact_match_path.exists() {
+            return Ok(exact_match_path);
+        }
+
+        // Partial match via cache
+        if let Ok(matches) = cache.find_plan_by_partial_id(partial_id).await {
+            match matches.len() {
+                0 => {}
+                1 => {
+                    let filename = format!("{}.md", &matches[0]);
+                    return Ok(PathBuf::from(PLANS_DIR).join(filename));
+                }
+                _ => return Err(JanusError::AmbiguousPlanId(partial_id.to_string())),
+            }
+        }
+    }
+
+    // FALLBACK: Original file-based implementation
     let files = find_plans();
 
     // Check for exact match first
@@ -62,6 +85,36 @@ pub fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     }
 }
 
+/// Find a plan file by partial ID (sync wrapper for backward compatibility)
+pub fn find_plan_by_id_sync(partial_id: &str) -> Result<PathBuf> {
+    use tokio::runtime::Handle;
+
+    // Check if we're already in a tokio runtime
+    if Handle::try_current().is_err() {
+        // Not in a tokio runtime, create one
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| JanusError::Other(format!("Failed to create tokio runtime: {}", e)))?;
+        return rt.block_on(find_plan_by_id(partial_id));
+    }
+
+    // We're in a tokio runtime, cannot use block_on
+    // Fall back to file-based implementation
+    let files = find_plans();
+
+    let exact_name = format!("{}.md", partial_id);
+    if files.iter().any(|f| f == &exact_name) {
+        return Ok(PathBuf::from(PLANS_DIR).join(&exact_name));
+    }
+
+    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
+
+    match matches.len() {
+        0 => Err(JanusError::PlanNotFound(partial_id.to_string())),
+        1 => Ok(PathBuf::from(PLANS_DIR).join(matches[0])),
+        _ => Err(JanusError::AmbiguousPlanId(partial_id.to_string())),
+    }
+}
+
 /// A plan handle for reading and writing plan files
 pub struct Plan {
     pub file_path: PathBuf,
@@ -71,7 +124,13 @@ pub struct Plan {
 impl Plan {
     /// Find a plan by its (partial) ID
     pub fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_plan_by_id(partial_id)?;
+        let file_path = find_plan_by_id_sync(partial_id)?;
+        Ok(Plan::new(file_path))
+    }
+
+    /// Find a plan by its (partial) ID (async version)
+    pub async fn find_async(partial_id: &str) -> Result<Self> {
+        let file_path = find_plan_by_id(partial_id).await?;
         Ok(Plan::new(file_path))
     }
 
@@ -389,7 +448,46 @@ pub fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
 }
 
 /// Get all plans from the plans directory
-pub fn get_all_plans() -> Vec<PlanMetadata> {
+pub async fn get_all_plans() -> Vec<PlanMetadata> {
+    // Try cache first
+    if let Some(cache) = cache::get_or_init_cache().await {
+        if let Ok(cached_plans) = cache.get_all_plans().await {
+            // Convert cached plans to full PlanMetadata
+            let mut plans = Vec::new();
+            for cached in cached_plans {
+                if let Some(id) = &cached.id {
+                    let file_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", id));
+                    // If the file exists, read it to get full metadata
+                    // This ensures we get all sections, not just cached fields
+                    if file_path.exists() {
+                        if let Ok(content) = fs::read_to_string(&file_path) {
+                            if let Ok(mut metadata) = parse_plan_content(&content) {
+                                if metadata.id.is_none() {
+                                    metadata.id = Some(id.clone());
+                                }
+                                metadata.file_path = Some(file_path);
+                                plans.push(metadata);
+                            }
+                        }
+                    }
+                }
+            }
+            // Add plans that exist on disk but maybe not in cache (shouldn't happen after sync)
+            if plans.is_empty() {
+                eprintln!("Warning: cache read failed, falling back to file reads");
+                return get_all_plans_from_disk();
+            }
+            return plans;
+        }
+        eprintln!("Warning: cache read failed, falling back to file reads");
+    }
+
+    // FALLBACK: Original implementation
+    get_all_plans_from_disk()
+}
+
+/// Get all plans from disk (fallback implementation)
+pub fn get_all_plans_from_disk() -> Vec<PlanMetadata> {
     let files = find_plans();
     let mut plans = Vec::new();
 
@@ -416,6 +514,21 @@ pub fn get_all_plans() -> Vec<PlanMetadata> {
     }
 
     plans
+}
+
+/// Get all plans (sync wrapper for backward compatibility)
+pub fn get_all_plans_sync() -> Vec<PlanMetadata> {
+    use tokio::runtime::Handle;
+
+    if Handle::try_current().is_err() {
+        let rt = tokio::runtime::Runtime::new().ok();
+        if let Some(rt) = rt {
+            return rt.block_on(get_all_plans());
+        }
+    }
+
+    // Fallback to disk reads
+    get_all_plans_from_disk()
 }
 
 /// Ensure the plans directory exists

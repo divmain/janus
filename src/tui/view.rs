@@ -5,17 +5,16 @@
 
 use iocraft::prelude::*;
 
-use crate::ticket::Ticket;
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, Header, SearchBox, browser_shortcuts, edit_shortcuts,
     empty_shortcuts, search_shortcuts,
 };
-use crate::tui::edit::{EditForm, EditResult, extract_body_for_edit};
+use crate::tui::edit::{EditForm, EditResult};
 use crate::tui::search::{FilteredTicket, filter_tickets};
+use crate::tui::services::TicketService;
 use crate::tui::state::{InitResult, Pane, TuiState};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
-use crate::types::TicketStatus;
 
 use super::components::{TicketDetail, TicketList};
 
@@ -199,15 +198,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                     // Cycle status for selected ticket
                                     if let Some(ft) = filtered_for_events.get(selected_index.get())
                                         && let Some(id) = &ft.ticket.id
+                                        && TicketService::cycle_status(id).is_ok()
                                     {
-                                        let current_status = ft.ticket.status.unwrap_or_default();
-                                        let next_status = cycle_status(current_status);
-                                        if let Ok(ticket) = crate::ticket::Ticket::find(id) {
-                                            let _ = ticket
-                                                .update_field("status", &next_status.to_string());
-                                            // Signal to reload tickets
-                                            needs_reload.set(true);
-                                        }
+                                        // Signal to reload tickets
+                                        needs_reload.set(true);
                                     }
                                 }
                                 KeyCode::Char('e') | KeyCode::Enter => {
@@ -215,15 +209,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                     if let Some(ft) = filtered_for_events.get(selected_index.get())
                                         && let Some(id) = &ft.ticket.id
                                     {
-                                        // Load ticket data and body
-                                        if let Ok(ticket_handle) = Ticket::find(id) {
-                                            let body = ticket_handle
-                                                .read_content()
-                                                .ok()
-                                                .map(|c| extract_body_for_edit(&c))
-                                                .unwrap_or_default();
+                                        // Load ticket data and body via service
+                                        if let Ok((metadata, body)) =
+                                            TicketService::load_for_edit(id)
+                                        {
                                             editing_ticket_id.set(id.clone());
-                                            editing_ticket.set(ft.ticket.clone());
+                                            editing_ticket.set(metadata);
                                             editing_body.set(body);
                                             is_editing_existing.set(true);
                                         }
@@ -290,15 +281,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                 if let Some(ft) = filtered_for_events.get(selected_index.get())
                                     && let Some(id) = &ft.ticket.id
                                 {
-                                    // Load ticket data and body
-                                    if let Ok(ticket_handle) = Ticket::find(id) {
-                                        let body = ticket_handle
-                                            .read_content()
-                                            .ok()
-                                            .map(|c| extract_body_for_edit(&c))
-                                            .unwrap_or_default();
+                                    // Load ticket data and body via service
+                                    if let Ok((metadata, body)) = TicketService::load_for_edit(id) {
                                         editing_ticket_id.set(id.clone());
-                                        editing_ticket.set(ft.ticket.clone());
+                                        editing_ticket.set(metadata);
                                         editing_body.set(body);
                                         is_editing_existing.set(true);
                                     }
@@ -503,16 +489,5 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 None
             })
         }
-    }
-}
-
-/// Cycle ticket status forward
-fn cycle_status(current: TicketStatus) -> TicketStatus {
-    match current {
-        TicketStatus::New => TicketStatus::Next,
-        TicketStatus::Next => TicketStatus::InProgress,
-        TicketStatus::InProgress => TicketStatus::Complete,
-        TicketStatus::Complete => TicketStatus::New,
-        TicketStatus::Cancelled => TicketStatus::New,
     }
 }

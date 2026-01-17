@@ -3,16 +3,13 @@
 //! Provides a full-featured form for editing all ticket fields including
 //! title, status, type, priority, and body content.
 
-use std::fs;
-use std::path::PathBuf;
-
 use iocraft::prelude::*;
 
-use crate::ticket::Ticket;
+use crate::formatting::extract_ticket_body;
 use crate::tui::components::{Footer, Selectable, edit_shortcuts, options_for};
+use crate::tui::services::TicketService;
 use crate::tui::theme::theme;
-use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus, TicketType};
-use crate::utils::{generate_id, iso_date};
+use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
 
 /// Which field is currently focused in the edit form
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -109,17 +106,18 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
             has_error.set(true);
             error_text.set("Title cannot be empty".to_string());
         } else {
-            // Save the ticket
+            // Save the ticket via service
             let save_result = if is_new {
-                save_new_ticket(
+                TicketService::create_ticket(
                     &title_val,
                     status.get(),
                     ticket_type.get(),
                     priority.get(),
                     &body.to_string(),
                 )
+                .map(|_| ())
             } else {
-                save_existing_ticket(
+                TicketService::update_ticket(
                     ticket_id.as_deref().unwrap(),
                     &title_val,
                     status.get(),
@@ -130,7 +128,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
             };
 
             match save_result {
-                Ok(_id) => {
+                Ok(()) => {
                     if let Some(mut on_close) = props.on_close {
                         on_close.set(EditResult::Saved);
                     }
@@ -527,114 +525,9 @@ fn handle_select_input<T: Selectable + Send + Sync + 'static>(state: &mut State<
     }
 }
 
-/// Save a new ticket to disk
-fn save_new_ticket(
-    title: &str,
-    status: TicketStatus,
-    ticket_type: TicketType,
-    priority: TicketPriority,
-    body: &str,
-) -> Result<String, String> {
-    let id = generate_id();
-    let now = iso_date();
-
-    // Build frontmatter
-    let frontmatter_lines = vec![
-        "---".to_string(),
-        format!("id: {}", id),
-        format!("status: {}", status),
-        "deps: []".to_string(),
-        "links: []".to_string(),
-        format!("created: {}", now),
-        format!("type: {}", ticket_type),
-        format!("priority: {}", priority),
-        "---".to_string(),
-    ];
-
-    let frontmatter = frontmatter_lines.join("\n");
-
-    // Build body
-    let mut sections = vec![format!("# {}", title)];
-    if !body.is_empty() {
-        sections.push(format!("\n{}", body));
-    }
-
-    let body_content = sections.join("\n");
-    let content = format!("{}\n{}\n", frontmatter, body_content);
-
-    // Ensure directory exists
-    fs::create_dir_all(TICKETS_ITEMS_DIR).map_err(|e| e.to_string())?;
-
-    let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
-    fs::write(&file_path, content).map_err(|e| e.to_string())?;
-
-    Ok(id)
-}
-
-/// Save changes to an existing ticket
-fn save_existing_ticket(
-    id: &str,
-    title: &str,
-    status: TicketStatus,
-    ticket_type: TicketType,
-    priority: TicketPriority,
-    body: &str,
-) -> Result<String, String> {
-    let ticket = Ticket::find(id).map_err(|e| e.to_string())?;
-
-    // Update individual fields
-    ticket
-        .update_field("status", &status.to_string())
-        .map_err(|e| e.to_string())?;
-    ticket
-        .update_field("type", &ticket_type.to_string())
-        .map_err(|e| e.to_string())?;
-    ticket
-        .update_field("priority", &priority.to_string())
-        .map_err(|e| e.to_string())?;
-
-    // Now update title and body by rewriting the file
-    let content = ticket.read_content().map_err(|e| e.to_string())?;
-
-    // Rewrite the body section (everything after ---)
-    let new_content = rewrite_body(&content, title, body);
-    ticket.write(&new_content).map_err(|e| e.to_string())?;
-
-    Ok(id.to_string())
-}
-
-/// Rewrite the body section of a ticket file while preserving frontmatter
-fn rewrite_body(content: &str, title: &str, body: &str) -> String {
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() >= 3 {
-        let frontmatter = parts[1];
-        let mut new_body = format!("# {}", title);
-        if !body.is_empty() {
-            new_body.push_str("\n\n");
-            new_body.push_str(body);
-        }
-        format!("---{}---\n{}\n", frontmatter, new_body)
-    } else {
-        // Fallback: just return original content
-        content.to_string()
-    }
-}
-
 /// Extract body content from ticket file (everything after title)
 pub fn extract_body_for_edit(content: &str) -> String {
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() >= 3 {
-        let body = parts[2].trim();
-        // Skip the title line (starts with #)
-        let lines: Vec<&str> = body.lines().collect();
-        if lines.first().is_some_and(|l| l.starts_with('#')) {
-            lines[1..].join("\n").trim().to_string()
-        } else {
-            body.to_string()
-        }
-    } else {
-        String::new()
-    }
+    extract_ticket_body(content).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -647,23 +540,6 @@ mod tests {
         assert_eq!(EditField::Body.next(), EditField::Title);
         assert_eq!(EditField::Title.prev(), EditField::Body);
         assert_eq!(EditField::Status.prev(), EditField::Title);
-    }
-
-    #[test]
-    fn test_rewrite_body() {
-        let content = r#"---
-id: test-1234
-status: new
----
-# Old Title
-
-Old body content.
-"#;
-        let result = rewrite_body(content, "New Title", "New body content.");
-        assert!(result.contains("# New Title"));
-        assert!(result.contains("New body content."));
-        assert!(result.contains("id: test-1234"));
-        assert!(!result.contains("Old Title"));
     }
 
     #[test]

@@ -5,6 +5,7 @@
 
 use iocraft::prelude::*;
 
+use crate::formatting::{extract_ticket_body, format_date_for_display};
 use crate::ticket::Ticket;
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
@@ -80,7 +81,7 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
         .map(|p| format!("P{}", p.as_num()))
         .unwrap_or_else(|| "-".to_string());
     let created_str = created
-        .map(|c| format_date(&c))
+        .map(|c| format_date_for_display(&c))
         .unwrap_or_else(|| "-".to_string());
     let deps_str = if deps.is_empty() {
         "-".to_string()
@@ -100,7 +101,7 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
         ticket_handle
             .read_content()
             .ok()
-            .and_then(|content| extract_body(&content))
+            .and_then(|content| extract_ticket_body(&content))
             .unwrap_or_default()
     } else {
         String::new()
@@ -218,72 +219,5 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                 }))
             }
         }
-    }
-}
-
-/// Format a date string for display
-fn format_date(date_str: &str) -> String {
-    // Try to extract just the date part (YYYY-MM-DD)
-    if date_str.len() >= 10 {
-        date_str[..10].to_string()
-    } else {
-        date_str.to_string()
-    }
-}
-
-/// Extract body content from ticket file (everything after frontmatter)
-fn extract_body(content: &str) -> Option<String> {
-    // Skip frontmatter
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() >= 3 {
-        let body = parts[2].trim();
-        // Skip the title line (starts with #)
-        let lines: Vec<&str> = body.lines().collect();
-        if lines.first().is_some_and(|l| l.starts_with('#')) {
-            Some(lines[1..].join("\n").trim().to_string())
-        } else {
-            Some(body.to_string())
-        }
-    } else {
-        None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_date() {
-        assert_eq!(format_date("2024-01-15T10:30:00Z"), "2024-01-15");
-        assert_eq!(format_date("2024-01-15"), "2024-01-15");
-        assert_eq!(format_date("short"), "short");
-    }
-
-    #[test]
-    fn test_extract_body() {
-        let content = r#"---
-id: test
-status: new
----
-# Test Title
-
-This is the body.
-With multiple lines.
-"#;
-        let body = extract_body(content).unwrap();
-        assert!(body.contains("This is the body"));
-        assert!(body.contains("With multiple lines"));
-    }
-
-    #[test]
-    fn test_extract_body_no_title() {
-        let content = r#"---
-id: test
----
-No title here, just body.
-"#;
-        let body = extract_body(content).unwrap();
-        assert!(body.contains("No title here"));
     }
 }

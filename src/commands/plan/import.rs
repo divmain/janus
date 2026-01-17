@@ -12,7 +12,8 @@ use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hoo
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
 use crate::plan::{
-    ImportablePlan, Plan, ensure_plans_dir, generate_plan_id, get_all_plans, parse_importable_plan,
+    ImportablePlan, Plan, ensure_plans_dir, generate_plan_id, get_all_plans_sync,
+    parse_importable_plan,
 };
 use crate::types::TicketType;
 use crate::utils::{generate_uuid, iso_date};
@@ -146,7 +147,7 @@ pub fn cmd_show_import_spec() -> Result<()> {
 /// # Returns
 /// `Ok(())` if no duplicate exists, `Err(DuplicatePlanTitle)` if one does.
 fn check_duplicate_plan_title(title: &str) -> Result<()> {
-    let existing_plans = get_all_plans();
+    let existing_plans = get_all_plans_sync();
 
     for plan in existing_plans {
         if let Some(ref existing_title) = plan.title
