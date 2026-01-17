@@ -334,7 +334,7 @@ pub struct RemoteQuery {
 impl RemoteQuery {
     pub fn new() -> Self {
         Self {
-            limit: 400,
+            limit: 100,
             ..Default::default()
         }
     }
@@ -612,7 +612,7 @@ mod tests {
     #[test]
     fn test_remote_query_default_limit() {
         let query = RemoteQuery::new();
-        assert_eq!(query.limit, 400);
+        assert_eq!(query.limit, 100);
     }
 
     #[test]

@@ -337,7 +337,7 @@ impl RemoteProvider for GitHubProvider {
                 client
                     .issues(&owner, &repo)
                     .list()
-                    .per_page(query.limit as u8)
+                    .per_page(query.limit.min(100) as u8)
                     .send()
                     .await
             },
