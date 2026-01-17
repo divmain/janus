@@ -59,6 +59,72 @@ mod graphql {
     pub struct IssuesQueryVariables {
         pub first: Option<i32>,
         pub after: Option<String>,
+        pub filter: Option<IssueFilter>,
+    }
+
+    // Filter Input Objects
+
+    /// Issue filtering options for server-side search.
+    /// Used to filter issues by title, description, and other fields.
+    #[derive(cynic::InputObject, Debug, Clone, Default)]
+    #[cynic(rename_all = "camelCase")]
+    pub struct IssueFilter {
+        /// Comparator for the issue's title
+        pub title: Option<StringComparator>,
+        /// Comparator for the issue's description
+        pub description: Option<NullableStringComparator>,
+        /// Compound filters using logical OR (any must match)
+        pub or: Option<Vec<IssueFilter>>,
+        /// Compound filters using logical AND (all must match)
+        pub and: Option<Vec<IssueFilter>>,
+    }
+
+    /// Comparator for string fields (non-nullable).
+    #[derive(cynic::InputObject, Debug, Clone, Default)]
+    #[cynic(rename_all = "camelCase")]
+    pub struct StringComparator {
+        /// Equals constraint
+        pub eq: Option<String>,
+        /// Not-equals constraint
+        pub neq: Option<String>,
+        /// In-array constraint
+        #[cynic(rename = "in")]
+        pub in_: Option<Vec<String>>,
+        /// Not-in-array constraint
+        pub nin: Option<Vec<String>>,
+        /// Contains constraint (case sensitive)
+        pub contains: Option<String>,
+        /// Contains constraint (case insensitive)
+        pub contains_ignore_case: Option<String>,
+        /// Starts with constraint
+        pub starts_with: Option<String>,
+        /// Ends with constraint
+        pub ends_with: Option<String>,
+    }
+
+    /// Comparator for optional string fields.
+    #[derive(cynic::InputObject, Debug, Clone, Default)]
+    #[cynic(rename_all = "camelCase")]
+    pub struct NullableStringComparator {
+        /// Equals constraint
+        pub eq: Option<String>,
+        /// Not-equals constraint
+        pub neq: Option<String>,
+        /// In-array constraint
+        #[cynic(rename = "in")]
+        pub in_: Option<Vec<String>>,
+        /// Not-in-array constraint
+        pub nin: Option<Vec<String>>,
+        /// Contains constraint (case sensitive)
+        pub contains: Option<String>,
+        /// Contains constraint (case insensitive)
+        pub contains_ignore_case: Option<String>,
+        /// Starts with constraint
+        pub starts_with: Option<String>,
+        /// Ends with constraint
+        pub ends_with: Option<String>,
+        /// Null constraint - matches null values if true, non-null if false
+        pub null: Option<bool>,
     }
 
     /// Variables for creating an issue
@@ -112,7 +178,7 @@ mod graphql {
     #[derive(cynic::QueryFragment, Debug)]
     #[cynic(graphql_type = "Query", variables = "IssuesQueryVariables")]
     pub struct IssuesQuery {
-        #[arguments(first: $first, after: $after)]
+        #[arguments(first: $first, after: $after, filter: $filter)]
         pub issues: IssueConnection,
     }
 
@@ -523,6 +589,7 @@ impl RemoteProvider for LinearProvider {
         let operation = IssuesQuery::build(IssuesQueryVariables {
             first: Some(query.limit as i32),
             after: query.cursor.clone(),
+            filter: None,
         });
 
         let response = self.execute(operation).await?;
@@ -542,26 +609,48 @@ impl RemoteProvider for LinearProvider {
         text: &str,
         limit: u32,
     ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
-        // Linear's searchIssues query returns IssueSearchResult which has different fields
-        // than Issue. For simplicity, we fall back to fetching issues and filtering client-side.
-        // This is less efficient but avoids needing separate GraphQL query types.
-        // TODO: Implement proper searchIssues query with IssueSearchResult types
-        let query = RemoteQuery::new();
+        // Use Linear's server-side filtering with IssueFilter.
+        // We search title, description, and identifier using case-insensitive contains.
+        // The filter uses OR logic: match if any of the fields contain the search text.
 
-        let all_issues = self.list_issues(&query).await?;
-        let text_lower = text.to_lowercase();
+        let title_filter = IssueFilter {
+            title: Some(StringComparator {
+                contains_ignore_case: Some(text.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
 
-        let filtered: Vec<RemoteIssue> = all_issues
+        let description_filter = IssueFilter {
+            description: Some(NullableStringComparator {
+                contains_ignore_case: Some(text.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        // Combine filters with OR logic: match title OR description
+        let filter = IssueFilter {
+            or: Some(vec![title_filter, description_filter]),
+            ..Default::default()
+        };
+
+        let operation = IssuesQuery::build(IssuesQueryVariables {
+            first: Some(limit as i32),
+            after: None,
+            filter: Some(filter),
+        });
+
+        let response = self.execute(operation).await?;
+
+        let issues: Vec<RemoteIssue> = response
+            .issues
+            .nodes
             .into_iter()
-            .filter(|issue| {
-                issue.title.to_lowercase().contains(&text_lower)
-                    || issue.body.to_lowercase().contains(&text_lower)
-                    || issue.id.to_lowercase().contains(&text_lower)
-            })
-            .take(limit as usize)
+            .map(|issue| self.convert_linear_issue(issue))
             .collect();
 
-        Ok(filtered)
+        Ok(issues)
     }
 }
 
