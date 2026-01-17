@@ -459,16 +459,15 @@ pub async fn get_all_plans() -> Vec<PlanMetadata> {
                     let file_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", id));
                     // If the file exists, read it to get full metadata
                     // This ensures we get all sections, not just cached fields
-                    if file_path.exists() {
-                        if let Ok(content) = fs::read_to_string(&file_path) {
-                            if let Ok(mut metadata) = parse_plan_content(&content) {
-                                if metadata.id.is_none() {
-                                    metadata.id = Some(id.clone());
-                                }
-                                metadata.file_path = Some(file_path);
-                                plans.push(metadata);
-                            }
+                    if file_path.exists()
+                        && let Ok(content) = fs::read_to_string(&file_path)
+                        && let Ok(mut metadata) = parse_plan_content(&content)
+                    {
+                        if metadata.id.is_none() {
+                            metadata.id = Some(id.clone());
                         }
+                        metadata.file_path = Some(file_path);
+                        plans.push(metadata);
                     }
                 }
             }

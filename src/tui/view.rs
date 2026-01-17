@@ -46,7 +46,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // State management
     let init_result: State<InitResult> = hooks.use_state(|| TuiState::init_sync().1);
     let mut all_tickets: State<Vec<TicketMetadata>> =
-        hooks.use_state(|| TuiState::new_sync().all_tickets);
+        hooks.use_state(|| TuiState::new_sync().repository.tickets);
     let mut search_query = hooks.use_state(String::new);
     let mut selected_index = hooks.use_state(|| 0usize);
     let mut scroll_offset = hooks.use_state(|| 0usize);
@@ -65,7 +65,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Reload tickets if needed
     if needs_reload.get() {
         needs_reload.set(false);
-        all_tickets.set(TuiState::new_sync().all_tickets);
+        all_tickets.set(TuiState::new_sync().repository.tickets);
     }
 
     // Handle edit form result
