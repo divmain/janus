@@ -4,6 +4,12 @@
 //! UI components should use these services to perform operations on tickets rather
 //! than directly manipulating business entities.
 
+mod edit;
+mod validator;
+
+pub use edit::TicketEditService;
+pub use validator::{TicketFormValidator, ValidationResult};
+
 use std::fs;
 use std::path::PathBuf;
 

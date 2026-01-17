@@ -7,7 +7,7 @@ use iocraft::prelude::*;
 
 use crate::formatting::extract_ticket_body;
 use crate::tui::components::{Footer, Selectable, edit_shortcuts, options_for};
-use crate::tui::services::TicketService;
+use crate::tui::services::{TicketEditService, TicketFormValidator};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
 
@@ -100,32 +100,29 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     if should_save.get() {
         should_save.set(false);
 
-        // Validate
+        // Validate form using validator
         let title_val = title.to_string();
-        if title_val.trim().is_empty() {
+        let validation_result = TicketFormValidator::validate(
+            &title_val,
+            status.get(),
+            ticket_type.get(),
+            priority.get(),
+            &body.to_string(),
+        );
+
+        if !validation_result.is_valid {
             has_error.set(true);
-            error_text.set("Title cannot be empty".to_string());
+            error_text.set(validation_result.error.unwrap_or_default());
         } else {
-            // Save the ticket via service
-            let save_result = if is_new {
-                TicketService::create_ticket(
-                    &title_val,
-                    status.get(),
-                    ticket_type.get(),
-                    priority.get(),
-                    &body.to_string(),
-                )
-                .map(|_| ())
-            } else {
-                TicketService::update_ticket(
-                    ticket_id.as_deref().unwrap(),
-                    &title_val,
-                    status.get(),
-                    ticket_type.get(),
-                    priority.get(),
-                    &body.to_string(),
-                )
-            };
+            // Save the ticket via edit service
+            let save_result = TicketEditService::save(
+                ticket_id.as_deref(),
+                &title_val,
+                status.get(),
+                ticket_type.get(),
+                priority.get(),
+                &body.to_string(),
+            );
 
             match save_result {
                 Ok(()) => {
