@@ -22,7 +22,7 @@ pub use plan::{
 pub use remote::{Config, Platform, RemoteIssue, RemoteRef, RemoteStatus};
 pub use ticket::{
     Ticket, TicketBuilder, build_ticket_map, build_ticket_map_sync, get_all_tickets,
-    get_all_tickets_sync,
+    get_all_tickets_from_disk, get_all_tickets_sync,
 };
 pub use types::{
     PLANS_DIR, TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus,

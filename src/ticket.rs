@@ -32,15 +32,12 @@ fn find_tickets() -> Vec<String> {
 
 /// Find a ticket file by partial ID
 pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
-    // Try cache first
     if let Some(cache) = cache::get_or_init_cache().await {
-        // Exact match check - file exists?
         let exact_match_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", partial_id));
         if exact_match_path.exists() {
             return Ok(exact_match_path);
         }
 
-        // Partial match via cache
         if let Ok(matches) = cache.find_by_partial_id(partial_id).await {
             match matches.len() {
                 0 => {}
@@ -53,16 +50,13 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
         }
     }
 
-    // FALLBACK: Original file-based implementation
     let files = find_tickets();
 
-    // Check for exact match first
     let exact_name = format!("{}.md", partial_id);
     if files.iter().any(|f| f == &exact_name) {
         return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
     }
 
-    // Then check for partial matches
     let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
 
     match matches.len() {
@@ -74,20 +68,14 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
 
 /// Find a ticket file by partial ID (sync wrapper for backward compatibility)
 pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
-    // Try to use cache if we're in a tokio runtime, otherwise use fallback
     use tokio::runtime::Handle;
 
-    // Check if we're already in a tokio runtime
     if Handle::try_current().is_err() {
-        // Not in a tokio runtime, create one
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| JanusError::Other(format!("Failed to create tokio runtime: {}", e)))?;
         return rt.block_on(find_ticket_by_id(partial_id));
     }
 
-    // We're in a tokio runtime, cannot use block_on
-    // This shouldn't happen if called from async functions properly
-    // Fall back to file-based implementation
     let files = find_tickets();
 
     let exact_name = format!("{}.md", partial_id);
@@ -104,54 +92,123 @@ pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
     }
 }
 
-/// A ticket handle for reading and writing ticket files
-pub struct Ticket {
+/// A lightweight locator that holds only path and ID information
+#[derive(Debug, Clone)]
+pub struct TicketLocator {
     pub file_path: PathBuf,
     pub id: String,
 }
 
-impl Ticket {
-    /// Find a ticket by its (partial) ID
-    pub fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_ticket_by_id_sync(partial_id)?;
-        Ok(Ticket::new(file_path))
-    }
-
-    /// Find a ticket by its (partial) ID (async version)
-    pub async fn find_async(partial_id: &str) -> Result<Self> {
-        let file_path = find_ticket_by_id(partial_id).await?;
-        Ok(Ticket::new(file_path))
-    }
-
-    /// Create a ticket handle for a given file path
+impl TicketLocator {
     pub fn new(file_path: PathBuf) -> Self {
         let id = file_path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        Ticket { file_path, id }
+        TicketLocator { file_path, id }
     }
 
-    /// Read and parse the ticket's metadata
-    pub fn read(&self) -> Result<TicketMetadata> {
-        let content = fs::read_to_string(&self.file_path)?;
-        let mut metadata = parse_ticket_content(&content)?;
-        metadata.file_path = Some(self.file_path.clone());
-        Ok(metadata)
+    pub fn find(partial_id: &str) -> Result<Self> {
+        let file_path = find_ticket_by_id_sync(partial_id)?;
+        Ok(TicketLocator::new(file_path))
     }
 
-    /// Read the raw content of the ticket file
-    pub fn read_content(&self) -> Result<String> {
-        Ok(fs::read_to_string(&self.file_path)?)
+    pub async fn find_async(partial_id: &str) -> Result<Self> {
+        let file_path = find_ticket_by_id(partial_id).await?;
+        Ok(TicketLocator::new(file_path))
+    }
+}
+
+/// Handles file I/O operations for tickets
+#[derive(Clone)]
+pub struct TicketFile {
+    locator: TicketLocator,
+}
+
+impl TicketFile {
+    pub fn new(locator: TicketLocator) -> Self {
+        TicketFile { locator }
     }
 
-    /// Execute a write operation surrounded by hooks
-    ///
-    /// This method encapsulates the standard hook lifecycle:
-    /// 1. Run PreWrite hook
-    /// 2. Execute the provided operation
-    /// 3. Run PostWrite hook
-    /// 4. Run TicketUpdated hook (or a custom post-hook event)
+    pub fn from_path(file_path: PathBuf) -> Self {
+        TicketFile {
+            locator: TicketLocator::new(file_path),
+        }
+    }
+
+    pub fn read_raw(&self) -> Result<String> {
+        Ok(fs::read_to_string(&self.locator.file_path)?)
+    }
+
+    pub fn write_raw(&self, content: &str) -> Result<()> {
+        if let Some(parent) = self.locator.file_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&self.locator.file_path, content)?;
+        Ok(())
+    }
+
+    pub fn file_path(&self) -> &PathBuf {
+        &self.locator.file_path
+    }
+
+    pub fn id(&self) -> &str {
+        &self.locator.id
+    }
+
+    pub fn locator(&self) -> &TicketLocator {
+        &self.locator
+    }
+}
+
+/// Handles content parsing and serialization for tickets
+pub struct TicketContent;
+
+impl TicketContent {
+    pub fn parse(raw_content: &str) -> Result<TicketMetadata> {
+        parse_ticket_content(raw_content)
+    }
+
+    pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
+        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
+
+        if field_pattern.is_match(raw_content) {
+            Ok(field_pattern
+                .replace(raw_content, format!("{}: {}", field, value))
+                .into_owned())
+        } else {
+            Ok(raw_content.replacen("---\n", &format!("---\n{}: {}\n", field, value), 1))
+        }
+    }
+
+    pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
+        let field_pattern =
+            Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
+        Ok(field_pattern.replace(raw_content, "").into_owned())
+    }
+}
+
+/// Handles field manipulation operations for tickets
+pub struct TicketEditor {
+    file: TicketFile,
+}
+
+impl TicketEditor {
+    pub fn new(file: TicketFile) -> Self {
+        TicketEditor { file }
+    }
+
+    fn extract_field_value(content: &str, field: &str) -> Option<String> {
+        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
+        field_pattern.find(content).map(|m| {
+            m.as_str()
+                .split(':')
+                .nth(1)
+                .map(|v| v.trim().to_string())
+                .unwrap_or_default()
+        })
+    }
+
     fn with_write_hooks<F>(
         &self,
         context: HookContext,
@@ -173,49 +230,14 @@ impl Ticket {
         Ok(())
     }
 
-    /// Write content to the ticket file
-    ///
-    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
-    /// hooks after successful write.
-    pub fn write(&self, content: &str) -> Result<()> {
-        let context = HookContext::new()
-            .with_item_type(ItemType::Ticket)
-            .with_item_id(&self.id)
-            .with_file_path(&self.file_path);
-
-        self.with_write_hooks(
-            context,
-            || {
-                if let Some(parent) = self.file_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(&self.file_path, content)?;
-                Ok(())
-            },
-            Some(HookEvent::TicketUpdated),
-        )
-    }
-
-    /// Update a single field in the frontmatter
-    ///
-    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
-    /// hooks after successful write. The hook context includes field_name, old_value, and new_value.
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
-        let content = fs::read_to_string(&self.file_path)?;
-        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
-
-        let old_value = field_pattern.find(&content).map(|m| {
-            m.as_str()
-                .split(':')
-                .nth(1)
-                .map(|v| v.trim().to_string())
-                .unwrap_or_default()
-        });
+        let raw_content = self.file.read_raw()?;
+        let old_value = Self::extract_field_value(&raw_content, field);
 
         let mut context = HookContext::new()
             .with_item_type(ItemType::Ticket)
-            .with_item_id(&self.id)
-            .with_file_path(&self.file_path)
+            .with_item_id(self.file.id())
+            .with_file_path(self.file.file_path())
             .with_field_name(field)
             .with_new_value(value);
 
@@ -226,42 +248,21 @@ impl Ticket {
         self.with_write_hooks(
             context,
             || {
-                let new_content = if field_pattern.is_match(&content) {
-                    field_pattern
-                        .replace(&content, format!("{}: {}", field, value))
-                        .into_owned()
-                } else {
-                    content.replacen("---\n", &format!("---\n{}: {}\n", field, value), 1)
-                };
-
-                fs::write(&self.file_path, new_content)?;
-                Ok(())
+                let new_content = TicketContent::update_field(&raw_content, field, value)?;
+                self.file.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
         )
     }
 
-    /// Remove a field from the frontmatter
-    ///
-    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
-    /// hooks after successful write. The hook context includes field_name and old_value.
     pub fn remove_field(&self, field: &str) -> Result<()> {
-        let content = fs::read_to_string(&self.file_path)?;
-        let field_pattern =
-            Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
-
-        let old_value = field_pattern.find(&content).map(|m| {
-            m.as_str()
-                .split(':')
-                .nth(1)
-                .map(|v| v.trim().trim_end_matches('\n').to_string())
-                .unwrap_or_default()
-        });
+        let raw_content = self.file.read_raw()?;
+        let old_value = Self::extract_field_value(&raw_content, field);
 
         let mut context = HookContext::new()
             .with_item_type(ItemType::Ticket)
-            .with_item_id(&self.id)
-            .with_file_path(&self.file_path)
+            .with_item_id(self.file.id())
+            .with_file_path(self.file.file_path())
             .with_field_name(field);
 
         if let Some(ref old_val) = old_value {
@@ -271,20 +272,16 @@ impl Ticket {
         self.with_write_hooks(
             context,
             || {
-                let new_content = field_pattern.replace(&content, "").into_owned();
-                fs::write(&self.file_path, new_content)?;
-                Ok(())
+                let new_content = TicketContent::remove_field(&raw_content, field)?;
+                self.file.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
         )
     }
 
-    /// Add a value to an array field (deps, links)
-    ///
-    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
-    /// hooks after successful write. The hook context includes field_name and new_value.
     pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        let metadata = self.read()?;
+        let raw_content = self.file.read_raw()?;
+        let metadata = TicketContent::parse(&raw_content)?;
         let current_array = match field {
             "deps" => &metadata.deps,
             "links" => &metadata.links,
@@ -297,8 +294,8 @@ impl Ticket {
 
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
-            .with_item_id(&self.id)
-            .with_file_path(&self.file_path)
+            .with_item_id(self.file.id())
+            .with_file_path(self.file.file_path())
             .with_field_name(field)
             .with_new_value(value);
 
@@ -307,7 +304,8 @@ impl Ticket {
             || {
                 let mut new_array = current_array.clone();
                 new_array.push(value.to_string());
-                self.update_field_internal(field, &serde_json::to_string(&new_array)?)
+                let json_value = serde_json::to_string(&new_array)?;
+                self.update_field_internal(field, &json_value)
             },
             Some(HookEvent::TicketUpdated),
         )?;
@@ -315,12 +313,9 @@ impl Ticket {
         Ok(true)
     }
 
-    /// Remove a value from an array field (deps, links)
-    ///
-    /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `TicketUpdated`
-    /// hooks after successful write. The hook context includes field_name and old_value.
     pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        let metadata = self.read()?;
+        let raw_content = self.file.read_raw()?;
+        let metadata = TicketContent::parse(&raw_content)?;
         let current_array = match field {
             "deps" => &metadata.deps,
             "links" => &metadata.links,
@@ -333,8 +328,8 @@ impl Ticket {
 
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
-            .with_item_id(&self.id)
-            .with_file_path(&self.file_path)
+            .with_item_id(self.file.id())
+            .with_file_path(self.file.file_path())
             .with_field_name(field)
             .with_old_value(value);
 
@@ -359,124 +354,225 @@ impl Ticket {
         Ok(true)
     }
 
-    /// Internal method to update a field without triggering hooks.
-    /// Used by array field methods which handle their own hook calls.
     fn update_field_internal(&self, field: &str, value: &str) -> Result<()> {
-        let content = fs::read_to_string(&self.file_path)?;
-        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
+        let raw_content = self.file.read_raw()?;
+        let new_content = TicketContent::update_field(&raw_content, field, value)?;
+        self.file.write_raw(&new_content)
+    }
 
-        let new_content = if field_pattern.is_match(&content) {
-            field_pattern
-                .replace(&content, format!("{}: {}", field, value))
-                .into_owned()
-        } else {
-            // Add field after opening ---
-            content.replacen("---\n", &format!("---\n{}: {}\n", field, value), 1)
-        };
+    pub fn write(&self, content: &str) -> Result<()> {
+        let context = HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(self.file.id())
+            .with_file_path(self.file.file_path());
 
-        fs::write(&self.file_path, new_content)?;
-        Ok(())
+        self.with_write_hooks(
+            context,
+            || self.file.write_raw(content),
+            Some(HookEvent::TicketUpdated),
+        )
     }
 }
 
-/// Get all tickets from the tickets directory (original implementation, used as fallback)
-pub fn get_all_tickets_from_disk() -> Vec<TicketMetadata> {
-    let files = find_tickets();
-    let mut tickets = Vec::new();
+/// A simplified Ticket that acts as a facade for common operations
+pub struct Ticket {
+    pub file_path: PathBuf,
+    pub id: String,
+    file: TicketFile,
+    editor: TicketEditor,
+}
 
-    for file in files {
-        let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(&file);
-        match fs::read_to_string(&file_path) {
-            Ok(content) => match parse_ticket_content(&content) {
-                Ok(mut metadata) => {
-                    metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
-                    metadata.file_path = Some(file_path);
-                    tickets.push(metadata);
-                }
-                Err(e) => {
-                    eprintln!("Warning: failed to parse {}: {}", file, e);
-                }
-            },
-            Err(e) => {
-                eprintln!("Warning: failed to read {}: {}", file, e);
+impl Ticket {
+    pub fn find(partial_id: &str) -> Result<Self> {
+        let locator = TicketLocator::find(partial_id)?;
+        let file = TicketFile::new(locator.clone());
+        let editor = TicketEditor::new(file.clone());
+        Ok(Ticket {
+            file_path: locator.file_path.clone(),
+            id: locator.id.clone(),
+            file,
+            editor,
+        })
+    }
+
+    pub async fn find_async(partial_id: &str) -> Result<Self> {
+        let locator = TicketLocator::find_async(partial_id).await?;
+        let file = TicketFile::new(locator.clone());
+        let editor = TicketEditor::new(file.clone());
+        Ok(Ticket {
+            file_path: locator.file_path.clone(),
+            id: locator.id.clone(),
+            file,
+            editor,
+        })
+    }
+
+    pub fn new(file_path: PathBuf) -> Self {
+        let locator = TicketLocator::new(file_path.clone());
+        let file = TicketFile::new(locator.clone());
+        let editor = TicketEditor::new(file.clone());
+        Ticket {
+            file_path: locator.file_path.clone(),
+            id: locator.id.clone(),
+            file,
+            editor,
+        }
+    }
+
+    pub fn read(&self) -> Result<TicketMetadata> {
+        let raw_content = self.file.read_raw()?;
+        let mut metadata = TicketContent::parse(&raw_content)?;
+        metadata.file_path = Some(self.file.file_path().clone());
+        Ok(metadata)
+    }
+
+    pub fn read_content(&self) -> Result<String> {
+        self.file.read_raw()
+    }
+
+    pub fn write(&self, content: &str) -> Result<()> {
+        self.editor.write(content)
+    }
+
+    pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
+        self.editor.update_field(field, value)
+    }
+
+    pub fn remove_field(&self, field: &str) -> Result<()> {
+        self.editor.remove_field(field)
+    }
+
+    pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        self.editor.add_to_array_field(field, value)
+    }
+
+    pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        self.editor.remove_from_array_field(field, value)
+    }
+}
+
+/// Repository that orchestrates all ticket operations
+pub struct TicketRepository;
+
+impl TicketRepository {
+    pub fn find(partial_id: &str) -> Result<Ticket> {
+        Ticket::find(partial_id)
+    }
+
+    pub async fn find_async(partial_id: &str) -> Result<Ticket> {
+        Ticket::find_async(partial_id).await
+    }
+
+    pub fn from_path(file_path: PathBuf) -> Ticket {
+        Ticket::new(file_path)
+    }
+
+    pub fn get_all() -> Vec<TicketMetadata> {
+        use tokio::runtime::Handle;
+
+        if Handle::try_current().is_err() {
+            let rt = tokio::runtime::Runtime::new().ok();
+            if let Some(rt) = rt {
+                return rt.block_on(async { Self::get_all_async().await });
             }
         }
+
+        Self::get_all_from_disk()
     }
 
-    tickets
+    pub async fn get_all_async() -> Vec<TicketMetadata> {
+        if let Some(cache) = cache::get_or_init_cache().await {
+            if let Ok(tickets) = cache.get_all_tickets().await {
+                return tickets;
+            }
+            eprintln!("Warning: cache read failed, falling back to file reads");
+        }
+
+        Self::get_all_from_disk()
+    }
+
+    fn get_all_from_disk() -> Vec<TicketMetadata> {
+        let files = find_tickets();
+        let mut tickets = Vec::new();
+
+        for file in files {
+            let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(&file);
+            match fs::read_to_string(&file_path) {
+                Ok(content) => match TicketContent::parse(&content) {
+                    Ok(mut metadata) => {
+                        metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
+                        metadata.file_path = Some(file_path);
+                        tickets.push(metadata);
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: failed to parse {}: {}", file, e);
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Warning: failed to read {}: {}", file, e);
+                }
+            }
+        }
+
+        tickets
+    }
+
+    pub fn build_map() -> HashMap<String, TicketMetadata> {
+        use tokio::runtime::Handle;
+
+        if Handle::try_current().is_err() {
+            let rt = tokio::runtime::Runtime::new().ok();
+            if let Some(rt) = rt {
+                return rt.block_on(async { Self::build_map_async().await });
+            }
+        }
+
+        Self::get_all_from_disk()
+            .into_iter()
+            .filter_map(|t| t.id.clone().map(|id| (id, t)))
+            .collect()
+    }
+
+    pub async fn build_map_async() -> HashMap<String, TicketMetadata> {
+        if let Some(cache) = cache::get_or_init_cache().await {
+            if let Ok(map) = cache.build_ticket_map().await {
+                return map;
+            }
+            eprintln!("Warning: cache read failed, falling back to file reads");
+        }
+
+        Self::get_all_async()
+            .await
+            .into_iter()
+            .filter_map(|t| t.id.clone().map(|id| (id, t)))
+            .collect()
+    }
 }
 
-/// Get all tickets from the tickets directory
 pub async fn get_all_tickets() -> Vec<TicketMetadata> {
-    // Try cache first
-    if let Some(cache) = cache::get_or_init_cache().await {
-        if let Ok(tickets) = cache.get_all_tickets().await {
-            return tickets;
-        }
-        eprintln!("Warning: cache read failed, falling back to file reads");
-    }
-
-    // FALLBACK: Original implementation
-    get_all_tickets_from_disk()
+    TicketRepository::get_all_async().await
 }
 
-/// Get all tickets (sync wrapper for backward compatibility)
 pub fn get_all_tickets_sync() -> Vec<TicketMetadata> {
-    use tokio::runtime::Handle;
-
-    if Handle::try_current().is_err() {
-        let rt = tokio::runtime::Runtime::new().ok();
-        if let Some(rt) = rt {
-            return rt.block_on(get_all_tickets());
-        }
-    }
-
-    // Fallback to disk reads
-    get_all_tickets_from_disk()
+    TicketRepository::get_all()
 }
 
-/// Build a map of all tickets by ID
+pub fn get_all_tickets_from_disk() -> Vec<TicketMetadata> {
+    TicketRepository::get_all_from_disk()
+}
+
 pub async fn build_ticket_map() -> HashMap<String, TicketMetadata> {
-    // Try cache first
-    if let Some(cache) = cache::get_or_init_cache().await {
-        if let Ok(map) = cache.build_ticket_map().await {
-            return map;
-        }
-        eprintln!("Warning: cache read failed, falling back to file reads");
-    }
-
-    // FALLBACK: Use get_all_tickets which has cache logic
-    get_all_tickets()
-        .await
-        .into_iter()
-        .filter_map(|t| t.id.clone().map(|id| (id, t)))
-        .collect()
+    TicketRepository::build_map_async().await
 }
 
-/// Build a map of all tickets by ID (sync wrapper for backward compatibility)
 pub fn build_ticket_map_sync() -> HashMap<String, TicketMetadata> {
-    use tokio::runtime::Handle;
-
-    if Handle::try_current().is_err() {
-        let rt = tokio::runtime::Runtime::new().ok();
-        if let Some(rt) = rt {
-            return rt.block_on(build_ticket_map());
-        }
-    }
-
-    // Fallback to disk reads
-    get_all_tickets_from_disk()
-        .into_iter()
-        .filter_map(|t| t.id.clone().map(|id| (id, t)))
-        .collect()
+    TicketRepository::build_map()
 }
 
-/// Get file stats (modification time) for a path
 pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
     fs::metadata(path).ok().and_then(|m| m.modified().ok())
 }
 
-/// Builder for creating new tickets with customizable fields
 pub struct TicketBuilder {
     title: String,
     description: Option<String>,
@@ -496,7 +592,6 @@ pub struct TicketBuilder {
 }
 
 impl TicketBuilder {
-    /// Create a new ticket builder with a title
     pub fn new(title: impl Into<String>) -> Self {
         TicketBuilder {
             title: title.into(),
@@ -517,91 +612,76 @@ impl TicketBuilder {
         }
     }
 
-    /// Set the description
     pub fn description(mut self, desc: Option<impl Into<String>>) -> Self {
         self.description = desc.map(|d| d.into());
         self
     }
 
-    /// Set the design section
     pub fn design(mut self, design: Option<impl Into<String>>) -> Self {
         self.design = design.map(|d| d.into());
         self
     }
 
-    /// Set the acceptance criteria section
     pub fn acceptance(mut self, acceptance: Option<impl Into<String>>) -> Self {
         self.acceptance = acceptance.map(|a| a.into());
         self
     }
 
-    /// Set the custom prefix for ticket ID
     pub fn prefix(mut self, prefix: Option<impl Into<String>>) -> Self {
         self.prefix = prefix.map(|p| p.into());
         self
     }
 
-    /// Set the ticket type
     pub fn ticket_type(mut self, ticket_type: impl Into<String>) -> Self {
         self.ticket_type = Some(ticket_type.into());
         self
     }
 
-    /// Set the status
     pub fn status(mut self, status: impl Into<String>) -> Self {
         self.status = Some(status.into());
         self
     }
 
-    /// Set the priority
     pub fn priority(mut self, priority: impl Into<String>) -> Self {
         self.priority = Some(priority.into());
         self
     }
 
-    /// Set the external reference
     pub fn external_ref(mut self, external_ref: Option<impl Into<String>>) -> Self {
         self.external_ref = external_ref.map(|r| r.into());
         self
     }
 
-    /// Set the parent ticket
     pub fn parent(mut self, parent: Option<impl Into<String>>) -> Self {
         self.parent = parent.map(|p| p.into());
         self
     }
 
-    /// Set the remote reference
     pub fn remote(mut self, remote: Option<impl Into<String>>) -> Self {
         self.remote = remote.map(|r| r.into());
         self
     }
 
-    /// Set whether to include a UUID (true by default)
     pub fn include_uuid(mut self, include_uuid: bool) -> Self {
         self.include_uuid = include_uuid;
         self
     }
 
-    /// Set the UUID (optional, will generate if include_uuid is true and not set)
     pub fn uuid(mut self, uuid: Option<impl Into<String>>) -> Self {
         self.uuid = uuid.map(|u| u.into());
         self
     }
 
-    /// Set the creation timestamp (optional, will use current time if not set)
     pub fn created(mut self, created: Option<impl Into<String>>) -> Self {
         self.created = created.map(|c| c.into());
         self
     }
 
-    /// Enable or disable hook execution (enabled by default)
     pub fn run_hooks(mut self, run_hooks: bool) -> Self {
         self.run_hooks = run_hooks;
         self
     }
 
-    /// Build the ticket and write it to disk
     pub fn build(self) -> Result<(String, PathBuf)> {
         utils::ensure_dir()?;
 
