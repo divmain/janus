@@ -18,6 +18,19 @@ mod graphql {
     // Import schema from the dedicated janus-schema crate.
     // The import MUST be named `schema` for cynic derives to work.
     use janus_schema::linear as schema;
+
+    use serde::Deserialize;
+
+    /// Custom error extensions type for Linear API errors
+    #[derive(Debug, Clone, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ErrorExtensions {
+        pub code: Option<String>,
+        pub typ: Option<String>,
+        pub user_error: Option<bool>,
+        pub user_presentable_message: Option<String>,
+    }
+
     // Custom Scalars
 
     /// DateTime scalar from Linear API (ISO 8601 formatted string)
@@ -302,10 +315,20 @@ impl LinearProvider {
             )));
         }
 
-        let result: GraphQlResponse<ResponseData> = response.json().await?;
+        let result: GraphQlResponse<ResponseData, ErrorExtensions> = response.json().await?;
 
         if let Some(errors) = result.errors {
-            let error_msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
+            let error_msgs: Vec<String> = errors
+                .iter()
+                .map(|e| {
+                    if let Some(ext) = &e.extensions
+                        && let Some(code) = &ext.code
+                    {
+                        return format!("[{}] {}", code, e.message);
+                    }
+                    e.message.clone()
+                })
+                .collect();
             return Err(JanusError::Api(format!(
                 "Linear GraphQL errors: {}",
                 error_msgs.join(", ")
@@ -331,6 +354,15 @@ impl LinearProvider {
             .map(|t| t.id.into_inner())
             .ok_or_else(|| JanusError::Api("No teams found in Linear workspace".to_string()))
     }
+
+    /// Check if an error is a NOT_FOUND error from Linear API
+    fn is_not_found_error(error: &JanusError) -> bool {
+        if let JanusError::Api(msg) = error {
+            msg.contains("[NOT_FOUND]")
+        } else {
+            false
+        }
+    }
 }
 
 impl RemoteProvider for LinearProvider {
@@ -349,7 +381,7 @@ impl RemoteProvider for LinearProvider {
         });
 
         let response = self.execute(operation).await.map_err(|e| {
-            if e.to_string().contains("not found") || e.to_string().contains("Entity not found") {
+            if Self::is_not_found_error(&e) {
                 JanusError::RemoteIssueNotFound(remote_ref.to_string())
             } else {
                 e
@@ -410,7 +442,7 @@ impl RemoteProvider for LinearProvider {
         });
 
         let fetch_response = self.execute(fetch_operation).await.map_err(|e| {
-            if e.to_string().contains("not found") || e.to_string().contains("Entity not found") {
+            if Self::is_not_found_error(&e) {
                 JanusError::RemoteIssueNotFound(remote_ref.to_string())
             } else {
                 e
