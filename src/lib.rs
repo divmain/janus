@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod commands;
+pub mod display;
 pub mod error;
 pub mod formatting;
 pub mod hooks;
