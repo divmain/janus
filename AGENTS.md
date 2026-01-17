@@ -79,7 +79,13 @@ src/
 ├── lib.rs               # Library exports
 ├── error.rs             # Custom error types using thiserror
 ├── parser.rs            # Ticket file parsing (YAML frontmatter + Markdown)
-├── ticket.rs            # Ticket operations (read, write, find)
+├── ticket.rs            # Ticket operations (separated into focused types)
+│   ├── TicketLocator    # Path + ID resolution
+│   ├── TicketFile       # File I/O operations
+│   ├── TicketContent    # Parsing/serialization
+│   ├── TicketEditor     # Field manipulation with hooks
+│   ├── Ticket           # Facade for common operations
+│   └── TicketRepository # Orchestrates components
 ├── types.rs             # Core types (TicketStatus, TicketType, etc.)
 ├── utils.rs             # Utility functions (ID generation, dates)
 ├── plan/                # Plan module
@@ -101,8 +107,7 @@ src/
     ├── query.rs         # JSON query output
     ├── show.rs          # Display ticket details
     └── status.rs        # Status transitions
-tests/
-└── integration_test.rs  # Integration tests
+tests/                   # Integration tests
 ```
 
 ## Code Style Guidelines

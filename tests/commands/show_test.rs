@@ -1,0 +1,124 @@
+#[path = "../common/mod.rs"]
+mod common;
+use common::JanusTest;
+use serial_test::serial;
+
+// ============================================================================
+// Show command tests
+// ============================================================================
+
+#[test]
+#[serial]
+fn test_show_basic() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test ticket", "-d", "Description"])
+        .trim()
+        .to_string();
+    let output = janus.run_success(&["show", &id]);
+
+    assert!(output.contains("# Test ticket"));
+    assert!(output.contains("Description"));
+    assert!(output.contains(&format!("id: {}", id)));
+}
+
+#[test]
+#[serial]
+fn test_show_partial_id() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
+    // Use just the hash part (after the dash)
+    let partial = id.split('-').last().unwrap();
+    let output = janus.run_success(&["show", partial]);
+
+    assert!(output.contains("# Test ticket"));
+}
+
+#[test]
+#[serial]
+fn test_show_with_blockers() {
+    let janus = JanusTest::new();
+
+    let dep_id = janus
+        .run_success(&["create", "Dependency"])
+        .trim()
+        .to_string();
+    let id = janus
+        .run_success(&["create", "Main ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["dep", "add", &id, &dep_id]);
+
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("## Blockers"));
+    assert!(output.contains(&dep_id));
+}
+
+#[test]
+#[serial]
+fn test_show_with_blocking() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Main ticket"])
+        .trim()
+        .to_string();
+    let blocked_id = janus
+        .run_success(&["create", "Blocked ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["dep", "add", &blocked_id, &id]);
+
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("## Blocking"));
+    assert!(output.contains(&blocked_id));
+}
+
+#[test]
+#[serial]
+fn test_show_with_children() {
+    let janus = JanusTest::new();
+
+    let parent_id = janus.run_success(&["create", "Parent"]).trim().to_string();
+    let child_id = janus
+        .run_success(&["create", "Child", "--parent", &parent_id])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["show", &parent_id]);
+    assert!(output.contains("## Children"));
+    assert!(output.contains(&child_id));
+}
+
+#[test]
+#[serial]
+fn test_show_with_links() {
+    let janus = JanusTest::new();
+
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+    let id2 = janus
+        .run_success(&["create", "Ticket 2"])
+        .trim()
+        .to_string();
+    janus.run_success(&["link", "add", &id1, &id2]);
+
+    let output = janus.run_success(&["show", &id1]);
+    assert!(output.contains("## Linked"));
+    assert!(output.contains(&id2));
+}
+
+#[test]
+#[serial]
+fn test_show_not_found() {
+    let janus = JanusTest::new();
+    let stderr = janus.run_failure(&["show", "nonexistent"]);
+    assert!(stderr.contains("not found"));
+}

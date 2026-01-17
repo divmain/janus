@@ -203,19 +203,4 @@ mod tests {
             title_indices: vec![],
         }
     }
-
-    #[test]
-    fn test_title_truncation() {
-        let long_title = "This is a very long title that should be truncated";
-        let truncated = truncate_string(long_title, 20);
-        assert_eq!(truncated, "This is a very lo...");
-    }
-
-    #[test]
-    fn test_title_truncation_multibyte() {
-        // Test with multi-byte characters
-        let multibyte = "Привет мир, это тест"; // Russian text
-        let truncated = truncate_string(multibyte, 10);
-        assert_eq!(truncated, "Привет ...");
-    }
 }

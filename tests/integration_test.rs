@@ -1324,40 +1324,6 @@ fn test_ls_status_conflicts_with_filters() {
 }
 
 #[test]
-fn test_ready_command_removed() {
-    let janus = JanusTest::new();
-
-    let output = janus.run(&["ready"]);
-    // run() doesn't check success, so we need to verify it failed
-    assert!(
-        !output.status.success(),
-        "ready command should fail but succeeded"
-    );
-}
-
-#[test]
-fn test_blocked_command_removed() {
-    let janus = JanusTest::new();
-
-    let output = janus.run(&["blocked"]);
-    assert!(
-        !output.status.success(),
-        "blocked command should fail but succeeded"
-    );
-}
-
-#[test]
-fn test_closed_command_removed() {
-    let janus = JanusTest::new();
-
-    let output = janus.run(&["closed"]);
-    assert!(
-        !output.status.success(),
-        "closed command should fail but succeeded"
-    );
-}
-
-#[test]
 fn test_ls_limit_without_closed() {
     let janus = JanusTest::new();
 
@@ -5304,46 +5270,6 @@ fn test_remote_sync_help() {
         .expect("Failed to execute command");
 
     assert!(output.status.success());
-}
-
-#[test]
-fn test_adopt_command_removed() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
-        .args(["adopt", "github:foo/bar/1"])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
-}
-
-#[test]
-fn test_push_command_removed() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
-        .args(["push", "j-1234"])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
-}
-
-#[test]
-fn test_remote_link_command_removed() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
-        .args(["remote-link", "j-1234", "github:foo/bar/1"])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
-}
-
-#[test]
-fn test_sync_command_removed() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
-        .args(["sync", "j-1234"])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
 }
 
 #[test]

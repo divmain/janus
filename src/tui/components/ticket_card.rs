@@ -141,13 +141,6 @@ mod tests {
     }
 
     #[test]
-    fn test_title_truncation_logic() {
-        let long_title = "This is a very long title";
-        let truncated = truncate_string(long_title, 15);
-        assert_eq!(truncated, "This is a ve...");
-    }
-
-    #[test]
     fn test_priority_display() {
         let ticket = make_ticket("j-a1b2", "Test", TicketPriority::P0);
         assert_eq!(format!("P{}", ticket.priority.unwrap().as_num()), "P0");
