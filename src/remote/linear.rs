@@ -384,13 +384,12 @@ impl RemoteProvider for LinearProvider {
             .issue
             .ok_or_else(|| JanusError::Api("No issue returned from Linear".to_string()))?;
 
-        let org = self
-            .default_org
-            .clone()
-            .unwrap_or_else(|| "unknown".to_string());
+        let org = self.default_org.as_ref().ok_or_else(|| {
+            JanusError::Config("No default Linear organization configured".to_string())
+        })?;
 
         Ok(RemoteRef::Linear {
-            org,
+            org: org.clone(),
             issue_id: issue.identifier,
         })
     }
