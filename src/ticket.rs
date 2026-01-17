@@ -195,15 +195,33 @@ impl TicketContent {
     }
 
     pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
-        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
+        let frontmatter_re = Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").unwrap();
 
-        if field_pattern.is_match(raw_content) {
-            Ok(field_pattern
-                .replace(raw_content, format!("{}: {}", field, value))
-                .into_owned())
+        let captures = frontmatter_re.captures(raw_content).ok_or_else(|| {
+            JanusError::InvalidFormat("missing or malformed YAML frontmatter".to_string())
+        })?;
+
+        let yaml = captures.get(1).map(|m| m.as_str()).unwrap_or("");
+        let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
+
+        let mut yaml_lines: Vec<String> = yaml.lines().map(String::from).collect();
+        let line_re = Regex::new(&format!(r"^{}:\s*.*$", regex::escape(field))).unwrap();
+
+        let field_exists = yaml_lines.iter().any(|line| line_re.is_match(line));
+
+        if field_exists {
+            for line in &mut yaml_lines {
+                if line_re.is_match(line) {
+                    *line = format!("{}: {}", field, value);
+                    break;
+                }
+            }
         } else {
-            Ok(raw_content.replacen("---\n", &format!("---\n{}: {}\n", field, value), 1))
+            yaml_lines.insert(1, format!("{}: {}", field, value));
         }
+
+        let new_frontmatter = yaml_lines.join("\n");
+        Ok(format!("---\n{}\n---\n{}", new_frontmatter, body))
     }
 
     pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
@@ -234,6 +252,89 @@ fn validate_field_name(field: &str, operation: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_update_field_existing_field() {
+        let content = r#"---
+id: test-1234
+status: new
+priority: 2
+---
+# Test Ticket"#;
+
+        let result = TicketContent::update_field(content, "status", "complete").unwrap();
+        assert!(result.contains("status: complete"));
+        assert!(result.contains("id: test-1234"));
+        assert!(result.contains("# Test Ticket"));
+    }
+
+    #[test]
+    fn test_update_field_new_field() {
+        let content = r#"---
+id: test-1234
+status: new
+---
+# Test Ticket"#;
+
+        let result = TicketContent::update_field(content, "priority", "3").unwrap();
+        assert!(result.contains("id: test-1234"));
+        assert!(result.contains("status: new"));
+        assert!(result.contains("priority: 3"));
+        assert!(result.contains("# Test Ticket"));
+    }
+
+    #[test]
+    fn test_update_field_preserves_frontmatter_structure() {
+        let content = r#"---
+id: test-1234
+status: new
+priority: 2
+type: bug
+---
+# Test Ticket"#;
+
+        let result = TicketContent::update_field(content, "status", "in_progress").unwrap();
+
+        assert!(result.starts_with("---\n"));
+        assert!(result.contains("\n---\n"));
+        assert!(result.contains("id: test-1234"));
+        assert!(result.contains("status: in_progress"));
+        assert!(result.contains("priority: 2"));
+        assert!(result.contains("type: bug"));
+        assert!(result.contains("# Test Ticket"));
+    }
+
+    #[test]
+    fn test_update_field_multiple_dashes_in_body() {
+        let content = r#"---
+id: test-1234
+status: new
+---
+# Test Ticket
+
+Body with --- multiple dashes ---
+"#;
+
+        let result = TicketContent::update_field(content, "priority", "1").unwrap();
+
+        assert!(result.contains("id: test-1234"));
+        assert!(result.contains("status: new"));
+        assert!(result.contains("priority: 1"));
+        assert!(result.contains("--- multiple dashes ---"));
+    }
+
+    #[test]
+    fn test_update_field_malformed_frontmatter() {
+        let content = "No frontmatter here\n# Just content";
+        let result = TicketContent::update_field(content, "status", "complete");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidFormat(msg) => {
+                assert!(msg.contains("missing or malformed"));
+            }
+            _ => panic!("Expected InvalidFormat error"),
+        }
+    }
 
     #[test]
     fn test_validate_field_name_valid() {
