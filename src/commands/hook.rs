@@ -429,20 +429,3 @@ pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
 
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use serial_test::serial;
-    use std::fs;
-    use tempfile::TempDir;
-
-    fn setup_test_env() -> TempDir {
-        let temp_dir = TempDir::new().unwrap();
-        let janus_dir = temp_dir.path().join(".janus");
-        let hooks_dir = janus_dir.join("hooks");
-        fs::create_dir_all(&hooks_dir).unwrap();
-        temp_dir
-    }
-}

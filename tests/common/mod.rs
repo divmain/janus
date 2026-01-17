@@ -5,6 +5,7 @@ use tempfile::TempDir;
 /// Helper struct to run janus commands in an isolated temp directory
 pub struct JanusTest {
     pub temp_dir: TempDir,
+    #[allow(dead_code)]
     binary_path: String,
 }
 
@@ -65,6 +66,7 @@ impl JanusTest {
         String::from_utf8_lossy(&output.stderr).to_string()
     }
 
+    #[allow(dead_code)]
     pub fn read_ticket(&self, id: &str) -> String {
         let path = self
             .temp_dir
@@ -75,6 +77,7 @@ impl JanusTest {
         fs::read_to_string(path).expect("Failed to read ticket file")
     }
 
+    #[allow(dead_code)]
     pub fn ticket_exists(&self, id: &str) -> bool {
         let path = self
             .temp_dir
@@ -85,6 +88,7 @@ impl JanusTest {
         path.exists()
     }
 
+    #[allow(dead_code)]
     pub fn write_ticket(&self, id: &str, content: &str) {
         let dir = self.temp_dir.path().join(".janus").join("items");
         fs::create_dir_all(&dir).expect("Failed to create .janus/items directory");
@@ -92,6 +96,7 @@ impl JanusTest {
         fs::write(path, content).expect("Failed to write ticket file");
     }
 
+    #[allow(dead_code)]
     pub fn read_plan(&self, id: &str) -> String {
         let path = self
             .temp_dir
@@ -102,6 +107,7 @@ impl JanusTest {
         fs::read_to_string(path).expect("Failed to read plan file")
     }
 
+    #[allow(dead_code)]
     pub fn plan_exists(&self, id: &str) -> bool {
         let path = self
             .temp_dir
@@ -112,6 +118,7 @@ impl JanusTest {
         path.exists()
     }
 
+    #[allow(dead_code)]
     pub fn write_plan(&self, id: &str, content: &str) {
         let dir = self.temp_dir.path().join(".janus").join("plans");
         fs::create_dir_all(&dir).expect("Failed to create .janus/plans directory");
@@ -119,6 +126,7 @@ impl JanusTest {
         fs::write(path, content).expect("Failed to write plan file");
     }
 
+    #[allow(dead_code)]
     pub fn write_config(&self, content: &str) {
         let dir = self.temp_dir.path().join(".janus");
         fs::create_dir_all(&dir).expect("Failed to create .janus directory");
@@ -126,6 +134,7 @@ impl JanusTest {
         fs::write(path, content).expect("Failed to write config file");
     }
 
+    #[allow(dead_code)]
     pub fn write_hook_script(&self, name: &str, content: &str) {
         let dir = self.temp_dir.path().join(".janus").join("hooks");
         fs::create_dir_all(&dir).expect("Failed to create .janus/hooks directory");

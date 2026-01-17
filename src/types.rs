@@ -153,6 +153,22 @@ impl FromStr for TicketPriority {
 
 pub const VALID_PRIORITIES: &[&str] = &["0", "1", "2", "3", "4"];
 
+pub const VALID_TICKET_FIELDS: &[&str] = &[
+    "id",
+    "uuid",
+    "status",
+    "deps",
+    "links",
+    "created",
+    "type",
+    "priority",
+    "external-ref",
+    "remote",
+    "parent",
+];
+
+pub const IMMUTABLE_TICKET_FIELDS: &[&str] = &["id", "uuid"];
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TicketMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]

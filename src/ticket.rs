@@ -7,7 +7,9 @@ use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::parser::parse_ticket_content;
-use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata};
+use crate::types::{
+    IMMUTABLE_TICKET_FIELDS, TICKETS_ITEMS_DIR, TicketMetadata, VALID_TICKET_FIELDS,
+};
 use crate::utils;
 
 /// Find all ticket files in the tickets directory
@@ -188,6 +190,87 @@ impl TicketContent {
     }
 }
 
+fn validate_field_name(field: &str, operation: &str) -> Result<()> {
+    if !VALID_TICKET_FIELDS.contains(&field) {
+        return Err(JanusError::InvalidField {
+            field: field.to_string(),
+            valid_fields: VALID_TICKET_FIELDS.iter().map(|s| s.to_string()).collect(),
+        });
+    }
+
+    if IMMUTABLE_TICKET_FIELDS.contains(&field) {
+        return Err(JanusError::Other(format!(
+            "cannot {} immutable field '{}'",
+            operation, field
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_field_name_valid() {
+        assert!(validate_field_name("status", "update").is_ok());
+        assert!(validate_field_name("priority", "update").is_ok());
+        assert!(validate_field_name("type", "update").is_ok());
+    }
+
+    #[test]
+    fn test_validate_field_name_invalid() {
+        let result = validate_field_name("unknown_field", "update");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidField {
+                field,
+                valid_fields: _,
+            } => {
+                assert_eq!(field, "unknown_field");
+            }
+            _ => panic!("Expected InvalidField error"),
+        }
+    }
+
+    #[test]
+    fn test_validate_field_name_immutable_id() {
+        let result = validate_field_name("id", "update");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot update immutable field 'id'"));
+            }
+            _ => panic!("Expected Other error for immutable field"),
+        }
+    }
+
+    #[test]
+    fn test_validate_field_name_immutable_uuid() {
+        let result = validate_field_name("uuid", "update");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot update immutable field 'uuid'"));
+            }
+            _ => panic!("Expected Other error for immutable field"),
+        }
+    }
+
+    #[test]
+    fn test_validate_field_name_remove_immutable() {
+        let result = validate_field_name("id", "remove");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot remove immutable field 'id'"));
+            }
+            _ => panic!("Expected Other error for immutable field"),
+        }
+    }
+}
+
 /// Handles field manipulation operations for tickets
 pub struct TicketEditor {
     file: TicketFile,
@@ -231,6 +314,8 @@ impl TicketEditor {
     }
 
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
+        validate_field_name(field, "update")?;
+
         let raw_content = self.file.read_raw()?;
         let old_value = Self::extract_field_value(&raw_content, field);
 
@@ -256,6 +341,8 @@ impl TicketEditor {
     }
 
     pub fn remove_field(&self, field: &str) -> Result<()> {
+        validate_field_name(field, "remove")?;
+
         let raw_content = self.file.read_raw()?;
         let old_value = Self::extract_field_value(&raw_content, field);
 

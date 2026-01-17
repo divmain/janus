@@ -616,6 +616,24 @@ fn test_set_invalid_field() {
 }
 
 #[test]
+fn test_set_immutable_id_field_fails() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["set", &id, "id", "new-id"]);
+    assert!(stderr.contains("invalid field"));
+}
+
+#[test]
+fn test_set_immutable_uuid_field_fails() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["set", &id, "uuid", "new-uuid"]);
+    assert!(stderr.contains("invalid field"));
+}
+
+#[test]
 fn test_set_json_output() {
     let janus = JanusTest::new();
 
