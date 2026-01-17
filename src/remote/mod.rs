@@ -366,6 +366,53 @@ pub enum SortDirection {
     Desc,
 }
 
+/// Retry configuration
+pub struct RetryConfig {
+    max_attempts: u32,
+    base_delay_ms: u64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            base_delay_ms: 100,
+        }
+    }
+}
+
+/// Execute an async function with exponential backoff retry
+async fn execute_with_retry<T, E, F, Fut, RetryCheck>(
+    operation: F,
+    is_retryable: RetryCheck,
+) -> std::result::Result<T, E>
+where
+    F: Fn() -> Fut + Send + Sync,
+    Fut: std::future::Future<Output = std::result::Result<T, E>> + Send,
+    RetryCheck: Fn(&E) -> bool + Send + Sync,
+    E: std::fmt::Display,
+{
+    let config = RetryConfig::default();
+    let mut last_error = None;
+
+    for attempt in 0..config.max_attempts {
+        let fut = operation();
+        match fut.await {
+            Ok(result) => return Ok(result),
+            Err(e) if !is_retryable(&e) => return Err(e),
+            Err(e) => {
+                last_error = Some(e);
+                if attempt < config.max_attempts - 1 {
+                    let delay_ms = config.base_delay_ms * 2u64.pow(attempt);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap())
+}
+
 /// Common interface for remote providers
 pub trait RemoteProvider: Send + Sync {
     /// Fetch an issue from the remote platform

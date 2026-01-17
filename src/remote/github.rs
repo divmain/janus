@@ -91,6 +91,44 @@ impl GitHubProvider {
     }
 }
 
+impl GitHubProvider {
+    /// Check if an octocrab error is a rate limit error
+    fn is_rate_limit_error(error: &octocrab::Error) -> bool {
+        let error_msg = error.to_string().to_lowercase();
+        error_msg.contains("rate limit")
+            || error_msg.contains("api rate limit exceeded")
+            || error_msg.contains("403")
+    }
+
+    /// Check if an octocrab error is a transient error (5xx, timeout, connection, network)
+    fn is_transient_error(error: &octocrab::Error) -> bool {
+        let error_msg = error.to_string().to_lowercase();
+        if Self::is_rate_limit_error(error) {
+            return false;
+        }
+        error_msg.contains("5")
+            || error_msg.contains("timed out")
+            || error_msg.contains("timeout")
+            || error_msg.contains("connection")
+            || error_msg.contains("network")
+            || error_msg.contains("service unavailable")
+    }
+
+    /// Convert an octocrab error to a JanusError
+    fn handle_octocrab_error(error: octocrab::Error) -> JanusError {
+        let error_msg = error.to_string();
+        let error_msg_lower = error_msg.to_lowercase();
+
+        if error_msg_lower.contains("rate limit")
+            || error_msg_lower.contains("api rate limit exceeded")
+        {
+            return JanusError::RateLimited(60);
+        }
+
+        JanusError::Api(format!("GitHub API error: {}", error_msg))
+    }
+}
+
 impl RemoteProvider for GitHubProvider {
     async fn fetch_issue(&self, remote_ref: &RemoteRef) -> Result<RemoteIssue> {
         let (owner, repo, issue_number) = match remote_ref {
@@ -106,18 +144,22 @@ impl RemoteProvider for GitHubProvider {
             }
         };
 
-        let issue = self
-            .client
-            .issues(owner, repo)
-            .get(issue_number)
-            .await
-            .map_err(|e| {
-                if e.to_string().contains("404") {
-                    JanusError::RemoteIssueNotFound(remote_ref.to_string())
-                } else {
-                    JanusError::Api(format!("GitHub API error: {}", e))
-                }
-            })?;
+        let client = self.client.clone();
+        let issue = super::execute_with_retry(
+            || async { client.issues(owner, repo).get(issue_number).await },
+            Self::is_transient_error,
+        )
+        .await
+        .map_err(|e| {
+            let janus_err = Self::handle_octocrab_error(e);
+            if let JanusError::Api(msg) = &janus_err
+                && msg.contains("404")
+            {
+                JanusError::RemoteIssueNotFound(remote_ref.to_string())
+            } else {
+                janus_err
+            }
+        })?;
 
         let status = match issue.state {
             octocrab::models::IssueState::Open => RemoteStatus::Open,
@@ -148,19 +190,29 @@ impl RemoteProvider for GitHubProvider {
 
     async fn create_issue(&self, title: &str, body: &str) -> Result<RemoteRef> {
         let (owner, repo) = self.get_default_owner_repo()?;
+        let owner = owner.to_string();
+        let repo = repo.to_string();
+        let title = title.to_string();
+        let body = body.to_string();
 
-        let issue = self
-            .client
-            .issues(owner, repo)
-            .create(title)
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| JanusError::Api(format!("Failed to create GitHub issue: {}", e)))?;
+        let client = self.client.clone();
+        let issue = super::execute_with_retry(
+            || async {
+                client
+                    .issues(&owner, &repo)
+                    .create(&title)
+                    .body(&body)
+                    .send()
+                    .await
+            },
+            Self::is_transient_error,
+        )
+        .await
+        .map_err(Self::handle_octocrab_error)?;
 
         Ok(RemoteRef::GitHub {
-            owner: owner.to_string(),
-            repo: repo.to_string(),
+            owner,
+            repo,
             issue_number: issue.number,
         })
     }
@@ -179,40 +231,94 @@ impl RemoteProvider for GitHubProvider {
             }
         };
 
-        // Extract values first to avoid borrow issues with the builder pattern
-        let title = updates.title;
-        let body = updates.body;
-        let status = updates.status;
+        let title = updates.title.clone();
+        let body = updates.body.clone();
+        let status = updates.status.clone();
 
-        // Create the update handler
-        let issues_handler = self.client.issues(owner, repo);
-
-        // Build the update - we need to chain all updates together
-        // to avoid the borrow checker issues
-        let update_builder = issues_handler.update(issue_number);
-
-        // Determine state
         let state = status.map(|s| match s {
             RemoteStatus::Open => octocrab::models::IssueState::Open,
             RemoteStatus::Closed | RemoteStatus::Custom(_) => octocrab::models::IssueState::Closed,
         });
 
-        // Apply all updates at once using the builder
-        let update = match (&title, &body, &state) {
-            (Some(t), Some(b), Some(s)) => update_builder.title(t).body(b).state(s.clone()),
-            (Some(t), Some(b), None) => update_builder.title(t).body(b),
-            (Some(t), None, Some(s)) => update_builder.title(t).state(s.clone()),
-            (None, Some(b), Some(s)) => update_builder.body(b).state(s.clone()),
-            (Some(t), None, None) => update_builder.title(t),
-            (None, Some(b), None) => update_builder.body(b),
-            (None, None, Some(s)) => update_builder.state(s.clone()),
-            (None, None, None) => return Ok(()), // Nothing to update
-        };
+        if title.is_none() && body.is_none() && state.is_none() {
+            return Ok(());
+        }
 
-        update
-            .send()
-            .await
-            .map_err(|e| JanusError::Api(format!("Failed to update GitHub issue: {}", e)))?;
+        let client = self.client.clone();
+        let owner = owner.to_string();
+        let repo = repo.to_string();
+
+        let _ = super::execute_with_retry(
+            || async {
+                if let (Some(t), Some(b), Some(s)) = (&title, &body, &state) {
+                    client
+                        .issues(&owner, &repo)
+                        .update(issue_number)
+                        .title(t)
+                        .body(b)
+                        .state(s.clone())
+                        .send()
+                        .await
+                } else if let (Some(t), Some(b), None) = (&title, &body, &state) {
+                    client
+                        .issues(&owner, &repo)
+                        .update(issue_number)
+                        .title(t)
+                        .body(b)
+                        .send()
+                        .await
+                } else if let (Some(t), None, Some(s)) = (&title, &body, &state) {
+                    client
+                        .issues(&owner, &repo)
+                        .update(issue_number)
+                        .title(t)
+                        .state(s.clone())
+                        .send()
+                        .await
+                } else if let (None, Some(b), Some(s)) = (&title, &body, &state) {
+                    client
+                        .issues(&owner, &repo)
+                        .update(issue_number)
+                        .body(b)
+                        .state(s.clone())
+                        .send()
+                        .await
+                } else if let (Some(t), None, None) = (&title, &body, &state) {
+                    client
+                        .issues(&owner, &repo)
+                        .update(issue_number)
+                        .title(t)
+                        .send()
+                        .await
+                } else if let (None, Some(b), None) = (&title, &body, &state) {
+                    client
+                        .issues(&owner, &repo)
+                        .update(issue_number)
+                        .body(b)
+                        .send()
+                        .await
+                } else if let (None, None, Some(s)) = (&title, &body, &state) {
+                    client
+                        .issues(&owner, &repo)
+                        .update(issue_number)
+                        .state(s.clone())
+                        .send()
+                        .await
+                } else {
+                    // All None - should have been caught above
+                    Err(octocrab::Error::Other {
+                        source: Box::new(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "No fields to update",
+                        )),
+                        backtrace: std::backtrace::Backtrace::disabled(),
+                    })
+                }
+            },
+            Self::is_transient_error,
+        )
+        .await
+        .map_err(Self::handle_octocrab_error)?;
 
         Ok(())
     }
@@ -222,14 +328,23 @@ impl RemoteProvider for GitHubProvider {
         query: &RemoteQuery,
     ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
         let (owner, repo) = self.get_default_owner_repo()?;
+        let client = self.client.clone();
+        let owner = owner.to_string();
+        let repo = repo.to_string();
 
-        let issues_handler = self.client.issues(owner, repo);
-        let result = issues_handler
-            .list()
-            .per_page(query.limit as u8)
-            .send()
-            .await
-            .map_err(|e| JanusError::Api(format!("Failed to list GitHub issues: {}", e)))?;
+        let result = super::execute_with_retry(
+            || async {
+                client
+                    .issues(&owner, &repo)
+                    .list()
+                    .per_page(query.limit as u8)
+                    .send()
+                    .await
+            },
+            Self::is_transient_error,
+        )
+        .await
+        .map_err(Self::handle_octocrab_error)?;
 
         let issues: Vec<RemoteIssue> = result
             .items
@@ -246,23 +361,29 @@ impl RemoteProvider for GitHubProvider {
         limit: u32,
     ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
         let (owner, repo) = self.get_default_owner_repo()?;
+        let client = self.client.clone();
+        let owner = owner.to_string();
+        let repo = repo.to_string();
+        let query_str = format!("repo:{}/{} is:issue {}", owner, repo, text);
 
-        // Build search query: search in the specific repo for issues containing the text
-        let query = format!("repo:{}/{} is:issue {}", owner, repo, text);
-
-        let result = self
-            .client
-            .search()
-            .issues_and_pull_requests(&query)
-            .per_page(limit.min(100) as u8) // GitHub limits to 100 per page
-            .send()
-            .await
-            .map_err(|e| JanusError::Api(format!("GitHub search failed: {}", e)))?;
+        let result = super::execute_with_retry(
+            || async {
+                client
+                    .search()
+                    .issues_and_pull_requests(&query_str)
+                    .per_page(limit.min(100) as u8)
+                    .send()
+                    .await
+            },
+            Self::is_transient_error,
+        )
+        .await
+        .map_err(Self::handle_octocrab_error)?;
 
         let issues: Vec<RemoteIssue> = result
             .items
             .into_iter()
-            .filter(|item| item.pull_request.is_none()) // Filter out PRs
+            .filter(|item| item.pull_request.is_none())
             .map(|issue| RemoteIssue {
                 id: issue.number.to_string(),
                 title: issue.title.clone(),

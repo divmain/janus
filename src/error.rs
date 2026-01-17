@@ -125,6 +125,9 @@ pub enum JanusError {
     #[error("API error: {0}")]
     Api(String),
 
+    #[error("rate limit exceeded. Please wait {0} seconds before retrying.")]
+    RateLimited(u64),
+
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
