@@ -50,6 +50,10 @@ impl GitHubProvider {
 
     /// Create a new GitHub provider with a token
     pub fn new(token: &str) -> Result<Self> {
+        if token.trim().is_empty() {
+            return Err(JanusError::Auth("GitHub token cannot be empty".to_string()));
+        }
+
         let client = Octocrab::builder()
             .personal_token(token.to_string())
             .build()
@@ -329,7 +333,13 @@ mod tests {
     #[tokio::test]
     async fn test_github_provider_new_empty_token() {
         let provider = GitHubProvider::new("");
-        assert!(provider.is_ok());
+        assert!(provider.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_github_provider_new_whitespace_token() {
+        let provider = GitHubProvider::new("   ");
+        assert!(provider.is_err());
     }
 
     #[tokio::test]
