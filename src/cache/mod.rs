@@ -237,6 +237,13 @@ impl TicketCache {
             )
             .await?;
 
+        self.conn
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_status_priority ON tickets(status, priority)",
+                (),
+            )
+            .await?;
+
         // Plans table
         self.conn
             .execute(
@@ -1385,6 +1392,7 @@ remote: github
         assert!(indexes.contains(&"idx_tickets_status".to_string()));
         assert!(indexes.contains(&"idx_tickets_priority".to_string()));
         assert!(indexes.contains(&"idx_tickets_type".to_string()));
+        assert!(indexes.contains(&"idx_tickets_status_priority".to_string()));
 
         let db_path = cache.cache_db_path();
         drop(cache);
