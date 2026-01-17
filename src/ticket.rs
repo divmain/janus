@@ -32,15 +32,37 @@ fn find_tickets() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Validate partial ID format
+fn validate_partial_id(id: &str) -> Result<String> {
+    let trimmed = id.trim();
+
+    if trimmed.is_empty() {
+        return Err(JanusError::Other("ticket ID cannot be empty".into()));
+    }
+
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(JanusError::Other(
+            "ticket ID must contain only alphanumeric characters, hyphens, and underscores".into(),
+        ));
+    }
+
+    Ok(trimmed.to_string())
+}
+
 /// Find a ticket file by partial ID
 pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
+    let partial_id = validate_partial_id(partial_id)?;
+
     if let Some(cache) = cache::get_or_init_cache().await {
         let exact_match_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", partial_id));
         if exact_match_path.exists() {
             return Ok(exact_match_path);
         }
 
-        if let Ok(matches) = cache.find_by_partial_id(partial_id).await {
+        if let Ok(matches) = cache.find_by_partial_id(&partial_id).await {
             match matches.len() {
                 0 => {}
                 1 => {
@@ -59,7 +81,7 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
         return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
     }
 
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
+    let matches: Vec<_> = files.iter().filter(|f| f.contains(&partial_id)).collect();
 
     match matches.len() {
         0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
@@ -71,11 +93,12 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
 /// Find a ticket file by partial ID (sync wrapper for backward compatibility)
 pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
     use tokio::runtime::Handle;
+    let partial_id = validate_partial_id(partial_id)?;
 
     if Handle::try_current().is_err() {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| JanusError::Other(format!("Failed to create tokio runtime: {}", e)))?;
-        return rt.block_on(find_ticket_by_id(partial_id));
+        return rt.block_on(find_ticket_by_id(&partial_id));
     }
 
     let files = find_tickets();
@@ -85,7 +108,7 @@ pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
         return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
     }
 
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
+    let matches: Vec<_> = files.iter().filter(|f| f.contains(&partial_id)).collect();
 
     match matches.len() {
         0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
@@ -268,6 +291,63 @@ mod tests {
             }
             _ => panic!("Expected Other error for immutable field"),
         }
+    }
+
+    #[test]
+    fn test_validate_partial_id_empty() {
+        let result = validate_partial_id("");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot be empty"));
+            }
+            _ => panic!("Expected Other error for empty ID"),
+        }
+    }
+
+    #[test]
+    fn test_validate_partial_id_whitespace() {
+        let result = validate_partial_id("   ");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot be empty"));
+            }
+            _ => panic!("Expected Other error for whitespace-only ID"),
+        }
+    }
+
+    #[test]
+    fn test_validate_partial_id_special_chars() {
+        let result = validate_partial_id("j@b1");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("must contain only alphanumeric"));
+            }
+            _ => panic!("Expected Other error for invalid characters"),
+        }
+    }
+
+    #[test]
+    fn test_validate_partial_id_valid() {
+        let result = validate_partial_id("j-a1b2");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "j-a1b2");
+    }
+
+    #[test]
+    fn test_validate_partial_id_valid_with_underscore() {
+        let result = validate_partial_id("j_a1b2");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "j_a1b2");
+    }
+
+    #[test]
+    fn test_validate_partial_id_trims_whitespace() {
+        let result = validate_partial_id("  j-a1b2  ");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "j-a1b2");
     }
 }
 
