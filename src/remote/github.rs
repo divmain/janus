@@ -314,71 +314,18 @@ impl RemoteProvider for GitHubProvider {
 
         let _ = super::execute_with_retry(
             || async {
-                let result = if let (Some(t), Some(b), Some(s)) = (&title, &body, &state) {
-                    client
-                        .issues(&owner, &repo)
-                        .update(issue_number)
-                        .title(t)
-                        .body(b)
-                        .state(s.clone())
-                        .send()
-                        .await
-                } else if let (Some(t), Some(b), None) = (&title, &body, &state) {
-                    client
-                        .issues(&owner, &repo)
-                        .update(issue_number)
-                        .title(t)
-                        .body(b)
-                        .send()
-                        .await
-                } else if let (Some(t), None, Some(s)) = (&title, &body, &state) {
-                    client
-                        .issues(&owner, &repo)
-                        .update(issue_number)
-                        .title(t)
-                        .state(s.clone())
-                        .send()
-                        .await
-                } else if let (None, Some(b), Some(s)) = (&title, &body, &state) {
-                    client
-                        .issues(&owner, &repo)
-                        .update(issue_number)
-                        .body(b)
-                        .state(s.clone())
-                        .send()
-                        .await
-                } else if let (Some(t), None, None) = (&title, &body, &state) {
-                    client
-                        .issues(&owner, &repo)
-                        .update(issue_number)
-                        .title(t)
-                        .send()
-                        .await
-                } else if let (None, Some(b), None) = (&title, &body, &state) {
-                    client
-                        .issues(&owner, &repo)
-                        .update(issue_number)
-                        .body(b)
-                        .send()
-                        .await
-                } else if let (None, None, Some(s)) = (&title, &body, &state) {
-                    client
-                        .issues(&owner, &repo)
-                        .update(issue_number)
-                        .state(s.clone())
-                        .send()
-                        .await
-                } else {
-                    // All None - should have been caught above
-                    Err(octocrab::Error::Other {
-                        source: Box::new(std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "No fields to update",
-                        )),
-                        backtrace: std::backtrace::Backtrace::disabled(),
-                    })
-                };
-                result.map_err(GitHubError::from)
+                let issues = client.issues(&owner, &repo);
+                let mut builder = issues.update(issue_number);
+                if let Some(t) = &title {
+                    builder = builder.title(t);
+                }
+                if let Some(b) = &body {
+                    builder = builder.body(b);
+                }
+                if let Some(s) = &state {
+                    builder = builder.state(s.clone());
+                }
+                builder.send().await.map_err(GitHubError::from)
             },
             super::HttpRetryPolicy::create(),
         )
