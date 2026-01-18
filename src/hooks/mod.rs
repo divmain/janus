@@ -27,7 +27,7 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use wait_timeout::ChildExt;
@@ -152,7 +152,6 @@ fn execute_hook(
     let timeout_secs = config.hooks.timeout;
 
     if timeout_secs == 0 {
-        // No timeout - wait indefinitely
         let output = cmd.output()?;
 
         if !output.status.success() {
@@ -173,32 +172,48 @@ fn execute_hook(
             }
         }
     } else {
-        // Run with timeout
-        let mut child = cmd.spawn()?;
+        let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
 
         match child.wait_timeout(Duration::from_secs(timeout_secs))? {
             Some(status) => {
+                let output = child.wait_with_output()?;
+
                 if !status.success() {
                     let exit_code = status.code().unwrap_or(-1);
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
                     if is_pre_hook {
                         return Err(JanusError::PreHookFailed {
                             hook_name: script_name.to_string(),
                             exit_code,
-                            message: "hook exited with non-zero status".to_string(),
+                            message: stderr,
                         });
                     } else {
                         return Err(JanusError::PostHookFailed {
                             hook_name: script_name.to_string(),
-                            message: "hook exited with non-zero status".to_string(),
+                            message: stderr,
                         });
                     }
                 }
             }
             None => {
-                // Timeout - kill the child process
-                let _ = child.kill();
-                let _ = child.wait();
+                if let Err(e) = child.kill() {
+                    eprintln!(
+                        "Warning: failed to kill timed-out hook '{}': {}",
+                        script_name, e
+                    );
+                }
+                match child.wait_timeout(Duration::from_secs(5)) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => eprintln!(
+                        "Warning: hook '{}' did not terminate after SIGKILL",
+                        script_name
+                    ),
+                    Err(e) => eprintln!(
+                        "Warning: error waiting for hook '{}' cleanup: {}",
+                        script_name, e
+                    ),
+                }
 
                 return Err(JanusError::HookTimeout {
                     hook_name: script_name.to_string(),
