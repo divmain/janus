@@ -59,7 +59,7 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
 
     crate::utils::ensure_dir()?;
 
-    let id = crate::utils::generate_id();
+    let id = crate::utils::generate_unique_id_with_prefix("task");
     let now = crate::utils::iso_date();
 
     let status = remote_issue.status.to_ticket_status();

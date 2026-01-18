@@ -17,7 +17,7 @@ use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::tui::edit::extract_body_for_edit;
 use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus, TicketType};
-use crate::utils::{generate_id, iso_date};
+use crate::utils::{generate_unique_id_with_prefix, iso_date};
 
 /// Service for ticket-related business operations
 ///
@@ -82,7 +82,7 @@ impl TicketService {
         priority: TicketPriority,
         body: &str,
     ) -> Result<String> {
-        let id = generate_id();
+        let id = generate_unique_id_with_prefix("task");
         let now = iso_date();
 
         let frontmatter_lines = vec![

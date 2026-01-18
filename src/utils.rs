@@ -38,45 +38,6 @@ pub fn generate_uuid() -> String {
     Uuid::new_v4().to_string()
 }
 
-/// Generate a unique ticket ID based on directory name and random hash
-pub fn generate_id() -> String {
-    let dir_name = std::env::current_dir()
-        .ok()
-        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
-        .unwrap_or_default();
-
-    // Strip leading dots (e.g., ".tmpXXX" -> "tmpXXX")
-    let dir_name_clean = dir_name.trim_start_matches('.');
-
-    // Generate prefix from directory name (first letter of each word)
-    let prefix: String = dir_name_clean
-        .replace(['-', '_'], " ")
-        .split_whitespace()
-        .filter_map(|word| word.chars().next())
-        .filter(|c| c.is_alphanumeric()) // Only alphanumeric characters
-        .collect();
-
-    let prefix = if prefix.is_empty() {
-        // Fallback: take first 3 alphanumeric characters
-        dir_name_clean
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .take(3)
-            .collect::<String>()
-    } else {
-        prefix
-    };
-
-    // Final fallback to "j" if still empty
-    let prefix = if prefix.is_empty() {
-        "j".to_string()
-    } else {
-        prefix
-    };
-
-    generate_unique_id_with_prefix(&prefix)
-}
-
 /// Generate a unique ticket ID with a custom prefix
 pub fn generate_id_with_custom_prefix(custom_prefix: Option<&str>) -> Result<String, JanusError> {
     match custom_prefix {
@@ -84,7 +45,7 @@ pub fn generate_id_with_custom_prefix(custom_prefix: Option<&str>) -> Result<Str
             validate_prefix(prefix)?;
             Ok(generate_unique_id_with_prefix(prefix))
         }
-        _ => Ok(generate_id()),
+        _ => Ok(generate_unique_id_with_prefix("task")),
     }
 }
 
@@ -224,8 +185,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_id_format() {
-        let id = generate_id();
+    fn test_generate_unique_id_with_prefix_format() {
+        let id = generate_unique_id_with_prefix("task");
+        // Should start with prefix "task-"
+        assert!(id.starts_with("task-"));
         // Should contain a dash
         assert!(id.contains('-'));
         // The hash part should be 4 characters
@@ -309,6 +272,8 @@ mod tests {
     #[test]
     fn test_generate_id_without_custom_prefix() {
         let id = generate_id_with_custom_prefix(None).unwrap();
+        // Should start with default prefix "task-"
+        assert!(id.starts_with("task-"));
         // Should contain a dash
         assert!(id.contains('-'));
         // The hash part should be 4 characters
@@ -319,6 +284,8 @@ mod tests {
     #[test]
     fn test_generate_id_with_empty_prefix_uses_default() {
         let id = generate_id_with_custom_prefix(Some("")).unwrap();
+        // Should start with default prefix "task-"
+        assert!(id.starts_with("task-"));
         // Should contain a dash and 4-character hash
         assert!(id.contains('-'));
         let parts: Vec<&str> = id.rsplitn(2, '-').collect();
