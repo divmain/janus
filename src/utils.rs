@@ -151,6 +151,21 @@ pub fn truncate_string(s: &str, max_len: usize) -> String {
 ///
 /// Executes the editor through a shell to support EDITOR values with arguments
 /// (e.g., "subl -w", "code --wait").
+///
+/// # Security Note
+///
+/// This function intentionally uses shell execution (`sh -c`) to interpret the
+/// `$EDITOR` environment variable, which allows arbitrary command execution.
+/// This is by design and follows Unix conventions used by git, mercurial, and
+/// other CLI tools.
+///
+/// The `$EDITOR` variable is user-controlled configuration, not untrusted input.
+/// If an attacker can modify a user's environment variables (e.g., via a
+/// compromised `.bashrc`), they already have code execution in every shell
+/// session—the editor invocation adds no additional attack surface.
+///
+/// The file path argument is safely passed using shell positional parameters
+/// (`$1`) to prevent path-based injection.
 pub fn open_in_editor(path: &Path) -> io::Result<()> {
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
 
