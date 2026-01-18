@@ -6,7 +6,7 @@ mod locator;
 mod repository;
 
 pub use builder::TicketBuilder;
-pub use content::TicketContent;
+pub use content::{TicketContent, extract_body, update_title};
 pub use editor::TicketEditor;
 pub use file::TicketFile;
 pub use locator::{TicketLocator, find_ticket_by_id, find_tickets};

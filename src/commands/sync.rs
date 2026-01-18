@@ -16,7 +16,8 @@ use crate::remote::config::Config;
 use crate::remote::github::GitHubProvider;
 use crate::remote::linear::LinearProvider;
 use crate::remote::{IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
-use crate::ticket::{Ticket, TicketBuilder};
+use crate::ticket::extract_body;
+use crate::ticket::{Ticket, TicketBuilder, update_title};
 
 /// Adopt a remote issue and create a local ticket
 pub async fn cmd_adopt(
@@ -285,7 +286,7 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
             }
             SyncChoice::RemoteToLocal => {
                 // Update title in content
-                let new_content = update_title_in_content(&local_content, &remote_issue.title);
+                let new_content = update_title(&local_content, &remote_issue.title);
                 ticket.write(&new_content)?;
                 println!("  -> Updated local title");
                 changes_made = true;
@@ -346,31 +347,6 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Extract the body content from a ticket file (after frontmatter, excluding title)
-fn extract_body(content: &str) -> String {
-    // Find end of frontmatter
-    if let Some(end_idx) = content.find("\n---\n") {
-        let after_frontmatter = &content[end_idx + 5..];
-        // Skip the title line (# Title)
-        let lines: Vec<&str> = after_frontmatter.lines().collect();
-        let body_start = lines
-            .iter()
-            .position(|l| !l.starts_with('#') && !l.is_empty())
-            .unwrap_or(0);
-        lines[body_start..].join("\n").trim().to_string()
-    } else {
-        String::new()
-    }
-}
-
-/// Update the title in ticket content
-fn update_title_in_content(content: &str, new_title: &str) -> String {
-    let title_re = regex::Regex::new(r"(?m)^#\s+.*$").unwrap();
-    title_re
-        .replace(content, format!("# {}", new_title))
-        .into_owned()
 }
 
 #[derive(Debug, Clone, Copy)]

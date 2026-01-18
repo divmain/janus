@@ -46,6 +46,35 @@ impl TicketContent {
             Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
         Ok(field_pattern.replace(raw_content, "").into_owned())
     }
+
+    pub fn extract_body(raw_content: &str) -> String {
+        if let Some(end_idx) = raw_content.find("\n---\n") {
+            let after_frontmatter = &raw_content[end_idx + 5..];
+            let lines: Vec<&str> = after_frontmatter.lines().collect();
+            let body_start = lines
+                .iter()
+                .position(|l| !l.starts_with('#') && !l.is_empty())
+                .unwrap_or(0);
+            lines[body_start..].join("\n").trim().to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    pub fn update_title(raw_content: &str, new_title: &str) -> String {
+        let title_re = Regex::new(r"(?m)^#\s+.*$").unwrap();
+        title_re
+            .replace(raw_content, format!("# {}", new_title))
+            .into_owned()
+    }
+}
+
+pub fn extract_body(raw_content: &str) -> String {
+    TicketContent::extract_body(raw_content)
+}
+
+pub fn update_title(raw_content: &str, new_title: &str) -> String {
+    TicketContent::update_title(raw_content, new_title)
 }
 
 pub(crate) fn validate_field_name(field: &str, operation: &str) -> Result<()> {
