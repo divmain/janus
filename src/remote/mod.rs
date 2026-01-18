@@ -506,7 +506,7 @@ where
         }
     }
 
-    Err(last_error.unwrap())
+    Err(last_error.expect("last_error should always be Some after exhausting all retry attempts"))
 }
 
 /// Common interface for remote providers

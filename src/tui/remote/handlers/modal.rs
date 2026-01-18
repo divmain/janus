@@ -32,11 +32,13 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
         return HandleResult::Handled;
     }
 
-    if ctx.link_mode.read().is_some() {
-        let source_view = ctx.link_mode.read().as_ref().unwrap().source_view;
-        ctx.active_view.set(source_view);
-        ctx.link_mode.set(None);
-        return HandleResult::Handled;
+    {
+        let link_mode = ctx.link_mode.read().as_ref().cloned();
+        if let Some(lm) = link_mode {
+            ctx.active_view.set(lm.source_view);
+            ctx.link_mode.set(None);
+            return HandleResult::Handled;
+        }
     }
 
     HandleResult::NotHandled

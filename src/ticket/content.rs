@@ -12,7 +12,8 @@ impl TicketContent {
     }
 
     pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
-        let frontmatter_re = Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").unwrap();
+        let frontmatter_re =
+            Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
 
         let captures = frontmatter_re.captures(raw_content).ok_or_else(|| {
             JanusError::InvalidFormat("missing or malformed YAML frontmatter".to_string())
@@ -22,7 +23,8 @@ impl TicketContent {
         let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
 
         let mut yaml_lines: Vec<String> = yaml.lines().map(String::from).collect();
-        let line_re = Regex::new(&format!(r"^{}:\s*.*$", regex::escape(field))).unwrap();
+        let line_re = Regex::new(&format!(r"^{}:\s*.*$", regex::escape(field)))
+            .expect("field regex should be valid");
 
         let field_exists = yaml_lines.iter().any(|line| line_re.is_match(line));
 
@@ -42,8 +44,8 @@ impl TicketContent {
     }
 
     pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
-        let field_pattern =
-            Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field))).unwrap();
+        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field)))
+            .expect("field pattern regex should be valid");
         Ok(field_pattern.replace(raw_content, "").into_owned())
     }
 
@@ -62,7 +64,7 @@ impl TicketContent {
     }
 
     pub fn update_title(raw_content: &str, new_title: &str) -> String {
-        let title_re = Regex::new(r"(?m)^#\s+.*$").unwrap();
+        let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
         title_re
             .replace(raw_content, format!("# {}", new_title))
             .into_owned()

@@ -161,25 +161,21 @@ impl TicketCache {
 
         let result = Self::open().await;
 
-        if result.is_err() && database_exists {
-            let error = result.as_ref().err().unwrap();
-            let error_str = error.to_string();
+        if let Err(error) = &result
+            && database_exists
+            && is_corruption_error(&error.to_string())
+        {
+            eprintln!(
+                "Warning: Cache file appears corrupted at: {}",
+                db_path.display()
+            );
+            eprintln!("Deleting corrupted cache and attempting rebuild...");
 
-            let likely_corruption = is_corruption_error(&error_str);
-
-            if likely_corruption {
-                eprintln!(
-                    "Warning: Cache file appears corrupted at: {}",
-                    db_path.display()
-                );
-                eprintln!("Deleting corrupted cache and attempting rebuild...");
-
-                if let Err(e) = fs::remove_file(&db_path) {
-                    eprintln!("Warning: failed to delete corrupted cache: {}", e);
-                } else {
-                    eprintln!("Cache deleted successfully, rebuilding...");
-                    return Self::open().await;
-                }
+            if let Err(e) = fs::remove_file(&db_path) {
+                eprintln!("Warning: failed to delete corrupted cache: {}", e);
+            } else {
+                eprintln!("Cache deleted successfully, rebuilding...");
+                return Self::open().await;
             }
         }
 

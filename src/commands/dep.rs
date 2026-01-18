@@ -103,7 +103,8 @@ pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Resul
             };
 
             let mut base = super::ticket_minimal_json_with_exists(id, ticket);
-            base["deps"] = serde_json::to_value(deps_json).unwrap();
+            base["deps"] =
+                serde_json::to_value(deps_json).expect("JSON serialization should succeed");
             base
         }
 

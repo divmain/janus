@@ -106,14 +106,14 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
 
 /// Parse a priority filter from the query (e.g., "p0", "p1", "P2")
 fn parse_priority_filter(query: &str) -> Option<u8> {
-    let re = Regex::new(r"(?i)\bp([0-4])\b").unwrap();
+    let re = Regex::new(r"(?i)\bp([0-4])\b").expect("priority filter regex should be valid");
     re.captures(query)
         .and_then(|c| c.get(1)?.as_str().parse().ok())
 }
 
 /// Strip priority shorthand from the query for fuzzy matching
 fn strip_priority_shorthand(query: &str) -> String {
-    let re = Regex::new(r"(?i)\bp[0-4]\b").unwrap();
+    let re = Regex::new(r"(?i)\bp[0-4]\b").expect("priority shorthand regex should be valid");
     re.replace_all(query, "").trim().to_string()
 }
 

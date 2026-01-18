@@ -96,7 +96,8 @@ pub fn parse_plan_content(content: &str) -> Result<PlanMetadata> {
 
 /// Split content into YAML frontmatter and markdown body
 fn split_frontmatter(content: &str) -> Result<(&str, &str)> {
-    let frontmatter_re = Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").unwrap();
+    let frontmatter_re =
+        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
 
     let captures = frontmatter_re
         .captures(content)
@@ -338,7 +339,8 @@ struct H3Section {
 /// Matches: "Phase 1: Name", "Phase 2a - Name", "Phase 10:", "Phase 1" (no separator)
 fn try_parse_phase_header(heading: &str) -> Option<(String, String)> {
     // Pattern: "Phase" followed by number/letter combo, optional separator and name
-    let phase_re = Regex::new(r"(?i)^phase\s+(\d+[a-z]?)\s*(?:[-:]\s*)?(.*)$").unwrap();
+    let phase_re = Regex::new(r"(?i)^phase\s+(\d+[a-z]?)\s*(?:[-:]\s*)?(.*)$")
+        .expect("phase regex should be valid");
 
     phase_re.captures(heading).map(|caps| {
         let number = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
@@ -398,7 +400,8 @@ fn parse_list_items(content: &str) -> Vec<String> {
     let mut items = Vec::new();
 
     // Match bullet points (-, *, +) or numbered lists (1., 2., etc.)
-    let item_re = Regex::new(r"(?m)^[\s]*[-*+][\s]+(.+)$|^[\s]*\d+\.[\s]+(.+)$").unwrap();
+    let item_re = Regex::new(r"(?m)^[\s]*[-*+][\s]+(.+)$|^[\s]*\d+\.[\s]+(.+)$")
+        .expect("item list regex should be valid");
 
     for caps in item_re.captures_iter(content) {
         // Try bullet point match first, then numbered
@@ -427,7 +430,8 @@ pub fn parse_ticket_list(content: &str) -> Vec<String> {
 
     // Match numbered or bullet list items, extract first word (the ticket ID)
     // Ticket ID pattern: word chars and hyphens (e.g., j-a1b2, plan-c3d4)
-    let item_re = Regex::new(r"(?m)^[\s]*(?:[-*+]|\d+\.)\s+([\w-]+)").unwrap();
+    let item_re = Regex::new(r"(?m)^[\s]*(?:[-*+]|\d+\.)\s+([\w-]+)")
+        .expect("ticket item regex should be valid");
 
     for caps in item_re.captures_iter(content) {
         if let Some(id_match) = caps.get(1) {
@@ -678,7 +682,7 @@ pub fn is_section_alias(heading: &str, aliases: &[&str]) -> bool {
 /// # Returns
 /// `Some((number, name))` if the heading is a valid phase header, `None` otherwise.
 pub fn is_phase_header(heading: &str) -> Option<(String, String)> {
-    let phase_re = Regex::new(PHASE_PATTERN).unwrap();
+    let phase_re = Regex::new(PHASE_PATTERN).expect("phase regex should be valid");
 
     phase_re.captures(heading).map(|caps| {
         let number = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
@@ -1044,9 +1048,9 @@ fn find_implementation_section_bounds<'a>(nodes: &[&'a AstNode<'a>]) -> Option<(
         let text = extract_text_content(node);
         if text.trim().to_lowercase() == IMPLEMENTATION_SECTION_NAME {
             impl_start = Some(idx);
-        } else if impl_start.is_some() {
+        } else if let Some(start) = impl_start {
             // Found another H2 after Implementation
-            return Some((impl_start.unwrap(), idx));
+            return Some((start, idx));
         }
     }
 

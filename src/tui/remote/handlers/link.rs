@@ -18,7 +18,9 @@ pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleRe
     }
 
     // Complete link operation
-    let lm = ctx.link_mode.read().clone().unwrap();
+    let Some(lm) = ctx.link_mode.read().clone() else {
+        return HandleResult::NotHandled;
+    };
     if lm.source_view == ViewMode::Local {
         // Source is local ticket, target is remote issue
         let issues = ctx.remote_issues.read();

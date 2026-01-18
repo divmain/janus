@@ -156,7 +156,7 @@ fn execute_hook(
 
         if !output.status.success() {
             let exit_code = output.status.code().unwrap_or(-1);
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
             if is_pre_hook {
                 return Err(JanusError::PreHookFailed {

@@ -15,7 +15,8 @@ impl TicketEditor {
     }
 
     fn extract_field_value(content: &str, field: &str) -> Option<String> {
-        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field))).unwrap();
+        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field)))
+            .expect("field pattern regex should be valid");
         field_pattern.find(content).map(|m| {
             m.as_str()
                 .split(':')

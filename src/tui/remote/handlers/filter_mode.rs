@@ -10,54 +10,75 @@ use super::context::HandlerContext;
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Tab => {
-            let mut state = ctx.filter_state.read().clone().unwrap();
-            state.focus_next();
-            ctx.filter_state.set(Some(state));
-            HandleResult::Handled
+            let state = ctx.filter_state.read().clone();
+            if let Some(mut s) = state {
+                s.focus_next();
+                ctx.filter_state.set(Some(s));
+                HandleResult::Handled
+            } else {
+                HandleResult::NotHandled
+            }
         }
         KeyCode::BackTab => {
-            let mut state = ctx.filter_state.read().clone().unwrap();
-            state.focus_prev();
-            ctx.filter_state.set(Some(state));
-            HandleResult::Handled
+            let state = ctx.filter_state.read().clone();
+            if let Some(mut s) = state {
+                s.focus_prev();
+                ctx.filter_state.set(Some(s));
+                HandleResult::Handled
+            } else {
+                HandleResult::NotHandled
+            }
         }
         KeyCode::Char('x') => {
-            let mut state = ctx.filter_state.read().clone().unwrap();
-            state.clear();
-            ctx.filter_state.set(Some(state));
-            HandleResult::Handled
+            let state = ctx.filter_state.read().clone();
+            if let Some(mut s) = state {
+                s.clear();
+                ctx.filter_state.set(Some(s));
+                HandleResult::Handled
+            } else {
+                HandleResult::NotHandled
+            }
         }
         KeyCode::Enter => {
-            let state = ctx.filter_state.read().clone().unwrap();
-            if state.focused_field == 0 {
-                // Toggle status
-                let mut new_state = state.clone();
-                new_state.toggle_status();
-                ctx.filter_state.set(Some(new_state));
+            let state = ctx.filter_state.read().clone();
+            if let Some(s) = state {
+                if s.focused_field == 0 {
+                    let mut new_state = s;
+                    new_state.toggle_status();
+                    ctx.filter_state.set(Some(new_state));
+                } else {
+                    let base_query = ctx.active_filters.read().clone();
+                    let new_query = s.to_query(&base_query);
+                    ctx.active_filters.set(new_query.clone());
+                    ctx.filter_state.set(None);
+                    ctx.remote_loading.set(true);
+                    ctx.toast.set(Some(Toast::info("Applying filters...")));
+                    ctx.fetch_handler.clone()((ctx.provider.get(), new_query));
+                }
+                HandleResult::Handled
             } else {
-                // Apply filters
-                let base_query = ctx.active_filters.read().clone();
-                let new_query = state.to_query(&base_query);
-                ctx.active_filters.set(new_query.clone());
-                ctx.filter_state.set(None);
-                // Refresh with new filters
-                ctx.remote_loading.set(true);
-                ctx.toast.set(Some(Toast::info("Applying filters...")));
-                ctx.fetch_handler.clone()((ctx.provider.get(), new_query));
+                HandleResult::NotHandled
             }
-            HandleResult::Handled
         }
         KeyCode::Char('j') | KeyCode::Down => {
-            let mut state = ctx.filter_state.read().clone().unwrap();
-            state.focus_next();
-            ctx.filter_state.set(Some(state));
-            HandleResult::Handled
+            let state = ctx.filter_state.read().clone();
+            if let Some(mut s) = state {
+                s.focus_next();
+                ctx.filter_state.set(Some(s));
+                HandleResult::Handled
+            } else {
+                HandleResult::NotHandled
+            }
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            let mut state = ctx.filter_state.read().clone().unwrap();
-            state.focus_prev();
-            ctx.filter_state.set(Some(state));
-            HandleResult::Handled
+            let state = ctx.filter_state.read().clone();
+            if let Some(mut s) = state {
+                s.focus_prev();
+                ctx.filter_state.set(Some(s));
+                HandleResult::Handled
+            } else {
+                HandleResult::NotHandled
+            }
         }
         _ => HandleResult::NotHandled,
     }

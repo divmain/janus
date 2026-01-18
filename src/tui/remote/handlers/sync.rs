@@ -38,32 +38,38 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
 }
 
 fn handle_accept(ctx: &mut HandlerContext<'_>) {
-    let mut preview = ctx.sync_preview.read().clone().unwrap();
-    if !preview.accept_current() {
-        // No more changes, apply all accepted
-        apply_sync_changes(ctx, preview);
-        ctx.sync_preview.set(None);
-    } else {
-        ctx.sync_preview.set(Some(preview));
+    let preview = ctx.sync_preview.read().clone();
+    if let Some(mut p) = preview {
+        if !p.accept_current() {
+            // No more changes, apply all accepted
+            apply_sync_changes(ctx, p);
+            ctx.sync_preview.set(None);
+        } else {
+            ctx.sync_preview.set(Some(p));
+        }
     }
 }
 
 fn handle_skip(ctx: &mut HandlerContext<'_>) {
-    let mut preview = ctx.sync_preview.read().clone().unwrap();
-    if !preview.skip_current() {
-        // No more changes, apply all accepted
-        apply_sync_changes(ctx, preview);
-        ctx.sync_preview.set(None);
-    } else {
-        ctx.sync_preview.set(Some(preview));
+    let preview = ctx.sync_preview.read().clone();
+    if let Some(mut p) = preview {
+        if !p.skip_current() {
+            // No more changes, apply all accepted
+            apply_sync_changes(ctx, p);
+            ctx.sync_preview.set(None);
+        } else {
+            ctx.sync_preview.set(Some(p));
+        }
     }
 }
 
 fn handle_accept_all(ctx: &mut HandlerContext<'_>) {
-    let mut preview = ctx.sync_preview.read().clone().unwrap();
-    preview.accept_all();
-    apply_sync_changes(ctx, preview);
-    ctx.sync_preview.set(None);
+    let preview = ctx.sync_preview.read().clone();
+    if let Some(mut p) = preview {
+        p.accept_all();
+        apply_sync_changes(ctx, p);
+        ctx.sync_preview.set(None);
+    }
 }
 
 fn apply_sync_changes(

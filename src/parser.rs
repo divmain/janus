@@ -17,7 +17,8 @@ use crate::types::TicketMetadata;
 /// Body content...
 /// ```
 pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
-    let frontmatter_re = Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").unwrap();
+    let frontmatter_re =
+        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
 
     let captures = frontmatter_re
         .captures(content)
@@ -29,7 +30,7 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
     let mut metadata: TicketMetadata = yaml::from_str(yaml)
         .map_err(|e| JanusError::Other(format!("YAML parsing error: {}", e)))?;
 
-    let title_re = Regex::new(r"(?m)^#\s+(.*)$").unwrap();
+    let title_re = Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid");
     if let Some(caps) = title_re.captures(body) {
         metadata.title = caps.get(1).map(|m| m.as_str().to_string());
     }
@@ -44,7 +45,8 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
 /// The section content includes everything after the `## Completion Summary` header
 /// until the next H2 header (`## ...`) or end of document.
 fn extract_completion_summary(body: &str) -> Option<String> {
-    let section_re = Regex::new(r"(?ims)^##\s+completion\s+summary\s*\n(.*?)(?:^##\s|\z)").unwrap();
+    let section_re = Regex::new(r"(?ims)^##\s+completion\s+summary\s*\n(.*?)(?:^##\s|\z)")
+        .expect("completion summary regex should be valid");
 
     section_re.captures(body).map(|caps| {
         caps.get(1)

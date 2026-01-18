@@ -194,13 +194,14 @@ fn extract_body_from_content(content: &str) -> String {
     use regex::Regex;
 
     // Match frontmatter and extract body
-    let frontmatter_re = Regex::new(r"(?s)^---\n.*?\n---\n(.*)$").unwrap();
+    let frontmatter_re =
+        Regex::new(r"(?s)^---\n.*?\n---\n(.*)$").expect("frontmatter regex should be valid");
 
     if let Some(captures) = frontmatter_re.captures(content) {
         let body = captures.get(1).map(|m| m.as_str()).unwrap_or("");
 
         // Remove the title line (# heading) and get the rest
-        let title_re = Regex::new(r"(?m)^#\s+.*$").unwrap();
+        let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
         let body_without_title = title_re.replace(body, "").to_string();
 
         // Trim leading/trailing whitespace
@@ -432,7 +433,7 @@ pub fn apply_sync_change_to_local(ticket_id: &str, change: &SyncChange) -> Resul
 fn update_title_in_content(content: &str, new_title: &str) -> String {
     use regex::Regex;
 
-    let title_re = Regex::new(r"(?m)^#\s+.*$").unwrap();
+    let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
     title_re
         .replace(content, format!("# {}", new_title))
         .to_string()

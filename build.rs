@@ -1,7 +1,7 @@
 fn main() {
     cynic_codegen::register_schema("linear")
         .from_sdl_file("schemas/linear.graphql")
-        .unwrap()
+        .expect("failed to load linear.graphql schema file")
         .as_default()
-        .unwrap();
+        .expect("failed to register linear schema as default");
 }
