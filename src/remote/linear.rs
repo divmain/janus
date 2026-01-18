@@ -1,17 +1,17 @@
 //! Linear.app provider implementation using GraphQL API with type-safe cynic queries.
 
 use reqwest::Client;
+use std::fmt;
 use std::time::Duration;
 
 use crate::error::{JanusError, Result};
 
 use super::{
-    Config, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef,
-    RemoteStatus,
+    AsHttpError, Config, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteQuery,
+    RemoteRef, RemoteStatus,
 };
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
-const MAX_RETRIES: u32 = 3;
 
 mod graphql {
     // Re-export cynic types we need
@@ -355,12 +355,74 @@ impl LinearProvider {
         self.default_team_id = Some(team_id);
         self
     }
+}
 
-    /// Check if an HTTP status is a transient error (5xx) that should be retried
-    fn is_transient_error(status: reqwest::StatusCode) -> bool {
-        status.is_server_error() // 5xx
+/// Wrapper for Linear API errors that implements AsHttpError
+pub struct LinearError {
+    status: Option<reqwest::StatusCode>,
+    retry_after: Option<u64>,
+    message: String,
+}
+
+impl fmt::Display for LinearError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl AsHttpError for LinearError {
+    fn as_http_error(&self) -> Option<(reqwest::StatusCode, Option<u64>)> {
+        self.status.map(|s| (s, self.retry_after))
     }
 
+    fn is_transient(&self) -> bool {
+        if let Some(status) = self.status {
+            return status.is_server_error();
+        }
+        false
+    }
+
+    fn is_rate_limited(&self) -> bool {
+        if let Some(status) = self.status {
+            return status.as_u16() == 429;
+        }
+        false
+    }
+
+    fn get_retry_after(&self) -> Option<Duration> {
+        if let (Some(status), Some(seconds)) = (self.status, self.retry_after)
+            && status.as_u16() == 429
+        {
+            return Some(Duration::from_secs(seconds));
+        }
+        if self.is_rate_limited() {
+            return Some(Duration::from_secs(60));
+        }
+        None
+    }
+}
+
+impl From<reqwest::Error> for LinearError {
+    fn from(err: reqwest::Error) -> Self {
+        let status = err.status();
+        Self {
+            status,
+            retry_after: None,
+            message: err.to_string(),
+        }
+    }
+}
+
+impl From<LinearError> for JanusError {
+    fn from(err: LinearError) -> Self {
+        if let Some(duration) = err.get_retry_after() {
+            return JanusError::RateLimited(duration.as_secs());
+        }
+        JanusError::Api(format!("Linear API error: {}", err.message))
+    }
+}
+
+impl LinearProvider {
     /// Execute a GraphQL operation (query or mutation) with retry logic
     async fn execute<ResponseData, Vars>(
         &self,
@@ -368,82 +430,62 @@ impl LinearProvider {
     ) -> Result<ResponseData>
     where
         ResponseData: serde::de::DeserializeOwned + 'static,
-        Vars: serde::Serialize,
+        Vars: serde::Serialize + std::marker::Sync,
     {
-        let mut retries = 0;
+        let response = super::execute_with_retry(
+            || async {
+                let response = self
+                    .client
+                    .post(LINEAR_API_URL)
+                    .header("Authorization", &self.api_key)
+                    .header("Content-Type", "application/json")
+                    .json(&operation)
+                    .send()
+                    .await?;
 
-        loop {
-            let response = self
-                .client
-                .post(LINEAR_API_URL)
-                .header("Authorization", &self.api_key)
-                .header("Content-Type", "application/json")
-                .json(&operation)
-                .send()
-                .await?;
+                let status = response.status();
 
-            let status = response.status();
+                if !status.is_success() {
+                    return Err(LinearError {
+                        status: Some(status),
+                        retry_after: response
+                            .headers()
+                            .get("Retry-After")
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|s| s.parse::<u64>().ok()),
+                        message: format!("HTTP {}", status),
+                    });
+                }
 
-            // Check for rate limit (HTTP 429) - use longer wait with Retry-After header
-            if status.as_u16() == 429 && retries < MAX_RETRIES {
-                retries += 1;
+                Ok(response)
+            },
+            super::HttpRetryPolicy::create::<LinearError>(),
+        )
+        .await?;
 
-                let retry_after = response
-                    .headers()
-                    .get("Retry-After")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|s| s.parse::<u64>().ok());
+        let result: GraphQlResponse<ResponseData, ErrorExtensions> = response.json().await?;
 
-                let wait_duration = match retry_after {
-                    Some(seconds) => Duration::from_secs(seconds),
-                    None => Duration::from_secs(60),
-                };
-
-                tokio::time::sleep(wait_duration).await;
-                continue;
-            }
-
-            // Check for transient errors (5xx) - use exponential backoff
-            if Self::is_transient_error(status) && retries < MAX_RETRIES {
-                let base_delay_ms = 100u64;
-                let delay_ms = base_delay_ms * 2u64.pow(retries);
-                retries += 1;
-                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                continue;
-            }
-
-            if !status.is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(JanusError::Api(format!(
-                    "Linear API error ({}): {}",
-                    status, text
-                )));
-            }
-
-            let result: GraphQlResponse<ResponseData, ErrorExtensions> = response.json().await?;
-
-            if let Some(errors) = result.errors {
-                let error_msgs: Vec<String> = errors
-                    .iter()
-                    .map(|e| {
-                        if let Some(ext) = &e.extensions
-                            && let Some(code) = &ext.code
-                        {
-                            return format!("[{}] {}", code, e.message);
-                        }
-                        e.message.clone()
-                    })
-                    .collect();
-                return Err(JanusError::Api(format!(
-                    "Linear GraphQL errors: {}",
-                    error_msgs.join(", ")
-                )));
-            }
-
-            return result
-                .data
-                .ok_or_else(|| JanusError::Api("No data in Linear response".to_string()));
+        if let Some(errors) = result.errors {
+            let error_msgs: Vec<String> = errors
+                .iter()
+                .map(|e| {
+                    if let Some(ext) = &e.extensions
+                        && let Some(code) = &ext.code
+                    {
+                        return format!("[{}] {}", code, e.message);
+                    }
+                    e.message.clone()
+                })
+                .collect();
+            return Err(JanusError::Api(format!(
+                "Linear GraphQL errors: {}",
+                error_msgs.join(", ")
+            )));
         }
+
+        result
+            .data
+            .ok_or_else(|| JanusError::Api("No data in Linear response".to_string()))
     }
 
     /// Fetch the first team ID for this organization

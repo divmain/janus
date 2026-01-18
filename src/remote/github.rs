@@ -1,11 +1,13 @@
 //! GitHub Issues provider implementation.
 
 use octocrab::Octocrab;
+use std::fmt;
 
 use crate::error::{JanusError, Result};
 
 use super::{
-    Config, IssueUpdates, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef, RemoteStatus,
+    AsHttpError, Config, IssueUpdates, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef,
+    RemoteStatus,
 };
 
 /// GitHub Issues provider
@@ -91,41 +93,96 @@ impl GitHubProvider {
     }
 }
 
-impl GitHubProvider {
-    /// Check if an octocrab error is a rate limit error
-    fn is_rate_limit_error(error: &octocrab::Error) -> bool {
-        let error_msg = error.to_string().to_lowercase();
-        error_msg.contains("rate limit")
-            || error_msg.contains("api rate limit exceeded")
-            || error_msg.contains("403")
+impl GitHubProvider {}
+
+/// Wrapper for GitHub API errors that implements AsHttpError
+pub struct GitHubError {
+    inner: octocrab::Error,
+}
+
+impl fmt::Display for GitHubError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl From<octocrab::Error> for GitHubError {
+    fn from(error: octocrab::Error) -> Self {
+        Self { inner: error }
+    }
+}
+
+impl AsHttpError for GitHubError {
+    fn as_http_error(&self) -> Option<(reqwest::StatusCode, Option<u64>)> {
+        if let octocrab::Error::Http { .. } = &self.inner {
+            let error_str = self.inner.to_string();
+            let is_rate_limited = error_str.contains("rate limit");
+            let matched = regex::Regex::new(r"status (\d+)")
+                .ok()
+                .and_then(|re| re.captures(&error_str))?;
+            let status_str = matched.get(1)?;
+            let status_code = status_str.as_str().parse::<u16>().ok()?;
+            if let Ok(status) = reqwest::StatusCode::from_u16(status_code) {
+                return Some((status, is_rate_limited.then_some(60)));
+            }
+        }
+        None
     }
 
-    /// Check if an octocrab error is a transient error (5xx, timeout, connection, network)
-    fn is_transient_error(error: &octocrab::Error) -> bool {
-        let error_msg = error.to_string().to_lowercase();
-        if Self::is_rate_limit_error(error) {
+    fn is_transient(&self) -> bool {
+        if let Some((status, _)) = self.as_http_error() {
+            if status.is_server_error() {
+                return true;
+            }
             return false;
         }
-        error_msg.contains("5")
-            || error_msg.contains("timed out")
+
+        let error_msg = self.inner.to_string().to_lowercase();
+        error_msg.contains("timed out")
             || error_msg.contains("timeout")
             || error_msg.contains("connection")
             || error_msg.contains("network")
             || error_msg.contains("service unavailable")
     }
 
-    /// Convert an octocrab error to a JanusError
-    fn handle_octocrab_error(error: octocrab::Error) -> JanusError {
-        let error_msg = error.to_string();
-        let error_msg_lower = error_msg.to_lowercase();
-
-        if error_msg_lower.contains("rate limit")
-            || error_msg_lower.contains("api rate limit exceeded")
-        {
-            return JanusError::RateLimited(60);
+    fn is_rate_limited(&self) -> bool {
+        if let Some((status, _)) = self.as_http_error() {
+            return status.as_u16() == 403 || status.as_u16() == 429;
         }
 
-        JanusError::Api(format!("GitHub API error: {}", error_msg))
+        let error_msg = self.inner.to_string().to_lowercase();
+        error_msg.contains("rate limit") || error_msg.contains("api rate limit exceeded")
+    }
+
+    fn get_retry_after(&self) -> Option<std::time::Duration> {
+        if let Some((status, retry_after)) = self.as_http_error()
+            && (status.as_u16() == 403 || status.as_u16() == 429)
+        {
+            if let Some(seconds) = retry_after {
+                return Some(std::time::Duration::from_secs(seconds));
+            }
+            return Some(std::time::Duration::from_secs(60));
+        }
+        None
+    }
+}
+
+impl GitHubProvider {
+    /// Convert a GitHubError to a JanusError
+    fn handle_octocrab_error(error: GitHubError) -> JanusError {
+        if error.is_rate_limited() {
+            return if let Some(duration) = error.get_retry_after() {
+                JanusError::RateLimited(duration.as_secs())
+            } else {
+                JanusError::RateLimited(60)
+            };
+        }
+
+        if let Some((status, _)) = error.as_http_error() {
+            return JanusError::Api(format!("GitHub API error ({}): {}", status.as_u16(), error));
+        }
+
+        JanusError::Api(format!("GitHub API error: {}", error))
     }
 }
 
@@ -146,8 +203,14 @@ impl RemoteProvider for GitHubProvider {
 
         let client = self.client.clone();
         let issue = super::execute_with_retry(
-            || async { client.issues(owner, repo).get(issue_number).await },
-            Self::is_transient_error,
+            || async {
+                client
+                    .issues(owner, repo)
+                    .get(issue_number)
+                    .await
+                    .map_err(GitHubError::from)
+            },
+            super::HttpRetryPolicy::create(),
         )
         .await
         .map_err(|e| {
@@ -204,8 +267,9 @@ impl RemoteProvider for GitHubProvider {
                     .body(&body)
                     .send()
                     .await
+                    .map_err(GitHubError::from)
             },
-            Self::is_transient_error,
+            super::HttpRetryPolicy::create(),
         )
         .await
         .map_err(Self::handle_octocrab_error)?;
@@ -250,7 +314,7 @@ impl RemoteProvider for GitHubProvider {
 
         let _ = super::execute_with_retry(
             || async {
-                if let (Some(t), Some(b), Some(s)) = (&title, &body, &state) {
+                let result = if let (Some(t), Some(b), Some(s)) = (&title, &body, &state) {
                     client
                         .issues(&owner, &repo)
                         .update(issue_number)
@@ -313,9 +377,10 @@ impl RemoteProvider for GitHubProvider {
                         )),
                         backtrace: std::backtrace::Backtrace::disabled(),
                     })
-                }
+                };
+                result.map_err(GitHubError::from)
             },
-            Self::is_transient_error,
+            super::HttpRetryPolicy::create(),
         )
         .await
         .map_err(Self::handle_octocrab_error)?;
@@ -340,8 +405,9 @@ impl RemoteProvider for GitHubProvider {
                     .per_page(query.limit.min(100) as u8)
                     .send()
                     .await
+                    .map_err(GitHubError::from)
             },
-            Self::is_transient_error,
+            super::HttpRetryPolicy::create(),
         )
         .await
         .map_err(Self::handle_octocrab_error)?;
@@ -374,8 +440,9 @@ impl RemoteProvider for GitHubProvider {
                     .per_page(limit.min(100) as u8)
                     .send()
                     .await
+                    .map_err(GitHubError::from)
             },
-            Self::is_transient_error,
+            super::HttpRetryPolicy::create(),
         )
         .await
         .map_err(Self::handle_octocrab_error)?;

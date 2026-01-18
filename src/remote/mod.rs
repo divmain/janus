@@ -366,6 +366,89 @@ pub enum SortDirection {
     Desc,
 }
 
+/// Retry decision
+pub enum RetryDecision {
+    /// Do not retry, return the error immediately
+    NoRetry,
+    /// Retry after the specified duration
+    RetryAfter(std::time::Duration),
+    /// Retry with exponential backoff
+    RetryBackoff,
+}
+
+/// Retry policy trait for determining how to handle errors
+pub trait RetryPolicy<E>: Fn(&E, u32) -> RetryDecision + Send + Sync {}
+
+impl<E, F> RetryPolicy<E> for F where F: Fn(&E, u32) -> RetryDecision + Send + Sync {}
+
+/// HTTP retry policy with standard retry behavior
+pub struct HttpRetryPolicy;
+
+impl HttpRetryPolicy {
+    /// Create a new retry policy closure
+    pub fn create<E>() -> impl RetryPolicy<E>
+    where
+        E: AsHttpError,
+    {
+        |error: &E, attempt: u32| {
+            let http_error = error.as_http_error();
+            let max_attempts = 3;
+
+            if attempt >= max_attempts {
+                return RetryDecision::NoRetry;
+            }
+
+            if let Some((status, retry_after)) = http_error {
+                if status.as_u16() == 429 {
+                    if let Some(seconds) = retry_after {
+                        return RetryDecision::RetryAfter(std::time::Duration::from_secs(seconds));
+                    }
+                    return RetryDecision::RetryAfter(std::time::Duration::from_secs(60));
+                }
+
+                if status.is_server_error() {
+                    return RetryDecision::RetryBackoff;
+                }
+
+                return RetryDecision::NoRetry;
+            }
+
+            if error.is_transient() {
+                return RetryDecision::RetryBackoff;
+            }
+
+            RetryDecision::NoRetry
+        }
+    }
+}
+
+/// Trait for extracting HTTP error information
+pub trait AsHttpError: std::fmt::Display {
+    fn as_http_error(&self) -> Option<(reqwest::StatusCode, Option<u64>)>;
+    fn is_transient(&self) -> bool;
+
+    /// Check if error is a rate limit error
+    fn is_rate_limited(&self) -> bool {
+        if let Some((status, _retry_after)) = self.as_http_error() {
+            return status.as_u16() == 429;
+        }
+        false
+    }
+
+    /// Get retry-after duration if available, otherwise None
+    fn get_retry_after(&self) -> Option<std::time::Duration> {
+        if let Some((status, retry_after)) = self.as_http_error()
+            && status.as_u16() == 429
+        {
+            if let Some(seconds) = retry_after {
+                return Some(std::time::Duration::from_secs(seconds));
+            }
+            return Some(std::time::Duration::from_secs(60));
+        }
+        None
+    }
+}
+
 /// Retry configuration
 pub struct RetryConfig {
     max_attempts: u32,
@@ -381,15 +464,15 @@ impl Default for RetryConfig {
     }
 }
 
-/// Execute an async function with exponential backoff retry
-async fn execute_with_retry<T, E, F, Fut, RetryCheck>(
+/// Execute an async function with retry policy
+async fn execute_with_retry<T, E, F, Fut, P>(
     operation: F,
-    is_retryable: RetryCheck,
+    retry_policy: P,
 ) -> std::result::Result<T, E>
 where
     F: Fn() -> Fut + Send + Sync,
     Fut: std::future::Future<Output = std::result::Result<T, E>> + Send,
-    RetryCheck: Fn(&E) -> bool + Send + Sync,
+    P: RetryPolicy<E> + Send + Sync,
     E: std::fmt::Display,
 {
     let config = RetryConfig::default();
@@ -399,12 +482,25 @@ where
         let fut = operation();
         match fut.await {
             Ok(result) => return Ok(result),
-            Err(e) if !is_retryable(&e) => return Err(e),
             Err(e) => {
-                last_error = Some(e);
-                if attempt < config.max_attempts - 1 {
-                    let delay_ms = config.base_delay_ms * 2u64.pow(attempt);
-                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                let decision = retry_policy(&e, attempt);
+                match decision {
+                    RetryDecision::NoRetry => return Err(e),
+                    RetryDecision::RetryAfter(delay) => {
+                        if attempt < config.max_attempts - 1 {
+                            last_error = Some(e);
+                            tokio::time::sleep(delay).await;
+                            continue;
+                        }
+                    }
+                    RetryDecision::RetryBackoff => {
+                        if attempt < config.max_attempts - 1 {
+                            last_error = Some(e);
+                            let delay_ms = config.base_delay_ms * 2u64.pow(attempt);
+                            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                            continue;
+                        }
+                    }
                 }
             }
         }
