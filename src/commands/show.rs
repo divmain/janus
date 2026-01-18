@@ -9,7 +9,7 @@ use crate::types::{TicketMetadata, TicketStatus};
 
 /// Display a ticket with its relationships
 pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
-    let ticket = Ticket::find_async(id).await?;
+    let ticket = Ticket::find(id).await?;
     let content = ticket.read_content()?;
     let metadata = ticket.read()?;
     let ticket_map = build_ticket_map().await;

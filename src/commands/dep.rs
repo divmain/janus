@@ -9,11 +9,11 @@ use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::TicketMetadata;
 
 /// Add a dependency to a ticket
-pub fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
-    let ticket = Ticket::find(id)?;
+pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
+    let ticket = Ticket::find(id).await?;
 
     // Validate that the dependency exists
-    let dep_ticket = Ticket::find(dep_id)?;
+    let dep_ticket = Ticket::find(dep_id).await?;
 
     let added = ticket.add_to_array_field("deps", &dep_ticket.id)?;
     let metadata = ticket.read()?;
@@ -35,8 +35,8 @@ pub fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
 }
 
 /// Remove a dependency from a ticket
-pub fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
-    let ticket = Ticket::find(id)?;
+pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
+    let ticket = Ticket::find(id).await?;
 
     let removed = ticket.remove_from_array_field("deps", dep_id)?;
     if removed {

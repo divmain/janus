@@ -800,39 +800,39 @@ async fn main() -> ExitCode {
         ),
 
         Commands::Show { id, json } => cmd_show(&id, json).await,
-        Commands::Edit { id, json } => cmd_edit(&id, json),
+        Commands::Edit { id, json } => cmd_edit(&id, json).await,
         Commands::AddNote { id, text, json } => {
             let note_text = if text.is_empty() {
                 None
             } else {
                 Some(text.join(" "))
             };
-            cmd_add_note(&id, note_text.as_deref(), json)
+            cmd_add_note(&id, note_text.as_deref(), json).await
         }
 
-        Commands::Start { id, json } => cmd_start(&id, json),
-        Commands::Close { id, json } => cmd_close(&id, json),
-        Commands::Reopen { id, json } => cmd_reopen(&id, json),
-        Commands::Status { id, status, json } => cmd_status(&id, &status, json),
+        Commands::Start { id, json } => cmd_start(&id, json).await,
+        Commands::Close { id, json } => cmd_close(&id, json).await,
+        Commands::Reopen { id, json } => cmd_reopen(&id, json).await,
+        Commands::Status { id, status, json } => cmd_status(&id, &status, json).await,
         Commands::Set {
             id,
             field,
             value,
             json,
-        } => cmd_set(&id, &field, &value, json),
+        } => cmd_set(&id, &field, &value, json).await,
 
         Commands::Dep { action } => match action {
-            DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json),
-            DepAction::Remove { id, dep_id, json } => cmd_dep_remove(&id, &dep_id, json),
+            DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json).await,
+            DepAction::Remove { id, dep_id, json } => cmd_dep_remove(&id, &dep_id, json).await,
             DepAction::Tree { id, full, json } => cmd_dep_tree(&id, full, json).await,
         },
-        Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id, false),
+        Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id, false).await,
 
         Commands::Link { action } => match action {
-            LinkAction::Add { ids, json } => cmd_link_add(&ids, json),
-            LinkAction::Remove { id1, id2, json } => cmd_link_remove(&id1, &id2, json),
+            LinkAction::Add { ids, json } => cmd_link_add(&ids, json).await,
+            LinkAction::Remove { id1, id2, json } => cmd_link_remove(&id1, &id2, json).await,
         },
-        Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2, false),
+        Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2, false).await,
 
         Commands::Ls {
             ready,
@@ -904,7 +904,7 @@ async fn main() -> ExitCode {
         Commands::Hook { action } => match action {
             HookAction::List { json } => cmd_hook_list(json),
             HookAction::Install { recipe } => cmd_hook_install(&recipe).await,
-            HookAction::Run { event, id } => cmd_hook_run(&event, id.as_deref()),
+            HookAction::Run { event, id } => cmd_hook_run(&event, id.as_deref()).await,
             HookAction::Enable { json } => cmd_hook_enable(json),
             HookAction::Disable { json } => cmd_hook_disable(json),
         },
@@ -924,7 +924,7 @@ async fn main() -> ExitCode {
                 verbose_phases,
                 json,
             } => cmd_plan_show(&id, raw, tickets_only, phases_only, &verbose_phases, json).await,
-            PlanAction::Edit { id, json } => cmd_plan_edit(&id, json),
+            PlanAction::Edit { id, json } => cmd_plan_edit(&id, json).await,
             PlanAction::Ls { status, json } => cmd_plan_ls(status.as_deref(), json).await,
             PlanAction::AddTicket {
                 plan_id,
@@ -973,26 +973,26 @@ async fn main() -> ExitCode {
                 after,
                 position,
                 json,
-            } => cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position, json),
+            } => cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position, json).await,
             PlanAction::RemovePhase {
                 plan_id,
                 phase,
                 force,
                 migrate,
                 json,
-            } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), json),
+            } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), json).await,
             PlanAction::Reorder {
                 plan_id,
                 phase,
                 reorder_phases,
                 json,
-            } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases, json),
-            PlanAction::Delete { id, force, json } => cmd_plan_delete(&id, force, json),
+            } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases, json).await,
+            PlanAction::Delete { id, force, json } => cmd_plan_delete(&id, force, json).await,
             PlanAction::Rename {
                 id,
                 new_title,
                 json,
-            } => cmd_plan_rename(&id, &new_title, json),
+            } => cmd_plan_rename(&id, &new_title, json).await,
             PlanAction::Next {
                 id,
                 phase,
@@ -1008,14 +1008,17 @@ async fn main() -> ExitCode {
                 ticket_type,
                 prefix,
                 json,
-            } => cmd_plan_import(
-                &file,
-                dry_run,
-                title.as_deref(),
-                ticket_type,
-                prefix.as_deref(),
-                json,
-            ),
+            } => {
+                cmd_plan_import(
+                    &file,
+                    dry_run,
+                    title.as_deref(),
+                    ticket_type,
+                    prefix.as_deref(),
+                    json,
+                )
+                .await
+            }
             PlanAction::ImportSpec => cmd_show_import_spec(),
         },
 

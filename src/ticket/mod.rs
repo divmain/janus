@@ -9,10 +9,9 @@ pub use builder::TicketBuilder;
 pub use content::TicketContent;
 pub use editor::TicketEditor;
 pub use file::TicketFile;
-pub use locator::{TicketLocator, find_ticket_by_id, find_ticket_by_id_sync, find_tickets};
+pub use locator::{TicketLocator, find_ticket_by_id, find_tickets};
 pub use repository::{
-    TicketRepository, build_ticket_map, build_ticket_map_sync, get_all_tickets,
-    get_all_tickets_from_disk, get_all_tickets_sync, get_file_mtime,
+    TicketRepository, build_ticket_map, get_all_tickets, get_all_tickets_from_disk, get_file_mtime,
 };
 
 use crate::error::Result;
@@ -27,20 +26,8 @@ pub struct Ticket {
 }
 
 impl Ticket {
-    pub fn find(partial_id: &str) -> Result<Self> {
-        let locator = TicketLocator::find(partial_id)?;
-        let file = TicketFile::new(locator.clone());
-        let editor = TicketEditor::new(file.clone());
-        Ok(Ticket {
-            file_path: locator.file_path.clone(),
-            id: locator.id.clone(),
-            file,
-            editor,
-        })
-    }
-
-    pub async fn find_async(partial_id: &str) -> Result<Self> {
-        let locator = TicketLocator::find_async(partial_id).await?;
+    pub async fn find(partial_id: &str) -> Result<Self> {
+        let locator = TicketLocator::find(partial_id).await?;
         let file = TicketFile::new(locator.clone());
         let editor = TicketEditor::new(file.clone());
         Ok(Ticket {

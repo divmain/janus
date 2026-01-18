@@ -290,7 +290,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                     drop(tickets_read);
                                     if let Some(id) = &ticket.id {
                                         let next_status = COLUMNS[col + 1];
-                                        if let Ok(ticket_handle) = Ticket::find(id) {
+                                        let rt = tokio::runtime::Handle::current();
+                                        if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
                                             let _ = ticket_handle
                                                 .update_field("status", &next_status.to_string());
                                             needs_reload.set(true);
@@ -311,7 +312,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                     drop(tickets_read);
                                     if let Some(id) = &ticket.id {
                                         let prev_status = COLUMNS[col - 1];
-                                        if let Ok(ticket_handle) = Ticket::find(id) {
+                                        let rt = tokio::runtime::Handle::current();
+                                        if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
                                             let _ = ticket_handle
                                                 .update_field("status", &prev_status.to_string());
                                             needs_reload.set(true);
@@ -359,17 +361,18 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                             let query = search_query.to_string();
                             if let Some(ticket) = get_ticket_at(&tickets_read, &query, col, row) {
                                 drop(tickets_read);
-                                if let Some(id) = &ticket.id
-                                    && let Ok(ticket_handle) = Ticket::find(id)
-                                {
-                                    let body = ticket_handle
-                                        .read_content()
-                                        .ok()
-                                        .map(|c| extract_body_for_edit(&c))
-                                        .unwrap_or_default();
-                                    editing_ticket.set(ticket);
-                                    editing_body.set(body);
-                                    is_editing_existing.set(true);
+                                if let Some(id) = &ticket.id {
+                                    let rt = tokio::runtime::Handle::current();
+                                    if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
+                                        let body = ticket_handle
+                                            .read_content()
+                                            .ok()
+                                            .map(|c: String| extract_body_for_edit(&c))
+                                            .unwrap_or_default();
+                                        editing_ticket.set(ticket);
+                                        editing_body.set(body);
+                                        is_editing_existing.set(true);
+                                    }
                                 }
                             }
                         }

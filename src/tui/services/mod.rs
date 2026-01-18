@@ -32,7 +32,8 @@ impl TicketService {
     /// Status cycle: New -> Next -> InProgress -> Complete -> New
     /// Cancelled tickets reset to New
     pub fn cycle_status(ticket_id: &str) -> Result<TicketStatus> {
-        let ticket = Ticket::find(ticket_id)?;
+        let rt = tokio::runtime::Handle::current();
+        let ticket = rt.block_on(Ticket::find(ticket_id))?;
         let metadata = ticket.read()?;
         let current_status = metadata.status.unwrap_or_default();
         let next_status = Self::next_status(current_status);
@@ -53,7 +54,8 @@ impl TicketService {
 
     /// Update a ticket's status to a specific value
     pub fn set_status(ticket_id: &str, status: TicketStatus) -> Result<()> {
-        let ticket = Ticket::find(ticket_id)?;
+        let rt = tokio::runtime::Handle::current();
+        let ticket = rt.block_on(Ticket::find(ticket_id))?;
         ticket.update_field("status", &status.to_string())?;
         Ok(())
     }
@@ -62,7 +64,8 @@ impl TicketService {
     ///
     /// Returns the ticket metadata and body content suitable for the edit form.
     pub fn load_for_edit(ticket_id: &str) -> Result<(TicketMetadata, String)> {
-        let ticket = Ticket::find(ticket_id)?;
+        let rt = tokio::runtime::Handle::current();
+        let ticket = rt.block_on(Ticket::find(ticket_id))?;
         let metadata = ticket.read()?;
         let content = ticket.read_content()?;
         let body = extract_body_for_edit(&content);
@@ -122,7 +125,8 @@ impl TicketService {
         priority: TicketPriority,
         body: &str,
     ) -> Result<()> {
-        let ticket = Ticket::find(id)?;
+        let rt = tokio::runtime::Handle::current();
+        let ticket = rt.block_on(Ticket::find(id))?;
 
         // Update individual fields
         ticket.update_field("status", &status.to_string())?;

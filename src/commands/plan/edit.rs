@@ -12,8 +12,8 @@ use crate::utils::{is_stdin_tty, open_in_editor};
 /// # Arguments
 /// * `id` - The plan ID (can be partial)
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
-    let plan = Plan::find(id)?;
+pub async fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
+    let plan = Plan::find(id).await?;
 
     if output_json {
         print_json(&json!({

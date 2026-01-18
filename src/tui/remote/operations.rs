@@ -143,7 +143,8 @@ pub fn link_ticket_to_issue(local_ticket_id: &str, remote_issue: &RemoteIssue) -
     use crate::ticket::Ticket;
 
     let remote_ref = build_remote_ref_from_issue(remote_issue)?;
-    let ticket = Ticket::find(local_ticket_id)?;
+    let rt = tokio::runtime::Handle::current();
+    let ticket = rt.block_on(Ticket::find(local_ticket_id))?;
 
     // Update the ticket's remote field
     ticket.update_field("remote", &remote_ref.to_string())?;
@@ -155,7 +156,8 @@ pub fn link_ticket_to_issue(local_ticket_id: &str, remote_issue: &RemoteIssue) -
 pub fn unlink_ticket(local_ticket_id: &str) -> Result<()> {
     use crate::ticket::Ticket;
 
-    let ticket = Ticket::find(local_ticket_id)?;
+    let rt = tokio::runtime::Handle::current();
+    let ticket = rt.block_on(Ticket::find(local_ticket_id))?;
 
     // Remove the remote field by setting it to empty
     ticket.remove_field("remote")?;
@@ -222,7 +224,7 @@ pub async fn push_ticket_to_remote(
     })?;
 
     // Find and read the ticket
-    let ticket = Ticket::find(ticket_id).map_err(|e| PushError {
+    let ticket = Ticket::find(ticket_id).await.map_err(|e| PushError {
         ticket_id: ticket_id.to_string(),
         error: format!("Failed to find ticket: {}", e),
     })?;
@@ -324,7 +326,7 @@ pub async fn fetch_remote_issue_for_ticket(
     use crate::ticket::Ticket;
 
     let config = crate::remote::config::Config::load()?;
-    let ticket = Ticket::find(ticket_id)?;
+    let ticket = Ticket::find(ticket_id).await?;
     let metadata = ticket.read()?;
 
     let remote_str = metadata
@@ -398,7 +400,8 @@ pub fn build_sync_changes(
 pub fn apply_sync_change_to_local(ticket_id: &str, change: &SyncChange) -> Result<()> {
     use crate::ticket::Ticket;
 
-    let ticket = Ticket::find(ticket_id)?;
+    let rt = tokio::runtime::Handle::current();
+    let ticket = rt.block_on(Ticket::find(ticket_id))?;
 
     match change.field_name.as_str() {
         "Title" => {

@@ -83,19 +83,6 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     find_ticket_by_id_impl(&partial_id)
 }
 
-pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
-    use tokio::runtime::Handle;
-    let partial_id = validate_partial_id(partial_id)?;
-
-    if Handle::try_current().is_err() {
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| JanusError::Other(format!("Failed to create tokio runtime: {}", e)))?;
-        return rt.block_on(find_ticket_by_id(&partial_id));
-    }
-
-    find_ticket_by_id_impl(&partial_id)
-}
-
 #[derive(Debug, Clone)]
 pub struct TicketLocator {
     pub file_path: PathBuf,
@@ -111,12 +98,7 @@ impl TicketLocator {
         TicketLocator { file_path, id }
     }
 
-    pub fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_ticket_by_id_sync(partial_id)?;
-        Ok(TicketLocator::new(file_path))
-    }
-
-    pub async fn find_async(partial_id: &str) -> Result<Self> {
+    pub async fn find(partial_id: &str) -> Result<Self> {
         let file_path = find_ticket_by_id(partial_id).await?;
         Ok(TicketLocator::new(file_path))
     }

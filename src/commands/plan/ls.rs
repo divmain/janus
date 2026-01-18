@@ -6,7 +6,7 @@ use serde_json::json;
 use super::format_status_badge;
 use crate::commands::print_json;
 use crate::error::Result;
-use crate::plan::{compute_plan_status, get_all_plans_sync};
+use crate::plan::{compute_plan_status, get_all_plans};
 use crate::ticket::build_ticket_map;
 use crate::types::TicketStatus;
 
@@ -16,7 +16,7 @@ use crate::types::TicketStatus;
 /// * `status_filter` - Optional status to filter by
 /// * `output_json` - If true, output as JSON
 pub async fn cmd_plan_ls(status_filter: Option<&str>, output_json: bool) -> Result<()> {
-    let plans = get_all_plans_sync();
+    let plans = get_all_plans().await;
     let ticket_map = build_ticket_map().await;
 
     // Parse the status filter if provided

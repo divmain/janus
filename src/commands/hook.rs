@@ -300,7 +300,7 @@ fn fetch_files_recursive<'a>(
 }
 
 /// Run a hook manually for testing
-pub fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
+pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
     let hook_event: HookEvent = event.parse()?;
 
     let config = Config::load()?;
@@ -341,12 +341,12 @@ pub fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
     // If an ID is provided, try to find the item and add context
     if let Some(item_id) = id {
         // Try to find as ticket first
-        if let Ok(ticket) = Ticket::find(item_id) {
+        if let Ok(ticket) = Ticket::find(item_id).await {
             context = context
                 .with_item_type(ItemType::Ticket)
                 .with_item_id(&ticket.id)
                 .with_file_path(&ticket.file_path);
-        } else if let Ok(plan) = crate::plan::Plan::find(item_id) {
+        } else if let Ok(plan) = crate::plan::Plan::find(item_id).await {
             context = context
                 .with_item_type(ItemType::Plan)
                 .with_item_id(&plan.id)

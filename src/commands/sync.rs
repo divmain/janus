@@ -101,7 +101,7 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
     let config = Config::load()?;
 
     // Find and read the local ticket
-    let ticket = Ticket::find(local_id)?;
+    let ticket = Ticket::find(local_id).await?;
     let metadata = ticket.read()?;
 
     // Check if already linked
@@ -161,7 +161,7 @@ pub async fn cmd_remote_link(
     let config = Config::load()?;
 
     // Find the local ticket
-    let ticket = Ticket::find(local_id)?;
+    let ticket = Ticket::find(local_id).await?;
     let metadata = ticket.read()?;
 
     // Check if already linked
@@ -211,7 +211,7 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
     let config = Config::load()?;
 
     // Find and read the local ticket
-    let ticket = Ticket::find(local_id)?;
+    let ticket = Ticket::find(local_id).await?;
     let metadata = ticket.read()?;
 
     // Get the remote reference

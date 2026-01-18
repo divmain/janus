@@ -28,7 +28,7 @@ pub async fn cmd_plan_next(
     count: usize,
     output_json: bool,
 ) -> Result<()> {
-    let plan = Plan::find(id)?;
+    let plan = Plan::find(id).await?;
     let metadata = plan.read()?;
     let ticket_map = build_ticket_map().await;
 

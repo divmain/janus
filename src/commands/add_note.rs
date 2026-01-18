@@ -8,8 +8,8 @@ use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, iso_date, read_stdin};
 
 /// Add a timestamped note to a ticket
-pub fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) -> Result<()> {
-    let ticket = Ticket::find(id)?;
+pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) -> Result<()> {
+    let ticket = Ticket::find(id).await?;
 
     // Get note text from argument or stdin
     let note = if let Some(text) = note_text {

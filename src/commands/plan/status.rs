@@ -15,7 +15,7 @@ use crate::ticket::build_ticket_map;
 /// * `id` - The plan ID (can be partial)
 /// * `output_json` - If true, output result as JSON
 pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
-    let plan = Plan::find(id)?;
+    let plan = Plan::find(id).await?;
     let metadata = plan.read()?;
     let ticket_map = build_ticket_map().await;
 

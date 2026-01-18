@@ -106,36 +106,6 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     }
 }
 
-/// Find a plan file by partial ID (sync wrapper for backward compatibility)
-pub fn find_plan_by_id_sync(partial_id: &str) -> Result<PathBuf> {
-    use tokio::runtime::Handle;
-
-    // Check if we're already in a tokio runtime
-    if Handle::try_current().is_err() {
-        // Not in a tokio runtime, create one
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| JanusError::Other(format!("Failed to create tokio runtime: {}", e)))?;
-        return rt.block_on(find_plan_by_id(partial_id));
-    }
-
-    // We're in a tokio runtime, cannot use block_on
-    // Fall back to file-based implementation
-    let files = find_plans();
-
-    let exact_name = format!("{}.md", partial_id);
-    if files.iter().any(|f| f == &exact_name) {
-        return Ok(PathBuf::from(PLANS_DIR).join(&exact_name));
-    }
-
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
-
-    match matches.len() {
-        0 => Err(JanusError::PlanNotFound(partial_id.to_string())),
-        1 => Ok(PathBuf::from(PLANS_DIR).join(matches[0])),
-        _ => Err(JanusError::AmbiguousPlanId(partial_id.to_string())),
-    }
-}
-
 /// A plan handle for reading and writing plan files
 pub struct Plan {
     pub file_path: PathBuf,
@@ -144,13 +114,7 @@ pub struct Plan {
 
 impl Plan {
     /// Find a plan by its (partial) ID
-    pub fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_plan_by_id_sync(partial_id)?;
-        Ok(Plan::new(file_path))
-    }
-
-    /// Find a plan by its (partial) ID (async version)
-    pub async fn find_async(partial_id: &str) -> Result<Self> {
+    pub async fn find(partial_id: &str) -> Result<Self> {
         let file_path = find_plan_by_id(partial_id).await?;
         Ok(Plan::new(file_path))
     }
@@ -562,21 +526,6 @@ pub fn get_all_plans_from_disk() -> Vec<PlanMetadata> {
     }
 
     plans
-}
-
-/// Get all plans (sync wrapper for backward compatibility)
-pub fn get_all_plans_sync() -> Vec<PlanMetadata> {
-    use tokio::runtime::Handle;
-
-    if Handle::try_current().is_err() {
-        let rt = tokio::runtime::Runtime::new().ok();
-        if let Some(rt) = rt {
-            return rt.block_on(get_all_plans());
-        }
-    }
-
-    // Fallback to disk reads
-    get_all_plans_from_disk()
 }
 
 /// Ensure the plans directory exists

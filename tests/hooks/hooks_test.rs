@@ -537,20 +537,20 @@ fn test_hook_disable_json() {
     assert!(result.is_ok());
 }
 
-#[test]
+#[tokio::test]
 #[serial]
-fn test_hook_run_no_script_configured() {
+async fn test_hook_run_no_script_configured() {
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
     // No hooks configured
-    let result = cmd_hook_run("post_write", None);
+    let result = cmd_hook_run("post_write", None).await;
     assert!(result.is_err());
 }
 
-#[test]
+#[tokio::test]
 #[serial]
-fn test_hook_run_script_not_found() {
+async fn test_hook_run_script_not_found() {
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -564,13 +564,13 @@ hooks:
     let config_path = temp_dir.path().join(".janus/config.yaml");
     fs::write(&config_path, config_content).unwrap();
 
-    let result = cmd_hook_run("post_write", None);
+    let result = cmd_hook_run("post_write", None).await;
     assert!(matches!(result, Err(JanusError::HookScriptNotFound(_))));
 }
 
-#[test]
+#[tokio::test]
 #[serial]
-fn test_hook_run_success() {
+async fn test_hook_run_success() {
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -590,19 +590,19 @@ hooks:
     let config_path = temp_dir.path().join(".janus/config.yaml");
     fs::write(&config_path, config_content).unwrap();
 
-    let result = cmd_hook_run("post_write", None);
+    let result = cmd_hook_run("post_write", None).await;
     assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
 }
 
-#[test]
-fn test_hook_run_invalid_event() {
-    let result = cmd_hook_run("invalid_event", None);
+#[tokio::test]
+async fn test_hook_run_invalid_event() {
+    let result = cmd_hook_run("invalid_event", None).await;
     assert!(matches!(result, Err(JanusError::InvalidHookEvent(_))));
 }
 
-#[test]
-fn test_invalid_hook_event_error_message() {
-    let result = cmd_hook_run("not_a_real_event", None);
+#[tokio::test]
+async fn test_invalid_hook_event_error_message() {
+    let result = cmd_hook_run("not_a_real_event", None).await;
     match result {
         Err(JanusError::InvalidHookEvent(event)) => {
             assert_eq!(event, "not_a_real_event");

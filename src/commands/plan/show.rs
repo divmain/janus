@@ -30,7 +30,7 @@ pub async fn cmd_plan_show(
     verbose_phases: &[String],
     output_json: bool,
 ) -> Result<()> {
-    let plan = Plan::find(id)?;
+    let plan = Plan::find(id).await?;
 
     if raw {
         // Just print the raw content

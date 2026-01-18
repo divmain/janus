@@ -16,8 +16,8 @@ use crate::utils::is_stdin_tty;
 /// * `id` - The plan ID (can be partial)
 /// * `force` - Skip confirmation prompt
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result<()> {
-    let plan = Plan::find(id)?;
+pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result<()> {
+    let plan = Plan::find(id).await?;
 
     if !force && !output_json && is_stdin_tty() {
         // Prompt for confirmation
@@ -54,8 +54,8 @@ pub fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result<()> {
 /// * `id` - The plan ID (can be partial)
 /// * `new_title` - The new title
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Result<()> {
-    let plan = Plan::find(id)?;
+pub async fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Result<()> {
+    let plan = Plan::find(id).await?;
     let mut metadata = plan.read()?;
 
     let old_title = metadata.title.clone().unwrap_or_default();

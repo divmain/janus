@@ -18,13 +18,13 @@ use crate::plan::types::PlanSection;
 /// * `phase` - Optional phase to reorder tickets within
 /// * `reorder_phases` - If true, reorder phases instead of tickets
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_reorder(
+pub async fn cmd_plan_reorder(
     plan_id: &str,
     phase: Option<&str>,
     reorder_phases: bool,
     output_json: bool,
 ) -> Result<()> {
-    let plan = Plan::find(plan_id)?;
+    let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
 
     if reorder_phases {

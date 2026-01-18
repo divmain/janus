@@ -9,8 +9,8 @@ use crate::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_TYPES};
 const SUPPORTED_FIELDS: &[&str] = &["priority", "type", "parent"];
 
 /// Set a field on a ticket
-pub fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> Result<()> {
-    let ticket = Ticket::find(id)?;
+pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> Result<()> {
+    let ticket = Ticket::find(id).await?;
     let metadata = ticket.read()?;
 
     // Validate field name
@@ -57,7 +57,7 @@ pub fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> Result<
                 new_value = String::new();
             } else {
                 // Validate parent ticket exists
-                let parent_ticket = Ticket::find(value)?;
+                let parent_ticket = Ticket::find(value).await?;
                 new_value = parent_ticket.id.clone();
                 ticket.update_field("parent", &parent_ticket.id)?;
             }

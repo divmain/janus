@@ -11,6 +11,10 @@
 //! - Warm cache sync (no changes): ~25ms for 10k tickets
 //! - Incremental sync (10 files): ~35-45ms
 //! - Query operations: <5ms
+//!
+//! NOTE: These benchmarks legitimately create their own tokio runtimes because
+//! criterion benchmarks run outside of an async context. This is intentional
+//! and safe.
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use janus::cache::TicketCache;

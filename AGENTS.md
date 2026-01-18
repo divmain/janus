@@ -267,7 +267,8 @@ Description and body content...
 ### Finding Tickets by ID
 
 ```rust
-let ticket = Ticket::find("partial-id")?;
+// Async API (preferred)
+let ticket = Ticket::find("partial-id").await?;
 let metadata = ticket.read()?;
 ```
 
@@ -281,8 +282,9 @@ ticket.add_to_array_field("deps", "other-id")?;
 ### Getting All Tickets
 
 ```rust
-let tickets = get_all_tickets();
-let ticket_map = build_ticket_map(); // HashMap<String, TicketMetadata>
+// Async API (preferred)
+let tickets = get_all_tickets().await;
+let ticket_map = build_ticket_map().await; // HashMap<String, TicketMetadata>
 ```
 
 ## Plans
@@ -311,7 +313,7 @@ use crate::plan::{Plan, compute_plan_status, get_all_plans};
 use crate::plan::types::{PlanMetadata, Phase, PlanSection};
 
 // Find and read a plan
-let plan = Plan::find("partial-id")?;
+let plan = Plan::find("partial-id").await?;
 let metadata = plan.read()?;
 
 // Check plan type
@@ -325,12 +327,12 @@ if metadata.is_phased() {
 let all_tickets = metadata.all_tickets();
 
 // Compute plan status
-let ticket_map = build_ticket_map();
+let ticket_map = build_ticket_map().await;
 let status = compute_plan_status(&metadata, &ticket_map);
 println!("Progress: {}", status.progress_string()); // e.g., "5/12 (41%)"
 
 // Get all plans
-let plans = get_all_plans();
+let plans = get_all_plans().await;
 ```
 
 ### Plan Import

@@ -6,8 +6,8 @@ use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, open_in_editor};
 
 /// Open a ticket in the default editor
-pub fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
-    let ticket = Ticket::find(id)?;
+pub async fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
+    let ticket = Ticket::find(id).await?;
 
     if output_json {
         print_json(&json!({

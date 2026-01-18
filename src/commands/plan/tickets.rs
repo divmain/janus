@@ -27,10 +27,10 @@ pub async fn cmd_plan_add_ticket(
     output_json: bool,
 ) -> Result<()> {
     // Validate ticket exists
-    let ticket = Ticket::find_async(ticket_id).await?;
+    let ticket = Ticket::find(ticket_id).await?;
     let resolved_ticket_id = ticket.id.clone();
 
-    let plan = Plan::find(plan_id)?;
+    let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
 
     // Check if ticket is already in the plan
@@ -135,11 +135,11 @@ pub async fn cmd_plan_remove_ticket(
     ticket_id: &str,
     output_json: bool,
 ) -> Result<()> {
-    let plan = Plan::find(plan_id)?;
+    let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
 
     // Try to resolve the ticket ID, warning if not found
-    let resolved_id = match Ticket::find_async(ticket_id).await {
+    let resolved_id = match Ticket::find(ticket_id).await {
         Ok(t) => t.id,
         Err(_) => {
             eprintln!("Warning: ticket '{}' not found, using ID as-is", ticket_id);
@@ -209,7 +209,7 @@ pub async fn cmd_plan_move_ticket(
     position: Option<usize>,
     output_json: bool,
 ) -> Result<()> {
-    let plan = Plan::find(plan_id)?;
+    let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
 
     if !metadata.is_phased() {
@@ -217,7 +217,7 @@ pub async fn cmd_plan_move_ticket(
     }
 
     // Try to resolve the ticket ID, warning if not found
-    let resolved_id = match Ticket::find_async(ticket_id).await {
+    let resolved_id = match Ticket::find(ticket_id).await {
         Ok(t) => t.id,
         Err(_) => {
             eprintln!("Warning: ticket '{}' not found, using ID as-is", ticket_id);

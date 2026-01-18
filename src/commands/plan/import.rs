@@ -12,8 +12,7 @@ use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hoo
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
 use crate::plan::{
-    ImportablePlan, Plan, ensure_plans_dir, generate_plan_id, get_all_plans_sync,
-    parse_importable_plan,
+    ImportablePlan, Plan, ensure_plans_dir, generate_plan_id, get_all_plans, parse_importable_plan,
 };
 use crate::types::TicketType;
 use crate::utils::{generate_uuid, iso_date};
@@ -146,8 +145,8 @@ pub fn cmd_show_import_spec() -> Result<()> {
 ///
 /// # Returns
 /// `Ok(())` if no duplicate exists, `Err(DuplicatePlanTitle)` if one does.
-fn check_duplicate_plan_title(title: &str) -> Result<()> {
-    let existing_plans = get_all_plans_sync();
+async fn check_duplicate_plan_title(title: &str) -> Result<()> {
+    let existing_plans = get_all_plans().await;
 
     for plan in existing_plans {
         if let Some(ref existing_title) = plan.title
@@ -297,7 +296,7 @@ fn create_verification_ticket(
 /// * `ticket_type` - Type for created tickets (default: task)
 /// * `prefix` - Custom prefix for ticket IDs
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_import(
+pub async fn cmd_plan_import(
     input: &str,
     dry_run: bool,
     title_override: Option<&str>,
@@ -323,7 +322,7 @@ pub fn cmd_plan_import(
     }
 
     // 4. Check for duplicate plan title
-    check_duplicate_plan_title(&plan.title)?;
+    check_duplicate_plan_title(&plan.title).await?;
 
     // 5. If dry-run, print summary and return
     if dry_run {

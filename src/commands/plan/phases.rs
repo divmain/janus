@@ -16,14 +16,14 @@ use crate::plan::types::{Phase, PlanSection};
 /// * `after` - Optional phase name/number to insert after
 /// * `position` - Optional position (1-indexed)
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_add_phase(
+pub async fn cmd_plan_add_phase(
     plan_id: &str,
     phase_name: &str,
     after: Option<&str>,
     position: Option<usize>,
     output_json: bool,
 ) -> Result<()> {
-    let plan = Plan::find(plan_id)?;
+    let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
 
     // Determine the phase number
@@ -122,14 +122,14 @@ pub fn cmd_plan_add_phase(
 /// * `force` - Force removal even if phase contains tickets
 /// * `migrate` - Optional target phase to migrate tickets to
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_remove_phase(
+pub async fn cmd_plan_remove_phase(
     plan_id: &str,
     phase: &str,
     force: bool,
     migrate: Option<&str>,
     output_json: bool,
 ) -> Result<()> {
-    let plan = Plan::find(plan_id)?;
+    let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
 
     // Find the phase and its index

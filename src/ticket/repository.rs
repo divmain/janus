@@ -8,20 +8,7 @@ use std::path::{Path, PathBuf};
 pub struct TicketRepository;
 
 impl TicketRepository {
-    pub fn get_all() -> Vec<TicketMetadata> {
-        use tokio::runtime::Handle;
-
-        if Handle::try_current().is_err() {
-            let rt = tokio::runtime::Runtime::new().ok();
-            if let Some(rt) = rt {
-                return rt.block_on(async { Self::get_all_async().await });
-            }
-        }
-
-        Self::get_all_from_disk()
-    }
-
-    pub async fn get_all_async() -> Vec<TicketMetadata> {
+    pub async fn get_all() -> Vec<TicketMetadata> {
         if let Some(cache) = cache::get_or_init_cache().await {
             if let Ok(tickets) = cache.get_all_tickets().await {
                 return tickets;
@@ -60,23 +47,7 @@ impl TicketRepository {
         tickets
     }
 
-    pub fn build_map() -> HashMap<String, TicketMetadata> {
-        use tokio::runtime::Handle;
-
-        if Handle::try_current().is_err() {
-            let rt = tokio::runtime::Runtime::new().ok();
-            if let Some(rt) = rt {
-                return rt.block_on(async { Self::build_map_async().await });
-            }
-        }
-
-        Self::get_all_from_disk()
-            .into_iter()
-            .filter_map(|t| t.id.clone().map(|id| (id, t)))
-            .collect()
-    }
-
-    pub async fn build_map_async() -> HashMap<String, TicketMetadata> {
+    pub async fn build_map() -> HashMap<String, TicketMetadata> {
         if let Some(cache) = cache::get_or_init_cache().await {
             if let Ok(map) = cache.build_ticket_map().await {
                 return map;
@@ -84,7 +55,7 @@ impl TicketRepository {
             eprintln!("Warning: cache read failed, falling back to file reads");
         }
 
-        Self::get_all_async()
+        Self::get_all()
             .await
             .into_iter()
             .filter_map(|t| t.id.clone().map(|id| (id, t)))
@@ -93,11 +64,7 @@ impl TicketRepository {
 }
 
 pub async fn get_all_tickets() -> Vec<TicketMetadata> {
-    TicketRepository::get_all_async().await
-}
-
-pub fn get_all_tickets_sync() -> Vec<TicketMetadata> {
-    TicketRepository::get_all()
+    TicketRepository::get_all().await
 }
 
 pub fn get_all_tickets_from_disk() -> Vec<TicketMetadata> {
@@ -105,11 +72,7 @@ pub fn get_all_tickets_from_disk() -> Vec<TicketMetadata> {
 }
 
 pub async fn build_ticket_map() -> HashMap<String, TicketMetadata> {
-    TicketRepository::build_map_async().await
-}
-
-pub fn build_ticket_map_sync() -> HashMap<String, TicketMetadata> {
-    TicketRepository::build_map()
+    TicketRepository::build_map().await
 }
 
 pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
