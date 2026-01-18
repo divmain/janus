@@ -78,3 +78,30 @@ pub fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
         "completion_summary": ticket.completion_summary,
     })
 }
+
+/// Create minimal ticket JSON object with basic fields
+///
+/// Used for ticket references in lists, dependencies, and relationships.
+pub fn ticket_minimal_json(ticket: &TicketMetadata) -> serde_json::Value {
+    json!({
+        "id": ticket.id,
+        "title": ticket.title,
+        "status": ticket.status.map(|s| s.to_string()),
+    })
+}
+
+/// Create minimal ticket JSON object with exists flag
+///
+/// Used when tickets may not exist (e.g., in plan views where tickets are
+/// referenced but may be deleted or not yet created).
+pub fn ticket_minimal_json_with_exists(
+    ticket_id: &str,
+    ticket: Option<&TicketMetadata>,
+) -> serde_json::Value {
+    json!({
+        "id": ticket_id,
+        "status": ticket.and_then(|t| t.status).map(|s| s.to_string()),
+        "title": ticket.and_then(|t| t.title.clone()),
+        "exists": ticket.is_some(),
+    })
+}

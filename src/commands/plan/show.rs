@@ -7,6 +7,7 @@ use serde_json::json;
 
 use super::{format_status_badge, print_ticket_line};
 use crate::commands::print_json;
+use crate::commands::ticket_minimal_json_with_exists;
 use crate::error::{JanusError, Result};
 use crate::plan::types::{PlanMetadata, PlanSection};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
@@ -192,12 +193,7 @@ fn show_plan_json(
         .iter()
         .map(|tid| {
             let ticket = ticket_map.get(*tid);
-            json!({
-                "id": tid,
-                "status": ticket.and_then(|t| t.status).map(|s| s.to_string()),
-                "title": ticket.and_then(|t| t.title.clone()),
-                "exists": ticket.is_some(),
-            })
+            ticket_minimal_json_with_exists(tid, ticket)
         })
         .collect();
 
@@ -211,12 +207,7 @@ fn show_plan_json(
                 .iter()
                 .map(|tid| {
                     let ticket = ticket_map.get(tid);
-                    json!({
-                        "id": tid,
-                        "status": ticket.and_then(|t| t.status).map(|s| s.to_string()),
-                        "title": ticket.and_then(|t| t.title.clone()),
-                        "exists": ticket.is_some(),
-                    })
+                    ticket_minimal_json_with_exists(tid, ticket)
                 })
                 .collect();
 

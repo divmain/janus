@@ -46,48 +46,27 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
     if output_json {
         let blockers_json: Vec<_> = blockers
             .iter()
-            .map(|t| {
-                json!({
-                    "id": t.id,
-                    "title": t.title,
-                    "status": t.status.map(|s| s.to_string()),
-                })
-            })
+            .copied()
+            .map(super::ticket_minimal_json)
             .collect();
 
         let blocking_json: Vec<_> = blocking
             .iter()
-            .map(|t| {
-                json!({
-                    "id": t.id,
-                    "title": t.title,
-                    "status": t.status.map(|s| s.to_string()),
-                })
-            })
+            .copied()
+            .map(super::ticket_minimal_json)
             .collect();
 
         let children_json: Vec<_> = children
             .iter()
-            .map(|t| {
-                json!({
-                    "id": t.id,
-                    "title": t.title,
-                    "status": t.status.map(|s| s.to_string()),
-                })
-            })
+            .copied()
+            .map(super::ticket_minimal_json)
             .collect();
 
         let linked_json: Vec<_> = metadata
             .links
             .iter()
             .filter_map(|link_id| ticket_map.get(link_id))
-            .map(|t| {
-                json!({
-                    "id": t.id,
-                    "title": t.title,
-                    "status": t.status.map(|s| s.to_string()),
-                })
-            })
+            .map(super::ticket_minimal_json)
             .collect();
 
         print_json(&json!({

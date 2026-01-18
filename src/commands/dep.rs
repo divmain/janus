@@ -83,14 +83,6 @@ pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Resul
             ticket_map: &HashMap<String, TicketMetadata>,
         ) -> serde_json::Value {
             let ticket = ticket_map.get(id);
-            let status = ticket
-                .and_then(|t| t.status)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            let title = ticket
-                .and_then(|t| t.title.as_ref())
-                .cloned()
-                .unwrap_or_default();
 
             let deps_json: Vec<serde_json::Value> = if path.contains(id) {
                 // Circular reference, don't recurse
@@ -110,12 +102,9 @@ pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Resul
                 result
             };
 
-            json!({
-                "id": id,
-                "title": title,
-                "status": status,
-                "deps": deps_json,
-            })
+            let mut base = super::ticket_minimal_json_with_exists(id, ticket);
+            base["deps"] = serde_json::to_value(deps_json).unwrap();
+            base
         }
 
         let mut path = HashSet::new();
