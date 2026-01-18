@@ -1,10 +1,63 @@
+use std::collections::HashMap;
+
 use regex::Regex;
+use serde::de::DeserializeOwned;
 use serde_yaml_ng as yaml;
 
 use crate::error::{JanusError, Result};
 use crate::types::TicketMetadata;
 
-/// Parse a ticket file's content into TicketMetadata
+/// A generic parsed document with YAML frontmatter and body content.
+///
+/// This struct decouples the parsing logic from domain-specific types like `TicketMetadata`.
+/// The parser extracts raw YAML as both a string (for typed deserialization) and a HashMap
+/// (for generic access), along with the body content.
+#[derive(Debug, Clone)]
+pub struct ParsedDocument {
+    /// Raw YAML frontmatter string (for typed deserialization)
+    pub frontmatter_raw: String,
+    /// Parsed YAML frontmatter as key-value pairs (for generic access)
+    pub frontmatter: HashMap<String, yaml::Value>,
+    /// The body content after the frontmatter (including title)
+    pub body: String,
+}
+
+impl ParsedDocument {
+    /// Extract the title from the body (first H1 heading)
+    pub fn extract_title(&self) -> Option<String> {
+        let title_re = Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid");
+        title_re
+            .captures(&self.body)
+            .and_then(|caps| caps.get(1))
+            .map(|m| m.as_str().to_string())
+    }
+
+    /// Extract a named section from the body (case-insensitive).
+    /// Returns the content between the section header and the next H2 or end of document.
+    pub fn extract_section(&self, section_name: &str) -> Option<String> {
+        let pattern = format!(
+            r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
+            regex::escape(section_name)
+        );
+        let section_re = Regex::new(&pattern).expect("section regex should be valid");
+
+        section_re.captures(&self.body).map(|caps| {
+            caps.get(1)
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_default()
+        })
+    }
+
+    /// Deserialize the frontmatter into a specific type.
+    ///
+    /// This uses the raw YAML string for proper type conversion via serde.
+    pub fn deserialize_frontmatter<T: DeserializeOwned>(&self) -> Result<T> {
+        yaml::from_str(&self.frontmatter_raw)
+            .map_err(|e| JanusError::Other(format!("YAML parsing error: {}", e)))
+    }
+}
+
+/// Parse a document with YAML frontmatter into a generic ParsedDocument.
 ///
 /// The format is:
 /// ```text
@@ -16,7 +69,10 @@ use crate::types::TicketMetadata;
 ///
 /// Body content...
 /// ```
-pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
+///
+/// This function returns a generic structure that can be converted to
+/// domain-specific types via `TryFrom` implementations.
+pub fn parse_document(content: &str) -> Result<ParsedDocument> {
     let frontmatter_re =
         Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
 
@@ -24,35 +80,35 @@ pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
         .captures(content)
         .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
 
-    let yaml = captures.get(1).map(|m| m.as_str()).unwrap_or("");
-    let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
+    let frontmatter_raw = captures
+        .get(1)
+        .map(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+    let body = captures
+        .get(2)
+        .map(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
 
-    let mut metadata: TicketMetadata = yaml::from_str(yaml)
+    let frontmatter: HashMap<String, yaml::Value> = yaml::from_str(&frontmatter_raw)
         .map_err(|e| JanusError::Other(format!("YAML parsing error: {}", e)))?;
 
-    let title_re = Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid");
-    if let Some(caps) = title_re.captures(body) {
-        metadata.title = caps.get(1).map(|m| m.as_str().to_string());
-    }
-
-    metadata.completion_summary = extract_completion_summary(body);
-
-    Ok(metadata)
+    Ok(ParsedDocument {
+        frontmatter_raw,
+        frontmatter,
+        body,
+    })
 }
 
-/// Extract the content of the `## Completion Summary` section from a ticket body.
+/// Parse a ticket file's content into TicketMetadata.
 ///
-/// The section content includes everything after the `## Completion Summary` header
-/// until the next H2 header (`## ...`) or end of document.
-fn extract_completion_summary(body: &str) -> Option<String> {
-    let section_re = Regex::new(r"(?ims)^##\s+completion\s+summary\s*\n(.*?)(?:^##\s|\z)")
-        .expect("completion summary regex should be valid");
-
-    section_re.captures(body).map(|caps| {
-        caps.get(1)
-            .map(|m| m.as_str().trim().to_string())
-            .unwrap_or_default()
-    })
+/// This is a convenience function that parses the document and converts it
+/// to TicketMetadata. For more control, use `parse_document()` directly and
+/// implement your own conversion.
+pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
+    let doc = parse_document(content)?;
+    TicketMetadata::try_from(doc)
 }
 
 #[cfg(test)]
@@ -209,14 +265,23 @@ All caps header should work.
     }
 
     #[test]
-    fn test_extract_completion_summary_empty() {
-        let body = "# Title\n\nNo summary here.";
-        assert!(extract_completion_summary(body).is_none());
+    fn test_parsed_document_extract_section_empty() {
+        let content = r#"---
+id: test
+---
+# Title
+
+No summary here."#;
+        let doc = parse_document(content).unwrap();
+        assert!(doc.extract_section("completion summary").is_none());
     }
 
     #[test]
-    fn test_extract_completion_summary_at_end() {
-        let body = r#"# Title
+    fn test_parsed_document_extract_section_at_end() {
+        let content = r#"---
+id: test
+---
+# Title
 
 Description.
 
@@ -224,9 +289,46 @@ Description.
 
 Final summary content.
 "#;
-
-        let summary = extract_completion_summary(body).unwrap();
+        let doc = parse_document(content).unwrap();
+        let summary = doc.extract_section("completion summary").unwrap();
         assert_eq!(summary, "Final summary content.");
+    }
+
+    #[test]
+    fn test_parsed_document_extract_title() {
+        let content = r#"---
+id: test
+status: new
+---
+# My Test Title
+
+Body content here.
+"#;
+        let doc = parse_document(content).unwrap();
+        assert_eq!(doc.extract_title(), Some("My Test Title".to_string()));
+    }
+
+    #[test]
+    fn test_parse_document_returns_generic_structure() {
+        let content = r#"---
+id: test-1234
+status: new
+custom_field: custom_value
+---
+# Title
+
+Body content.
+"#;
+        let doc = parse_document(content).unwrap();
+
+        // Verify we can access fields generically
+        assert!(doc.frontmatter.contains_key("id"));
+        assert!(doc.frontmatter.contains_key("status"));
+        assert!(doc.frontmatter.contains_key("custom_field"));
+
+        // Verify body is preserved
+        assert!(doc.body.contains("# Title"));
+        assert!(doc.body.contains("Body content"));
     }
 
     #[test]

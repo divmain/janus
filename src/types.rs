@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::error::JanusError;
+use crate::parser::ParsedDocument;
 
 pub const TICKETS_DIR: &str = ".janus";
 pub const TICKETS_ITEMS_DIR: &str = ".janus/items";
@@ -221,6 +222,21 @@ impl TicketMetadata {
     /// Get priority as a number for sorting (defaults to 2)
     pub fn priority_num(&self) -> u8 {
         self.priority.map(|p| p.as_num()).unwrap_or(2)
+    }
+}
+
+impl TryFrom<ParsedDocument> for TicketMetadata {
+    type Error = JanusError;
+
+    fn try_from(doc: ParsedDocument) -> std::result::Result<Self, Self::Error> {
+        // Deserialize frontmatter using the raw YAML string for proper type handling
+        let mut metadata: TicketMetadata = doc.deserialize_frontmatter()?;
+
+        // Extract body-derived fields
+        metadata.title = doc.extract_title();
+        metadata.completion_summary = doc.extract_section("completion summary");
+
+        Ok(metadata)
     }
 }
 
