@@ -42,6 +42,23 @@ fn validate_partial_id(id: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
+fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
+    let files = find_tickets();
+
+    let exact_name = format!("{}.md", partial_id);
+    if files.iter().any(|f| f == &exact_name) {
+        return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
+    }
+
+    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
+
+    match matches.len() {
+        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        1 => Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(matches[0])),
+        _ => Err(JanusError::AmbiguousId(partial_id.to_string())),
+    }
+}
+
 pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     let partial_id = validate_partial_id(partial_id)?;
 
@@ -63,20 +80,7 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
         }
     }
 
-    let files = find_tickets();
-
-    let exact_name = format!("{}.md", partial_id);
-    if files.iter().any(|f| f == &exact_name) {
-        return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
-    }
-
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(&partial_id)).collect();
-
-    match matches.len() {
-        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
-        1 => Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(matches[0])),
-        _ => Err(JanusError::AmbiguousId(partial_id.to_string())),
-    }
+    find_ticket_by_id_impl(&partial_id)
 }
 
 pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
@@ -89,20 +93,7 @@ pub fn find_ticket_by_id_sync(partial_id: &str) -> Result<PathBuf> {
         return rt.block_on(find_ticket_by_id(&partial_id));
     }
 
-    let files = find_tickets();
-
-    let exact_name = format!("{}.md", partial_id);
-    if files.iter().any(|f| f == &exact_name) {
-        return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
-    }
-
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(&partial_id)).collect();
-
-    match matches.len() {
-        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
-        1 => Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(matches[0])),
-        _ => Err(JanusError::AmbiguousId(partial_id.to_string())),
-    }
+    find_ticket_by_id_impl(&partial_id)
 }
 
 #[derive(Debug, Clone)]
