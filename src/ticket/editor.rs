@@ -99,14 +99,21 @@ impl TicketEditor {
         )
     }
 
+    fn get_array_field<'a>(
+        metadata: &'a crate::types::TicketMetadata,
+        field: &str,
+    ) -> Result<&'a Vec<String>> {
+        match field {
+            "deps" => Ok(&metadata.deps),
+            "links" => Ok(&metadata.links),
+            _ => Err(JanusError::Other(format!("unknown array field: {}", field))),
+        }
+    }
+
     pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
         let raw_content = self.file.read_raw()?;
         let metadata = TicketContent::parse(&raw_content)?;
-        let current_array = match field {
-            "deps" => &metadata.deps,
-            "links" => &metadata.links,
-            _ => return Err(JanusError::Other(format!("unknown array field: {}", field))),
-        };
+        let current_array = Self::get_array_field(&metadata, field)?;
 
         if current_array.contains(&value.to_string()) {
             return Ok(false);
@@ -136,11 +143,7 @@ impl TicketEditor {
     pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
         let raw_content = self.file.read_raw()?;
         let metadata = TicketContent::parse(&raw_content)?;
-        let current_array = match field {
-            "deps" => &metadata.deps,
-            "links" => &metadata.links,
-            _ => return Err(JanusError::Other(format!("unknown array field: {}", field))),
-        };
+        let current_array = Self::get_array_field(&metadata, field)?;
 
         if !current_array.contains(&value.to_string()) {
             return Ok(false);
@@ -158,7 +161,7 @@ impl TicketEditor {
             || {
                 let new_array: Vec<_> = current_array
                     .iter()
-                    .filter(|v| v.as_str() != value)
+                    .filter(|v: &&String| v.as_str() != value)
                     .collect();
                 let json_value = if new_array.is_empty() {
                     "[]".to_string()
