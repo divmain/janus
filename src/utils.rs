@@ -83,19 +83,25 @@ pub fn validate_prefix(prefix: &str) -> Result<(), JanusError> {
 /// Generate a unique short ID with collision checking
 /// Returns a short ID that does not exist in the tickets directory
 pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
+    const RETRIES_PER_LENGTH: u32 = 40;
     let tickets_dir = Path::new(TICKETS_ITEMS_DIR);
 
-    loop {
-        let hash = generate_hash();
-        let candidate = format!("{}-{}", prefix, hash);
-        let filename = format!("{}.md", candidate);
+    for length in 4..=8 {
+        for _ in 0..RETRIES_PER_LENGTH {
+            let hash = generate_hash(length);
+            let candidate = format!("{}-{}", prefix, hash);
+            let filename = format!("{}.md", candidate);
 
-        if !tickets_dir.join(&filename).exists() {
-            return candidate;
+            if !tickets_dir.join(&filename).exists() {
+                return candidate;
+            }
         }
-
-        // Collision detected, loop will regenerate
     }
+
+    panic!(
+        "Failed to generate unique ID after trying hash lengths 4-8 with {} retries each",
+        RETRIES_PER_LENGTH
+    );
 }
 
 /// Generate a unique ticket ID with collision checking for a given prefix
@@ -103,13 +109,13 @@ pub fn generate_unique_id(prefix: &str) -> String {
     generate_unique_id_with_prefix(prefix)
 }
 
-/// Generate a random 4-character hex hash
-fn generate_hash() -> String {
+/// Generate a random hex hash
+fn generate_hash(length: usize) -> String {
     let random_bytes: [u8; 16] = rand::rng().random();
     let mut hasher = Sha256::new();
     hasher.update(random_bytes);
     let hash = format!("{:x}", hasher.finalize());
-    hash[..4].to_string()
+    hash[..length].to_string()
 }
 
 /// Get current ISO date string (without milliseconds)

@@ -539,24 +539,31 @@ pub fn generate_plan_id() -> String {
     use sha2::{Digest, Sha256};
     use std::path::Path;
 
+    const RETRIES_PER_LENGTH: u32 = 40;
     let plans_dir = Path::new(PLANS_DIR);
 
-    loop {
-        // Generate random 4-character hex hash
-        let random_bytes: [u8; 16] = rand::rng().random();
-        let mut hasher = Sha256::new();
-        hasher.update(random_bytes);
-        let hash = format!("{:x}", hasher.finalize());
-        let short_hash = &hash[..4];
+    for length in 4..=8 {
+        for _ in 0..RETRIES_PER_LENGTH {
+            // Generate random hex hash
+            let random_bytes: [u8; 16] = rand::rng().random();
+            let mut hasher = Sha256::new();
+            hasher.update(random_bytes);
+            let hash = format!("{:x}", hasher.finalize());
 
-        let candidate = format!("plan-{}", short_hash);
-        let filename = format!("{}.md", candidate);
+            let short_hash = &hash[..length];
+            let candidate = format!("plan-{}", short_hash);
+            let filename = format!("{}.md", candidate);
 
-        if !plans_dir.join(&filename).exists() {
-            return candidate;
+            if !plans_dir.join(&filename).exists() {
+                return candidate;
+            }
         }
-        // Collision detected, loop will regenerate
     }
+
+    panic!(
+        "Failed to generate unique plan ID after trying hash lengths 4-8 with {} retries each",
+        RETRIES_PER_LENGTH
+    );
 }
 
 #[cfg(test)]
