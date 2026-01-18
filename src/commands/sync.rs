@@ -13,9 +13,9 @@ use serde_json::json;
 use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::remote::config::Config;
-use crate::remote::github::GitHubProvider;
-use crate::remote::linear::LinearProvider;
-use crate::remote::{IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus};
+use crate::remote::{
+    IssueUpdates, RemoteIssue, RemoteProvider, RemoteRef, RemoteStatus, create_provider,
+};
 use crate::ticket::extract_body;
 use crate::ticket::{Ticket, TicketBuilder, update_title};
 
@@ -34,16 +34,8 @@ pub async fn cmd_adopt(
     let remote_ref = RemoteRef::parse(remote_ref_str, Some(&config))?;
 
     // Fetch the remote issue
-    let remote_issue = match remote_ref.platform() {
-        Platform::GitHub => {
-            let provider = GitHubProvider::from_config(&config)?;
-            provider.fetch_issue(&remote_ref).await?
-        }
-        Platform::Linear => {
-            let provider = LinearProvider::from_config(&config)?;
-            provider.fetch_issue(&remote_ref).await?
-        }
-    };
+    let provider = create_provider(&remote_ref.platform(), &config)?;
+    let remote_issue = provider.fetch_issue(&remote_ref).await?;
 
     // Create the local ticket
     let id = create_ticket_from_remote(&remote_issue, &remote_ref, prefix)?;
@@ -125,16 +117,8 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
         )
     })?;
 
-    let remote_ref = match default_remote.platform {
-        Platform::GitHub => {
-            let provider = GitHubProvider::from_config(&config)?;
-            provider.create_issue(&title, &body).await?
-        }
-        Platform::Linear => {
-            let provider = LinearProvider::from_config(&config)?;
-            provider.create_issue(&title, &body).await?
-        }
-    };
+    let provider = create_provider(&default_remote.platform, &config)?;
+    let remote_ref = provider.create_issue(&title, &body).await?;
 
     // Update the local ticket with the remote reference
     ticket.update_field("remote", &remote_ref.to_string())?;
@@ -176,16 +160,8 @@ pub async fn cmd_remote_link(
     let remote_ref = RemoteRef::parse(remote_ref_str, Some(&config))?;
 
     // Verify the remote issue exists
-    let _remote_issue = match remote_ref.platform() {
-        Platform::GitHub => {
-            let provider = GitHubProvider::from_config(&config)?;
-            provider.fetch_issue(&remote_ref).await?
-        }
-        Platform::Linear => {
-            let provider = LinearProvider::from_config(&config)?;
-            provider.fetch_issue(&remote_ref).await?
-        }
-    };
+    let provider = create_provider(&remote_ref.platform(), &config)?;
+    let _remote_issue = provider.fetch_issue(&remote_ref).await?;
 
     // Update the local ticket
     ticket.update_field("remote", &remote_ref.to_string())?;
@@ -220,16 +196,8 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
     let remote_ref = RemoteRef::parse(remote_ref_str, Some(&config))?;
 
     // Fetch the remote issue
-    let remote_issue = match remote_ref.platform() {
-        Platform::GitHub => {
-            let provider = GitHubProvider::from_config(&config)?;
-            provider.fetch_issue(&remote_ref).await?
-        }
-        Platform::Linear => {
-            let provider = LinearProvider::from_config(&config)?;
-            provider.fetch_issue(&remote_ref).await?
-        }
-    };
+    let provider = create_provider(&remote_ref.platform(), &config)?;
+    let remote_issue = provider.fetch_issue(&remote_ref).await?;
 
     // Get local values
     let local_title = metadata.title.clone().unwrap_or_default();
@@ -328,16 +296,8 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
 
     // Apply remote updates
     if !remote_updates.is_empty() {
-        match remote_ref.platform() {
-            Platform::GitHub => {
-                let provider = GitHubProvider::from_config(&config)?;
-                provider.update_issue(&remote_ref, remote_updates).await?;
-            }
-            Platform::Linear => {
-                let provider = LinearProvider::from_config(&config)?;
-                provider.update_issue(&remote_ref, remote_updates).await?;
-            }
-        }
+        let provider = create_provider(&remote_ref.platform(), &config)?;
+        provider.update_issue(&remote_ref, remote_updates).await?;
     }
 
     if changes_made {

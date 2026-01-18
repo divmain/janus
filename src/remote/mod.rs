@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 use crate::error::{JanusError, Result};
 use crate::types::TicketStatus;
 
+use crate::remote::github::GitHubProvider;
+use crate::remote::linear::LinearProvider;
+
 pub use config::{Config, Platform};
 
 /// Parsed remote reference
@@ -543,6 +546,85 @@ pub trait RemoteProvider: Send + Sync {
         text: &str,
         limit: u32,
     ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send;
+}
+
+/// Enum wrapping all remote provider implementations
+pub enum Provider {
+    GitHub(GitHubProvider),
+    Linear(LinearProvider),
+}
+
+impl RemoteProvider for Provider {
+    fn fetch_issue(
+        &self,
+        remote_ref: &RemoteRef,
+    ) -> impl std::future::Future<Output = Result<RemoteIssue>> + Send {
+        async move {
+            match self {
+                Provider::GitHub(p) => p.fetch_issue(remote_ref).await,
+                Provider::Linear(p) => p.fetch_issue(remote_ref).await,
+            }
+        }
+    }
+
+    fn create_issue(
+        &self,
+        title: &str,
+        body: &str,
+    ) -> impl std::future::Future<Output = Result<RemoteRef>> + Send {
+        async move {
+            match self {
+                Provider::GitHub(p) => p.create_issue(title, body).await,
+                Provider::Linear(p) => p.create_issue(title, body).await,
+            }
+        }
+    }
+
+    fn update_issue(
+        &self,
+        remote_ref: &RemoteRef,
+        updates: IssueUpdates,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            match self {
+                Provider::GitHub(p) => p.update_issue(remote_ref, updates).await,
+                Provider::Linear(p) => p.update_issue(remote_ref, updates).await,
+            }
+        }
+    }
+
+    fn list_issues(
+        &self,
+        query: &RemoteQuery,
+    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send {
+        async move {
+            match self {
+                Provider::GitHub(p) => p.list_issues(query).await,
+                Provider::Linear(p) => p.list_issues(query).await,
+            }
+        }
+    }
+
+    fn search_issues(
+        &self,
+        text: &str,
+        limit: u32,
+    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send {
+        async move {
+            match self {
+                Provider::GitHub(p) => p.search_issues(text, limit).await,
+                Provider::Linear(p) => p.search_issues(text, limit).await,
+            }
+        }
+    }
+}
+
+/// Create a remote provider instance for the given platform
+pub fn create_provider(platform: &Platform, config: &Config) -> Result<Provider> {
+    match platform {
+        Platform::GitHub => Ok(Provider::GitHub(GitHubProvider::from_config(config)?)),
+        Platform::Linear => Ok(Provider::Linear(LinearProvider::from_config(config)?)),
+    }
 }
 
 #[cfg(test)]
