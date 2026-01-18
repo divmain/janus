@@ -554,6 +554,7 @@ pub enum Provider {
     Linear(LinearProvider),
 }
 
+#[allow(clippy::manual_async_fn)]
 impl RemoteProvider for Provider {
     fn fetch_issue(
         &self,
