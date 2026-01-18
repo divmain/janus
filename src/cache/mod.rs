@@ -16,7 +16,7 @@ use turso::{Builder, Connection, Database};
 /// This allows concurrent janus processes to wait for locks rather than failing immediately.
 const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
-use crate::error::{JanusError as CacheError, Result};
+use crate::error::{JanusError as CacheError, Result, is_corruption_error, is_permission_error};
 use crate::plan::types::PlanMetadata;
 use crate::types::TicketMetadata;
 
@@ -165,12 +165,7 @@ impl TicketCache {
             let error = result.as_ref().err().unwrap();
             let error_str = error.to_string();
 
-            let likely_corruption = error_str.contains("corrupted")
-                || error_str.contains("CORRUPT")
-                || error_str.contains("database disk image is malformed")
-                || error_str.contains("database file is corrupted")
-                || error_str.contains("malformed")
-                || error_str.contains("invalid database");
+            let likely_corruption = is_corruption_error(&error_str);
 
             if likely_corruption {
                 eprintln!(
@@ -786,10 +781,7 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                         );
 
                         let error_str = e.to_string();
-                        if error_str.contains("corrupted")
-                            || error_str.contains("CORRUPT")
-                            || error_str.contains("malformed")
-                        {
+                        if is_corruption_error(&error_str) {
                             let db_path = cache.cache_db_path();
                             eprintln!("Cache appears corrupted at: {}", db_path.display());
                             eprintln!("Run 'janus cache clear' or 'janus cache rebuild' to fix this issue.");
@@ -803,16 +795,13 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                 Err(e) => {
                     let error_str = e.to_string();
 
-                    if error_str.contains("AccessDenied")
-                        || error_str.contains("Permission")
-                        || error_str.contains("denied")
-                    {
+                    if is_permission_error(&error_str) {
                         eprintln!(
                             "Warning: cannot access cache directory (permission denied). \
                              Falling back to file reads.",
                         );
                         eprintln!("Tip: Check file permissions or try 'janus cache rebuild'.");
-                    } else if error_str.contains("corrupted") || error_str.contains("CORRUPT") {
+                    } else if is_corruption_error(&error_str) {
                         eprintln!("Warning: cache database is corrupted. Falling back to file reads.");
                         eprintln!("Tip: Run 'janus cache clear' or 'janus cache rebuild' to fix this.");
                     } else {

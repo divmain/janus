@@ -1,5 +1,26 @@
 use thiserror::Error;
 
+/// Check if an error message indicates database corruption.
+///
+/// This centralizes the string matching logic for corruption detection,
+/// which is used in multiple places for cache error handling.
+pub fn is_corruption_error(error: &str) -> bool {
+    error.contains("corrupted")
+        || error.contains("CORRUPT")
+        || error.contains("database disk image is malformed")
+        || error.contains("database file is corrupted")
+        || error.contains("malformed")
+        || error.contains("invalid database")
+}
+
+/// Check if an error message indicates a permission/access denied error.
+///
+/// This centralizes the string matching logic for permission detection,
+/// which is used in multiple places for cache error handling.
+pub fn is_permission_error(error: &str) -> bool {
+    error.contains("AccessDenied") || error.contains("Permission") || error.contains("denied")
+}
+
 /// Format the ImportFailed error message with issues
 fn format_import_failed(message: &str, issues: &[String]) -> String {
     if issues.is_empty() {
@@ -205,6 +226,35 @@ pub type Result<T> = std::result::Result<T, JanusError>;
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn test_is_corruption_error() {
+        // Should match various corruption indicators
+        assert!(is_corruption_error("database corrupted"));
+        assert!(is_corruption_error("SQLITE_CORRUPT"));
+        assert!(is_corruption_error("database disk image is malformed"));
+        assert!(is_corruption_error("database file is corrupted"));
+        assert!(is_corruption_error("file is malformed"));
+        assert!(is_corruption_error("invalid database header"));
+
+        // Should not match unrelated errors
+        assert!(!is_corruption_error("file not found"));
+        assert!(!is_corruption_error("connection refused"));
+        assert!(!is_corruption_error("timeout"));
+    }
+
+    #[test]
+    fn test_is_permission_error() {
+        // Should match various permission indicators
+        assert!(is_permission_error("AccessDenied"));
+        assert!(is_permission_error("Permission denied"));
+        assert!(is_permission_error("access denied"));
+
+        // Should not match unrelated errors
+        assert!(!is_permission_error("file not found"));
+        assert!(!is_permission_error("corrupted"));
+        assert!(!is_permission_error("timeout"));
+    }
 
     #[test]
     fn test_pre_hook_failed_error_message() {
