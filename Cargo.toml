@@ -54,6 +54,9 @@ turso = "0.4"
 base64 = "0.22"
 directories = "5"
 
+# Secret handling for credentials
+secrecy = "0.10"
+
 # Markdown parsing (AST-based, CommonMark + GFM compliant)
 comrak = "0.34"
 

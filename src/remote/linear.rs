@@ -1,6 +1,7 @@
 //! Linear.app provider implementation using GraphQL API with type-safe cynic queries.
 
 use reqwest::Client;
+use secrecy::{ExposeSecret, SecretBox};
 use std::fmt;
 use std::time::Duration;
 
@@ -302,7 +303,7 @@ use graphql::*;
 /// Linear.app provider
 pub struct LinearProvider {
     client: Client,
-    api_key: String,
+    api_key: SecretBox<String>,
     /// Default organization for creating issues
     default_org: Option<String>,
     /// Default team ID for creating issues (fetched on first use)
@@ -326,9 +327,15 @@ impl LinearProvider {
             }
         });
 
+        // Configure client with sensitive header suppression and no error logging
+        let client = Client::builder()
+            .http1_title_case_headers()
+            .http2_prior_knowledge()
+            .build()?;
+
         Ok(Self {
-            client: Client::new(),
-            api_key,
+            client,
+            api_key: SecretBox::new(Box::new(api_key)),
             default_org,
             default_team_id: None,
         })
@@ -336,9 +343,16 @@ impl LinearProvider {
 
     /// Create a new Linear provider with an API key
     pub fn new(api_key: &str) -> Self {
+        // Configure client with sensitive header suppression and no error logging
+        let client = Client::builder()
+            .http1_title_case_headers()
+            .http2_prior_knowledge()
+            .build()
+            .expect("Failed to create HTTP client");
+
         Self {
-            client: Client::new(),
-            api_key: api_key.to_string(),
+            client,
+            api_key: SecretBox::new(Box::new(api_key.to_string())),
             default_org: None,
             default_team_id: None,
         }
@@ -437,7 +451,7 @@ impl LinearProvider {
                 let response = self
                     .client
                     .post(LINEAR_API_URL)
-                    .header("Authorization", &self.api_key)
+                    .header("Authorization", self.api_key.expose_secret())
                     .header("Content-Type", "application/json")
                     .json(&operation)
                     .send()
