@@ -194,6 +194,9 @@ pub enum JanusError {
 
     #[error("{0}")]
     Other(String),
+
+    #[error("cache data integrity error: {0}")]
+    CacheDataIntegrity(String),
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;

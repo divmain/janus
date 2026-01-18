@@ -529,24 +529,63 @@ impl TicketCache {
         let tickets_json: Option<String> = row.get(5).ok();
         let phases_json: Option<String> = row.get(6).ok();
 
-        // Deserialize tickets for simple plans
-        let tickets: Vec<String> = tickets_json
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
+        // Deserialize tickets for simple plans with explicit error handling
+        let tickets: Vec<String> = if let Some(json_str) = tickets_json.as_deref() {
+            match serde_json::from_str(json_str) {
+                Ok(tickets) => tickets,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to deserialize plan tickets JSON for plan '{:?}': {}. Using empty array.",
+                        id, e
+                    );
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        };
 
-        // Deserialize phases for phased plans
-        let phases: Vec<CachedPhase> = phases_json
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
+        // Deserialize phases for phased plans with explicit error handling
+        let phases: Vec<CachedPhase> = if let Some(json_str) = phases_json.as_deref() {
+            match serde_json::from_str(json_str) {
+                Ok(phases) => phases,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to deserialize plan phases JSON for plan '{:?}': {}. Using empty array.",
+                        id, e
+                    );
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        };
+
+        // Validate structure_type is valid
+        let structure_type = match structure_type {
+            Some(s) if matches!(s.as_str(), "simple" | "phased" | "empty") => s,
+            Some(s) => {
+                eprintln!(
+                    "Warning: Invalid structure_type '{}' for plan '{:?}'. Defaulting to 'empty'.",
+                    s, id
+                );
+                "empty".to_string()
+            }
+            None => {
+                eprintln!(
+                    "Warning: Missing structure_type for plan '{:?}'. Defaulting to 'empty'.",
+                    id
+                );
+                "empty".to_string()
+            }
+        };
 
         Ok(CachedPlanMetadata {
             id,
             uuid,
             title,
             created,
-            structure_type: structure_type.unwrap_or_else(|| "empty".to_string()),
+            structure_type,
             tickets,
             phases,
         })
@@ -589,18 +628,56 @@ impl TicketCache {
         let remote: Option<String> = row.get(11).ok();
         let completion_summary: Option<String> = row.get(12).ok();
 
-        let status = status_str.and_then(|s| s.parse().ok());
+        // Parse status with explicit error handling
+        let status = if let Some(ref s) = status_str {
+            match s.parse() {
+                Ok(status) => Some(status),
+                Err(_) => {
+                    eprintln!(
+                        "Warning: Failed to parse status '{}' for ticket '{:?}'. Status will be None.",
+                        s, id
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
-        let ticket_type = type_str.and_then(|s| s.parse().ok());
+        // Parse ticket_type with explicit error handling
+        let ticket_type = if let Some(ref s) = type_str {
+            match s.parse() {
+                Ok(ticket_type) => Some(ticket_type),
+                Err(_) => {
+                    eprintln!(
+                        "Warning: Failed to parse ticket_type '{}' for ticket '{:?}'. Type will be None.",
+                        s, id
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
-        let priority = priority_num.and_then(|n| match n {
-            0 => Some(crate::types::TicketPriority::P0),
-            1 => Some(crate::types::TicketPriority::P1),
-            2 => Some(crate::types::TicketPriority::P2),
-            3 => Some(crate::types::TicketPriority::P3),
-            4 => Some(crate::types::TicketPriority::P4),
-            _ => None,
-        });
+        // Parse priority with explicit error handling
+        let priority = match priority_num {
+            Some(n) => match n {
+                0 => Some(crate::types::TicketPriority::P0),
+                1 => Some(crate::types::TicketPriority::P1),
+                2 => Some(crate::types::TicketPriority::P2),
+                3 => Some(crate::types::TicketPriority::P3),
+                4 => Some(crate::types::TicketPriority::P4),
+                _ => {
+                    eprintln!(
+                        "Warning: Invalid priority value {} for ticket '{:?}'. Priority will be None.",
+                        n, id
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
 
         let deps = Self::deserialize_array(deps_json.as_deref())?;
         let links = Self::deserialize_array(links_json.as_deref())?;
@@ -1174,6 +1251,25 @@ priority: 2
         // Both should be valid 22-char base64 strings
         assert_eq!(hash1.len(), 22);
         assert_eq!(hash2.len(), 22);
+    }
+
+    #[test]
+    fn test_deserialize_array_handles_empty_and_invalid() {
+        // Empty string should return empty array
+        let result: Vec<String> = TicketCache::deserialize_array(None).unwrap();
+        assert_eq!(result, Vec::<String>::new());
+
+        // Some empty string should return empty array
+        let result: Vec<String> = TicketCache::deserialize_array(Some("")).unwrap();
+        assert_eq!(result, Vec::<String>::new());
+
+        // Valid JSON array should parse correctly
+        let result: Vec<String> =
+            TicketCache::deserialize_array(Some(r#"["a", "b", "c"]"#)).unwrap();
+        assert_eq!(
+            result,
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
     }
 
     #[tokio::test]
