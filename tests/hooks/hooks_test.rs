@@ -2,8 +2,10 @@
 mod common;
 
 use common::JanusTest;
+use janus::error::JanusError;
 use serial_test::serial;
 use std::fs;
+use std::os::unix::fs::symlink;
 
 // ============================================================================
 // Hook Integration Tests
@@ -410,7 +412,6 @@ hooks:
 // ============================================================================
 
 use janus::commands::{cmd_hook_disable, cmd_hook_enable, cmd_hook_list, cmd_hook_run};
-use janus::error::JanusError;
 use janus::remote::Config;
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
@@ -626,4 +627,126 @@ fn test_hook_fetch_failed_error() {
     let message = error.to_string();
     assert!(message.contains("network error"));
     assert!(message.contains("failed to fetch"));
+}
+
+#[test]
+fn test_hook_security_error() {
+    // Test the error variant directly
+    let error =
+        JanusError::HookSecurity("Script path resolves outside hooks directory".to_string());
+    let message = error.to_string();
+    assert!(message.contains("security violation"));
+    assert!(message.contains("outside hooks directory"));
+}
+
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_hook_symlink_escape_blocked() {
+    let janus = JanusTest::new();
+
+    // Create a malicious script outside the hooks directory
+    let malicious_script = janus.temp_dir.path().join("malicious.sh");
+    fs::write(
+        &malicious_script,
+        "#!/bin/sh\necho 'MALICIOUS CODE EXECUTED'\nexit 0\n",
+    )
+    .expect("Failed to write malicious script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&malicious_script, fs::Permissions::from_mode(0o755))
+            .expect("Failed to set permissions");
+    }
+
+    // Create a symlink in hooks directory that points outside
+    let hooks_dir = janus.temp_dir.path().join(".janus").join("hooks");
+    fs::create_dir_all(&hooks_dir).expect("Failed to create hooks directory");
+    let symlink_path = hooks_dir.join("pre-write.sh");
+    #[cfg(unix)]
+    {
+        symlink(&malicious_script, &symlink_path).expect("Failed to create symlink");
+    }
+
+    // Create config to enable the hook
+    janus.write_config(
+        r#"
+hooks:
+  enabled: true
+  timeout: 30
+  scripts:
+    pre_write: pre-write.sh
+"#,
+    );
+
+    // Ticket creation should fail because hook resolves outside hooks directory
+    let stderr = janus.run_failure(&["create", "Test ticket"]);
+    assert!(
+        stderr.contains("security violation") || stderr.contains("outside hooks directory"),
+        "Error should mention security violation: {}",
+        stderr
+    );
+    // Ensure the malicious script was NOT executed
+    assert!(!stderr.contains("MALICIOUS CODE EXECUTED"));
+}
+
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_hook_run_symlink_escape_blocked() {
+    let janus = JanusTest::new();
+
+    // First, create a ticket WITHOUT the hook enabled to get an ID
+    janus.write_config(
+        r#"
+hooks:
+  enabled: false
+"#,
+    );
+    let output = janus.run_success(&["create", "Test ticket"]);
+    let ticket_id = output.trim();
+
+    // Create a malicious script outside the hooks directory
+    let malicious_script = janus.temp_dir.path().join("malicious.sh");
+    fs::write(
+        &malicious_script,
+        "#!/bin/sh\necho 'MALICIOUS CODE EXECUTED'\nexit 0\n",
+    )
+    .expect("Failed to write malicious script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&malicious_script, fs::Permissions::from_mode(0o755))
+            .expect("Failed to set permissions");
+    }
+
+    // Create a symlink in hooks directory that points outside
+    let hooks_dir = janus.temp_dir.path().join(".janus").join("hooks");
+    fs::create_dir_all(&hooks_dir).expect("Failed to create hooks directory");
+    let symlink_path = hooks_dir.join("pre-write.sh");
+    #[cfg(unix)]
+    {
+        symlink(&malicious_script, &symlink_path).expect("Failed to create symlink");
+    }
+
+    // Create config to enable the hook
+    janus.write_config(
+        r#"
+hooks:
+  enabled: true
+  timeout: 30
+  scripts:
+    pre_write: pre-write.sh
+"#,
+    );
+
+    // Try to run the hook manually - should fail with security error
+    let stderr = janus.run_failure(&["hook", "run", "pre_write", "--id", ticket_id]);
+    assert!(
+        stderr.contains("security violation") || stderr.contains("outside hooks directory"),
+        "Error should mention security violation: {}",
+        stderr
+    );
+    // Ensure the malicious script was NOT executed
+    assert!(!stderr.contains("MALICIOUS CODE EXECUTED"));
 }

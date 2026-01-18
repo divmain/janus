@@ -189,6 +189,9 @@ pub enum JanusError {
     #[error("failed to fetch hook: {0}")]
     HookFetchFailed(String),
 
+    #[error("hook security violation: {0}")]
+    HookSecurity(String),
+
     #[error("{0}")]
     Other(String),
 }

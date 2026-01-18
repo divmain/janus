@@ -122,7 +122,8 @@ fn execute_hook(
     is_pre_hook: bool,
 ) -> Result<()> {
     let janus_root = PathBuf::from(TICKETS_DIR);
-    let script_path = janus_root.join(HOOKS_DIR).join(script_name);
+    let hooks_dir = janus_root.join(HOOKS_DIR).canonicalize()?;
+    let script_path = hooks_dir.join(script_name);
 
     if !script_path.exists() {
         return Err(JanusError::HookScriptNotFound(script_path));
@@ -131,6 +132,14 @@ fn execute_hook(
     // Canonicalize the script path to resolve any symlinks (especially important on macOS
     // where /var is a symlink to /private/var)
     let script_path = script_path.canonicalize()?;
+
+    // Security check: ensure the canonicalized script path is still within the hooks directory
+    if !script_path.starts_with(&hooks_dir) {
+        return Err(JanusError::HookSecurity(format!(
+            "Script path '{}' resolves outside hooks directory",
+            script_path.display()
+        )));
+    }
 
     // Use the event parameter to override context.event for env vars
     let context_with_event = context.clone().with_event(event);

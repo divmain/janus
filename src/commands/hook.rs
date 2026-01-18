@@ -317,7 +317,8 @@ pub fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
         })?;
 
     let janus_root = PathBuf::from(TICKETS_DIR);
-    let script_path = janus_root.join(HOOKS_DIR).join(script_name);
+    let hooks_dir = janus_root.join(HOOKS_DIR).canonicalize()?;
+    let script_path = hooks_dir.join(script_name);
 
     if !script_path.exists() {
         return Err(JanusError::HookScriptNotFound(script_path));
@@ -325,6 +326,14 @@ pub fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
 
     // Canonicalize the script path to resolve any symlinks
     let script_path = script_path.canonicalize()?;
+
+    // Security check: ensure the canonicalized script path is still within the hooks directory
+    if !script_path.starts_with(&hooks_dir) {
+        return Err(JanusError::HookSecurity(format!(
+            "Script path '{}' resolves outside hooks directory",
+            script_path.display()
+        )));
+    }
 
     // Build context
     let mut context = HookContext::new().with_event(hook_event);
