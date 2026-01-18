@@ -2,6 +2,8 @@
 
 use iocraft::prelude::KeyCode;
 
+use crate::tui::navigation;
+
 use super::super::state::ViewMode;
 use super::HandleResult;
 use super::context::HandlerContext;
@@ -52,46 +54,41 @@ fn handle_local_down(ctx: &mut HandlerContext<'_>, shift_held: bool) {
     }
 
     let current_idx = ctx.local_selected_index.get();
-    let new_idx = (current_idx + 1).min(ctx.local_count - 1);
 
     // If shift is held, extend selection to include current item
     if shift_held {
         select_local_at_index(ctx, current_idx);
     }
 
-    ctx.local_selected_index.set(new_idx);
-
-    // Scroll if needed
-    if new_idx >= ctx.local_scroll_offset.get() + ctx.list_height {
-        ctx.local_scroll_offset
-            .set(new_idx.saturating_sub(ctx.list_height - 1));
-    }
+    let mut selected = current_idx;
+    let mut scroll = ctx.local_scroll_offset.get();
+    navigation::scroll_down(&mut selected, &mut scroll, ctx.local_count, ctx.list_height);
+    ctx.local_selected_index.set(selected);
+    ctx.local_scroll_offset.set(scroll);
 
     // Also select new item if shift is held
     if shift_held {
-        select_local_at_index(ctx, new_idx);
+        select_local_at_index(ctx, selected);
     }
 }
 
 fn handle_local_up(ctx: &mut HandlerContext<'_>, shift_held: bool) {
     let current_idx = ctx.local_selected_index.get();
-    let new_idx = current_idx.saturating_sub(1);
 
     // If shift is held, extend selection to include current item
     if shift_held {
         select_local_at_index(ctx, current_idx);
     }
 
-    ctx.local_selected_index.set(new_idx);
-
-    // Scroll if needed
-    if new_idx < ctx.local_scroll_offset.get() {
-        ctx.local_scroll_offset.set(new_idx);
-    }
+    let mut selected = current_idx;
+    let mut scroll = ctx.local_scroll_offset.get();
+    navigation::scroll_up(&mut selected, &mut scroll);
+    ctx.local_selected_index.set(selected);
+    ctx.local_scroll_offset.set(scroll);
 
     // Also select new item if shift is held
     if shift_held {
-        select_local_at_index(ctx, new_idx);
+        select_local_at_index(ctx, selected);
     }
 }
 
@@ -102,76 +99,83 @@ fn handle_remote_down(ctx: &mut HandlerContext<'_>, shift_held: bool) {
     }
 
     let current_idx = ctx.remote_selected_index.get();
-    let new_idx = (current_idx + 1).min(ctx.remote_count - 1);
 
     // If shift is held, extend selection to include current item
     if shift_held {
         select_remote_at_index(ctx, current_idx);
     }
 
-    ctx.remote_selected_index.set(new_idx);
-
-    // Scroll if needed
-    if new_idx >= ctx.remote_scroll_offset.get() + ctx.list_height {
-        ctx.remote_scroll_offset
-            .set(new_idx.saturating_sub(ctx.list_height - 1));
-    }
+    let mut selected = current_idx;
+    let mut scroll = ctx.remote_scroll_offset.get();
+    navigation::scroll_down(
+        &mut selected,
+        &mut scroll,
+        ctx.remote_count,
+        ctx.list_height,
+    );
+    ctx.remote_selected_index.set(selected);
+    ctx.remote_scroll_offset.set(scroll);
 
     // Also select new item if shift is held
     if shift_held {
-        select_remote_at_index(ctx, new_idx);
+        select_remote_at_index(ctx, selected);
     }
 }
 
 fn handle_remote_up(ctx: &mut HandlerContext<'_>, shift_held: bool) {
     let current_idx = ctx.remote_selected_index.get();
-    let new_idx = current_idx.saturating_sub(1);
 
     // If shift is held, extend selection to include current item
     if shift_held {
         select_remote_at_index(ctx, current_idx);
     }
 
-    ctx.remote_selected_index.set(new_idx);
-
-    // Scroll if needed
-    if new_idx < ctx.remote_scroll_offset.get() {
-        ctx.remote_scroll_offset.set(new_idx);
-    }
+    let mut selected = current_idx;
+    let mut scroll = ctx.remote_scroll_offset.get();
+    navigation::scroll_up(&mut selected, &mut scroll);
+    ctx.remote_selected_index.set(selected);
+    ctx.remote_scroll_offset.set(scroll);
 
     // Also select new item if shift is held
     if shift_held {
-        select_remote_at_index(ctx, new_idx);
+        select_remote_at_index(ctx, selected);
     }
 }
 
 fn handle_go_top(ctx: &mut HandlerContext<'_>) {
     if ctx.active_view.get() == ViewMode::Local {
-        ctx.local_selected_index.set(0);
-        ctx.local_scroll_offset.set(0);
+        let mut selected = ctx.local_selected_index.get();
+        let mut scroll = ctx.local_scroll_offset.get();
+        navigation::scroll_to_top(&mut selected, &mut scroll);
+        ctx.local_selected_index.set(selected);
+        ctx.local_scroll_offset.set(scroll);
     } else {
-        ctx.remote_selected_index.set(0);
-        ctx.remote_scroll_offset.set(0);
+        let mut selected = ctx.remote_selected_index.get();
+        let mut scroll = ctx.remote_scroll_offset.get();
+        navigation::scroll_to_top(&mut selected, &mut scroll);
+        ctx.remote_selected_index.set(selected);
+        ctx.remote_scroll_offset.set(scroll);
     }
 }
 
 fn handle_go_bottom(ctx: &mut HandlerContext<'_>) {
     if ctx.active_view.get() == ViewMode::Local {
-        if ctx.local_count > 0 {
-            let new_idx = ctx.local_count - 1;
-            ctx.local_selected_index.set(new_idx);
-            if new_idx >= ctx.list_height {
-                ctx.local_scroll_offset
-                    .set(new_idx.saturating_sub(ctx.list_height - 1));
-            }
-        }
-    } else if ctx.remote_count > 0 {
-        let new_idx = ctx.remote_count - 1;
-        ctx.remote_selected_index.set(new_idx);
-        if new_idx >= ctx.list_height {
-            ctx.remote_scroll_offset
-                .set(new_idx.saturating_sub(ctx.list_height - 1));
-        }
+        let mut selected = ctx.local_selected_index.get();
+        let mut scroll = ctx.local_scroll_offset.get();
+        navigation::scroll_to_bottom(&mut selected, &mut scroll, ctx.local_count, ctx.list_height);
+        ctx.local_selected_index.set(selected);
+        ctx.local_scroll_offset.set(scroll);
+    } else {
+        let mut selected = ctx.remote_selected_index.get();
+        let mut scroll = ctx.remote_scroll_offset.get();
+        navigation::scroll_to_bottom(
+            &mut selected,
+            &mut scroll,
+            ctx.remote_count,
+            ctx.list_height,
+        );
+        ctx.remote_selected_index.set(selected);
+        ctx.remote_scroll_offset.set(scroll);
     }
 }
 

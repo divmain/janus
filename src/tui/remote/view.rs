@@ -12,21 +12,21 @@ use std::collections::HashSet;
 use iocraft::prelude::*;
 
 use crate::remote::config::Platform;
-use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery, RemoteStatus};
+use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::{Footer, InlineSearchBox, Shortcut};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
 
+use super::components::overlays::{render_link_mode_banner, render_toast};
+use super::components::{DetailPane, ListPane, ModalOverlays, RemoteHeader, SelectionBar, TabBar};
 use super::confirm_modal::ConfirmDialogState;
-use super::error_modal::ErrorDetailModal;
 use super::error_toast::Toast;
 use super::filter::{
     FilteredLocalTicket, FilteredRemoteIssue, filter_local_tickets, filter_remote_issues,
 };
-use super::filter_modal::{FilterModal, FilterState};
+use super::filter_modal::FilterState;
 use super::handlers::{self, HandlerContext};
-use super::help_modal::HelpModal;
 use super::link_mode::LinkModeState;
 use super::state::ViewMode;
 use super::sync_preview::SyncPreviewState;
@@ -511,7 +511,14 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     shortcuts.push(Shortcut::new("s", "sync"));
     shortcuts.push(Shortcut::new("Enter", "toggle detail"));
 
-    // Render the UI
+    // Prepare data for components
+    let all_local_tickets = local_tickets.read().clone();
+    let link_mode_state = link_mode.read().clone();
+    let toast_state = toast.read().clone();
+    let filter_state_clone = filter_state.read().clone();
+    let last_error_clone = last_error.read().clone();
+
+    // Render the UI using sub-components
     element! {
         View(
             width,
@@ -520,54 +527,13 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             background_color: theme.background,
         ) {
             // Header row
-            View(
-                width: 100pct,
-                padding_left: 1,
-                padding_right: 1,
-            ) {
-                Text(
-                    content: "janus remote",
-                    color: Color::Cyan,
-                    weight: Weight::Bold,
-                )
-                Text(
-                    content: format!(" [{}]", provider.get()),
-                    color: theme.text_dimmed,
-                )
-                View(flex_grow: 1.0)
-                Text(content: "[?]", color: theme.text_dimmed)
-            }
+            RemoteHeader(provider: Some(provider.get()))
 
             // Tab bar
-            View(
-                width: 100pct,
-                padding_left: 1,
-                border_edges: Edges::Bottom,
-                border_style: BorderStyle::Single,
-                border_color: theme.border,
-            ) {
-                Text(
-                    content: "[Local] ",
-                    color: if current_view == ViewMode::Local { Color::Cyan } else { theme.text_dimmed },
-                    weight: if current_view == ViewMode::Local { Weight::Bold } else { Weight::Normal },
-                )
-                Text(
-                    content: "[Remote] ",
-                    color: if current_view == ViewMode::Remote { Color::Cyan } else { theme.text_dimmed },
-                    weight: if current_view == ViewMode::Remote { Weight::Bold } else { Weight::Normal },
-                )
-                View(flex_grow: 1.0)
-                #(if query.is_empty() {
-                    None
-                } else {
-                    Some(element! {
-                        Text(
-                            content: format!(" Filter: {}", query),
-                            color: Color::Yellow,
-                        )
-                    })
-                })
-            }
+            TabBar(
+                active_view: current_view,
+                filter_query: if query.is_empty() { None } else { Some(query.clone()) },
+            )
 
             // Search bar
             View(
@@ -583,26 +549,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             }
 
             // Link mode banner
-            #(link_mode.read().as_ref().map(|lm| element! {
-                View(
-                    width: 100pct,
-                    padding_left: 1,
-                    padding_right: 1,
-                    border_edges: Edges::Bottom,
-                    border_style: BorderStyle::Single,
-                    border_color: Color::Yellow,
-                    background_color: Color::DarkGrey,
-                ) {
-                    Text(
-                        content: format!(
-                            "Link {} ({}) -> select target, [l] to confirm, [Esc] to cancel",
-                            lm.source_id,
-                            lm.source_title
-                        ),
-                        color: Color::Yellow,
-                    )
-                }
-            }))
+            #(render_link_mode_banner(&link_mode_state))
 
             // Main content area
             View(
@@ -611,433 +558,51 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 flex_direction: FlexDirection::Row,
             ) {
                 // List pane
-                View(
-                    width: 40pct,
-                    height: 100pct,
-                    flex_direction: FlexDirection::Column,
-                    border_style: BorderStyle::Round,
-                    border_color: theme.border_focused,
-                ) {
-                    #(if current_view == ViewMode::Remote {
-                        if is_loading {
-                            Some(element! {
-                                View(
-                                    flex_grow: 1.0,
-                                    width: 100pct,
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                ) {
-                                    Text(content: "Loading remote issues...", color: theme.text_dimmed)
-                                }
-                            })
-                        } else if remote_count == 0 {
-                            Some(element! {
-                                View(
-                                    flex_grow: 1.0,
-                                    width: 100pct,
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                ) {
-                                    Text(content: "No remote issues found", color: theme.text_dimmed)
-                                }
-                            })
-                        } else {
-                                    Some(element! {
-                                        View(
-                                            width: 100pct,
-                                            height: 100pct,
-                                            flex_direction: FlexDirection::Column,
-                                        ) {
-                                            #(remote_list.iter().enumerate().map(|(i, filtered)| {
-                                                let actual_idx = remote_scroll_offset.get() + i;
-                                                let is_selected = actual_idx == remote_selected_index.get();
-                                                let issue = &filtered.issue;
-                                                let is_marked = remote_selected_ids.read().contains(&issue.id);
+                ListPane(
+                    view_mode: current_view,
+                    is_loading,
+                    local_list: local_list.clone(),
+                    remote_list: remote_list.clone(),
+                    local_count,
+                    remote_count,
+                    local_scroll_offset: local_scroll_offset.get(),
+                    remote_scroll_offset: remote_scroll_offset.get(),
+                    local_selected_index: local_selected_index.get(),
+                    remote_selected_index: remote_selected_index.get(),
+                    local_selected_ids: local_selected_ids.read().clone(),
+                    remote_selected_ids: remote_selected_ids.read().clone(),
+                    all_local_tickets: all_local_tickets.clone(),
+                )
 
-                                                let status_color = match &issue.status {
-                                                    RemoteStatus::Open => Color::Green,
-                                                    RemoteStatus::Closed => Color::DarkGrey,
-                                                    RemoteStatus::Custom(_) => Color::White,
-                                                };
-
-                                                let indicator = if is_selected { ">" } else { " " };
-                                                let marker = if is_marked { "*" } else { " " };
-                                                let is_linked = local_tickets.read().iter().any(|t| {
-                                                    t.remote.as_ref().is_some_and(|r| r.contains(&issue.id))
-                                                });
-                                                let link_indicator = if is_linked { "⟷" } else { " " };
-
-                                                let status_str = match &issue.status {
-                                                    RemoteStatus::Open => "open".to_string(),
-                                                    RemoteStatus::Closed => "closed".to_string(),
-                                                    RemoteStatus::Custom(s) => s.clone(),
-                                                };
-
-                                                let title_display = if issue.title.len() > 25 {
-                                                    format!("{}...", &issue.title[..22])
-                                                } else {
-                                                    issue.title.clone()
-                                                };
-
-                                                element! {
-                                                    View(
-                                                        height: 1,
-                                                        width: 100pct,
-                                                        padding_left: 1,
-                                                        background_color: if is_selected { Some(theme.highlight) } else { None },
-                                                    ) {
-                                                        Text(content: indicator, color: Color::White)
-                                                        Text(content: marker, color: Color::White)
-                                                        Text(content: link_indicator, color: Color::Cyan)
-                                                        Text(
-                                                            content: format!(" {:<10}", &issue.id),
-                                                            color: if is_selected { Color::White } else { theme.id_color },
-                                                        )
-                                                        Text(
-                                                            content: format!(" [{}]", status_str),
-                                                            color: if is_selected { Color::White } else { status_color },
-                                                        )
-                                                        Text(
-                                                            content: format!(" {}", title_display),
-                                                            color: Color::White,
-                                                        )
-                                                    }
-                                                }
-                                            }))
-                                        }
-                                    })
-                        }
-                    } else {
-                        // Local view
-                        if local_count == 0 {
-                            Some(element! {
-                                View(
-                                    flex_grow: 1.0,
-                                    width: 100pct,
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                ) {
-                                    Text(content: "No local tickets", color: theme.text_dimmed)
-                                }
-                            })
-                        } else {
-                            Some(element! {
-                                View(
-                                    width: 100pct,
-                                    height: 100pct,
-                                    flex_direction: FlexDirection::Column,
-                                ) {
-                                    #(local_list.iter().enumerate().map(|(i, filtered)| {
-                                        let actual_idx = local_scroll_offset.get() + i;
-                                        let is_selected = actual_idx == local_selected_index.get();
-                                        let ticket = &filtered.ticket;
-                                        let ticket_id = ticket.id.as_deref().unwrap_or("???");
-                                        let is_marked = local_selected_ids.read().contains(ticket_id);
-
-                                        let status = ticket.status.unwrap_or_default();
-                                        let status_color = theme.status_color(status);
-
-                                        let indicator = if is_selected { ">" } else { " " };
-                                        let marker = if is_marked { "*" } else { " " };
-                                        let link_indicator = if ticket.remote.is_some() { "⟷" } else { " " };
-
-                                        let title = ticket.title.as_deref().unwrap_or("(no title)");
-                                        let title_display = if title.len() > 25 {
-                                            format!("{}...", &title[..22])
-                                        } else {
-                                            title.to_string()
-                                        };
-
-                                        let status_str = match status {
-                                            crate::types::TicketStatus::New => "new",
-                                            crate::types::TicketStatus::Next => "nxt",
-                                            crate::types::TicketStatus::InProgress => "wip",
-                                            crate::types::TicketStatus::Complete => "don",
-                                            crate::types::TicketStatus::Cancelled => "can",
-                                        };
-
-                                        element! {
-                                            View(
-                                                height: 1,
-                                                width: 100pct,
-                                                padding_left: 1,
-                                                background_color: if is_selected { Some(theme.highlight) } else { None },
-                                            ) {
-                                                Text(content: indicator, color: Color::White)
-                                                Text(content: marker, color: Color::White)
-                                                Text(content: link_indicator, color: Color::Cyan)
-                                                Text(
-                                                    content: format!(" {:<8}", ticket_id),
-                                                    color: if is_selected { Color::White } else { theme.id_color },
-                                                )
-                                                Text(
-                                                    content: format!(" [{}]", status_str),
-                                                    color: if is_selected { Color::White } else { status_color },
-                                                )
-                                                Text(
-                                                    content: format!(" {}", title_display),
-                                                    color: Color::White,
-                                                )
-                                            }
-                                        }
-                                    }))
-                                }
-                            })
-                        }
-                    })
-                }
-
-                // Detail pane (when visible)
-                #(if detail_visible {
-                    Some(element! {
-                        View(
-                            flex_grow: 1.0,
-                            height: 100pct,
-                            flex_direction: FlexDirection::Column,
-                            border_style: BorderStyle::Round,
-                            border_color: theme.border,
-                        ) {
-                            #(if current_view == ViewMode::Remote {
-                                if let Some(issue) = &selected_remote {
-                                    let status_str = match &issue.status {
-                                        RemoteStatus::Open => "open".to_string(),
-                                        RemoteStatus::Closed => "closed".to_string(),
-                                        RemoteStatus::Custom(s) => s.clone(),
-                                    };
-
-                                    Some(element! {
-                                        View(
-                                            width: 100pct,
-                                            height: 100pct,
-                                            flex_direction: FlexDirection::Column,
-                                            overflow: Overflow::Hidden,
-                                        ) {
-                                            // Header
-                                            View(
-                                                width: 100pct,
-                                                padding: 1,
-                                                border_edges: Edges::Bottom,
-                                                border_style: BorderStyle::Single,
-                                                border_color: theme.border,
-                                            ) {
-                                                View(flex_direction: FlexDirection::Column) {
-                                                    Text(content: issue.id.clone(), color: theme.id_color, weight: Weight::Bold)
-                                                    Text(content: issue.title.clone(), color: theme.text, weight: Weight::Bold)
-                                                }
-                                            }
-
-                                            // Metadata
-                                            View(
-                                                width: 100pct,
-                                                padding: 1,
-                                                flex_direction: FlexDirection::Column,
-                                            ) {
-                                                Text(content: format!("Status: {}", status_str), color: Color::Green)
-                                                Text(content: format!("Priority: {:?}", issue.priority), color: theme.text)
-                                                Text(content: format!("Assignee: {:?}", issue.assignee), color: theme.text)
-                                                Text(content: format!("Updated: {}", &issue.updated_at[..10.min(issue.updated_at.len())]), color: theme.text)
-                                            }
-
-                                            // Body
-                                            View(
-                                                flex_grow: 1.0,
-                                                width: 100pct,
-                                                padding: 1,
-                                                overflow: Overflow::Hidden,
-                                                flex_direction: FlexDirection::Column,
-                                            ) {
-                                                #(issue.body.lines().take(15).map(|line| {
-                                                    element! {
-                                                        Text(content: line.to_string(), color: theme.text)
-                                                    }
-                                                }))
-                                            }
-                                        }
-                                    })
-                                } else {
-                                    Some(element! {
-                                        View(
-                                            flex_grow: 1.0,
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                        ) {
-                                            Text(content: "No issue selected", color: theme.text_dimmed)
-                                        }
-                                    })
-                                }
-                            } else {
-                                // Local ticket detail
-                                if let Some(ticket) = &selected_local {
-                                    let status = ticket.status.unwrap_or_default();
-
-                                    Some(element! {
-                                        View(
-                                            width: 100pct,
-                                            height: 100pct,
-                                            flex_direction: FlexDirection::Column,
-                                            overflow: Overflow::Hidden,
-                                        ) {
-                                            View(
-                                                width: 100pct,
-                                                padding: 1,
-                                                border_edges: Edges::Bottom,
-                                                border_style: BorderStyle::Single,
-                                                border_color: theme.border,
-                                            ) {
-                                                View(flex_direction: FlexDirection::Column) {
-                                                    Text(
-                                                        content: ticket.id.clone().unwrap_or_default(),
-                                                        color: theme.id_color,
-                                                        weight: Weight::Bold,
-                                                    )
-                                                    Text(
-                                                        content: ticket.title.clone().unwrap_or_default(),
-                                                        color: theme.text,
-                                                        weight: Weight::Bold,
-                                                    )
-                                                }
-                                            }
-
-                                            View(
-                                                width: 100pct,
-                                                padding: 1,
-                                                flex_direction: FlexDirection::Column,
-                                            ) {
-                                                Text(content: format!("Status: {}", status), color: theme.status_color(status))
-                                                Text(content: format!("Type: {:?}", ticket.ticket_type), color: theme.text)
-                                                Text(content: format!("Priority: {:?}", ticket.priority), color: theme.text)
-                                            }
-                                        }
-                                    })
-                                } else {
-                                    Some(element! {
-                                        View(
-                                            flex_grow: 1.0,
-                                            justify_content: JustifyContent::Center,
-                                            align_items: AlignItems::Center,
-                                        ) {
-                                            Text(content: "No ticket selected", color: theme.text_dimmed)
-                                        }
-                                    })
-                                }
-                            })
-                        }
-                    })
-                } else {
-                    None
-                })
+                // Detail pane
+                DetailPane(
+                    view_mode: current_view,
+                    selected_remote: selected_remote.clone(),
+                    selected_local: selected_local.clone(),
+                    visible: detail_visible,
+                )
             }
 
             // Selection status bar
-            #(if current_view == ViewMode::Remote && remote_sel_count > 0 {
-                Some(element! {
-                    View(
-                        width: 100pct,
-                        padding_left: 1,
-                        border_edges: Edges::Top,
-                        border_style: BorderStyle::Single,
-                        border_color: theme.border,
-                    ) {
-                        Text(content: format!("{} selected", remote_sel_count), color: Color::Cyan)
-                    }
-                })
-            } else if current_view == ViewMode::Local && local_sel_count > 0 {
-                Some(element! {
-                    View(
-                        width: 100pct,
-                        padding_left: 1,
-                        border_edges: Edges::Top,
-                        border_style: BorderStyle::Single,
-                        border_color: theme.border,
-                    ) {
-                        Text(content: format!("{} selected", local_sel_count), color: Color::Cyan)
-                    }
-                })
-            } else {
-                None
-            })
+            SelectionBar(
+                view_mode: current_view,
+                local_count: local_sel_count,
+                remote_count: remote_sel_count,
+            )
 
             // Footer
             Footer(shortcuts: shortcuts)
 
             // Toast notification
-            #(toast.read().as_ref().map(|t| element! {
-                View(
-                    width: 100pct,
-                    height: 3,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    background_color: Color::Black,
-                    border_edges: Edges::Top,
-                    border_style: BorderStyle::Single,
-                    border_color: t.color(),
-                ) {
-                    Text(content: t.message.clone(), color: t.color())
-                }
-            }))
+            #(render_toast(&toast_state))
 
-            // Filter modal overlay
-            #(filter_state.read().as_ref().map(|state| {
-                let state_clone = state.clone();
-                element! {
-                    View(
-                        width: 100pct,
-                        height: 100pct,
-                        position: Position::Absolute,
-                        top: 0,
-                        left: 0,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        background_color: Color::DarkGrey,
-                    ) {
-                        FilterModal(state: state_clone)
-                    }
-                }
-            }))
-
-            // Help modal overlay
-            #(if show_help_modal.get() {
-                Some(element! {
-                    View(
-                        width: 100pct,
-                        height: 100pct,
-                        position: Position::Absolute,
-                        top: 0,
-                        left: 0,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        background_color: Color::DarkGrey,
-                    ) {
-                        HelpModal()
-                    }
-                })
-            } else {
-                None
-            })
-
-            // Error detail modal overlay
-            #(if show_error_modal.get() {
-                last_error.read().as_ref().map(|(error_type, error_message)| {
-                    let error_type_clone = error_type.clone();
-                    let error_message_clone = error_message.clone();
-                    element! {
-                        View(
-                            width: 100pct,
-                            height: 100pct,
-                            position: Position::Absolute,
-                            top: 0,
-                            left: 0,
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            background_color: Color::DarkGrey,
-                        ) {
-                            ErrorDetailModal(error_type: error_type_clone.clone(), error_message: error_message_clone.clone())
-                        }
-                    }
-                })
-            } else {
-                None
-            })
+            // Modal overlays
+            ModalOverlays(
+                filter_state: filter_state_clone,
+                show_help_modal: show_help_modal.get(),
+                show_error_modal: show_error_modal.get(),
+                last_error: last_error_clone,
+            )
         }
     }
 }

@@ -9,6 +9,8 @@ pub mod analytics;
 pub mod board;
 pub mod components;
 pub mod edit;
+pub mod edit_state;
+pub mod navigation;
 pub mod remote;
 pub mod repository;
 pub mod search;

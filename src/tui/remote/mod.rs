@@ -3,6 +3,7 @@
 //! This module provides TUI functionality for browsing and managing the
 //! relationship between local Janus tickets and remote issues (Linear/GitHub).
 
+mod components;
 mod confirm_modal;
 mod error_modal;
 mod error_toast;

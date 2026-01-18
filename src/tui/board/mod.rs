@@ -3,18 +3,22 @@
 //! Provides an interactive TUI for viewing and managing tickets organized
 //! by status in a kanban-style board layout with columns for each status.
 
+pub mod handlers;
+
 use iocraft::prelude::*;
 
-use crate::ticket::Ticket;
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, InlineSearchBox, TicketCard, board_shortcuts,
     edit_shortcuts, empty_shortcuts,
 };
-use crate::tui::edit::{EditForm, EditResult, extract_body_for_edit};
+use crate::tui::edit::{EditForm, EditResult};
+use crate::tui::edit_state::EditFormState;
 use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::tui::state::{InitResult, TuiState};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
+
+use handlers::BoardHandlerContext;
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -42,31 +46,6 @@ fn get_column_tickets(filtered: &[FilteredTicket], status: TicketStatus) -> Vec<
         .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
         .cloned()
         .collect()
-}
-
-/// Get the ticket at a specific column and row
-fn get_ticket_at(
-    all_tickets: &[TicketMetadata],
-    query: &str,
-    column: usize,
-    row: usize,
-) -> Option<TicketMetadata> {
-    let filtered = filter_tickets(all_tickets, query);
-    if column < COLUMNS.len() {
-        let column_tickets = get_column_tickets(&filtered, COLUMNS[column]);
-        column_tickets.get(row).map(|ft| ft.ticket.clone())
-    } else {
-        None
-    }
-}
-
-/// Get the number of tickets in a column
-fn get_column_count(all_tickets: &[TicketMetadata], query: &str, column: usize) -> usize {
-    if column >= COLUMNS.len() {
-        return 0;
-    }
-    let filtered = filter_tickets(all_tickets, query);
-    get_column_tickets(&filtered, COLUMNS[column]).len()
 }
 
 /// Main kanban board component
@@ -122,24 +101,18 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         all_tickets.set(TuiState::new_sync().repository.tickets);
     }
 
-    // Handle edit form result
-    match edit_result.get() {
-        EditResult::Saved => {
-            edit_result.set(EditResult::Editing);
-            is_editing_existing.set(false);
-            is_creating_new.set(false);
-            editing_ticket.set(TicketMetadata::default());
-            editing_body.set(String::new());
+    // Handle edit form result using shared EditFormState
+    {
+        let mut edit_state = EditFormState {
+            result: &mut edit_result,
+            is_editing_existing: &mut is_editing_existing,
+            is_creating_new: &mut is_creating_new,
+            editing_ticket: &mut editing_ticket,
+            editing_body: &mut editing_body,
+        };
+        if edit_state.handle_result() {
             needs_reload.set(true);
         }
-        EditResult::Cancelled => {
-            edit_result.set(EditResult::Editing);
-            is_editing_existing.set(false);
-            is_creating_new.set(false);
-            editing_ticket.set(TicketMetadata::default());
-            editing_body.set(String::new());
-        }
-        EditResult::Editing => {}
     }
 
     let is_editing = is_editing_existing.get() || is_creating_new.get();
@@ -182,209 +155,24 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                     modifiers,
                     ..
                 }) if kind != KeyEventKind::Release => {
-                    // Search mode handling
-                    if search_focused.get() {
-                        match code {
-                            KeyCode::Esc => {
-                                search_query.set(String::new());
-                                search_focused.set(false);
-                            }
-                            KeyCode::Enter | KeyCode::Tab => {
-                                search_focused.set(false);
-                            }
-                            KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => {
-                                should_exit.set(true);
-                            }
-                            _ => {}
-                        }
-                        return;
-                    }
+                    // Create handler context
+                    let mut ctx = BoardHandlerContext {
+                        search_query: &mut search_query,
+                        search_focused: &mut search_focused,
+                        should_exit: &mut should_exit,
+                        needs_reload: &mut needs_reload,
+                        visible_columns: &mut visible_columns,
+                        current_column: &mut current_column,
+                        current_row: &mut current_row,
+                        edit_result: &mut edit_result,
+                        is_editing_existing: &mut is_editing_existing,
+                        is_creating_new: &mut is_creating_new,
+                        editing_ticket: &mut editing_ticket,
+                        editing_body: &mut editing_body,
+                        all_tickets: &all_tickets,
+                    };
 
-                    // Board mode handling
-                    match code {
-                        KeyCode::Char('q') => {
-                            should_exit.set(true);
-                        }
-                        KeyCode::Char('/') => {
-                            search_focused.set(true);
-                        }
-                        // Column navigation (left/right)
-                        KeyCode::Char('h') | KeyCode::Left => {
-                            let vis = visible_columns.get();
-                            let visible_idx: Vec<usize> = vis
-                                .iter()
-                                .enumerate()
-                                .filter_map(|(i, &v)| if v { Some(i) } else { None })
-                                .collect();
-                            if !visible_idx.is_empty() {
-                                let curr_pos = visible_idx
-                                    .iter()
-                                    .position(|&i| i == current_column.get())
-                                    .unwrap_or(0);
-                                if curr_pos > 0 {
-                                    let new_col = visible_idx[curr_pos - 1];
-                                    current_column.set(new_col);
-                                    // Reset row if out of bounds
-                                    let tickets_read = all_tickets.read();
-                                    let query = search_query.to_string();
-                                    let max_row = get_column_count(&tickets_read, &query, new_col)
-                                        .saturating_sub(1);
-                                    drop(tickets_read);
-                                    if current_row.get() > max_row {
-                                        current_row.set(max_row);
-                                    }
-                                }
-                            }
-                        }
-                        KeyCode::Char('l') | KeyCode::Right => {
-                            let vis = visible_columns.get();
-                            let visible_idx: Vec<usize> = vis
-                                .iter()
-                                .enumerate()
-                                .filter_map(|(i, &v)| if v { Some(i) } else { None })
-                                .collect();
-                            if !visible_idx.is_empty() {
-                                let curr_pos = visible_idx
-                                    .iter()
-                                    .position(|&i| i == current_column.get())
-                                    .unwrap_or(0);
-                                if curr_pos < visible_idx.len() - 1 {
-                                    let new_col = visible_idx[curr_pos + 1];
-                                    current_column.set(new_col);
-                                    // Reset row if out of bounds
-                                    let tickets_read = all_tickets.read();
-                                    let query = search_query.to_string();
-                                    let max_row = get_column_count(&tickets_read, &query, new_col)
-                                        .saturating_sub(1);
-                                    drop(tickets_read);
-                                    if current_row.get() > max_row {
-                                        current_row.set(max_row);
-                                    }
-                                }
-                            }
-                        }
-                        // Card navigation (up/down)
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            let col = current_column.get();
-                            let tickets_read = all_tickets.read();
-                            let query = search_query.to_string();
-                            let max_row =
-                                get_column_count(&tickets_read, &query, col).saturating_sub(1);
-                            drop(tickets_read);
-                            let new_row = (current_row.get() + 1).min(max_row);
-                            current_row.set(new_row);
-                        }
-                        KeyCode::Char('k') | KeyCode::Up => {
-                            let new_row = current_row.get().saturating_sub(1);
-                            current_row.set(new_row);
-                        }
-                        // Move ticket right (next status)
-                        KeyCode::Char('s') => {
-                            let col = current_column.get();
-                            let row = current_row.get();
-                            if col < COLUMNS.len() - 1 {
-                                let tickets_read = all_tickets.read();
-                                let query = search_query.to_string();
-                                if let Some(ticket) = get_ticket_at(&tickets_read, &query, col, row)
-                                {
-                                    drop(tickets_read);
-                                    if let Some(id) = &ticket.id {
-                                        let next_status = COLUMNS[col + 1];
-                                        let rt = tokio::runtime::Handle::current();
-                                        if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
-                                            let _ = ticket_handle
-                                                .update_field("status", &next_status.to_string());
-                                            needs_reload.set(true);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Move ticket left (previous status)
-                        KeyCode::Char('S') => {
-                            let col = current_column.get();
-                            let row = current_row.get();
-                            if col > 0 {
-                                let tickets_read = all_tickets.read();
-                                let query = search_query.to_string();
-                                if let Some(ticket) = get_ticket_at(&tickets_read, &query, col, row)
-                                {
-                                    drop(tickets_read);
-                                    if let Some(id) = &ticket.id {
-                                        let prev_status = COLUMNS[col - 1];
-                                        let rt = tokio::runtime::Handle::current();
-                                        if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
-                                            let _ = ticket_handle
-                                                .update_field("status", &prev_status.to_string());
-                                            needs_reload.set(true);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Toggle column visibility
-                        KeyCode::Char('1') => {
-                            let mut vis = visible_columns.get();
-                            vis[0] = !vis[0];
-                            visible_columns.set(vis);
-                            adjust_column_after_toggle(&mut current_column, &vis);
-                        }
-                        KeyCode::Char('2') => {
-                            let mut vis = visible_columns.get();
-                            vis[1] = !vis[1];
-                            visible_columns.set(vis);
-                            adjust_column_after_toggle(&mut current_column, &vis);
-                        }
-                        KeyCode::Char('3') => {
-                            let mut vis = visible_columns.get();
-                            vis[2] = !vis[2];
-                            visible_columns.set(vis);
-                            adjust_column_after_toggle(&mut current_column, &vis);
-                        }
-                        KeyCode::Char('4') => {
-                            let mut vis = visible_columns.get();
-                            vis[3] = !vis[3];
-                            visible_columns.set(vis);
-                            adjust_column_after_toggle(&mut current_column, &vis);
-                        }
-                        KeyCode::Char('5') => {
-                            let mut vis = visible_columns.get();
-                            vis[4] = !vis[4];
-                            visible_columns.set(vis);
-                            adjust_column_after_toggle(&mut current_column, &vis);
-                        }
-                        // Edit selected ticket
-                        KeyCode::Char('e') | KeyCode::Enter => {
-                            let col = current_column.get();
-                            let row = current_row.get();
-                            let tickets_read = all_tickets.read();
-                            let query = search_query.to_string();
-                            if let Some(ticket) = get_ticket_at(&tickets_read, &query, col, row) {
-                                drop(tickets_read);
-                                if let Some(id) = &ticket.id {
-                                    let rt = tokio::runtime::Handle::current();
-                                    if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
-                                        let body = ticket_handle
-                                            .read_content()
-                                            .ok()
-                                            .map(|c: String| extract_body_for_edit(&c))
-                                            .unwrap_or_default();
-                                        editing_ticket.set(ticket);
-                                        editing_body.set(body);
-                                        is_editing_existing.set(true);
-                                    }
-                                }
-                            }
-                        }
-                        // Create new ticket
-                        KeyCode::Char('n') => {
-                            is_creating_new.set(true);
-                            is_editing_existing.set(false);
-                            editing_ticket.set(TicketMetadata::default());
-                            editing_body.set(String::new());
-                        }
-                        _ => {}
-                    }
+                    handlers::handle_key_event(&mut ctx, code, modifiers);
                 }
                 _ => {}
             }
@@ -418,18 +206,16 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     let theme = theme();
 
-    // Get editing state for rendering
-    let edit_ticket_ref = editing_ticket.read();
-    let edit_ticket: Option<TicketMetadata> = if is_editing_existing.get() {
-        Some(edit_ticket_ref.clone())
-    } else {
-        None
-    };
-    drop(edit_ticket_ref);
-    let edit_body: Option<String> = if is_editing {
-        Some(editing_body.to_string())
-    } else {
-        None
+    // Get editing state for rendering using shared EditFormState
+    let (edit_ticket, edit_body) = {
+        let edit_state = EditFormState {
+            result: &mut edit_result,
+            is_editing_existing: &mut is_editing_existing,
+            is_creating_new: &mut is_creating_new,
+            editing_ticket: &mut editing_ticket,
+            editing_body: &mut editing_body,
+        };
+        (edit_state.get_edit_ticket(), edit_state.get_edit_body())
     };
 
     // Determine if we should show an empty state
@@ -659,17 +445,6 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             } else {
                 None
             })
-        }
-    }
-}
-
-/// Adjust current column to first visible column if current is hidden
-fn adjust_column_after_toggle(current_column: &mut State<usize>, visible: &[bool; 5]) {
-    let current = current_column.get();
-    if !visible[current] {
-        // Find first visible column
-        if let Some(first_visible) = visible.iter().position(|&v| v) {
-            current_column.set(first_visible);
         }
     }
 }
