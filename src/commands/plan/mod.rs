@@ -47,6 +47,7 @@ use std::io::{Read, Write};
 
 use owo_colors::OwoColorize;
 
+use crate::display::format_status_colored;
 use crate::error::{JanusError, Result};
 use crate::types::{TicketMetadata, TicketStatus};
 use crate::utils::{is_stdin_tty, open_in_editor};
@@ -54,18 +55,6 @@ use crate::utils::{is_stdin_tty, open_in_editor};
 // ============================================================================
 // Shared Helper Functions
 // ============================================================================
-
-/// Format a status as a colored badge
-pub(crate) fn format_status_badge(status: TicketStatus) -> String {
-    let badge = format!("[{}]", status);
-    match status {
-        TicketStatus::New => badge.yellow().to_string(),
-        TicketStatus::Next => badge.magenta().to_string(),
-        TicketStatus::InProgress => badge.cyan().to_string(),
-        TicketStatus::Complete => badge.green().to_string(),
-        TicketStatus::Cancelled => badge.dimmed().to_string(),
-    }
-}
 
 /// Print a ticket line with status for plan show command
 ///
@@ -82,7 +71,7 @@ pub(crate) fn print_ticket_line(
 ) {
     if let Some(ticket) = ticket_map.get(ticket_id) {
         let status = ticket.status.unwrap_or_default();
-        let status_badge = format_status_badge(status);
+        let status_badge = format_status_colored(status);
         let title = ticket.title.as_deref().unwrap_or("");
 
         println!(
@@ -146,7 +135,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_format_status_badge() {
+    fn test_format_status_colored() {
         // Just verify it doesn't panic for all statuses
         let statuses = [
             TicketStatus::New,
@@ -157,7 +146,7 @@ mod tests {
         ];
 
         for status in statuses {
-            let badge = format_status_badge(status);
+            let badge = format_status_colored(status);
             assert!(badge.contains(&status.to_string()));
         }
     }

@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use super::format_status_badge;
 use crate::commands::print_json;
+use crate::display::format_status_colored;
 use crate::error::Result;
 use crate::plan::types::PlanMetadata;
 use crate::plan::{Plan, compute_phase_status};
@@ -91,7 +91,7 @@ pub async fn cmd_plan_next(
                 .as_ref()
                 .and_then(|t| t.status)
                 .unwrap_or_default();
-            let status_badge = format_status_badge(status);
+            let status_badge = format_status_colored(status);
             let title = ticket_meta
                 .as_ref()
                 .and_then(|t| t.title.as_deref())

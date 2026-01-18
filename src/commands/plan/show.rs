@@ -5,9 +5,10 @@ use std::collections::HashMap;
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use super::{format_status_badge, print_ticket_line};
+use super::print_ticket_line;
 use crate::commands::print_json;
 use crate::commands::ticket_minimal_json_with_exists;
+use crate::display::format_status_colored;
 use crate::error::{JanusError, Result};
 use crate::plan::types::{PlanMetadata, PlanSection};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
@@ -73,7 +74,7 @@ pub async fn cmd_plan_show(
     }
 
     // Print status and progress
-    let status_badge = format_status_badge(plan_status.status);
+    let status_badge = format_status_colored(plan_status.status);
     let progress = plan_status.progress_string();
     println!();
     println!("{} Progress: {} tickets", status_badge, progress);
@@ -109,7 +110,7 @@ pub async fn cmd_plan_show(
 
                 // Print phase header with status and progress
                 let status_str = phase_status
-                    .map(|s| format_status_badge(s.status))
+                    .map(|s| format_status_colored(s.status))
                     .unwrap_or_default();
                 let progress_str = phase_status
                     .map(|s| format!("({}/{})", s.completed_count, s.total_count))
@@ -287,7 +288,7 @@ fn show_phases_only(
         .max(12);
 
     for ps in &phase_statuses {
-        let status_badge = format_status_badge(ps.status);
+        let status_badge = format_status_colored(ps.status);
         let progress = format!("({}/{})", ps.completed_count, ps.total_count);
         println!(
             "{}. {} {:width$} {}",

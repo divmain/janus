@@ -3,8 +3,8 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use super::format_status_badge;
 use crate::commands::print_json;
+use crate::display::format_status_colored;
 use crate::error::Result;
 use crate::plan::{compute_plan_status, get_all_plans};
 use crate::ticket::build_ticket_map;
@@ -68,7 +68,7 @@ pub async fn cmd_plan_ls(status_filter: Option<&str>, output_json: bool) -> Resu
     for (metadata, plan_status) in &filtered_plans {
         let id = metadata.id.as_deref().unwrap_or("???");
         let title = metadata.title.as_deref().unwrap_or("");
-        let status_badge = format_status_badge(plan_status.status);
+        let status_badge = format_status_colored(plan_status.status);
         let progress = format!(
             "{}/{}",
             plan_status.completed_count, plan_status.total_count

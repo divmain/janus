@@ -22,19 +22,10 @@ pub fn format_ticket_line(
     };
 
     let status = ticket.status.unwrap_or_default();
-    let status_str = format!("[{}]", status);
-
     let title = ticket.title.as_deref().unwrap_or("");
     let suffix = options.suffix.unwrap_or_default();
 
-    // Apply colors based on status
-    let colored_status = match status {
-        crate::types::TicketStatus::New => status_str.yellow().to_string(),
-        crate::types::TicketStatus::Next => status_str.magenta().to_string(),
-        crate::types::TicketStatus::InProgress => status_str.cyan().to_string(),
-        crate::types::TicketStatus::Complete => status_str.green().to_string(),
-        crate::types::TicketStatus::Cancelled => status_str.dimmed().to_string(),
-    };
+    let colored_status = super::format_status_colored(status);
 
     let colored_id = id_padded.cyan().to_string();
 

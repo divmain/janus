@@ -3,8 +3,8 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use super::format_status_badge;
 use crate::commands::print_json;
+use crate::display::format_status_colored;
 use crate::error::Result;
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::ticket::build_ticket_map;
@@ -53,7 +53,7 @@ pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
     let title = metadata.title.as_deref().unwrap_or("Untitled");
     let plan_id = metadata.id.as_deref().unwrap_or(&plan.id);
     println!("Plan: {} - {}", plan_id.cyan(), title);
-    println!("Status: {}", format_status_badge(plan_status.status));
+    println!("Status: {}", format_status_colored(plan_status.status));
     println!("Progress: {} tickets", plan_status.progress_string());
 
     // If phased, show breakdown by phase
@@ -73,7 +73,7 @@ pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
                 .max(12);
 
             for ps in &phase_statuses {
-                let status_badge = format_status_badge(ps.status);
+                let status_badge = format_status_colored(ps.status);
                 let progress = format!("({}/{})", ps.completed_count, ps.total_count);
                 println!(
                     "  {}. {} {:width$} {}",
