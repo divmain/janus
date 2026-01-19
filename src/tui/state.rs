@@ -26,24 +26,6 @@ pub struct TuiState {
 }
 
 impl TuiState {
-    /// Create a new TUI state with all tickets loaded (sync wrapper)
-    pub fn new_sync() -> Self {
-        Self {
-            repository: TicketRepository::new_sync(),
-        }
-    }
-
-    /// Create a new TUI state with initialization result tracking (sync wrapper)
-    pub fn init_sync() -> (Self, InitResult) {
-        let (repository, result) = TicketRepository::init_sync();
-        (Self { repository }, result)
-    }
-
-    /// Reload all tickets from disk (sync wrapper)
-    pub fn reload_sync(&mut self) {
-        self.repository.reload_sync();
-    }
-
     /// Get all tickets
     pub fn all_tickets(&self) -> &[TicketMetadata] {
         &self.repository.tickets

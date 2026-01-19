@@ -179,12 +179,11 @@ pub fn create_sync_changes(ticket: &TicketMetadata, issue: &RemoteIssue) -> Vec<
 }
 
 /// Link a local ticket to a remote issue
-pub fn link_ticket_to_issue(local_ticket_id: &str, remote_issue: &RemoteIssue) -> Result<()> {
+pub async fn link_ticket_to_issue(local_ticket_id: &str, remote_issue: &RemoteIssue) -> Result<()> {
     use crate::ticket::Ticket;
 
     let remote_ref = build_remote_ref_from_issue(remote_issue)?;
-    let rt = tokio::runtime::Handle::current();
-    let ticket = rt.block_on(Ticket::find(local_ticket_id))?;
+    let ticket = Ticket::find(local_ticket_id).await?;
 
     // Update the ticket's remote field
     ticket.update_field("remote", &remote_ref.to_string())?;
@@ -193,11 +192,10 @@ pub fn link_ticket_to_issue(local_ticket_id: &str, remote_issue: &RemoteIssue) -
 }
 
 /// Unlink a local ticket from its remote issue
-pub fn unlink_ticket(local_ticket_id: &str) -> Result<()> {
+pub async fn unlink_ticket(local_ticket_id: &str) -> Result<()> {
     use crate::ticket::Ticket;
 
-    let rt = tokio::runtime::Handle::current();
-    let ticket = rt.block_on(Ticket::find(local_ticket_id))?;
+    let ticket = Ticket::find(local_ticket_id).await?;
 
     // Remove the remote field by setting it to empty
     ticket.remove_field("remote")?;
@@ -450,11 +448,10 @@ pub fn build_sync_changes(
 }
 
 /// Apply a single sync change to a local ticket
-pub fn apply_sync_change_to_local(ticket_id: &str, change: &SyncChange) -> Result<()> {
+pub async fn apply_sync_change_to_local(ticket_id: &str, change: &SyncChange) -> Result<()> {
     use crate::ticket::Ticket;
 
-    let rt = tokio::runtime::Handle::current();
-    let ticket = rt.block_on(Ticket::find(ticket_id))?;
+    let ticket = Ticket::find(ticket_id).await?;
 
     match change.field_name.as_str() {
         "Title" => {

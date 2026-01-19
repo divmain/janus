@@ -6,19 +6,21 @@
 pub mod handlers;
 
 use iocraft::prelude::*;
+use tokio::sync::mpsc;
 
+use crate::ticket::Ticket;
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, Footer, InlineSearchBox, TicketCard, board_shortcuts,
-    edit_shortcuts, empty_shortcuts,
+    EmptyState, EmptyStateKind, Footer, InlineSearchBox, TicketCard, Toast, ToastNotification,
+    board_shortcuts, edit_shortcuts, empty_shortcuts,
 };
-use crate::tui::edit::{EditForm, EditResult};
+use crate::tui::edit::{EditForm, EditResult, extract_body_for_edit};
 use crate::tui::edit_state::EditFormState;
+use crate::tui::repository::{InitResult, TicketRepository, janus_dir_exists};
 use crate::tui::search::{FilteredTicket, filter_tickets};
-use crate::tui::state::{InitResult, TuiState};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
-use handlers::BoardHandlerContext;
+use handlers::{BoardHandlerContext, TicketAction};
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -72,13 +74,196 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let (width, height) = hooks.use_terminal_size();
     let mut system = hooks.use_context_mut::<SystemContext>();
 
-    // State management
-    let init_result: State<InitResult> = hooks.use_state(|| TuiState::init_sync().1);
-    let mut all_tickets: State<Vec<TicketMetadata>> =
-        hooks.use_state(|| TuiState::new_sync().repository.tickets);
+    // State management - initialize with empty state, load asynchronously
+    let init_result: State<InitResult> = hooks.use_state(|| InitResult::Ok);
+    let all_tickets: State<Vec<TicketMetadata>> = hooks.use_state(Vec::new);
+    let mut is_loading = hooks.use_state(|| true);
+    let toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut search_query = hooks.use_state(String::new);
     let mut should_exit = hooks.use_state(|| false);
     let mut needs_reload = hooks.use_state(|| false);
+
+    // Edit form state - declared early for use in action processor
+    let mut edit_result: State<EditResult> = hooks.use_state(EditResult::default);
+    let mut is_editing_existing = hooks.use_state(|| false);
+    let mut is_creating_new = hooks.use_state(|| false);
+    let mut editing_ticket: State<TicketMetadata> = hooks.use_state(TicketMetadata::default);
+    let mut editing_body = hooks.use_state(String::new);
+
+    // Action queue for async ticket operations
+    // Use Arc<Mutex> for thread-safe access to the channel
+    let action_channel: State<
+        std::sync::Arc<std::sync::Mutex<Option<mpsc::UnboundedReceiver<TicketAction>>>>,
+    > = hooks.use_state(|| std::sync::Arc::new(std::sync::Mutex::new(None)));
+
+    // Create the channel on first render
+    let mut action_tx: State<Option<mpsc::UnboundedSender<TicketAction>>> =
+        hooks.use_state(|| None);
+
+    // Initialize channel on first render
+    let mut channel_initialized = hooks.use_state(|| false);
+    if !channel_initialized.get() {
+        channel_initialized.set(true);
+        let (tx, rx) = mpsc::unbounded_channel::<TicketAction>();
+        action_tx.set(Some(tx));
+        if let Ok(mut guard) = action_channel.read().lock() {
+            *guard = Some(rx);
+        }
+    }
+
+    // Get the sender for event handlers
+    let action_tx_ref = action_tx.read();
+    let action_sender = action_tx_ref
+        .clone()
+        .expect("action sender should be initialized");
+
+    // Async load handler with minimum 100ms display time to prevent UI flicker
+    let load_handler: Handler<()> = hooks.use_async_handler({
+        let tickets_setter = all_tickets;
+        let loading_setter = is_loading;
+        let init_result_setter = init_result;
+
+        move |()| {
+            let mut tickets_setter = tickets_setter;
+            let mut loading_setter = loading_setter;
+            let mut init_result_setter = init_result_setter;
+
+            async move {
+                let start = std::time::Instant::now();
+
+                if !janus_dir_exists() {
+                    init_result_setter.set(InitResult::NoJanusDir);
+                    loading_setter.set(false);
+                    return;
+                }
+
+                let tickets = TicketRepository::load_tickets().await;
+
+                if tickets.is_empty() {
+                    init_result_setter.set(InitResult::EmptyDir);
+                } else {
+                    init_result_setter.set(InitResult::Ok);
+                }
+
+                // Ensure minimum 100ms display time to prevent flicker
+                let elapsed = start.elapsed();
+                if elapsed < std::time::Duration::from_millis(100) {
+                    tokio::time::sleep(std::time::Duration::from_millis(100) - elapsed).await;
+                }
+
+                tickets_setter.set(tickets);
+                loading_setter.set(false);
+            }
+        }
+    });
+
+    // Trigger initial load on mount
+    let mut load_started = hooks.use_state(|| false);
+    if !load_started.get() {
+        load_started.set(true);
+        load_handler.clone()(());
+    }
+
+    // Async action queue processor
+    // This handler processes pending actions from the queue
+    let action_processor: Handler<()> = hooks.use_async_handler({
+        let action_channel = action_channel.read().clone();
+        let needs_reload_setter = needs_reload;
+        let toast_setter = toast;
+        let editing_ticket_setter = editing_ticket;
+        let editing_body_setter = editing_body;
+        let is_editing_setter = is_editing_existing;
+
+        move |()| {
+            let action_channel = action_channel.clone();
+            let mut needs_reload_setter = needs_reload_setter;
+            let mut toast_setter = toast_setter;
+            let mut editing_ticket_setter = editing_ticket_setter;
+            let mut editing_body_setter = editing_body_setter;
+            let mut is_editing_setter = is_editing_setter;
+
+            async move {
+                // Collect pending actions from the channel
+                let actions: Vec<TicketAction> = {
+                    let mut guard: std::sync::MutexGuard<
+                        '_,
+                        Option<mpsc::UnboundedReceiver<TicketAction>>,
+                    > = match action_channel.lock() {
+                        Ok(g) => g,
+                        Err(_) => return,
+                    };
+                    let mut actions = Vec::new();
+                    if let Some(rx) = guard.as_mut() {
+                        while let Ok(action) = rx.try_recv() {
+                            actions.push(action);
+                        }
+                    }
+                    actions
+                };
+
+                if actions.is_empty() {
+                    return;
+                }
+
+                let mut should_reload = false;
+
+                // Process all pending actions sequentially
+                for action in actions {
+                    match action {
+                        TicketAction::UpdateStatus { id, status } => {
+                            match Ticket::find(&id).await {
+                                Ok(ticket) => {
+                                    if let Err(e) =
+                                        ticket.update_field("status", &status.to_string())
+                                    {
+                                        toast_setter.set(Some(Toast::error(format!(
+                                            "Failed to update {}: {}",
+                                            id, e
+                                        ))));
+                                    } else {
+                                        should_reload = true;
+                                    }
+                                }
+                                Err(e) => {
+                                    toast_setter.set(Some(Toast::error(format!(
+                                        "Ticket not found: {}",
+                                        e
+                                    ))));
+                                }
+                            }
+                        }
+                        TicketAction::LoadForEdit { id } => match Ticket::find(&id).await {
+                            Ok(ticket) => {
+                                let metadata = ticket.read().unwrap_or_default();
+                                let body = ticket
+                                    .read_content()
+                                    .ok()
+                                    .map(|c| extract_body_for_edit(&c))
+                                    .unwrap_or_default();
+                                editing_ticket_setter.set(metadata);
+                                editing_body_setter.set(body);
+                                is_editing_setter.set(true);
+                            }
+                            Err(e) => {
+                                toast_setter.set(Some(Toast::error(format!(
+                                    "Failed to load ticket: {}",
+                                    e
+                                ))));
+                            }
+                        },
+                    }
+                }
+
+                // Trigger reload if any status updates were made
+                if should_reload {
+                    needs_reload_setter.set(true);
+                }
+            }
+        }
+    });
+
+    // Track if actions are pending (set when handlers send actions)
+    let mut actions_pending = hooks.use_state(|| false);
 
     // Column visibility state (all visible by default)
     let mut visible_columns = hooks.use_state(|| [true; 5]);
@@ -88,17 +273,11 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let mut current_row = hooks.use_state(|| 0usize);
     let mut search_focused = hooks.use_state(|| false);
 
-    // Edit form state
-    let mut edit_result: State<EditResult> = hooks.use_state(EditResult::default);
-    let mut is_editing_existing = hooks.use_state(|| false);
-    let mut is_creating_new = hooks.use_state(|| false);
-    let mut editing_ticket: State<TicketMetadata> = hooks.use_state(TicketMetadata::default);
-    let mut editing_body = hooks.use_state(String::new);
-
-    // Reload tickets if needed
+    // Reload tickets if needed - use async handler instead of sync
     if needs_reload.get() {
         needs_reload.set(false);
-        all_tickets.set(TuiState::new_sync().repository.tickets);
+        is_loading.set(true);
+        load_handler.clone()(());
     }
 
     // Handle edit form result using shared EditFormState
@@ -142,6 +321,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Keyboard event handling
     hooks.use_terminal_events({
+        let action_sender_for_events = action_sender.clone();
         move |event| {
             // Skip if edit form is open
             if is_editing {
@@ -170,14 +350,25 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         editing_ticket: &mut editing_ticket,
                         editing_body: &mut editing_body,
                         all_tickets: &all_tickets,
+                        action_tx: &action_sender_for_events,
                     };
 
                     handlers::handle_key_event(&mut ctx, code, modifiers);
+
+                    // Trigger action processor if actions were queued
+                    // The processor will handle any pending actions asynchronously
+                    actions_pending.set(true);
                 }
                 _ => {}
             }
         }
     });
+
+    // Process any pending actions from the queue
+    if actions_pending.get() {
+        actions_pending.set(false);
+        action_processor(());
+    }
 
     // Exit if requested
     if should_exit.get() {
@@ -218,23 +409,27 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         (edit_state.get_edit_ticket(), edit_state.get_edit_body())
     };
 
-    // Determine if we should show an empty state
-    let empty_state_kind: Option<EmptyStateKind> = match init_result.get() {
-        InitResult::NoJanusDir => Some(EmptyStateKind::NoJanusDir),
-        InitResult::EmptyDir => {
-            if all_ticket_count == 0 {
-                Some(EmptyStateKind::NoTickets)
-            } else {
-                None
+    // Determine if we should show an empty state - check loading first
+    let empty_state_kind: Option<EmptyStateKind> = if is_loading.get() {
+        Some(EmptyStateKind::Loading)
+    } else {
+        match init_result.get() {
+            InitResult::NoJanusDir => Some(EmptyStateKind::NoJanusDir),
+            InitResult::EmptyDir => {
+                if all_ticket_count == 0 {
+                    Some(EmptyStateKind::NoTickets)
+                } else {
+                    None
+                }
             }
-        }
-        InitResult::Ok => {
-            if all_ticket_count == 0 {
-                Some(EmptyStateKind::NoTickets)
-            } else if total_tickets == 0 && !query_str.is_empty() {
-                Some(EmptyStateKind::NoSearchResults)
-            } else {
-                None
+            InitResult::Ok => {
+                if all_ticket_count == 0 {
+                    Some(EmptyStateKind::NoTickets)
+                } else if total_tickets == 0 && !query_str.is_empty() {
+                    Some(EmptyStateKind::NoSearchResults)
+                } else {
+                    None
+                }
             }
         }
     };
@@ -242,7 +437,9 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Show empty state if needed (except for no search results, which shows inline)
     let show_full_empty_state = matches!(
         empty_state_kind,
-        Some(EmptyStateKind::NoJanusDir) | Some(EmptyStateKind::NoTickets)
+        Some(EmptyStateKind::NoJanusDir)
+            | Some(EmptyStateKind::NoTickets)
+            | Some(EmptyStateKind::Loading)
     );
 
     // Determine shortcuts to show
@@ -428,6 +625,18 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         })
                     }
                 })
+            })
+
+            // Toast notification
+            #({
+                let toast_val = toast.read().clone();
+                if toast_val.is_some() {
+                    Some(element! {
+                        ToastNotification(toast: toast_val)
+                    })
+                } else {
+                    None
+                }
             })
 
             // Footer

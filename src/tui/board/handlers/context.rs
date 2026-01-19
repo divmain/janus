@@ -4,10 +4,13 @@
 //! the board state without needing to pass dozens of individual parameters.
 
 use iocraft::prelude::State;
+use tokio::sync::mpsc;
 
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::EditFormState;
 use crate::types::TicketMetadata;
+
+use super::types::TicketAction;
 
 /// Context struct holding all mutable state for event handlers
 pub struct BoardHandlerContext<'a> {
@@ -35,6 +38,9 @@ pub struct BoardHandlerContext<'a> {
 
     // Data (read-only reference for operations)
     pub all_tickets: &'a State<Vec<TicketMetadata>>,
+
+    // Async action queue sender
+    pub action_tx: &'a mpsc::UnboundedSender<TicketAction>,
 }
 
 impl<'a> BoardHandlerContext<'a> {

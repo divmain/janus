@@ -332,6 +332,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                                 &change_ctx.ticket_id,
                                 &change_ctx.change,
                             )
+                            .await
                         }
                         super::sync_preview::SyncDirection::LocalToRemote => {
                             super::operations::apply_sync_change_to_remote(
@@ -365,6 +366,108 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     let sync_apply_handler_for_events = sync_apply_handler.clone();
+
+    // Async link handler for linking a local ticket to a remote issue
+    let link_handler: Handler<super::link_mode::LinkSource> = hooks.use_async_handler({
+        let local_tickets_setter = local_tickets.clone();
+        let toast_setter = toast.clone();
+
+        move |source: super::link_mode::LinkSource| {
+            let mut local_tickets_setter = local_tickets_setter.clone();
+            let mut toast_setter = toast_setter.clone();
+
+            async move {
+                match super::operations::link_ticket_to_issue(
+                    &source.ticket_id,
+                    &source.remote_issue,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        toast_setter.set(Some(Toast::info(format!(
+                            "Linked {} to {}",
+                            source.ticket_id, source.remote_issue.id
+                        ))));
+                        local_tickets_setter.set(get_all_tickets_from_disk());
+                    }
+                    Err(e) => {
+                        toast_setter.set(Some(Toast::error(format!("Link failed: {}", e))));
+                    }
+                }
+            }
+        }
+    });
+
+    let link_handler_for_events = link_handler.clone();
+
+    // Async unlink handler for unlinking local tickets from remote issues
+    let unlink_handler: Handler<Vec<String>> = hooks.use_async_handler({
+        let local_tickets_setter = local_tickets.clone();
+        let local_selected_ids_setter = local_selected_ids.clone();
+        let toast_setter = toast.clone();
+
+        move |ticket_ids: Vec<String>| {
+            let mut local_tickets_setter = local_tickets_setter.clone();
+            let mut local_selected_ids_setter = local_selected_ids_setter.clone();
+            let mut toast_setter = toast_setter.clone();
+
+            async move {
+                let mut unlinked = 0;
+                let mut errors: Vec<(String, String)> = Vec::new();
+
+                for id in &ticket_ids {
+                    match super::operations::unlink_ticket(id).await {
+                        Ok(()) => unlinked += 1,
+                        Err(e) => errors.push((id.clone(), e.to_string())),
+                    }
+                }
+
+                // Always refresh and clear selection if any operations succeeded
+                if unlinked > 0 {
+                    local_tickets_setter.set(get_all_tickets_from_disk());
+                    local_selected_ids_setter.set(HashSet::new());
+                }
+
+                // Report results
+                if errors.is_empty() {
+                    toast_setter.set(Some(Toast::info(format!(
+                        "Unlinked {} ticket(s)",
+                        unlinked
+                    ))));
+                } else if unlinked > 0 {
+                    // Partial success
+                    toast_setter.set(Some(Toast::warning(format!(
+                        "Unlinked {}, failed {} (see logs)",
+                        unlinked,
+                        errors.len()
+                    ))));
+                    // Log detailed errors
+                    for (id, err) in errors {
+                        eprintln!("Failed to unlink {}: {}", id, err);
+                    }
+                } else {
+                    // Total failure
+                    if errors.len() == 1 {
+                        toast_setter.set(Some(Toast::error(format!(
+                            "Failed to unlink: {}",
+                            errors[0].1
+                        ))));
+                    } else {
+                        toast_setter.set(Some(Toast::error(format!(
+                            "Failed to unlink {} ticket(s) (see logs)",
+                            errors.len()
+                        ))));
+                        // Log detailed errors
+                        for (id, err) in errors {
+                            eprintln!("Failed to unlink {}: {}", id, err);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    let unlink_handler_for_events = unlink_handler.clone();
 
     // Calculate list height
     let list_height = height.saturating_sub(7) as usize;
@@ -479,6 +582,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         push_handler: &push_handler_for_events,
                         sync_fetch_handler: &sync_fetch_handler_for_events,
                         sync_apply_handler: &sync_apply_handler_for_events,
+                        link_handler: &link_handler_for_events,
+                        unlink_handler: &unlink_handler_for_events,
                     },
                 };
 

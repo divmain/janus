@@ -70,6 +70,16 @@ pub struct EditFormProps {
     pub on_close: Option<State<EditResult>>,
 }
 
+/// Request data for async save operation
+struct SaveRequest {
+    ticket_id: Option<String>,
+    title: String,
+    status: TicketStatus,
+    ticket_type: TicketType,
+    priority: TicketPriority,
+    body: String,
+}
+
 /// Full edit form modal component
 #[component]
 pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyElement<'a>> {
@@ -95,9 +105,51 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     let mut should_cancel = hooks.use_state(|| false);
     let mut has_error = hooks.use_state(|| false);
     let mut error_text = hooks.use_state(String::new);
+    let mut is_saving = hooks.use_state(|| false);
+
+    // Async save handler
+    let save_handler: Handler<SaveRequest> = hooks.use_async_handler({
+        let has_error_setter = has_error;
+        let error_text_setter = error_text;
+        let is_saving_setter = is_saving;
+        let on_close = props.on_close;
+
+        move |request: SaveRequest| {
+            let mut has_error_setter = has_error_setter;
+            let mut error_text_setter = error_text_setter;
+            let mut is_saving_setter = is_saving_setter;
+            let on_close = on_close;
+
+            async move {
+                let result = TicketEditService::save(
+                    request.ticket_id.as_deref(),
+                    &request.title,
+                    request.status,
+                    request.ticket_type,
+                    request.priority,
+                    &request.body,
+                )
+                .await;
+
+                is_saving_setter.set(false);
+
+                match result {
+                    Ok(()) => {
+                        if let Some(mut on_close) = on_close {
+                            on_close.set(EditResult::Saved);
+                        }
+                    }
+                    Err(e) => {
+                        has_error_setter.set(true);
+                        error_text_setter.set(format!("Save failed: {}", e));
+                    }
+                }
+            }
+        }
+    });
 
     // Handle save logic
-    if should_save.get() {
+    if should_save.get() && !is_saving.get() {
         should_save.set(false);
 
         // Validate form using validator
@@ -114,27 +166,16 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
             has_error.set(true);
             error_text.set(validation_result.error.unwrap_or_default());
         } else {
-            // Save the ticket via edit service
-            let save_result = TicketEditService::save(
-                ticket_id.as_deref(),
-                &title_val,
-                status.get(),
-                ticket_type.get(),
-                priority.get(),
-                &body.to_string(),
-            );
-
-            match save_result {
-                Ok(()) => {
-                    if let Some(mut on_close) = props.on_close {
-                        on_close.set(EditResult::Saved);
-                    }
-                }
-                Err(e) => {
-                    has_error.set(true);
-                    error_text.set(format!("Save failed: {}", e));
-                }
-            }
+            // Save the ticket via async handler
+            is_saving.set(true);
+            save_handler(SaveRequest {
+                ticket_id: ticket_id.clone(),
+                title: title_val,
+                status: status.get(),
+                ticket_type: ticket_type.get(),
+                priority: priority.get(),
+                body: body.to_string(),
+            });
         }
     }
 

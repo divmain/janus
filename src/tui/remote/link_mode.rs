@@ -1,5 +1,7 @@
 //! Link mode state for remote TUI
 
+use crate::remote::RemoteIssue;
+
 use super::state::ViewMode;
 
 /// State for link operation flow
@@ -18,4 +20,13 @@ impl LinkModeState {
             source_title,
         }
     }
+}
+
+/// Data for a link operation to be executed asynchronously
+#[derive(Debug, Clone)]
+pub struct LinkSource {
+    /// The local ticket ID to link
+    pub ticket_id: String,
+    /// The remote issue to link to
+    pub remote_issue: RemoteIssue,
 }

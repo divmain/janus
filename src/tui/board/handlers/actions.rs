@@ -2,13 +2,13 @@
 
 use iocraft::prelude::KeyCode;
 
-use crate::ticket::Ticket;
-use crate::tui::edit::extract_body_for_edit;
 use crate::tui::search::filter_tickets;
 use crate::types::{TicketMetadata, TicketStatus};
 
 use super::HandleResult;
 use super::context::BoardHandlerContext;
+
+pub use super::types::TicketAction;
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -42,7 +42,7 @@ pub fn handle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult 
     }
 }
 
-/// Edit the selected ticket
+/// Edit the selected ticket - sends action to the async queue
 fn handle_edit_ticket(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
@@ -50,15 +50,10 @@ fn handle_edit_ticket(ctx: &mut BoardHandlerContext<'_>) {
     if let Some(ticket) = get_ticket_at(ctx, col, row)
         && let Some(id) = &ticket.id
     {
-        let rt = tokio::runtime::Handle::current();
-        if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
-            let body = ticket_handle
-                .read_content()
-                .ok()
-                .map(|c: String| extract_body_for_edit(&c))
-                .unwrap_or_default();
-            ctx.edit_state().start_edit(ticket, body);
-        }
+        // Send action to queue for async processing
+        let _ = ctx
+            .action_tx
+            .send(TicketAction::LoadForEdit { id: id.clone() });
     }
 }
 

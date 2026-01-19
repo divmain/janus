@@ -2,12 +2,12 @@
 
 use iocraft::prelude::{KeyCode, State};
 
-use crate::ticket::Ticket;
 use crate::tui::search::filter_tickets;
 use crate::types::{TicketMetadata, TicketStatus};
 
 use super::HandleResult;
 use super::context::BoardHandlerContext;
+use super::types::TicketAction;
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -55,7 +55,7 @@ pub fn handle_status_move(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> H
     }
 }
 
-/// Move ticket to next status (right)
+/// Move ticket to next status (right) - sends action to async queue
 fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
@@ -68,15 +68,15 @@ fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let next_status = COLUMNS[col + 1];
-        let rt = tokio::runtime::Handle::current();
-        if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
-            let _ = ticket_handle.update_field("status", &next_status.to_string());
-            ctx.needs_reload.set(true);
-        }
+        // Send action to queue for async processing
+        let _ = ctx.action_tx.send(TicketAction::UpdateStatus {
+            id: id.clone(),
+            status: next_status,
+        });
     }
 }
 
-/// Move ticket to previous status (left)
+/// Move ticket to previous status (left) - sends action to async queue
 fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
@@ -89,11 +89,11 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let prev_status = COLUMNS[col - 1];
-        let rt = tokio::runtime::Handle::current();
-        if let Ok(ticket_handle) = rt.block_on(Ticket::find(id)) {
-            let _ = ticket_handle.update_field("status", &prev_status.to_string());
-            ctx.needs_reload.set(true);
-        }
+        // Send action to queue for async processing
+        let _ = ctx.action_tx.send(TicketAction::UpdateStatus {
+            id: id.clone(),
+            status: prev_status,
+        });
     }
 }
 

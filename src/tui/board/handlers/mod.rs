@@ -8,8 +8,10 @@ mod column;
 mod context;
 mod navigation;
 mod search;
+mod types;
 
 pub use context::BoardHandlerContext;
+pub use types::TicketAction;
 
 use iocraft::prelude::{KeyCode, KeyModifiers};
 

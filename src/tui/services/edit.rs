@@ -18,7 +18,7 @@ impl TicketEditService {
     ///
     /// If ticket_id is Some, updates the existing ticket.
     /// If ticket_id is None, creates a new ticket.
-    pub fn save(
+    pub async fn save(
         ticket_id: Option<&str>,
         title: &str,
         status: TicketStatus,
@@ -27,7 +27,7 @@ impl TicketEditService {
         body: &str,
     ) -> Result<()> {
         if let Some(id) = ticket_id {
-            TicketService::update_ticket(id, title, status, ticket_type, priority, body)?;
+            TicketService::update_ticket(id, title, status, ticket_type, priority, body).await?;
         } else {
             TicketService::create_ticket(title, status, ticket_type, priority, body)?;
         }

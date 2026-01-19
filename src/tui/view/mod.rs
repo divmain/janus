@@ -6,17 +6,22 @@
 pub mod handlers;
 
 use iocraft::prelude::*;
+use tokio::sync::mpsc;
 
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, Footer, Header, SearchBox, TicketDetail, TicketList,
-    browser_shortcuts, edit_shortcuts, empty_shortcuts, search_shortcuts,
+    EmptyState, EmptyStateKind, Footer, Header, SearchBox, TicketDetail, TicketList, Toast,
+    ToastNotification, browser_shortcuts, edit_shortcuts, empty_shortcuts, search_shortcuts,
 };
 use crate::tui::edit::{EditForm, EditResult};
 use crate::tui::edit_state::EditFormState;
+use crate::tui::repository::{InitResult, TicketRepository, janus_dir_exists};
 use crate::tui::search::{FilteredTicket, filter_tickets};
-use crate::tui::state::{InitResult, Pane, TuiState};
+use crate::tui::services::TicketService;
+use crate::tui::state::Pane;
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
+
+use handlers::ViewAction;
 
 /// Props for the IssueBrowser component
 #[derive(Default, Props)]
@@ -43,16 +48,64 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let (width, height) = hooks.use_terminal_size();
     let mut system = hooks.use_context_mut::<SystemContext>();
 
-    // State management
-    let init_result: State<InitResult> = hooks.use_state(|| TuiState::init_sync().1);
-    let mut all_tickets: State<Vec<TicketMetadata>> =
-        hooks.use_state(|| TuiState::new_sync().repository.tickets);
+    // State management - initialize with empty state, load asynchronously
+    let init_result: State<InitResult> = hooks.use_state(|| InitResult::Ok);
+    let all_tickets: State<Vec<TicketMetadata>> = hooks.use_state(Vec::new);
+    let mut is_loading = hooks.use_state(|| true);
+    let toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut search_query = hooks.use_state(String::new);
     let mut selected_index = hooks.use_state(|| 0usize);
     let mut scroll_offset = hooks.use_state(|| 0usize);
     let mut active_pane = hooks.use_state(|| Pane::List); // Start on list, not search
     let mut should_exit = hooks.use_state(|| false);
     let mut needs_reload = hooks.use_state(|| false);
+
+    // Async load handler with minimum 100ms display time to prevent UI flicker
+    let load_handler: Handler<()> = hooks.use_async_handler({
+        let tickets_setter = all_tickets;
+        let loading_setter = is_loading;
+        let init_result_setter = init_result;
+
+        move |()| {
+            let mut tickets_setter = tickets_setter;
+            let mut loading_setter = loading_setter;
+            let mut init_result_setter = init_result_setter;
+
+            async move {
+                let start = std::time::Instant::now();
+
+                if !janus_dir_exists() {
+                    init_result_setter.set(InitResult::NoJanusDir);
+                    loading_setter.set(false);
+                    return;
+                }
+
+                let tickets = TicketRepository::load_tickets().await;
+
+                if tickets.is_empty() {
+                    init_result_setter.set(InitResult::EmptyDir);
+                } else {
+                    init_result_setter.set(InitResult::Ok);
+                }
+
+                // Ensure minimum 100ms display time to prevent flicker
+                let elapsed = start.elapsed();
+                if elapsed < std::time::Duration::from_millis(100) {
+                    tokio::time::sleep(std::time::Duration::from_millis(100) - elapsed).await;
+                }
+
+                tickets_setter.set(tickets);
+                loading_setter.set(false);
+            }
+        }
+    });
+
+    // Trigger initial load on mount
+    let mut load_started = hooks.use_state(|| false);
+    if !load_started.get() {
+        load_started.set(true);
+        load_handler.clone()(());
+    }
 
     // Edit form state - use bool flags and separate storage for non-Copy data
     let mut edit_result: State<EditResult> = hooks.use_state(EditResult::default);
@@ -62,10 +115,128 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut editing_ticket: State<TicketMetadata> = hooks.use_state(TicketMetadata::default);
     let mut editing_body = hooks.use_state(String::new);
 
-    // Reload tickets if needed
+    // Action queue for async ticket operations
+    // Use Arc<Mutex> for thread-safe access to the channel
+    let action_channel: State<
+        std::sync::Arc<std::sync::Mutex<Option<mpsc::UnboundedReceiver<ViewAction>>>>,
+    > = hooks.use_state(|| std::sync::Arc::new(std::sync::Mutex::new(None)));
+
+    // Create the channel on first render
+    let mut action_tx: State<Option<mpsc::UnboundedSender<ViewAction>>> = hooks.use_state(|| None);
+
+    // Initialize channel on first render
+    let mut channel_initialized = hooks.use_state(|| false);
+    if !channel_initialized.get() {
+        channel_initialized.set(true);
+        let (tx, rx) = mpsc::unbounded_channel::<ViewAction>();
+        action_tx.set(Some(tx));
+        if let Ok(mut guard) = action_channel.read().lock() {
+            *guard = Some(rx);
+        }
+    }
+
+    // Get the sender for event handlers
+    let action_tx_ref = action_tx.read();
+    let action_sender = action_tx_ref
+        .clone()
+        .expect("action sender should be initialized");
+
+    // Async action queue processor
+    // This handler processes pending actions from the queue
+    let action_processor: Handler<()> = hooks.use_async_handler({
+        let action_channel = action_channel.read().clone();
+        let needs_reload_setter = needs_reload;
+        let toast_setter = toast;
+        let editing_ticket_id_setter = editing_ticket_id;
+        let editing_ticket_setter = editing_ticket;
+        let editing_body_setter = editing_body;
+        let is_editing_setter = is_editing_existing;
+
+        move |()| {
+            let action_channel = action_channel.clone();
+            let mut needs_reload_setter = needs_reload_setter;
+            let mut toast_setter = toast_setter;
+            let mut editing_ticket_id_setter = editing_ticket_id_setter;
+            let mut editing_ticket_setter = editing_ticket_setter;
+            let mut editing_body_setter = editing_body_setter;
+            let mut is_editing_setter = is_editing_setter;
+
+            async move {
+                // Collect pending actions from the channel
+                let actions: Vec<ViewAction> = {
+                    let mut guard: std::sync::MutexGuard<
+                        '_,
+                        Option<mpsc::UnboundedReceiver<ViewAction>>,
+                    > = match action_channel.lock() {
+                        Ok(g) => g,
+                        Err(_) => return,
+                    };
+                    let mut actions = Vec::new();
+                    if let Some(rx) = guard.as_mut() {
+                        while let Ok(action) = rx.try_recv() {
+                            actions.push(action);
+                        }
+                    }
+                    actions
+                };
+
+                if actions.is_empty() {
+                    return;
+                }
+
+                let mut should_reload = false;
+
+                // Process all pending actions sequentially
+                for action in actions {
+                    match action {
+                        ViewAction::CycleStatus { id } => {
+                            match TicketService::cycle_status(&id).await {
+                                Ok(_) => {
+                                    should_reload = true;
+                                }
+                                Err(e) => {
+                                    toast_setter.set(Some(Toast::error(format!(
+                                        "Failed to cycle status: {}",
+                                        e
+                                    ))));
+                                }
+                            }
+                        }
+                        ViewAction::LoadForEdit { id } => {
+                            match TicketService::load_for_edit(&id).await {
+                                Ok((metadata, body)) => {
+                                    editing_ticket_id_setter.set(id);
+                                    editing_ticket_setter.set(metadata);
+                                    editing_body_setter.set(body);
+                                    is_editing_setter.set(true);
+                                }
+                                Err(e) => {
+                                    toast_setter.set(Some(Toast::error(format!(
+                                        "Failed to load ticket: {}",
+                                        e
+                                    ))));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Trigger reload if any status updates were made
+                if should_reload {
+                    needs_reload_setter.set(true);
+                }
+            }
+        }
+    });
+
+    // Track if actions are pending (set when handlers send actions)
+    let mut actions_pending = hooks.use_state(|| false);
+
+    // Reload tickets if needed - use async handler instead of sync
     if needs_reload.get() {
         needs_reload.set(false);
-        all_tickets.set(TuiState::new_sync().repository.tickets);
+        is_loading.set(true);
+        load_handler.clone()(());
     }
 
     // Handle edit form result using shared EditFormState
@@ -106,6 +277,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     hooks.use_terminal_events({
         let filtered_len = filtered_clone.len();
         let filtered_for_events = filtered_clone.clone();
+        let action_sender_for_events = action_sender.clone();
         move |event| {
             // Skip if edit form is open (it handles its own events)
             if is_editing {
@@ -135,13 +307,24 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         filtered_count: filtered_len,
                         list_height,
                         filtered_tickets: &filtered_for_events,
+                        action_tx: &action_sender_for_events,
                     };
                     handlers::handle_key_event(&mut ctx, code, modifiers);
+
+                    // Trigger action processor if actions were queued
+                    // The processor will handle any pending actions asynchronously
+                    actions_pending.set(true);
                 }
                 _ => {}
             }
         }
     });
+
+    // Process any pending actions from the queue
+    if actions_pending.get() {
+        actions_pending.set(false);
+        action_processor(());
+    }
 
     // Exit if requested
     if should_exit.get() {
@@ -175,23 +358,27 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         (edit_state.get_edit_ticket(), edit_state.get_edit_body())
     };
 
-    // Determine if we should show an empty state
-    let empty_state_kind: Option<EmptyStateKind> = match init_result.get() {
-        InitResult::NoJanusDir => Some(EmptyStateKind::NoJanusDir),
-        InitResult::EmptyDir => {
-            if total_ticket_count == 0 {
-                Some(EmptyStateKind::NoTickets)
-            } else {
-                None
+    // Determine if we should show an empty state - check loading first
+    let empty_state_kind: Option<EmptyStateKind> = if is_loading.get() {
+        Some(EmptyStateKind::Loading)
+    } else {
+        match init_result.get() {
+            InitResult::NoJanusDir => Some(EmptyStateKind::NoJanusDir),
+            InitResult::EmptyDir => {
+                if total_ticket_count == 0 {
+                    Some(EmptyStateKind::NoTickets)
+                } else {
+                    None
+                }
             }
-        }
-        InitResult::Ok => {
-            if total_ticket_count == 0 {
-                Some(EmptyStateKind::NoTickets)
-            } else if ticket_count == 0 && !query_str.is_empty() {
-                Some(EmptyStateKind::NoSearchResults)
-            } else {
-                None
+            InitResult::Ok => {
+                if total_ticket_count == 0 {
+                    Some(EmptyStateKind::NoTickets)
+                } else if ticket_count == 0 && !query_str.is_empty() {
+                    Some(EmptyStateKind::NoSearchResults)
+                } else {
+                    None
+                }
             }
         }
     };
@@ -199,7 +386,9 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Show empty state if needed (except for no search results, which shows inline)
     let show_full_empty_state = matches!(
         empty_state_kind,
-        Some(EmptyStateKind::NoJanusDir) | Some(EmptyStateKind::NoTickets)
+        Some(EmptyStateKind::NoJanusDir)
+            | Some(EmptyStateKind::NoTickets)
+            | Some(EmptyStateKind::Loading)
     );
 
     // Determine shortcuts to show
@@ -305,6 +494,18 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         })
                     }
                 })
+            })
+
+            // Toast notification
+            #({
+                let toast_val = toast.read().clone();
+                if toast_val.is_some() {
+                    Some(element! {
+                        ToastNotification(toast: toast_val)
+                    })
+                } else {
+                    None
+                }
             })
 
             // Footer

@@ -2,11 +2,11 @@
 
 use iocraft::prelude::KeyCode;
 
-use crate::tui::services::TicketService;
 use crate::tui::state::Pane;
 
 use super::HandleResult;
 use super::context::ViewHandlerContext;
+use super::types::ViewAction;
 
 /// Handle events when list pane is active
 pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -70,9 +70,11 @@ pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleR
 fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
         && let Some(id) = &ft.ticket.id
-        && TicketService::cycle_status(id).is_ok()
     {
-        ctx.needs_reload.set(true);
+        // Send action to the async queue for processing
+        let _ = ctx
+            .action_tx
+            .send(ViewAction::CycleStatus { id: id.clone() });
     }
 }
 
@@ -81,11 +83,10 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        // Load ticket data and body via service
-        if let Ok((metadata, body)) = TicketService::load_for_edit(id) {
-            ctx.editing_ticket_id.set(id.clone());
-            ctx.edit_state().start_edit(metadata, body);
-        }
+        // Send action to the async queue for processing
+        let _ = ctx
+            .action_tx
+            .send(ViewAction::LoadForEdit { id: id.clone() });
     }
 }
 

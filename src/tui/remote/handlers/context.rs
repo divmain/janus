@@ -9,6 +9,7 @@ use iocraft::prelude::{Handler, State};
 
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteQuery};
+use crate::tui::remote::link_mode::LinkSource;
 use crate::types::TicketMetadata;
 
 use super::super::error_toast::Toast;
@@ -79,6 +80,8 @@ pub struct AsyncHandlers<'a> {
     pub push_handler: &'a Handler<(Vec<String>, Platform, RemoteQuery)>,
     pub sync_fetch_handler: &'a Handler<(Vec<String>, Platform)>,
     pub sync_apply_handler: &'a Handler<(SyncPreviewState, Platform, RemoteQuery)>,
+    pub link_handler: &'a Handler<LinkSource>,
+    pub unlink_handler: &'a Handler<Vec<String>>,
 }
 
 /// Main context struct holding grouped state for event handlers

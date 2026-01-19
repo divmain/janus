@@ -27,15 +27,62 @@ impl TicketService {
     ///
     /// Status cycle: New -> Next -> InProgress -> Complete -> New
     /// Cancelled tickets reset to New
-    pub fn cycle_status(ticket_id: &str) -> Result<TicketStatus> {
-        let rt = tokio::runtime::Handle::current();
-        let ticket = rt.block_on(Ticket::find(ticket_id))?;
+    pub async fn cycle_status(ticket_id: &str) -> Result<TicketStatus> {
+        let ticket = Ticket::find(ticket_id).await?;
         let metadata = ticket.read()?;
         let current_status = metadata.status.unwrap_or_default();
         let next_status = Self::next_status(current_status);
         ticket.update_field("status", &next_status.to_string())?;
         Ok(next_status)
     }
+
+    /// Update a ticket's status to a specific value
+    pub async fn set_status(ticket_id: &str, status: TicketStatus) -> Result<()> {
+        let ticket = Ticket::find(ticket_id).await?;
+        ticket.update_field("status", &status.to_string())?;
+        Ok(())
+    }
+
+    /// Load ticket data for editing
+    ///
+    /// Returns the ticket metadata and body content suitable for the edit form.
+    pub async fn load_for_edit(ticket_id: &str) -> Result<(TicketMetadata, String)> {
+        let ticket = Ticket::find(ticket_id).await?;
+        let metadata = ticket.read()?;
+        let content = ticket.read_content()?;
+        let body = extract_body_for_edit(&content);
+        Ok((metadata, body))
+    }
+
+    /// Update an existing ticket
+    ///
+    /// Updates all editable fields (title, status, type, priority, body).
+    pub async fn update_ticket(
+        id: &str,
+        title: &str,
+        status: TicketStatus,
+        ticket_type: TicketType,
+        priority: TicketPriority,
+        body: &str,
+    ) -> Result<()> {
+        let ticket = Ticket::find(id).await?;
+
+        // Update individual fields
+        ticket.update_field("status", &status.to_string())?;
+        ticket.update_field("type", &ticket_type.to_string())?;
+        ticket.update_field("priority", &priority.to_string())?;
+
+        // Rewrite the body section
+        let content = ticket.read_content()?;
+        let new_content = Self::rewrite_body(&content, title, body);
+        ticket.write(&new_content)?;
+
+        Ok(())
+    }
+
+    // =========================================================================
+    // Helper methods
+    // =========================================================================
 
     /// Get the next status in the cycle
     fn next_status(current: TicketStatus) -> TicketStatus {
@@ -48,28 +95,9 @@ impl TicketService {
         }
     }
 
-    /// Update a ticket's status to a specific value
-    pub fn set_status(ticket_id: &str, status: TicketStatus) -> Result<()> {
-        let rt = tokio::runtime::Handle::current();
-        let ticket = rt.block_on(Ticket::find(ticket_id))?;
-        ticket.update_field("status", &status.to_string())?;
-        Ok(())
-    }
-
-    /// Load ticket data for editing
-    ///
-    /// Returns the ticket metadata and body content suitable for the edit form.
-    pub fn load_for_edit(ticket_id: &str) -> Result<(TicketMetadata, String)> {
-        let rt = tokio::runtime::Handle::current();
-        let ticket = rt.block_on(Ticket::find(ticket_id))?;
-        let metadata = ticket.read()?;
-        let content = ticket.read_content()?;
-        let body = extract_body_for_edit(&content);
-        Ok((metadata, body))
-    }
-
     /// Create a new ticket
     ///
+    /// Note: This method is synchronous because TicketBuilder::build() is sync.
     /// Returns the generated ticket ID on success.
     pub fn create_ticket(
         title: &str,
@@ -94,33 +122,6 @@ impl TicketService {
             .build()?;
 
         Ok(id)
-    }
-
-    /// Update an existing ticket
-    ///
-    /// Updates all editable fields (title, status, type, priority, body).
-    pub fn update_ticket(
-        id: &str,
-        title: &str,
-        status: TicketStatus,
-        ticket_type: TicketType,
-        priority: TicketPriority,
-        body: &str,
-    ) -> Result<()> {
-        let rt = tokio::runtime::Handle::current();
-        let ticket = rt.block_on(Ticket::find(id))?;
-
-        // Update individual fields
-        ticket.update_field("status", &status.to_string())?;
-        ticket.update_field("type", &ticket_type.to_string())?;
-        ticket.update_field("priority", &priority.to_string())?;
-
-        // Rewrite the body section
-        let content = ticket.read_content()?;
-        let new_content = Self::rewrite_body(&content, title, body);
-        ticket.write(&new_content)?;
-
-        Ok(())
     }
 
     /// Rewrite the body section of a ticket file while preserving frontmatter

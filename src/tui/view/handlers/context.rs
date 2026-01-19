@@ -4,12 +4,15 @@
 //! the TUI state without needing to pass dozens of individual parameters.
 
 use iocraft::prelude::State;
+use tokio::sync::mpsc;
 
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::EditFormState;
 use crate::tui::search::FilteredTicket;
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
+
+use super::types::ViewAction;
 
 /// Context struct holding all mutable state for event handlers
 pub struct ViewHandlerContext<'a> {
@@ -41,6 +44,9 @@ pub struct ViewHandlerContext<'a> {
 
     // Ticket data for operations
     pub filtered_tickets: &'a [FilteredTicket],
+
+    // Async action queue sender
+    pub action_tx: &'a mpsc::UnboundedSender<ViewAction>,
 }
 
 impl<'a> ViewHandlerContext<'a> {

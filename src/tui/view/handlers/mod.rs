@@ -7,8 +7,10 @@ mod context;
 mod list;
 mod navigation;
 mod search;
+mod types;
 
 pub use context::ViewHandlerContext;
+pub use types::ViewAction;
 
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
