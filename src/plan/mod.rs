@@ -535,23 +535,17 @@ pub fn ensure_plans_dir() -> std::io::Result<()> {
 
 /// Generate a unique plan ID with collision checking
 pub fn generate_plan_id() -> String {
-    use rand::Rng;
-    use sha2::{Digest, Sha256};
     use std::path::Path;
+
+    use crate::utils::generate_hash;
 
     const RETRIES_PER_LENGTH: u32 = 40;
     let plans_dir = Path::new(PLANS_DIR);
 
     for length in 4..=8 {
         for _ in 0..RETRIES_PER_LENGTH {
-            // Generate random hex hash
-            let random_bytes: [u8; 16] = rand::rng().random();
-            let mut hasher = Sha256::new();
-            hasher.update(random_bytes);
-            let hash = format!("{:x}", hasher.finalize());
-
-            let short_hash = &hash[..length];
-            let candidate = format!("plan-{}", short_hash);
+            let hash = generate_hash(length);
+            let candidate = format!("plan-{}", hash);
             let filename = format!("{}.md", candidate);
 
             if !plans_dir.join(&filename).exists() {
