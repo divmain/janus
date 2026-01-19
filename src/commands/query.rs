@@ -34,7 +34,13 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
             stdin.write_all(output.as_bytes())?;
         }
 
-        child.wait()?;
+        let status = child.wait()?;
+        if !status.success() {
+            return Err(JanusError::JqFilter(format!(
+                "jq filter failed with exit code {}",
+                status.code().unwrap_or(-1)
+            )));
+        }
     } else {
         // No filter, output all tickets as JSON lines
         println!("{}", output);
