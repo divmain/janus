@@ -2,7 +2,7 @@ use super::{
     CommandOutput, FormatOptions, format_deps, format_ticket_line, sort_by_priority, ticket_to_json,
 };
 use crate::error::Result;
-use crate::ticket::{build_ticket_map, get_all_tickets};
+use crate::ticket::get_all_tickets_with_map;
 use crate::types::{TicketMetadata, TicketStatus};
 
 /// List all tickets, optionally filtered by status or other criteria
@@ -15,8 +15,7 @@ pub async fn cmd_ls(
     limit: Option<usize>,
     output_json: bool,
 ) -> Result<()> {
-    let tickets = get_all_tickets().await;
-    let ticket_map = build_ticket_map().await;
+    let (tickets, ticket_map) = get_all_tickets_with_map().await;
 
     let filtered: Vec<TicketMetadata> = tickets
         .iter()

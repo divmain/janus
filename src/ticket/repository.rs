@@ -67,6 +67,15 @@ impl TicketRepository {
             .filter_map(|t| t.id.clone().map(|id| (id, t)))
             .collect()
     }
+
+    pub async fn get_all_with_map() -> (Vec<TicketMetadata>, HashMap<String, TicketMetadata>) {
+        let tickets = Self::get_all().await;
+        let map = tickets
+            .iter()
+            .filter_map(|t| t.id.clone().map(|id| (id, t.clone())))
+            .collect();
+        (tickets, map)
+    }
 }
 
 pub async fn get_all_tickets() -> Vec<TicketMetadata> {
@@ -79,6 +88,10 @@ pub fn get_all_tickets_from_disk() -> Vec<TicketMetadata> {
 
 pub async fn build_ticket_map() -> HashMap<String, TicketMetadata> {
     TicketRepository::build_map().await
+}
+
+pub async fn get_all_tickets_with_map() -> (Vec<TicketMetadata>, HashMap<String, TicketMetadata>) {
+    TicketRepository::get_all_with_map().await
 }
 
 pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
