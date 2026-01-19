@@ -1,4 +1,4 @@
-use jiff::Zoned;
+use jiff::Timestamp;
 use rand::Rng;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -120,7 +120,7 @@ fn generate_hash(length: usize) -> String {
 
 /// Get current ISO date string (without milliseconds)
 pub fn iso_date() -> String {
-    let now = Zoned::now();
+    let now = Timestamp::now();
     // Format as ISO 8601 without fractional seconds
     now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
