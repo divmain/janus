@@ -64,6 +64,19 @@ pub fn extract_body(raw_content: &str) -> String {
     }
 }
 
+/// Extract the value of a field from the YAML frontmatter of a ticket file.
+pub fn extract_field_value(raw_content: &str, field: &str) -> Option<String> {
+    let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field)))
+        .expect("field pattern regex should be valid");
+    field_pattern.find(raw_content).map(|m| {
+        m.as_str()
+            .split(':')
+            .nth(1)
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    })
+}
+
 /// Update the title (H1 heading) in a ticket file.
 pub fn update_title(raw_content: &str, new_title: &str) -> String {
     TITLE_RE

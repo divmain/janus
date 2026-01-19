@@ -1,11 +1,10 @@
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::ticket::content::{
-    parse, remove_field as remove_field_from_content, update_field as update_field_in_content,
-    validate_field_name,
+    extract_field_value, parse, remove_field as remove_field_from_content,
+    update_field as update_field_in_content, validate_field_name,
 };
 use crate::ticket::file::TicketFile;
-use regex::Regex;
 use serde_json;
 
 pub struct TicketEditor {
@@ -15,18 +14,6 @@ pub struct TicketEditor {
 impl TicketEditor {
     pub fn new(file: TicketFile) -> Self {
         TicketEditor { file }
-    }
-
-    fn extract_field_value(content: &str, field: &str) -> Option<String> {
-        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field)))
-            .expect("field pattern regex should be valid");
-        field_pattern.find(content).map(|m| {
-            m.as_str()
-                .split(':')
-                .nth(1)
-                .map(|v| v.trim().to_string())
-                .unwrap_or_default()
-        })
     }
 
     fn with_write_hooks<F>(
@@ -54,7 +41,7 @@ impl TicketEditor {
         validate_field_name(field, "update")?;
 
         let raw_content = self.file.read_raw()?;
-        let old_value = Self::extract_field_value(&raw_content, field);
+        let old_value = extract_field_value(&raw_content, field);
 
         let mut context = HookContext::new()
             .with_item_type(ItemType::Ticket)
@@ -81,7 +68,7 @@ impl TicketEditor {
         validate_field_name(field, "remove")?;
 
         let raw_content = self.file.read_raw()?;
-        let old_value = Self::extract_field_value(&raw_content, field);
+        let old_value = extract_field_value(&raw_content, field);
 
         let mut context = HookContext::new()
             .with_item_type(ItemType::Ticket)
