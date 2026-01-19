@@ -1,4 +1,5 @@
 use crate::ticket::content;
+use crate::utils::DirScanner;
 use crate::{TicketMetadata, cache};
 use std::collections::HashMap;
 use std::fs;
@@ -7,22 +8,7 @@ use std::path::{Path, PathBuf};
 pub fn find_tickets() -> Vec<String> {
     use crate::types::TICKETS_ITEMS_DIR;
 
-    fs::read_dir(TICKETS_ITEMS_DIR)
-        .ok()
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .filter_map(|e| {
-                    let name = e.file_name().to_string_lossy().into_owned();
-                    if name.ends_with(".md") {
-                        Some(name)
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    DirScanner::find_markdown_files(TICKETS_ITEMS_DIR)
 }
 
 pub struct TicketRepository;
@@ -96,5 +82,5 @@ pub async fn build_ticket_map() -> HashMap<String, TicketMetadata> {
 }
 
 pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
-    fs::metadata(path).ok().and_then(|m| m.modified().ok())
+    DirScanner::get_file_mtime(path)
 }

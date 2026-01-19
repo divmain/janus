@@ -11,6 +11,7 @@ use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hoo
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::types::{PLANS_DIR, TicketMetadata};
+use crate::utils::DirScanner;
 
 // Re-export status computation functions
 pub use crate::status::plan::{
@@ -31,22 +32,7 @@ pub use crate::plan::parser::{
 
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
-    fs::read_dir(PLANS_DIR)
-        .ok()
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .filter_map(|e| {
-                    let name = e.file_name().to_string_lossy().into_owned();
-                    if name.ends_with(".md") {
-                        Some(name)
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    DirScanner::find_markdown_files(PLANS_DIR)
 }
 
 /// Find a plan file by partial ID

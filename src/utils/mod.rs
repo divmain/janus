@@ -1,3 +1,5 @@
+pub mod dir_scanner;
+
 use jiff::Timestamp;
 use rand::Rng;
 use sha2::{Digest, Sha256};
@@ -9,6 +11,9 @@ use uuid::Uuid;
 
 use crate::error::JanusError;
 use crate::types::TICKETS_ITEMS_DIR;
+
+// Re-export DirScanner for convenience
+pub use dir_scanner::DirScanner;
 
 /// Ensure the tickets directory exists
 pub fn ensure_dir() -> io::Result<()> {
