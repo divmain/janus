@@ -184,6 +184,11 @@ impl TicketEditor {
         self.file.write_raw(&new_content)
     }
 
+    pub fn write_validated(&self, content: &str) -> Result<()> {
+        TicketContent::parse(content)?;
+        self.write(content)
+    }
+
     pub fn write(&self, content: &str) -> Result<()> {
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
