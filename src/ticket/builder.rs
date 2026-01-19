@@ -1,9 +1,10 @@
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
-use crate::types::TICKETS_ITEMS_DIR;
+use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketStatus, TicketType};
 use crate::utils;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 pub struct TicketBuilder {
     title: String,
@@ -128,6 +129,12 @@ impl TicketBuilder {
         let ticket_type = self.ticket_type.unwrap_or_else(|| "task".to_string());
         let priority = self.priority.unwrap_or_else(|| "2".to_string());
 
+        TicketStatus::from_str(&status).map_err(|_| JanusError::InvalidStatus(status.clone()))?;
+        TicketType::from_str(&ticket_type)
+            .map_err(|_| JanusError::Other(format!("invalid ticket type: {}", ticket_type)))?;
+        TicketPriority::from_str(&priority)
+            .map_err(|_| JanusError::Other(format!("invalid priority: {}", priority)))?;
+
         let mut frontmatter_lines = vec![
             "---".to_string(),
             format!("id: {}", id),
@@ -193,5 +200,113 @@ impl TicketBuilder {
         }
 
         Ok((id, file_path))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_builder_rejects_invalid_status() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_rejects_invalid_status");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test")
+            .status("invalid_status")
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, JanusError::InvalidStatus(_)));
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_rejects_invalid_ticket_type() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_rejects_invalid_ticket_type");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test")
+            .ticket_type("invalid_type")
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("invalid ticket type"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_rejects_invalid_priority() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_rejects_invalid_priority");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test")
+            .priority("999")
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("invalid priority"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_accepts_valid_status() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_accepts_valid_status");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test")
+            .status("complete")
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_accepts_valid_ticket_type() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_accepts_valid_ticket_type");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test")
+            .ticket_type("bug")
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_accepts_valid_priority() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_accepts_valid_priority");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test")
+            .priority("0")
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_ok());
     }
 }
