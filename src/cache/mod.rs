@@ -79,8 +79,14 @@ pub fn cache_dir() -> PathBuf {
         .expect("cannot determine cache directory");
     let cache_dir = proj_dirs.cache_dir().to_path_buf();
 
-    if !cache_dir.exists() {
-        fs::create_dir_all(&cache_dir).ok();
+    if !cache_dir.exists()
+        && let Err(e) = fs::create_dir_all(&cache_dir)
+    {
+        eprintln!(
+            "Warning: failed to create cache directory '{}': {}",
+            cache_dir.display(),
+            e
+        );
     }
 
     cache_dir
