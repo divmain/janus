@@ -3,7 +3,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::display::format_status_colored;
 use crate::error::Result;
 use crate::plan::{compute_plan_status, get_all_plans};
@@ -41,47 +41,47 @@ pub async fn cmd_plan_ls(status_filter: Option<&str>, output_json: bool) -> Resu
         filtered_plans.push((metadata, plan_status));
     }
 
-    // Handle JSON output
-    if output_json {
-        let json_plans: Vec<serde_json::Value> = filtered_plans
-            .iter()
-            .map(|(metadata, plan_status)| {
-                json!({
-                    "id": metadata.id,
-                    "uuid": metadata.uuid,
-                    "title": metadata.title,
-                    "created": metadata.created,
-                    "status": plan_status.status.to_string(),
-                    "completed_count": plan_status.completed_count,
-                    "total_count": plan_status.total_count,
-                    "progress_percent": plan_status.progress_percent(),
-                    "is_phased": metadata.is_phased(),
-                })
+    // Build JSON output
+    let json_plans: Vec<serde_json::Value> = filtered_plans
+        .iter()
+        .map(|(metadata, plan_status)| {
+            json!({
+                "id": metadata.id,
+                "uuid": metadata.uuid,
+                "title": metadata.title,
+                "created": metadata.created,
+                "status": plan_status.status.to_string(),
+                "completed_count": plan_status.completed_count,
+                "total_count": plan_status.total_count,
+                "progress_percent": plan_status.progress_percent(),
+                "is_phased": metadata.is_phased(),
             })
-            .collect();
+        })
+        .collect();
 
-        print_json(&serde_json::Value::Array(json_plans))?;
-        return Ok(());
-    }
+    // Build text output eagerly
+    let text_output = filtered_plans
+        .iter()
+        .map(|(metadata, plan_status)| {
+            let id = metadata.id.as_deref().unwrap_or("???");
+            let title = metadata.title.as_deref().unwrap_or("");
+            let status_badge = format_status_colored(plan_status.status);
+            let progress = format!(
+                "{}/{}",
+                plan_status.completed_count, plan_status.total_count
+            );
+            format!(
+                "{:12} {} {:>5}  {}",
+                id.cyan(),
+                status_badge,
+                progress.dimmed(),
+                title
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    // Default text output
-    for (metadata, plan_status) in &filtered_plans {
-        let id = metadata.id.as_deref().unwrap_or("???");
-        let title = metadata.title.as_deref().unwrap_or("");
-        let status_badge = format_status_colored(plan_status.status);
-        let progress = format!(
-            "{}/{}",
-            plan_status.completed_count, plan_status.total_count
-        );
-
-        println!(
-            "{:12} {} {:>5}  {}",
-            id.cyan(),
-            status_badge,
-            progress.dimmed(),
-            title
-        );
-    }
-
-    Ok(())
+    CommandOutput::new(serde_json::Value::Array(json_plans))
+        .with_text(text_output)
+        .print(output_json)
 }

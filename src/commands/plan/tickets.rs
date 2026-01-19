@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
@@ -110,18 +110,15 @@ pub async fn cmd_plan_add_ticket(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan.id,
-            "ticket_id": resolved_ticket_id,
-            "action": "ticket_added",
-            "phase": added_to_phase,
-            "position": added_position,
-        }))?;
-    } else {
-        println!("Added {} to plan {}", resolved_ticket_id, plan.id);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "ticket_id": resolved_ticket_id,
+        "action": "ticket_added",
+        "phase": added_to_phase,
+        "position": added_position,
+    }))
+    .with_text(format!("Added {} to plan {}", resolved_ticket_id, plan.id))
+    .print(output_json)
 }
 
 /// Remove a ticket from a plan
@@ -179,17 +176,14 @@ pub async fn cmd_plan_remove_ticket(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan.id,
-            "ticket_id": resolved_id,
-            "action": "ticket_removed",
-            "phase": removed_from_phase,
-        }))?;
-    } else {
-        println!("Removed {} from plan {}", resolved_id, plan.id);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "ticket_id": resolved_id,
+        "action": "ticket_removed",
+        "phase": removed_from_phase,
+    }))
+    .with_text(format!("Removed {} from plan {}", resolved_id, plan.id))
+    .print(output_json)
 }
 
 /// Move a ticket between phases
@@ -259,19 +253,16 @@ pub async fn cmd_plan_move_ticket(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan.id,
-            "ticket_id": resolved_id,
-            "action": "ticket_moved",
-            "from_phase": found_in_phase,
-            "to_phase": to_phase,
-        }))?;
-    } else {
-        println!(
-            "Moved {} to phase '{}' in plan {}",
-            resolved_id, to_phase, plan.id
-        );
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "ticket_id": resolved_id,
+        "action": "ticket_moved",
+        "from_phase": found_in_phase,
+        "to_phase": to_phase,
+    }))
+    .with_text(format!(
+        "Moved {} to phase '{}' in plan {}",
+        resolved_id, to_phase, plan.id
+    ))
+    .print(output_json)
 }

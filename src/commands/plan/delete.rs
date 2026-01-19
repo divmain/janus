@@ -4,7 +4,7 @@ use std::io::Write;
 
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
@@ -36,16 +36,13 @@ pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result
     let plan_id = plan.id.clone();
     plan.delete()?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan_id,
-            "action": "deleted",
-            "success": true,
-        }))?;
-    } else {
-        println!("Deleted plan {}", plan_id);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan_id,
+        "action": "deleted",
+        "success": true,
+    }))
+    .with_text(format!("Deleted plan {}", plan_id))
+    .print(output_json)
 }
 
 /// Rename a plan (update its title)
@@ -65,18 +62,15 @@ pub async fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Re
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan.id,
-            "action": "renamed",
-            "old_title": old_title,
-            "new_title": new_title,
-        }))?;
-    } else {
-        println!(
-            "Renamed plan {} from '{}' to '{}'",
-            plan.id, old_title, new_title
-        );
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "action": "renamed",
+        "old_title": old_title,
+        "new_title": new_title,
+    }))
+    .with_text(format!(
+        "Renamed plan {} from '{}' to '{}'",
+        plan.id, old_title, new_title
+    ))
+    .print(output_json)
 }

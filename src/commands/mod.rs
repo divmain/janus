@@ -45,6 +45,79 @@ use crate::error::Result;
 use crate::types::TicketMetadata;
 use serde_json::json;
 
+/// Unified output abstraction for commands that support both JSON and text output.
+///
+/// This eliminates the repeated pattern of:
+/// ```ignore
+/// if output_json {
+///     print_json(&json!({ ... }))?;
+/// } else {
+///     println!("{}", text);
+/// }
+/// ```
+///
+/// Instead, commands can use:
+/// ```ignore
+/// CommandOutput::new(json!({ ... }))
+///     .with_text("Human readable text")
+///     .print(output_json)
+/// ```
+pub struct CommandOutput {
+    json: serde_json::Value,
+    text: Option<String>,
+    text_fn: Option<Box<dyn FnOnce() -> String>>,
+}
+
+impl CommandOutput {
+    /// Create a new CommandOutput with JSON data.
+    ///
+    /// If no text is provided, the JSON will be pretty-printed for text output too.
+    pub fn new(json: serde_json::Value) -> Self {
+        Self {
+            json,
+            text: None,
+            text_fn: None,
+        }
+    }
+
+    /// Set the human-readable text output.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
+        self
+    }
+
+    /// Set a lazy text generator for expensive text formatting.
+    ///
+    /// The function is only called if text output is needed.
+    pub fn with_text_fn<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce() -> String + 'static,
+    {
+        self.text_fn = Some(Box::new(f));
+        self
+    }
+
+    /// Print the output in the appropriate format.
+    pub fn print(self, output_json: bool) -> Result<()> {
+        if output_json {
+            print_json(&self.json)?;
+        } else if let Some(text) = self.text {
+            println!("{}", text);
+        } else if let Some(text_fn) = self.text_fn {
+            println!("{}", text_fn());
+        } else {
+            // Fallback: pretty-print JSON for text output
+            println!("{}", serde_json::to_string_pretty(&self.json)?);
+        }
+        Ok(())
+    }
+
+    /// Get the JSON value (useful for testing or further processing).
+    pub fn json(&self) -> &serde_json::Value {
+        &self.json
+    }
+}
+
 /// Re-export display formatting functions for convenience
 pub use crate::display::{
     FormatOptions, format_deps, format_ticket_bullet, format_ticket_line, sort_by_priority,

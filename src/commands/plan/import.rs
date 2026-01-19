@@ -6,7 +6,7 @@ use std::io::Read;
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::{CommandOutput, print_json};
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
@@ -433,24 +433,20 @@ pub async fn cmd_plan_import(
     run_post_hooks(HookEvent::PlanCreated, &context);
 
     // 11. Output result
-    if output_json {
-        let tickets_created: Vec<serde_json::Value> = created_ticket_ids
-            .iter()
-            .map(|id| json!({ "id": id }))
-            .collect();
+    let tickets_created: Vec<serde_json::Value> = created_ticket_ids
+        .iter()
+        .map(|id| json!({ "id": id }))
+        .collect();
 
-        print_json(&json!({
-            "id": plan_id,
-            "uuid": uuid,
-            "title": plan.title,
-            "created": now,
-            "is_phased": plan.is_phased(),
-            "tickets_created": tickets_created,
-            "verification_ticket": verification_ticket_id,
-        }))?;
-    } else {
-        println!("{}", plan_id);
-    }
-
-    Ok(())
+    CommandOutput::new(json!({
+        "id": plan_id,
+        "uuid": uuid,
+        "title": plan.title,
+        "created": now,
+        "is_phased": plan.is_phased(),
+        "tickets_created": tickets_created,
+        "verification_ticket": verification_ticket_id,
+    }))
+    .with_text(&plan_id)
+    .print(output_json)
 }

@@ -1,5 +1,5 @@
 use super::{
-    FormatOptions, format_deps, format_ticket_line, print_json, sort_by_priority, ticket_to_json,
+    CommandOutput, FormatOptions, format_deps, format_ticket_line, sort_by_priority, ticket_to_json,
 };
 use crate::error::Result;
 use crate::ticket::{build_ticket_map, get_all_tickets};
@@ -94,19 +94,22 @@ pub async fn cmd_ls(
         display_tickets.truncate(limit);
     }
 
-    if output_json {
-        let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
-        print_json(&serde_json::Value::Array(json_tickets))?;
-        return Ok(());
-    }
+    let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
 
-    for t in &display_tickets {
-        let opts = FormatOptions {
-            suffix: Some(format_deps(&t.deps)),
-            ..Default::default()
-        };
-        println!("{}", format_ticket_line(t, opts));
-    }
+    // Build text output eagerly
+    let text_output = display_tickets
+        .iter()
+        .map(|t| {
+            let opts = FormatOptions {
+                suffix: Some(format_deps(&t.deps)),
+                ..Default::default()
+            };
+            format_ticket_line(t, opts)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    Ok(())
+    CommandOutput::new(serde_json::Value::Array(json_tickets))
+        .with_text(text_output)
+        .print(output_json)
 }

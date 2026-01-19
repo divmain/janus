@@ -1,7 +1,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use super::print_json;
+use super::CommandOutput;
 use crate::commands::format_ticket_bullet;
 use crate::error::Result;
 use crate::ticket::{Ticket, build_ticket_map};
@@ -43,96 +43,98 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
         }
     }
 
-    if output_json {
-        let blockers_json: Vec<_> = blockers
-            .iter()
-            .copied()
-            .map(super::ticket_minimal_json)
-            .collect();
+    // Build JSON data (needed for both output formats)
+    let blockers_json: Vec<_> = blockers
+        .iter()
+        .copied()
+        .map(super::ticket_minimal_json)
+        .collect();
 
-        let blocking_json: Vec<_> = blocking
-            .iter()
-            .copied()
-            .map(super::ticket_minimal_json)
-            .collect();
+    let blocking_json: Vec<_> = blocking
+        .iter()
+        .copied()
+        .map(super::ticket_minimal_json)
+        .collect();
 
-        let children_json: Vec<_> = children
-            .iter()
-            .copied()
-            .map(super::ticket_minimal_json)
-            .collect();
+    let children_json: Vec<_> = children
+        .iter()
+        .copied()
+        .map(super::ticket_minimal_json)
+        .collect();
 
-        let linked_json: Vec<_> = metadata
-            .links
-            .iter()
-            .filter_map(|link_id| ticket_map.get(link_id))
-            .map(super::ticket_minimal_json)
-            .collect();
+    let linked_json: Vec<_> = metadata
+        .links
+        .iter()
+        .filter_map(|link_id| ticket_map.get(link_id))
+        .map(super::ticket_minimal_json)
+        .collect();
 
-        print_json(&json!({
-            "id": metadata.id,
-            "uuid": metadata.uuid,
-            "title": metadata.title,
-            "status": metadata.status.map(|s| s.to_string()),
-            "type": metadata.ticket_type.map(|t| t.to_string()),
-            "priority": metadata.priority.map(|p| p.as_num()),
-            "created": metadata.created,
-            "deps": metadata.deps,
-            "links": metadata.links,
-            "parent": metadata.parent,
-            "external_ref": metadata.external_ref,
-            "remote": metadata.remote,
-            "file_path": metadata.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
-            "completion_summary": metadata.completion_summary,
-            "blockers": blockers_json,
-            "blocking": blocking_json,
-            "children": children_json,
-            "linked": linked_json,
-        }))?;
-        return Ok(());
-    }
+    let json_output = json!({
+        "id": metadata.id,
+        "uuid": metadata.uuid,
+        "title": metadata.title,
+        "status": metadata.status.map(|s| s.to_string()),
+        "type": metadata.ticket_type.map(|t| t.to_string()),
+        "priority": metadata.priority.map(|p| p.as_num()),
+        "created": metadata.created,
+        "deps": metadata.deps,
+        "links": metadata.links,
+        "parent": metadata.parent,
+        "external_ref": metadata.external_ref,
+        "remote": metadata.remote,
+        "file_path": metadata.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+        "completion_summary": metadata.completion_summary,
+        "blockers": blockers_json,
+        "blocking": blocking_json,
+        "children": children_json,
+        "linked": linked_json,
+    });
 
-    // Print the raw content
-    println!("{}", content);
+    // Build text output
+    let text_output = {
+        let mut output = content;
 
-    // Print completion summary if ticket is complete and has one
-    // (This is separate from the raw content because we format it nicely)
-    if metadata.status == Some(TicketStatus::Complete)
-        && let Some(ref summary) = metadata.completion_summary
-    {
-        // Only print if the summary isn't already in the raw content
-        // (The raw content contains the ## Completion Summary section)
-        // We print a formatted version to highlight it
-        println!();
-        println!("{}", "Completion Summary:".green().bold());
-        for line in summary.lines() {
-            println!("  {}", line.dimmed());
-        }
-    }
-
-    // Print sections
-    print_section("Blockers", &blockers);
-    print_section("Blocking", &blocking);
-    print_section("Children", &children);
-
-    // Print linked tickets
-    if !metadata.links.is_empty() {
-        println!("\n## Linked");
-        for link_id in &metadata.links {
-            if let Some(linked) = ticket_map.get(link_id) {
-                println!("{}", format_ticket_bullet(linked));
+        // Print completion summary if ticket is complete and has one
+        if metadata.status == Some(TicketStatus::Complete)
+            && let Some(ref summary) = metadata.completion_summary
+        {
+            output.push('\n');
+            output.push_str(&format!("{}", "Completion Summary:".green().bold()));
+            for line in summary.lines() {
+                output.push_str(&format!("\n  {}", line.dimmed()));
             }
         }
-    }
 
-    Ok(())
+        // Print sections
+        output.push_str(&format_section("Blockers", &blockers));
+        output.push_str(&format_section("Blocking", &blocking));
+        output.push_str(&format_section("Children", &children));
+
+        // Print linked tickets
+        if !metadata.links.is_empty() {
+            output.push_str("\n\n## Linked");
+            for link_id in &metadata.links {
+                if let Some(linked) = ticket_map.get(link_id) {
+                    output.push_str(&format!("\n{}", format_ticket_bullet(linked)));
+                }
+            }
+        }
+
+        output
+    };
+
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)
 }
 
-fn print_section(title: &str, items: &[&TicketMetadata]) {
-    if !items.is_empty() {
-        println!("\n## {}", title);
-        for item in items {
-            println!("{}", format_ticket_bullet(item));
-        }
+fn format_section(title: &str, items: &[&TicketMetadata]) -> String {
+    if items.is_empty() {
+        return String::new();
     }
+    let mut output = format!("\n\n## {}", title);
+    for item in items {
+        output.push_str(&format!("\n{}", format_ticket_bullet(item)));
+    }
+    output
 }

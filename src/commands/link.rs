@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::print_json;
+use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 
@@ -29,30 +29,31 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
         }
     }
 
-    if output_json {
-        let mut links_updated = serde_json::Map::new();
-        for ticket in &tickets {
-            let metadata = ticket.read()?;
-            links_updated.insert(ticket.id.clone(), json!(metadata.links));
-        }
-        let ticket_ids: Vec<_> = tickets.iter().map(|t| &t.id).collect();
-        print_json(&json!({
-            "action": if added_count > 0 { "linked" } else { "already_linked" },
-            "tickets": ticket_ids,
-            "links_added": added_count,
-            "links_updated": links_updated,
-        }))?;
-    } else if added_count == 0 {
-        println!("All links already exist");
-    } else {
-        println!(
-            "Added {} link(s) between {} tickets",
-            added_count,
-            tickets.len()
-        );
+    let mut links_updated = serde_json::Map::new();
+    for ticket in &tickets {
+        let metadata = ticket.read()?;
+        links_updated.insert(ticket.id.clone(), json!(metadata.links));
     }
+    let ticket_ids: Vec<_> = tickets.iter().map(|t| t.id.clone()).collect();
+    let num_tickets = tickets.len();
 
-    Ok(())
+    let text = if added_count == 0 {
+        "All links already exist".to_string()
+    } else {
+        format!(
+            "Added {} link(s) between {} tickets",
+            added_count, num_tickets
+        )
+    };
+
+    CommandOutput::new(json!({
+        "action": if added_count > 0 { "linked" } else { "already_linked" },
+        "tickets": ticket_ids,
+        "links_added": added_count,
+        "links_updated": links_updated,
+    }))
+    .with_text(text)
+    .print(output_json)
 }
 
 /// Remove symmetric links between two tickets
@@ -73,21 +74,17 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
         return Err(JanusError::Other("Link not found".to_string()));
     }
 
-    if output_json {
-        let metadata1 = ticket1.read()?;
-        let metadata2 = ticket2.read()?;
-        let mut links_updated = serde_json::Map::new();
-        links_updated.insert(ticket1.id.clone(), json!(metadata1.links));
-        links_updated.insert(ticket2.id.clone(), json!(metadata2.links));
+    let metadata1 = ticket1.read()?;
+    let metadata2 = ticket2.read()?;
+    let mut links_updated = serde_json::Map::new();
+    links_updated.insert(ticket1.id.clone(), json!(metadata1.links));
+    links_updated.insert(ticket2.id.clone(), json!(metadata2.links));
 
-        print_json(&json!({
-            "action": "unlinked",
-            "tickets": [ticket1.id, ticket2.id],
-            "links_updated": links_updated,
-        }))?;
-    } else {
-        println!("Removed link: {} <-> {}", ticket1.id, ticket2.id);
-    }
-
-    Ok(())
+    CommandOutput::new(json!({
+        "action": "unlinked",
+        "tickets": [&ticket1.id, &ticket2.id],
+        "links_updated": links_updated,
+    }))
+    .with_text(format!("Removed link: {} <-> {}", ticket1.id, ticket2.id))
+    .print(output_json)
 }

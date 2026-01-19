@@ -10,7 +10,7 @@ use std::io::{self, Write};
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use super::print_json;
+use super::{CommandOutput, print_json};
 use crate::error::{JanusError, Result};
 use crate::remote::config::Config;
 use crate::remote::{
@@ -40,23 +40,29 @@ pub async fn cmd_adopt(
     // Create the local ticket
     let id = create_ticket_from_remote(&remote_issue, &remote_ref, prefix)?;
 
-    if output_json {
-        let status = remote_issue.status.to_ticket_status();
-        print_json(&json!({
-            "id": id,
-            "action": "adopted",
-            "remote_ref": remote_ref.to_string(),
-            "title": remote_issue.title,
-            "url": remote_issue.url,
-            "status": status.to_string(),
-        }))?;
-    } else {
-        println!("Created {} from {}", id.cyan(), remote_ref);
-        println!("  Title: {}", remote_issue.title);
-        println!("  URL: {}", remote_issue.url.dimmed());
-    }
+    let status = remote_issue.status.to_ticket_status();
+    let title = remote_issue.title.clone();
+    let url = remote_issue.url.clone();
+    let remote_ref_str = remote_ref.to_string();
 
-    Ok(())
+    CommandOutput::new(json!({
+        "id": id,
+        "action": "adopted",
+        "remote_ref": remote_ref_str,
+        "title": title,
+        "url": url,
+        "status": status.to_string(),
+    }))
+    .with_text_fn(move || {
+        format!(
+            "Created {} from {}\n  Title: {}\n  URL: {}",
+            id.cyan(),
+            remote_ref_str,
+            title,
+            url.dimmed()
+        )
+    })
+    .print(output_json)
 }
 
 /// Create a local ticket from a remote issue
@@ -121,20 +127,24 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
     let remote_ref = provider.create_issue(&title, &body).await?;
 
     // Update the local ticket with the remote reference
-    ticket.update_field("remote", &remote_ref.to_string())?;
+    let remote_ref_str = remote_ref.to_string();
+    ticket.update_field("remote", &remote_ref_str)?;
 
-    if output_json {
-        print_json(&json!({
-            "id": ticket.id,
-            "action": "pushed",
-            "remote_ref": remote_ref.to_string(),
-        }))?;
-    } else {
-        println!("Created {}", remote_ref.to_string().green());
-        println!("Updated {} -> remote: {}", ticket.id.cyan(), remote_ref);
-    }
-
-    Ok(())
+    let ticket_id = ticket.id.clone();
+    CommandOutput::new(json!({
+        "id": ticket_id,
+        "action": "pushed",
+        "remote_ref": remote_ref_str,
+    }))
+    .with_text_fn(move || {
+        format!(
+            "Created {}\nUpdated {} -> remote: {}",
+            remote_ref_str.green(),
+            ticket_id.cyan(),
+            remote_ref_str
+        )
+    })
+    .print(output_json)
 }
 
 /// Link a local ticket to an existing remote issue
@@ -164,23 +174,17 @@ pub async fn cmd_remote_link(
     let _remote_issue = provider.fetch_issue(&remote_ref).await?;
 
     // Update the local ticket
-    ticket.update_field("remote", &remote_ref.to_string())?;
+    let remote_ref_str = remote_ref.to_string();
+    ticket.update_field("remote", &remote_ref_str)?;
 
-    if output_json {
-        print_json(&json!({
-            "id": ticket.id,
-            "action": "remote_linked",
-            "remote_ref": remote_ref.to_string(),
-        }))?;
-    } else {
-        println!(
-            "Linked {} -> {}",
-            ticket.id.cyan(),
-            remote_ref.to_string().green()
-        );
-    }
-
-    Ok(())
+    let ticket_id = ticket.id.clone();
+    CommandOutput::new(json!({
+        "id": ticket_id,
+        "action": "remote_linked",
+        "remote_ref": remote_ref_str,
+    }))
+    .with_text_fn(move || format!("Linked {} -> {}", ticket_id.cyan(), remote_ref_str.green()))
+    .print(output_json)
 }
 
 /// Sync a local ticket with its remote issue

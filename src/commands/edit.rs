@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::print_json;
+use super::CommandOutput;
 use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, open_in_editor};
@@ -10,12 +10,12 @@ pub async fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id).await?;
 
     if output_json {
-        print_json(&json!({
+        return CommandOutput::new(json!({
             "id": ticket.id,
             "file_path": ticket.file_path.to_string_lossy(),
             "action": "edit",
-        }))?;
-        return Ok(());
+        }))
+        .print(output_json);
     }
 
     if is_stdin_tty() {

@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
@@ -67,17 +67,14 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
     run_post_hooks(HookEvent::PostWrite, &context);
     run_post_hooks(HookEvent::PlanCreated, &context);
 
-    if output_json {
-        print_json(&json!({
-            "id": id,
-            "uuid": uuid,
-            "title": title,
-            "created": now,
-            "is_phased": !phases.is_empty(),
-            "phases": phases,
-        }))?;
-    } else {
-        println!("{}", id);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "id": id,
+        "uuid": uuid,
+        "title": title,
+        "created": now,
+        "is_phased": !phases.is_empty(),
+        "phases": phases,
+    }))
+    .with_text(&id)
+    .print(output_json)
 }

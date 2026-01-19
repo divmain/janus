@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
@@ -98,20 +98,17 @@ pub async fn cmd_plan_add_phase(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan.id,
-            "action": "phase_added",
-            "phase_number": next_number.to_string(),
-            "phase_name": phase_name,
-        }))?;
-    } else {
-        println!(
-            "Added phase '{}' (Phase {}) to plan {}",
-            phase_name, next_number, plan.id
-        );
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "action": "phase_added",
+        "phase_number": next_number.to_string(),
+        "phase_name": phase_name,
+    }))
+    .with_text(format!(
+        "Added phase '{}' (Phase {}) to plan {}",
+        phase_name, next_number, plan.id
+    ))
+    .print(output_json)
 }
 
 /// Remove a phase from a plan
@@ -184,16 +181,13 @@ pub async fn cmd_plan_remove_phase(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan.id,
-            "action": "phase_removed",
-            "phase_number": phase_number,
-            "phase_name": phase_name,
-            "migrated_tickets": migrated_tickets,
-        }))?;
-    } else {
-        println!("Removed phase '{}' from plan {}", phase, plan.id);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "action": "phase_removed",
+        "phase_number": phase_number,
+        "phase_name": phase_name,
+        "migrated_tickets": migrated_tickets,
+    }))
+    .with_text(format!("Removed phase '{}' from plan {}", phase, plan.id))
+    .print(output_json)
 }

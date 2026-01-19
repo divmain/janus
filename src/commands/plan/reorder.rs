@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use serde_json::json;
 
 use super::edit_in_editor;
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
@@ -230,15 +230,12 @@ pub async fn cmd_plan_reorder(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
-    if output_json {
-        print_json(&json!({
-            "plan_id": plan.id,
-            "action": "reordered",
-            "type": if reorder_phases { "phases" } else { "tickets" },
-            "phase": phase,
-        }))?;
-    } else {
-        println!("Reorder complete for plan {}", plan.id);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "action": "reordered",
+        "type": if reorder_phases { "phases" } else { "tickets" },
+        "phase": phase,
+    }))
+    .with_text(format!("Reorder complete for plan {}", plan.id))
+    .print(output_json)
 }

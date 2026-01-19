@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::plan::Plan;
 use crate::utils::{is_stdin_tty, open_in_editor};
@@ -16,12 +16,12 @@ pub async fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
     let plan = Plan::find(id).await?;
 
     if output_json {
-        print_json(&json!({
+        return CommandOutput::new(json!({
             "id": plan.id,
             "file_path": plan.file_path.to_string_lossy(),
             "action": "edit",
-        }))?;
-        return Ok(());
+        }))
+        .print(output_json);
     }
 
     if is_stdin_tty() {

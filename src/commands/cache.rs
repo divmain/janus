@@ -1,7 +1,7 @@
 use serde_json::json;
 use std::fs;
 
-use super::print_json;
+use super::{CommandOutput, print_json};
 use crate::cache::TicketCache;
 use crate::error::{Result, is_corruption_error, is_permission_error};
 
@@ -245,12 +245,9 @@ pub async fn cmd_cache_path(output_json: bool) -> Result<()> {
     let cache = TicketCache::open().await?;
     let path = cache.cache_db_path();
 
-    if output_json {
-        print_json(&json!({
-            "path": path.to_string_lossy(),
-        }))?;
-    } else {
-        println!("{}", path.display());
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "path": path.to_string_lossy(),
+    }))
+    .with_text(path.display().to_string())
+    .print(output_json)
 }

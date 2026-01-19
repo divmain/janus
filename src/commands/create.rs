@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::print_json;
+use super::CommandOutput;
 use crate::error::Result;
 use crate::ticket::TicketBuilder;
 use crate::types::{TicketPriority, TicketType};
@@ -48,17 +48,14 @@ pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
         .run_hooks(true)
         .build()?;
 
-    if output_json {
-        print_json(&json!({
-            "id": id,
-            "title": options.title,
-            "status": "new",
-            "type": options.ticket_type.to_string(),
-            "priority": options.priority.as_num(),
-            "file_path": file_path.to_string_lossy(),
-        }))?;
-    } else {
-        println!("{}", id);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "id": id,
+        "title": options.title,
+        "status": "new",
+        "type": options.ticket_type.to_string(),
+        "priority": options.priority.as_num(),
+        "file_path": file_path.to_string_lossy(),
+    }))
+    .with_text(&id)
+    .print(output_json)
 }

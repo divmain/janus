@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::print_json;
+use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 use crate::types::{TicketStatus, VALID_STATUSES};
@@ -13,17 +13,14 @@ async fn update_status(id: &str, new_status: TicketStatus, output_json: bool) ->
 
     ticket.update_field("status", &new_status.to_string())?;
 
-    if output_json {
-        print_json(&json!({
-            "id": ticket.id,
-            "action": "status_changed",
-            "previous_status": previous_status.to_string(),
-            "new_status": new_status.to_string(),
-        }))?;
-    } else {
-        println!("Updated {} -> {}", ticket.id, new_status);
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "id": ticket.id,
+        "action": "status_changed",
+        "previous_status": previous_status.to_string(),
+        "new_status": new_status.to_string(),
+    }))
+    .with_text(format!("Updated {} -> {}", ticket.id, new_status))
+    .print(output_json)
 }
 
 /// Set a ticket's status to "in_progress" (start working on it)
