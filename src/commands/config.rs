@@ -10,6 +10,15 @@ use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::remote::config::{Config, Platform};
 
+/// Mask a sensitive value by showing only the first 2 and last 2 characters
+fn mask_sensitive_value(value: &str) -> String {
+    if value.len() > 4 {
+        format!("{}...{}", &value[..2], &value[value.len() - 2..])
+    } else {
+        "****".to_string()
+    }
+}
+
 /// Show current configuration
 pub fn cmd_config_show(output_json: bool) -> Result<()> {
     let config = Config::load()?;
@@ -185,11 +194,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
     match key {
         "github.token" => {
             if let Some(token) = config.github_token() {
-                let masked = if token.len() > 4 {
-                    format!("{}...{}", &token[..2], &token[token.len() - 2..])
-                } else {
-                    "****".to_string()
-                };
+                let masked = mask_sensitive_value(&token);
                 if output_json {
                     let output = json!({
                         "key": key,
@@ -210,11 +215,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
         }
         "linear.api_key" => {
             if let Some(api_key) = config.linear_api_key() {
-                let masked = if api_key.len() > 4 {
-                    format!("{}...{}", &api_key[..2], &api_key[api_key.len() - 2..])
-                } else {
-                    "****".to_string()
-                };
+                let masked = mask_sensitive_value(&api_key);
                 if output_json {
                     print_json(&json!({
                         "key": key,
