@@ -2,10 +2,8 @@
 //!
 //! Provides fuzzy matching across local tickets and remote issues.
 
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
-
 use crate::remote::RemoteIssue;
+use crate::tui::search::filter_items;
 use crate::types::TicketMetadata;
 
 /// A local ticket with its fuzzy match score and matched indices
@@ -26,23 +24,11 @@ pub struct FilteredRemoteIssue {
 
 /// Filter local tickets by a fuzzy search query
 pub fn filter_local_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredLocalTicket> {
-    if query.is_empty() {
-        return tickets
-            .iter()
-            .map(|t| FilteredLocalTicket {
-                ticket: t.clone(),
-                score: 0,
-                title_indices: vec![],
-            })
-            .collect();
-    }
-
-    let matcher = SkimMatcherV2::default().smart_case();
-
-    tickets
-        .iter()
-        .filter_map(|ticket| {
-            let search_text = format!(
+    let results = filter_items(
+        tickets,
+        query,
+        |ticket| {
+            format!(
                 "{} {} {} {}",
                 ticket.id.as_deref().unwrap_or(""),
                 ticket.title.as_deref().unwrap_or(""),
@@ -51,49 +37,33 @@ pub fn filter_local_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<Filt
                     .map(|t| t.to_string())
                     .unwrap_or_default(),
                 ticket.status.unwrap_or_default(),
-            );
+            )
+        },
+        |ticket| {
+            let id_len = ticket.id.as_ref().map(|s| s.len()).unwrap_or(0) + 1;
+            let title_len = ticket.title.as_ref().map(|s| s.len()).unwrap_or(0);
+            (id_len, title_len)
+        },
+    );
 
-            matcher
-                .fuzzy_indices(&search_text, query)
-                .map(|(score, indices)| {
-                    let id_len = ticket.id.as_ref().map(|s| s.len()).unwrap_or(0) + 1;
-                    let title_len = ticket.title.as_ref().map(|s| s.len()).unwrap_or(0);
-
-                    let title_indices: Vec<usize> = indices
-                        .into_iter()
-                        .filter(|&i| i >= id_len && i < id_len + title_len)
-                        .map(|i| i - id_len)
-                        .collect();
-
-                    FilteredLocalTicket {
-                        ticket: ticket.clone(),
-                        score,
-                        title_indices,
-                    }
-                })
+    // Convert from FilteredItem to FilteredLocalTicket
+    results
+        .into_iter()
+        .map(|filtered| FilteredLocalTicket {
+            ticket: filtered.item,
+            score: filtered.score,
+            title_indices: filtered.title_indices,
         })
         .collect()
 }
 
 /// Filter remote issues by a fuzzy search query
 pub fn filter_remote_issues(issues: &[RemoteIssue], query: &str) -> Vec<FilteredRemoteIssue> {
-    if query.is_empty() {
-        return issues
-            .iter()
-            .map(|i| FilteredRemoteIssue {
-                issue: i.clone(),
-                score: 0,
-                title_indices: vec![],
-            })
-            .collect();
-    }
-
-    let matcher = SkimMatcherV2::default().smart_case();
-
-    issues
-        .iter()
-        .filter_map(|issue| {
-            let search_text = format!(
+    let results = filter_items(
+        issues,
+        query,
+        |issue| {
+            format!(
                 "{} {} {} {} {} {}",
                 issue.id,
                 issue.title,
@@ -101,25 +71,22 @@ pub fn filter_remote_issues(issues: &[RemoteIssue], query: &str) -> Vec<Filtered
                 issue.labels.join(" "),
                 issue.assignee.as_deref().unwrap_or(""),
                 issue.team.as_deref().unwrap_or(""),
-            );
+            )
+        },
+        |issue| {
+            let id_len = issue.id.len() + 1;
+            let title_len = issue.title.len();
+            (id_len, title_len)
+        },
+    );
 
-            matcher
-                .fuzzy_indices(&search_text, query)
-                .map(|(score, indices)| {
-                    let id_len = issue.id.len() + 1;
-
-                    let title_indices: Vec<usize> = indices
-                        .into_iter()
-                        .filter(|&i| i >= id_len && i < id_len + issue.title.len())
-                        .map(|i| i - id_len)
-                        .collect();
-
-                    FilteredRemoteIssue {
-                        issue: issue.clone(),
-                        score,
-                        title_indices,
-                    }
-                })
+    // Convert from FilteredItem to FilteredRemoteIssue
+    results
+        .into_iter()
+        .map(|filtered| FilteredRemoteIssue {
+            issue: filtered.item,
+            score: filtered.score,
+            title_indices: filtered.title_indices,
         })
         .collect()
 }

@@ -24,7 +24,7 @@ pub use board::{KanbanBoard, KanbanBoardProps};
 pub use edit::{EditField, EditForm, EditFormProps, EditResult, extract_body_for_edit};
 pub use remote::RemoteTui;
 pub use repository::{InitResult, TicketRepository};
-pub use search::{FilteredTicket, filter_tickets};
+pub use search::{FilteredItem, FilteredTicket, filter_items, filter_tickets};
 pub use services::TicketService;
 pub use state::{Pane, TuiState};
 pub use theme::Theme;

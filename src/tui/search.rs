@@ -20,6 +20,81 @@ pub struct FilteredTicket {
     pub title_indices: Vec<usize>,
 }
 
+/// Generic result of fuzzy filtering with item, score, and title indices
+#[derive(Debug, Clone)]
+pub struct FilteredItem<T> {
+    /// The filtered item
+    pub item: T,
+    /// The fuzzy match score (higher is better)
+    pub score: i64,
+    /// Indices of matched characters in the title (for highlighting)
+    pub title_indices: Vec<usize>,
+}
+
+/// Generic fuzzy filter function that can work with any item type
+///
+/// # Parameters
+/// - `items`: Slice of items to filter
+/// - `query`: Search query string
+/// - `make_searchable`: Function to convert an item to searchable text
+/// - `extract_title_info`: Function to extract (id_len, title_len) for title highlighting
+///
+/// # Returns
+/// Vector of `FilteredItem<T>` sorted by score (best matches first)
+pub fn filter_items<T, F, G>(
+    items: &[T],
+    query: &str,
+    make_searchable: F,
+    extract_title_info: G,
+) -> Vec<FilteredItem<T>>
+where
+    T: Clone,
+    F: Fn(&T) -> String,
+    G: Fn(&T) -> (usize, usize),
+{
+    if query.is_empty() {
+        return items
+            .iter()
+            .map(|item| FilteredItem {
+                item: item.clone(),
+                score: 0,
+                title_indices: vec![],
+            })
+            .collect();
+    }
+
+    let matcher = SkimMatcherV2::default().smart_case();
+
+    let mut results: Vec<FilteredItem<T>> = items
+        .iter()
+        .filter_map(|item| {
+            let search_text = make_searchable(item);
+
+            matcher
+                .fuzzy_indices(&search_text, query)
+                .map(|(score, indices)| {
+                    let (id_len, title_len) = extract_title_info(item);
+
+                    let title_indices: Vec<usize> = indices
+                        .into_iter()
+                        .filter(|&i| i >= id_len && i < id_len + title_len)
+                        .map(|i| i - id_len)
+                        .collect();
+
+                    FilteredItem {
+                        item: item.clone(),
+                        score,
+                        title_indices,
+                    }
+                })
+        })
+        .collect();
+
+    // Sort by score (best matches first)
+    results.sort_by(|a, b| b.score.cmp(&a.score));
+    results
+}
+
 /// Filter tickets by a fuzzy search query
 ///
 /// Supports:
@@ -38,25 +113,36 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
             .collect();
     }
 
-    let matcher = SkimMatcherV2::default().smart_case();
-
     // Check for priority shorthand: "p0", "p1", etc.
     let priority_filter = parse_priority_filter(query);
 
-    let mut results: Vec<FilteredTicket> = tickets
-        .iter()
-        .filter(|t| {
-            // Apply priority filter if present
-            if let Some(p) = priority_filter
-                && t.priority_num() != p
-            {
-                return false;
-            }
-            true
-        })
-        .filter_map(|ticket| {
-            // Build searchable text from multiple fields
-            let search_text = format!(
+    // Pre-filter by priority if needed
+    let filtered_tickets: Vec<&TicketMetadata> = if let Some(p) = priority_filter {
+        tickets.iter().filter(|t| t.priority_num() == p).collect()
+    } else {
+        tickets.iter().collect()
+    };
+
+    // Strip priority shorthand from query for fuzzy match
+    let fuzzy_query = strip_priority_shorthand(query);
+
+    if fuzzy_query.is_empty() {
+        return filtered_tickets
+            .iter()
+            .map(|t| FilteredTicket {
+                ticket: (*t).clone(),
+                score: 0,
+                title_indices: vec![],
+            })
+            .collect();
+    }
+
+    // Use generic filter function
+    let results = filter_items(
+        &filtered_tickets,
+        &fuzzy_query,
+        |ticket| {
+            format!(
                 "{} {} {}",
                 ticket.id.as_deref().unwrap_or(""),
                 ticket.title.as_deref().unwrap_or(""),
@@ -64,44 +150,24 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
                     .ticket_type
                     .map(|t| t.to_string())
                     .unwrap_or_default(),
-            );
+            )
+        },
+        |ticket| {
+            let id_len = ticket.id.as_ref().map(|s| s.len()).unwrap_or(0) + 1; // +1 for space
+            let title_len = ticket.title.as_ref().map(|s| s.len()).unwrap_or(0);
+            (id_len, title_len)
+        },
+    );
 
-            // Strip priority shorthand from query for fuzzy match
-            let fuzzy_query = strip_priority_shorthand(query);
-
-            if fuzzy_query.is_empty() {
-                return Some(FilteredTicket {
-                    ticket: ticket.clone(),
-                    score: 0,
-                    title_indices: vec![],
-                });
-            }
-
-            matcher
-                .fuzzy_indices(&search_text, &fuzzy_query)
-                .map(|(score, indices)| {
-                    // Calculate which indices fall within the title portion
-                    let id_len = ticket.id.as_ref().map(|s| s.len()).unwrap_or(0) + 1; // +1 for space
-                    let title_len = ticket.title.as_ref().map(|s| s.len()).unwrap_or(0);
-
-                    let title_indices: Vec<usize> = indices
-                        .into_iter()
-                        .filter(|&i| i >= id_len && i < id_len + title_len)
-                        .map(|i| i - id_len)
-                        .collect();
-
-                    FilteredTicket {
-                        ticket: ticket.clone(),
-                        score,
-                        title_indices,
-                    }
-                })
-        })
-        .collect();
-
-    // Sort by score (best matches first)
-    results.sort_by(|a, b| b.score.cmp(&a.score));
+    // Convert from FilteredItem<&TicketMetadata> to FilteredTicket
     results
+        .into_iter()
+        .map(|filtered| FilteredTicket {
+            ticket: (*filtered.item).clone(),
+            score: filtered.score,
+            title_indices: filtered.title_indices,
+        })
+        .collect()
 }
 
 /// Parse a priority filter from the query (e.g., "p0", "p1", "P2")
