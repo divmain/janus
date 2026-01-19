@@ -1,6 +1,6 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
-use std::io::{self, IsTerminal};
+use std::io;
 use std::process::ExitCode;
 
 use janus::commands::{
@@ -226,7 +226,7 @@ enum Commands {
     /// Manage remote issues (use --help for subcommands)
     Remote {
         #[command(subcommand)]
-        action: Option<RemoteAction>,
+        action: RemoteAction,
     },
 
     /// Manage configuration
@@ -842,37 +842,19 @@ async fn main() -> ExitCode {
 
         // Remote commands
         Commands::Remote { action } => match action {
-            Some(RemoteAction::Browse { provider }) => cmd_remote_browse(provider.as_deref()),
-            Some(RemoteAction::Adopt {
+            RemoteAction::Browse { provider } => cmd_remote_browse(provider.as_deref()),
+            RemoteAction::Adopt {
                 remote_ref,
                 prefix,
                 json,
-            }) => cmd_adopt(&remote_ref, prefix.as_deref(), json).await,
-            Some(RemoteAction::Push { id, json }) => cmd_push(&id, json).await,
-            Some(RemoteAction::Link {
+            } => cmd_adopt(&remote_ref, prefix.as_deref(), json).await,
+            RemoteAction::Push { id, json } => cmd_push(&id, json).await,
+            RemoteAction::Link {
                 id,
                 remote_ref,
                 json,
-            }) => cmd_remote_link(&id, &remote_ref, json).await,
-            Some(RemoteAction::Sync { id, json }) => cmd_sync(&id, json).await,
-            None => {
-                // No subcommand - check if PTY
-                if std::io::stdin().is_terminal() {
-                    cmd_remote_browse(None)
-                } else {
-                    eprintln!("Cannot open TUI in non-interactive session.");
-                    eprintln!();
-                    eprintln!("Available subcommands:");
-                    eprintln!("  janus remote browse [provider]   Browse remote issues in TUI");
-                    eprintln!("  janus remote adopt <ref>         Import a remote issue");
-                    eprintln!("  janus remote push <id>           Push local ticket to remote");
-                    eprintln!("  janus remote link <id> <ref>     Link local to existing remote");
-                    eprintln!("  janus remote sync <id>           Sync local with remote");
-                    eprintln!();
-                    eprintln!("Run 'janus remote --help' for more information.");
-                    Ok(())
-                }
-            }
+            } => cmd_remote_link(&id, &remote_ref, json).await,
+            RemoteAction::Sync { id, json } => cmd_sync(&id, json).await,
         },
 
         // Configuration commands
