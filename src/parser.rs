@@ -8,12 +8,11 @@ use serde_yaml_ng as yaml;
 use crate::error::{JanusError, Result};
 use crate::types::TicketMetadata;
 
-// Compile regexes once at program startup
-static FRONTMATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static FRONTMATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid")
 });
 
-static TITLE_RE: LazyLock<Regex> =
+pub static TITLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid"));
 
 /// A generic parsed document with YAML frontmatter and body content.

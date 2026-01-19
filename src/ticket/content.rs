@@ -1,18 +1,8 @@
-use std::sync::LazyLock;
-
-use crate::error::{JanusError, Result};
-use crate::parser::parse_ticket_content;
-use crate::types::{IMMUTABLE_TICKET_FIELDS, TicketMetadata, VALID_TICKET_FIELDS};
-
 use regex::Regex;
 
-// Compile regexes once at program startup
-static FRONTMATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid")
-});
-
-static TITLE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid"));
+use crate::error::{JanusError, Result};
+use crate::parser::{FRONTMATTER_RE, TITLE_RE, parse_ticket_content};
+use crate::types::{IMMUTABLE_TICKET_FIELDS, TicketMetadata, VALID_TICKET_FIELDS};
 
 /// Parse raw ticket content (YAML frontmatter + Markdown body) into a TicketMetadata struct.
 pub fn parse(raw_content: &str) -> Result<TicketMetadata> {
