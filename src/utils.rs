@@ -104,11 +104,6 @@ pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
     );
 }
 
-/// Generate a unique ticket ID with collision checking for a given prefix
-pub fn generate_unique_id(prefix: &str) -> String {
-    generate_unique_id_with_prefix(prefix)
-}
-
 /// Generate a random hex hash of the specified length
 ///
 /// Uses SHA-256 to hash random bytes and returns the first `length` hex characters.
