@@ -1,6 +1,9 @@
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
-use crate::ticket::content::{TicketContent, validate_field_name};
+use crate::ticket::content::{
+    parse, remove_field as remove_field_from_content, update_field as update_field_in_content,
+    validate_field_name,
+};
 use crate::ticket::file::TicketFile;
 use regex::Regex;
 use serde_json;
@@ -67,7 +70,7 @@ impl TicketEditor {
         self.with_write_hooks(
             context,
             || {
-                let new_content = TicketContent::update_field(&raw_content, field, value)?;
+                let new_content = update_field_in_content(&raw_content, field, value)?;
                 self.file.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
@@ -93,7 +96,7 @@ impl TicketEditor {
         self.with_write_hooks(
             context,
             || {
-                let new_content = TicketContent::remove_field(&raw_content, field)?;
+                let new_content = remove_field_from_content(&raw_content, field)?;
                 self.file.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
@@ -113,7 +116,7 @@ impl TicketEditor {
 
     pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
         let raw_content = self.file.read_raw()?;
-        let metadata = TicketContent::parse(&raw_content)?;
+        let metadata = parse(&raw_content)?;
         let current_array = Self::get_array_field(&metadata, field)?;
 
         if current_array.contains(&value.to_string()) {
@@ -143,7 +146,7 @@ impl TicketEditor {
 
     pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
         let raw_content = self.file.read_raw()?;
-        let metadata = TicketContent::parse(&raw_content)?;
+        let metadata = parse(&raw_content)?;
         let current_array = Self::get_array_field(&metadata, field)?;
 
         if !current_array.contains(&value.to_string()) {
@@ -180,12 +183,12 @@ impl TicketEditor {
 
     fn update_field_internal(&self, field: &str, value: &str) -> Result<()> {
         let raw_content = self.file.read_raw()?;
-        let new_content = TicketContent::update_field(&raw_content, field, value)?;
+        let new_content = update_field_in_content(&raw_content, field, value)?;
         self.file.write_raw(&new_content)
     }
 
     pub fn write_validated(&self, content: &str) -> Result<()> {
-        TicketContent::parse(content)?;
+        parse(content)?;
         self.write(content)
     }
 

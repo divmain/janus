@@ -4,79 +4,75 @@ use crate::types::{IMMUTABLE_TICKET_FIELDS, TicketMetadata, VALID_TICKET_FIELDS}
 
 use regex::Regex;
 
-pub struct TicketContent;
+/// Parse raw ticket content (YAML frontmatter + Markdown body) into a TicketMetadata struct.
+pub fn parse(raw_content: &str) -> Result<TicketMetadata> {
+    parse_ticket_content(raw_content)
+}
 
-impl TicketContent {
-    pub fn parse(raw_content: &str) -> Result<TicketMetadata> {
-        parse_ticket_content(raw_content)
-    }
+/// Update a field in the YAML frontmatter of a ticket file.
+///
+/// If the field exists, it will be updated in place. If it doesn't exist, it will be inserted
+/// after the first line (typically the `id` field).
+pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
+    let frontmatter_re =
+        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
 
-    pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
-        let frontmatter_re =
-            Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
+    let captures = frontmatter_re.captures(raw_content).ok_or_else(|| {
+        JanusError::InvalidFormat("missing or malformed YAML frontmatter".to_string())
+    })?;
 
-        let captures = frontmatter_re.captures(raw_content).ok_or_else(|| {
-            JanusError::InvalidFormat("missing or malformed YAML frontmatter".to_string())
-        })?;
+    let yaml = captures.get(1).map(|m| m.as_str()).unwrap_or("");
+    let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
 
-        let yaml = captures.get(1).map(|m| m.as_str()).unwrap_or("");
-        let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
+    let mut yaml_lines: Vec<String> = yaml.lines().map(String::from).collect();
+    let line_re = Regex::new(&format!(r"^{}:\s*.*$", regex::escape(field)))
+        .expect("field regex should be valid");
 
-        let mut yaml_lines: Vec<String> = yaml.lines().map(String::from).collect();
-        let line_re = Regex::new(&format!(r"^{}:\s*.*$", regex::escape(field)))
-            .expect("field regex should be valid");
+    let field_exists = yaml_lines.iter().any(|line| line_re.is_match(line));
 
-        let field_exists = yaml_lines.iter().any(|line| line_re.is_match(line));
-
-        if field_exists {
-            for line in &mut yaml_lines {
-                if line_re.is_match(line) {
-                    *line = format!("{}: {}", field, value);
-                    break;
-                }
+    if field_exists {
+        for line in &mut yaml_lines {
+            if line_re.is_match(line) {
+                *line = format!("{}: {}", field, value);
+                break;
             }
-        } else {
-            yaml_lines.insert(1, format!("{}: {}", field, value));
         }
-
-        let new_frontmatter = yaml_lines.join("\n");
-        Ok(format!("---\n{}\n---\n{}", new_frontmatter, body))
+    } else {
+        yaml_lines.insert(1, format!("{}: {}", field, value));
     }
 
-    pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
-        let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field)))
-            .expect("field pattern regex should be valid");
-        Ok(field_pattern.replace(raw_content, "").into_owned())
-    }
-
-    pub fn extract_body(raw_content: &str) -> String {
-        if let Some(end_idx) = raw_content.find("\n---\n") {
-            let after_frontmatter = &raw_content[end_idx + 5..];
-            let lines: Vec<&str> = after_frontmatter.lines().collect();
-            let body_start = lines
-                .iter()
-                .position(|l| !l.starts_with('#') && !l.is_empty())
-                .unwrap_or(0);
-            lines[body_start..].join("\n").trim().to_string()
-        } else {
-            String::new()
-        }
-    }
-
-    pub fn update_title(raw_content: &str, new_title: &str) -> String {
-        let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
-        title_re
-            .replace(raw_content, format!("# {}", new_title))
-            .into_owned()
-    }
+    let new_frontmatter = yaml_lines.join("\n");
+    Ok(format!("---\n{}\n---\n{}", new_frontmatter, body))
 }
 
+/// Remove a field from the YAML frontmatter of a ticket file.
+pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
+    let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field)))
+        .expect("field pattern regex should be valid");
+    Ok(field_pattern.replace(raw_content, "").into_owned())
+}
+
+/// Extract the body content from a ticket file (everything after the title).
 pub fn extract_body(raw_content: &str) -> String {
-    TicketContent::extract_body(raw_content)
+    if let Some(end_idx) = raw_content.find("\n---\n") {
+        let after_frontmatter = &raw_content[end_idx + 5..];
+        let lines: Vec<&str> = after_frontmatter.lines().collect();
+        let body_start = lines
+            .iter()
+            .position(|l| !l.starts_with('#') && !l.is_empty())
+            .unwrap_or(0);
+        lines[body_start..].join("\n").trim().to_string()
+    } else {
+        String::new()
+    }
 }
 
+/// Update the title (H1 heading) in a ticket file.
 pub fn update_title(raw_content: &str, new_title: &str) -> String {
-    TicketContent::update_title(raw_content, new_title)
+    let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
+    title_re
+        .replace(raw_content, format!("# {}", new_title))
+        .into_owned()
 }
 
 pub(crate) fn validate_field_name(field: &str, operation: &str) -> Result<()> {
@@ -110,7 +106,7 @@ priority: 2
 ---
 # Test Ticket"#;
 
-        let result = TicketContent::update_field(content, "status", "complete").unwrap();
+        let result = update_field(content, "status", "complete").unwrap();
         assert!(result.contains("status: complete"));
         assert!(result.contains("id: test-1234"));
         assert!(result.contains("# Test Ticket"));
@@ -124,7 +120,7 @@ status: new
 ---
 # Test Ticket"#;
 
-        let result = TicketContent::update_field(content, "priority", "3").unwrap();
+        let result = update_field(content, "priority", "3").unwrap();
         assert!(result.contains("id: test-1234"));
         assert!(result.contains("status: new"));
         assert!(result.contains("priority: 3"));
@@ -141,7 +137,7 @@ type: bug
 ---
 # Test Ticket"#;
 
-        let result = TicketContent::update_field(content, "status", "in_progress").unwrap();
+        let result = update_field(content, "status", "in_progress").unwrap();
 
         assert!(result.starts_with("---\n"));
         assert!(result.contains("\n---\n"));
@@ -163,7 +159,7 @@ status: new
 Body with --- multiple dashes ---
 "#;
 
-        let result = TicketContent::update_field(content, "priority", "1").unwrap();
+        let result = update_field(content, "priority", "1").unwrap();
 
         assert!(result.contains("id: test-1234"));
         assert!(result.contains("status: new"));
@@ -174,7 +170,7 @@ Body with --- multiple dashes ---
     #[test]
     fn test_update_field_malformed_frontmatter() {
         let content = "No frontmatter here\n# Just content";
-        let result = TicketContent::update_field(content, "status", "complete");
+        let result = update_field(content, "status", "complete");
         assert!(result.is_err());
         match result.unwrap_err() {
             JanusError::InvalidFormat(msg) => {

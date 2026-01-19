@@ -1,4 +1,4 @@
-use crate::ticket::content::TicketContent;
+use crate::ticket::content;
 use crate::ticket::locator::find_tickets;
 use crate::{TicketMetadata, cache};
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ impl TicketRepository {
         for file in files {
             let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(&file);
             match fs::read_to_string(&file_path) {
-                Ok(content) => match TicketContent::parse(&content) {
+                Ok(content_str) => match content::parse(&content_str) {
                     Ok(mut metadata) => {
                         metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
                         metadata.file_path = Some(file_path);

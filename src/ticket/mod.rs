@@ -6,7 +6,7 @@ mod locator;
 mod repository;
 
 pub use builder::TicketBuilder;
-pub use content::{TicketContent, extract_body, update_title};
+pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
 pub use editor::TicketEditor;
 pub use file::TicketFile;
 pub use locator::{TicketLocator, find_ticket_by_id, find_tickets};
@@ -52,7 +52,7 @@ impl Ticket {
 
     pub fn read(&self) -> Result<TicketMetadata> {
         let raw_content = self.file.read_raw()?;
-        let mut metadata = TicketContent::parse(&raw_content)?;
+        let mut metadata = content::parse(&raw_content)?;
         metadata.file_path = Some(self.file.file_path().clone());
         Ok(metadata)
     }
