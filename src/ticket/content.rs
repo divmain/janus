@@ -1,8 +1,18 @@
+use std::sync::LazyLock;
+
 use crate::error::{JanusError, Result};
 use crate::parser::parse_ticket_content;
 use crate::types::{IMMUTABLE_TICKET_FIELDS, TicketMetadata, VALID_TICKET_FIELDS};
 
 use regex::Regex;
+
+// Compile regexes once at program startup
+static FRONTMATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid")
+});
+
+static TITLE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid"));
 
 /// Parse raw ticket content (YAML frontmatter + Markdown body) into a TicketMetadata struct.
 pub fn parse(raw_content: &str) -> Result<TicketMetadata> {
@@ -14,10 +24,7 @@ pub fn parse(raw_content: &str) -> Result<TicketMetadata> {
 /// If the field exists, it will be updated in place. If it doesn't exist, it will be inserted
 /// after the first line (typically the `id` field).
 pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
-    let frontmatter_re =
-        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
-
-    let captures = frontmatter_re.captures(raw_content).ok_or_else(|| {
+    let captures = FRONTMATTER_RE.captures(raw_content).ok_or_else(|| {
         JanusError::InvalidFormat("missing or malformed YAML frontmatter".to_string())
     })?;
 
@@ -69,8 +76,7 @@ pub fn extract_body(raw_content: &str) -> String {
 
 /// Update the title (H1 heading) in a ticket file.
 pub fn update_title(raw_content: &str, new_title: &str) -> String {
-    let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
-    title_re
+    TITLE_RE
         .replace(raw_content, format!("# {}", new_title))
         .into_owned()
 }

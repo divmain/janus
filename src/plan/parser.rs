@@ -6,6 +6,8 @@
 //! Uses the comrak crate for AST-based markdown parsing to correctly handle
 //! edge cases like code blocks containing `##` characters.
 
+use std::sync::LazyLock;
+
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::{Arena, Options, parse_document};
 use regex::Regex;
@@ -17,6 +19,24 @@ use crate::plan::types::{
     FreeFormSection, ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask, Phase,
     PlanMetadata, PlanSection,
 };
+
+// Compile regexes once at program startup
+static PHASE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^phase\s+(\d+[a-z]?)\s*(?:[-:]\s*)?(.*)$")
+        .expect("phase regex should be valid")
+});
+
+static LIST_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^[\s]*[-*+][\s]+(.+)$|^[\s]*\d+\.[\s]+(.+)$")
+        .expect("item list regex should be valid")
+});
+
+static TICKET_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^[\s]*(?:[-*+]|\d+\.)\s+([\w-]+)").expect("ticket item regex should be valid")
+});
+
+static IMPORT_PHASE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(PHASE_PATTERN).expect("phase regex should be valid"));
 
 /// Plan frontmatter struct for YAML deserialization
 #[derive(Debug, Deserialize, Default)]
@@ -320,11 +340,7 @@ struct H3Section {
 /// Try to parse a heading as a phase header
 /// Matches: "Phase 1: Name", "Phase 2a - Name", "Phase 10:", "Phase 1" (no separator)
 fn try_parse_phase_header(heading: &str) -> Option<(String, String)> {
-    // Pattern: "Phase" followed by number/letter combo, optional separator and name
-    let phase_re = Regex::new(r"(?i)^phase\s+(\d+[a-z]?)\s*(?:[-:]\s*)?(.*)$")
-        .expect("phase regex should be valid");
-
-    phase_re.captures(heading).map(|caps| {
+    PHASE_RE.captures(heading).map(|caps| {
         let number = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
         let name = caps
             .get(2)
@@ -381,11 +397,7 @@ fn reconstruct_section_content(section: &H2Section) -> String {
 fn parse_list_items(content: &str) -> Vec<String> {
     let mut items = Vec::new();
 
-    // Match bullet points (-, *, +) or numbered lists (1., 2., etc.)
-    let item_re = Regex::new(r"(?m)^[\s]*[-*+][\s]+(.+)$|^[\s]*\d+\.[\s]+(.+)$")
-        .expect("item list regex should be valid");
-
-    for caps in item_re.captures_iter(content) {
+    for caps in LIST_ITEM_RE.captures_iter(content) {
         // Try bullet point match first, then numbered
         let item = caps
             .get(1)
@@ -410,12 +422,7 @@ fn parse_list_items(content: &str) -> Vec<String> {
 pub fn parse_ticket_list(content: &str) -> Vec<String> {
     let mut tickets = Vec::new();
 
-    // Match numbered or bullet list items, extract first word (the ticket ID)
-    // Ticket ID pattern: word chars and hyphens (e.g., j-a1b2, plan-c3d4)
-    let item_re = Regex::new(r"(?m)^[\s]*(?:[-*+]|\d+\.)\s+([\w-]+)")
-        .expect("ticket item regex should be valid");
-
-    for caps in item_re.captures_iter(content) {
+    for caps in TICKET_ITEM_RE.captures_iter(content) {
         if let Some(id_match) = caps.get(1) {
             let id = id_match.as_str().to_string();
             if !id.is_empty() {
@@ -664,9 +671,7 @@ pub fn is_section_alias(heading: &str, aliases: &[&str]) -> bool {
 /// # Returns
 /// `Some((number, name))` if the heading is a valid phase header, `None` otherwise.
 pub fn is_phase_header(heading: &str) -> Option<(String, String)> {
-    let phase_re = Regex::new(PHASE_PATTERN).expect("phase regex should be valid");
-
-    phase_re.captures(heading).map(|caps| {
+    IMPORT_PHASE_RE.captures(heading).map(|caps| {
         let number = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
         let name = caps
             .get(3)

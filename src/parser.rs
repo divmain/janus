@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::de::DeserializeOwned;
@@ -6,6 +7,14 @@ use serde_yaml_ng as yaml;
 
 use crate::error::{JanusError, Result};
 use crate::types::TicketMetadata;
+
+// Compile regexes once at program startup
+static FRONTMATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid")
+});
+
+static TITLE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid"));
 
 /// A generic parsed document with YAML frontmatter and body content.
 ///
@@ -28,10 +37,8 @@ pub struct ParsedDocument {
 /// (frontmatter_content, body_content) or an error if frontmatter is missing.
 pub fn split_frontmatter(content: &str) -> Result<(String, String)> {
     let normalized = content.replace("\r\n", "\n");
-    let frontmatter_re =
-        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
 
-    let captures = frontmatter_re
+    let captures = FRONTMATTER_RE
         .captures(&normalized)
         .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
 
@@ -52,8 +59,7 @@ pub fn split_frontmatter(content: &str) -> Result<(String, String)> {
 impl ParsedDocument {
     /// Extract the title from the body (first H1 heading)
     pub fn extract_title(&self) -> Option<String> {
-        let title_re = Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid");
-        title_re
+        TITLE_RE
             .captures(&self.body)
             .and_then(|caps| caps.get(1))
             .map(|m| m.as_str().to_string())
