@@ -1,804 +1,48 @@
+//! Cache module for fast ticket and plan queries.
+//!
+//! This module provides a SQLite-based caching layer that acts as a read replica
+//! of the `.janus/items/` and `.janus/plans/` directories. The cache enables
+//! ~100x faster queries compared to parsing files from disk.
+//!
+//! ## Module Structure
+//!
+//! - `paths`: Helper functions for cache directory and database paths
+//! - `types`: Cache-specific types (CachedPlanMetadata, CachedPhase)
+//! - `database`: Cache lifecycle management (open, initialize, version validation)
+//! - `sync`: Synchronization logic (sync_tickets, sync_plans)
+//! - `queries`: Query operations (get_all_tickets, find_by_partial_id, etc.)
+//! - `traits`: CacheableItem trait for generic sync implementation
+//!
+//! ## Usage
+//!
+//! The cache is automatically initialized and synced on every command invocation
+//! via `get_or_init_cache()`. If the cache is unavailable, operations fall back
+//! to direct file reads.
+
+mod database;
+mod paths;
+mod queries;
+mod sync;
 mod traits;
+mod types;
 
+// Re-export public items
+pub use database::TicketCache;
+pub use paths::{cache_db_path, cache_dir, repo_hash};
 pub use traits::CacheableItem;
+pub use types::{CachedPhase, CachedPlanMetadata};
 
-use base64::Engine;
-use serde_json;
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 use tokio::sync::OnceCell;
-use turso::{Builder, Connection, Database};
 
-/// Busy timeout for SQLite operations when multiple processes access the cache.
-/// This allows concurrent janus processes to wait for locks rather than failing immediately.
-const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
-
-use crate::error::{JanusError as CacheError, Result, is_corruption_error, is_permission_error};
-use crate::plan::types::PlanMetadata;
-use crate::types::TicketMetadata;
-
-#[cfg(test)]
-use serial_test::serial;
-
-const CACHE_VERSION: &str = "5";
-
-/// Cached plan metadata - a lightweight representation for fast queries
-#[derive(Debug, Clone)]
-pub struct CachedPlanMetadata {
-    pub id: Option<String>,
-    pub uuid: Option<String>,
-    pub title: Option<String>,
-    pub created: Option<String>,
-    /// "simple", "phased", or "empty"
-    pub structure_type: String,
-    /// For simple plans: the ordered list of ticket IDs
-    pub tickets: Vec<String>,
-    /// For phased plans: phase information with their tickets
-    pub phases: Vec<CachedPhase>,
-}
-
-impl CachedPlanMetadata {
-    /// Get all tickets across all phases (or from tickets field for simple plans)
-    pub fn all_tickets(&self) -> Vec<&str> {
-        if self.structure_type == "simple" {
-            self.tickets.iter().map(|s| s.as_str()).collect()
-        } else {
-            self.phases
-                .iter()
-                .flat_map(|p| p.tickets.iter().map(|s| s.as_str()))
-                .collect()
-        }
-    }
-
-    /// Check if this is a phased plan
-    pub fn is_phased(&self) -> bool {
-        self.structure_type == "phased"
-    }
-
-    /// Check if this is a simple plan
-    pub fn is_simple(&self) -> bool {
-        self.structure_type == "simple"
-    }
-}
-
-/// Cached phase information
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CachedPhase {
-    pub number: String,
-    pub name: String,
-    pub tickets: Vec<String>,
-}
+use crate::error::{is_corruption_error, is_permission_error};
 
 static GLOBAL_CACHE: OnceCell<Option<TicketCache>> = OnceCell::const_new();
 
-pub fn cache_dir() -> PathBuf {
-    let proj_dirs = directories::ProjectDirs::from("com", "divmain", "janus")
-        .expect("cannot determine cache directory");
-    let cache_dir = proj_dirs.cache_dir().to_path_buf();
-
-    if !cache_dir.exists()
-        && let Err(e) = fs::create_dir_all(&cache_dir)
-    {
-        eprintln!(
-            "Warning: failed to create cache directory '{}': {}",
-            cache_dir.display(),
-            e
-        );
-    }
-
-    cache_dir
-}
-
-pub fn repo_hash(repo_path: &Path) -> String {
-    let canonical_path = repo_path
-        .canonicalize()
-        .unwrap_or_else(|_| repo_path.to_path_buf());
-
-    let hash = Sha256::digest(canonical_path.to_string_lossy().as_bytes());
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&hash[..16])
-}
-
-pub fn cache_db_path(repo_hash: &str) -> PathBuf {
-    cache_dir().join(format!("{}.db", repo_hash))
-}
-
-pub struct TicketCache {
-    #[allow(dead_code)]
-    db: Database,
-    conn: Connection,
-    #[allow(dead_code)]
-    repo_path: PathBuf,
-    repo_hash: String,
-}
-
-impl TicketCache {
-    pub async fn open() -> Result<Self> {
-        let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
-
-        let repo_hash = repo_hash(&repo_path);
-        let db_path = cache_db_path(&repo_hash);
-
-        let cache_dir = cache_dir();
-        if !cache_dir.exists() {
-            fs::create_dir_all(&cache_dir)
-                .map_err(|_e| CacheError::CacheAccessDenied(cache_dir.clone()))?;
-        }
-
-        let db_path_str = db_path.to_string_lossy();
-        let db = Builder::new_local(&db_path_str).build().await?;
-        let conn = db.connect()?;
-
-        // Set busy timeout to handle concurrent access from multiple janus processes.
-        // This causes SQLite to retry with exponential backoff rather than failing immediately.
-        conn.busy_timeout(BUSY_TIMEOUT)?;
-
-        // Enable WAL (Write-Ahead Logging) mode for better concurrent access.
-        // Readers no longer block writers and vice versa, improving performance for
-        // multi-terminal workflows.
-        {
-            let mut rows = conn.query("PRAGMA journal_mode=WAL", ()).await?;
-            rows.next().await?;
-        }
-
-        let cache = Self {
-            db,
-            conn,
-            repo_path: repo_path.clone(),
-            repo_hash,
-        };
-
-        cache.initialize_database().await?;
-        cache.validate_cache_version().await?;
-        cache.store_repo_path(&repo_path).await?;
-
-        Ok(cache)
-    }
-
-    async fn open_with_corruption_handling() -> Result<Self> {
-        let repo_hash = {
-            let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
-            repo_hash(&repo_path)
-        };
-
-        let db_path = cache_db_path(&repo_hash);
-        let database_exists = db_path.exists();
-
-        let result = Self::open().await;
-
-        if let Err(error) = &result
-            && database_exists
-            && is_corruption_error(error)
-        {
-            eprintln!(
-                "Warning: Cache file appears corrupted at: {}",
-                db_path.display()
-            );
-            eprintln!("Deleting corrupted cache and attempting rebuild...");
-
-            if let Err(e) = fs::remove_file(&db_path) {
-                eprintln!("Warning: failed to delete corrupted cache: {}", e);
-            } else {
-                eprintln!("Cache deleted successfully, rebuilding...");
-                return Self::open().await;
-            }
-        }
-
-        result
-    }
-
-    async fn initialize_database(&self) -> Result<()> {
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS meta (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )",
-                (),
-            )
-            .await?;
-
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS tickets (
-                ticket_id TEXT PRIMARY KEY,
-                uuid TEXT,
-                mtime_ns INTEGER NOT NULL,
-                status TEXT,
-                title TEXT,
-                priority INTEGER,
-                ticket_type TEXT,
-                deps TEXT,
-                links TEXT,
-                parent TEXT,
-                created TEXT,
-                external_ref TEXT,
-                remote TEXT,
-                completion_summary TEXT
-            )",
-                (),
-            )
-            .await?;
-
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)",
-                (),
-            )
-            .await?;
-
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)",
-                (),
-            )
-            .await?;
-
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(ticket_type)",
-                (),
-            )
-            .await?;
-
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_status_priority ON tickets(status, priority)",
-                (),
-            )
-            .await?;
-
-        // Plans table
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS plans (
-                plan_id TEXT PRIMARY KEY,
-                uuid TEXT,
-                mtime_ns INTEGER NOT NULL,
-                title TEXT,
-                created TEXT,
-                structure_type TEXT,
-                tickets_json TEXT,
-                phases_json TEXT
-            )",
-                (),
-            )
-            .await?;
-
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_plans_structure_type ON plans(structure_type)",
-                (),
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    async fn store_repo_path(&self, repo_path: &Path) -> Result<()> {
-        let path_str = repo_path.to_string_lossy().to_string();
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('repo_path', ?1)",
-                [path_str],
-            )
-            .await?;
-
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('cache_version', ?1)",
-                [CACHE_VERSION],
-            )
-            .await?;
-
-        Ok(())
-    }
-
-    async fn get_meta(&self, key: &str) -> Result<Option<String>> {
-        let mut rows = self
-            .conn
-            .query("SELECT value FROM meta WHERE key = ?1", [key])
-            .await?;
-
-        match rows.next().await? {
-            Some(row) => {
-                let value: Option<String> = row.get(0).ok();
-                Ok(value)
-            }
-            None => Ok(None),
-        }
-    }
-
-    async fn validate_cache_version(&self) -> Result<()> {
-        if let Some(stored_version) = self.get_meta("cache_version").await?
-            && stored_version != CACHE_VERSION
-        {
-            return Err(CacheError::CacheVersionMismatch {
-                expected: CACHE_VERSION.to_string(),
-                found: stored_version,
-            });
-        }
-        Ok(())
-    }
-
-    pub fn cache_db_path(&self) -> PathBuf {
-        cache_db_path(&self.repo_hash)
-    }
-
-    /// Sync both tickets and plans from disk to cache
-    ///
-    /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync(&mut self) -> Result<bool> {
-        let tickets_changed = self.sync_tickets().await?;
-        let plans_changed = self.sync_plans().await?;
-        Ok(tickets_changed || plans_changed)
-    }
-
-    /// Sync tickets from disk to cache
-    ///
-    /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync_tickets(&mut self) -> Result<bool> {
-        self.sync_items::<TicketMetadata>().await
-    }
-
-    /// Generic sync implementation for any CacheableItem type.
-    ///
-    /// Scans the item's directory, compares mtimes with cached values,
-    /// and updates the cache with any changes.
-    async fn sync_items<T: CacheableItem>(&mut self) -> Result<bool> {
-        let dir = PathBuf::from(T::directory());
-
-        if !dir.exists() {
-            fs::create_dir_all(&dir).map_err(CacheError::Io)?;
-            return Ok(false);
-        }
-
-        let disk_files = Self::scan_directory_static(&dir)?;
-        let cached_mtimes = self.get_cached_mtimes_for::<T>().await?;
-
-        let mut added = Vec::new();
-        let mut modified = Vec::new();
-        let mut removed = Vec::new();
-
-        for (id, disk_mtime) in &disk_files {
-            if let Some(&cache_mtime) = cached_mtimes.get(id) {
-                if *disk_mtime != cache_mtime {
-                    modified.push(id.clone());
-                }
-            } else {
-                added.push(id.clone());
-            }
-        }
-
-        for id in cached_mtimes.keys() {
-            if !disk_files.contains_key(id) {
-                removed.push(id.clone());
-            }
-        }
-
-        if added.is_empty() && modified.is_empty() && removed.is_empty() {
-            return Ok(false);
-        }
-
-        // Read and parse items before starting the transaction
-        let mut items_to_upsert = Vec::new();
-        for id in added.iter().chain(modified.iter()) {
-            match T::parse_from_file(id) {
-                Ok((metadata, mtime_ns)) => {
-                    items_to_upsert.push((metadata, mtime_ns));
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to parse {} '{}': {}. Skipping...",
-                        T::item_name(),
-                        id,
-                        e
-                    );
-                }
-            }
-        }
-
-        // Use transaction for atomicity
-        let tx = self.conn.transaction().await?;
-
-        for (metadata, mtime_ns) in &items_to_upsert {
-            metadata.insert_into_cache(&tx, *mtime_ns).await?;
-        }
-
-        let delete_sql = format!(
-            "DELETE FROM {} WHERE {} = ?1",
-            T::table_name(),
-            T::id_column()
-        );
-        for id in &removed {
-            tx.execute(&delete_sql, [id.as_str()]).await?;
-        }
-
-        tx.commit().await?;
-
-        Ok(true)
-    }
-
-    /// Scan a directory for .md files and return their IDs and mtimes
-    fn scan_directory_static(dir: &Path) -> Result<HashMap<String, i64>> {
-        let mut files = HashMap::new();
-
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(files),
-            Err(e) => return Err(CacheError::Io(e)),
-        };
-
-        for entry in entries {
-            let entry = entry.map_err(CacheError::Io)?;
-            let path = entry.path();
-
-            if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
-                continue;
-            }
-
-            let metadata = entry.metadata().map_err(CacheError::Io)?;
-            let mtime = metadata.modified().map_err(CacheError::Io)?;
-            let mtime_ns = mtime
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
-                .as_nanos() as i64;
-
-            if let Some(id) = path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .map(|s| s.to_string())
-            {
-                files.insert(id, mtime_ns);
-            }
-        }
-
-        Ok(files)
-    }
-
-    /// Get cached mtimes for a specific item type
-    async fn get_cached_mtimes_for<T: CacheableItem>(&self) -> Result<HashMap<String, i64>> {
-        let mut mtimes = HashMap::new();
-
-        let query = format!(
-            "SELECT {}, mtime_ns FROM {}",
-            T::id_column(),
-            T::table_name()
-        );
-        let mut rows = self.conn.query(&query, ()).await?;
-
-        while let Some(row) = rows.next().await? {
-            let id: String = row.get(0)?;
-            let mtime: i64 = row.get(1)?;
-            mtimes.insert(id, mtime);
-        }
-
-        Ok(mtimes)
-    }
-
-    // =========================================================================
-    // Plan caching methods
-    // =========================================================================
-
-    /// Sync plans from disk to cache
-    ///
-    /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync_plans(&mut self) -> Result<bool> {
-        self.sync_items::<PlanMetadata>().await
-    }
-
-    /// Get all cached plans
-    pub async fn get_all_plans(&self) -> Result<Vec<CachedPlanMetadata>> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT plan_id, uuid, title, created, structure_type, tickets_json, phases_json
-                 FROM plans",
-                (),
-            )
-            .await?;
-
-        let mut plans = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let metadata = Self::row_to_plan_metadata(&row).await?;
-            plans.push(metadata);
-        }
-        Ok(plans)
-    }
-
-    /// Get a single plan by ID
-    pub async fn get_plan(&self, id: &str) -> Result<Option<CachedPlanMetadata>> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT plan_id, uuid, title, created, structure_type, tickets_json, phases_json
-                 FROM plans WHERE plan_id = ?1",
-                [id],
-            )
-            .await?;
-
-        if let Some(row) = rows.next().await? {
-            let metadata = Self::row_to_plan_metadata(&row).await?;
-            Ok(Some(metadata))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Find plans by partial ID
-    pub async fn find_plan_by_partial_id(&self, partial: &str) -> Result<Vec<String>> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT plan_id FROM plans WHERE plan_id LIKE ?1",
-                [format!("{}%", partial)],
-            )
-            .await?;
-
-        let mut matches = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let id: String = row.get(0)?;
-            matches.push(id);
-        }
-        Ok(matches)
-    }
-
-    async fn row_to_plan_metadata(row: &turso::Row) -> Result<CachedPlanMetadata> {
-        let id: Option<String> = row.get(0).ok();
-        let uuid: Option<String> = row.get(1).ok();
-        let title: Option<String> = row.get(2).ok();
-        let created: Option<String> = row.get(3).ok();
-        let structure_type: Option<String> = row.get(4).ok();
-        let tickets_json: Option<String> = row.get(5).ok();
-        let phases_json: Option<String> = row.get(6).ok();
-
-        // Deserialize tickets for simple plans with explicit error handling
-        let tickets: Vec<String> = if let Some(json_str) = tickets_json.as_deref() {
-            match serde_json::from_str(json_str) {
-                Ok(tickets) => tickets,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to deserialize plan tickets JSON for plan '{:?}': {}. Using empty array.",
-                        id, e
-                    );
-                    vec![]
-                }
-            }
-        } else {
-            vec![]
-        };
-
-        // Deserialize phases for phased plans with explicit error handling
-        let phases: Vec<CachedPhase> = if let Some(json_str) = phases_json.as_deref() {
-            match serde_json::from_str(json_str) {
-                Ok(phases) => phases,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to deserialize plan phases JSON for plan '{:?}': {}. Using empty array.",
-                        id, e
-                    );
-                    vec![]
-                }
-            }
-        } else {
-            vec![]
-        };
-
-        // Validate structure_type is valid
-        let structure_type = match structure_type {
-            Some(s) if matches!(s.as_str(), "simple" | "phased" | "empty") => s,
-            Some(s) => {
-                eprintln!(
-                    "Warning: Invalid structure_type '{}' for plan '{:?}'. Defaulting to 'empty'.",
-                    s, id
-                );
-                "empty".to_string()
-            }
-            None => {
-                eprintln!(
-                    "Warning: Missing structure_type for plan '{:?}'. Defaulting to 'empty'.",
-                    id
-                );
-                "empty".to_string()
-            }
-        };
-
-        Ok(CachedPlanMetadata {
-            id,
-            uuid,
-            title,
-            created,
-            structure_type,
-            tickets,
-            phases,
-        })
-    }
-
-    fn deserialize_array(s: Option<&str>) -> Result<Vec<String>> {
-        match s {
-            Some(json_str) if !json_str.is_empty() => serde_json::from_str(json_str).map_err(|e| {
-                CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-            }),
-            _ => Ok(vec![]),
-        }
-    }
-
-    /// Serialize an array to JSON, returning None for empty arrays.
-    /// Exposed for testing purposes.
-    #[cfg(test)]
-    pub(crate) fn serialize_array(arr: &[String]) -> Result<Option<String>> {
-        if arr.is_empty() {
-            Ok(None)
-        } else {
-            serde_json::to_string(arr).map(Some).map_err(|e| {
-                CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-            })
-        }
-    }
-
-    async fn row_to_metadata(row: &turso::Row) -> Result<TicketMetadata> {
-        let id: Option<String> = row.get(0).ok();
-        let uuid: Option<String> = row.get(1).ok();
-        let status_str: Option<String> = row.get(2).ok();
-        let title: Option<String> = row.get(3).ok();
-        let priority_num: Option<i64> = row.get(4).ok();
-        let type_str: Option<String> = row.get(5).ok();
-        let deps_json: Option<String> = row.get(6).ok();
-        let links_json: Option<String> = row.get(7).ok();
-        let parent: Option<String> = row.get(8).ok();
-        let created: Option<String> = row.get(9).ok();
-        let external_ref: Option<String> = row.get(10).ok();
-        let remote: Option<String> = row.get(11).ok();
-        let completion_summary: Option<String> = row.get(12).ok();
-
-        // Parse status with explicit error handling
-        let status = if let Some(ref s) = status_str {
-            match s.parse() {
-                Ok(status) => Some(status),
-                Err(_) => {
-                    eprintln!(
-                        "Warning: Failed to parse status '{}' for ticket '{:?}'. Status will be None.",
-                        s, id
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        // Parse ticket_type with explicit error handling
-        let ticket_type = if let Some(ref s) = type_str {
-            match s.parse() {
-                Ok(ticket_type) => Some(ticket_type),
-                Err(_) => {
-                    eprintln!(
-                        "Warning: Failed to parse ticket_type '{}' for ticket '{:?}'. Type will be None.",
-                        s, id
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        // Parse priority with explicit error handling
-        let priority = match priority_num {
-            Some(n) => match n {
-                0 => Some(crate::types::TicketPriority::P0),
-                1 => Some(crate::types::TicketPriority::P1),
-                2 => Some(crate::types::TicketPriority::P2),
-                3 => Some(crate::types::TicketPriority::P3),
-                4 => Some(crate::types::TicketPriority::P4),
-                _ => {
-                    eprintln!(
-                        "Warning: Invalid priority value {} for ticket '{:?}'. Priority will be None.",
-                        n, id
-                    );
-                    None
-                }
-            },
-            None => None,
-        };
-
-        let deps = Self::deserialize_array(deps_json.as_deref())?;
-        let links = Self::deserialize_array(links_json.as_deref())?;
-
-        Ok(TicketMetadata {
-            id,
-            uuid,
-            title,
-            status,
-            priority,
-            ticket_type,
-            deps,
-            links,
-            parent,
-            created,
-            external_ref,
-            remote,
-            file_path: None,
-            completion_summary,
-        })
-    }
-
-    pub async fn get_all_tickets(&self) -> Result<Vec<TicketMetadata>> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT ticket_id, uuid, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary
-             FROM tickets",
-                (),
-            )
-            .await?;
-
-        let mut tickets = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let metadata = Self::row_to_metadata(&row).await?;
-            tickets.push(metadata);
-        }
-        Ok(tickets)
-    }
-
-    pub async fn get_ticket(&self, id: &str) -> Result<Option<TicketMetadata>> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT ticket_id, uuid, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary
-             FROM tickets WHERE ticket_id = ?1",
-                [id],
-            )
-            .await?;
-
-        if let Some(row) = rows.next().await? {
-            let metadata = Self::row_to_metadata(&row).await?;
-            Ok(Some(metadata))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub async fn find_by_partial_id(&self, partial: &str) -> Result<Vec<String>> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT ticket_id FROM tickets WHERE ticket_id LIKE ?1",
-                [format!("{}%", partial)],
-            )
-            .await?;
-
-        let mut matches = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let id: String = row.get(0)?;
-            matches.push(id);
-        }
-        Ok(matches)
-    }
-
-    pub async fn build_ticket_map(&self) -> Result<HashMap<String, TicketMetadata>> {
-        let tickets = self.get_all_tickets().await?;
-
-        let mut map = HashMap::new();
-        for ticket in tickets {
-            if let Some(id) = &ticket.id {
-                map.insert(id.clone(), ticket);
-            }
-        }
-        Ok(map)
-    }
-
-    // Helper method for tests to query the connection directly
-    #[cfg(test)]
-    pub(crate) fn conn(&self) -> &Connection {
-        &self.conn
-    }
-}
-
+/// Get or initialize the global cache instance.
+///
+/// This function lazily initializes the cache on first call and returns
+/// a reference to it. If the cache cannot be initialized (e.g., due to
+/// permission errors or corruption), it returns None and prints a warning.
 pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
     GLOBAL_CACHE
         .get_or_init(|| async {
@@ -813,7 +57,9 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                         if is_corruption_error(&e) {
                             let db_path = cache.cache_db_path();
                             eprintln!("Cache appears corrupted at: {}", db_path.display());
-                            eprintln!("Run 'janus cache clear' or 'janus cache rebuild' to fix this issue.");
+                            eprintln!(
+                                "Run 'janus cache clear' or 'janus cache rebuild' to fix this issue."
+                            );
                         }
 
                         None
@@ -829,7 +75,9 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                         );
                         eprintln!("Tip: Check file permissions or try 'janus cache rebuild'.");
                     } else if is_corruption_error(&e) {
-                        eprintln!("Warning: cache database is corrupted. Falling back to file reads.");
+                        eprintln!(
+                            "Warning: cache database is corrupted. Falling back to file reads."
+                        );
                         eprintln!("Tip: Run 'janus cache clear' or 'janus cache rebuild' to fix this.");
                     } else {
                         eprintln!(
@@ -849,6 +97,8 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::fs;
 
     /// Helper to get the first row from a query result, avoiding .unwrap().unwrap() pattern
     async fn get_first_row(rows: &mut turso::Rows) -> turso::Row {
@@ -856,33 +106,91 @@ mod tests {
         row_opt.expect("expected at least one row")
     }
 
-    #[test]
-    fn test_repo_hash_consistency() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let path = temp.path();
+    fn create_test_ticket(
+        dir: &std::path::Path,
+        ticket_id: &str,
+        title: &str,
+    ) -> std::path::PathBuf {
+        let tickets_dir = dir.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
 
-        let hash1 = repo_hash(path);
-        let hash2 = repo_hash(path);
-
-        assert_eq!(hash1, hash2);
-        assert_eq!(hash1.len(), 22);
+        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let content = format!(
+            r#"---
+id: {}
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# {}
+"#,
+            ticket_id, title
+        );
+        fs::write(&ticket_path, content).unwrap();
+        ticket_path
     }
 
-    #[test]
-    fn test_cache_dir_creates_directory() {
-        let dir = cache_dir();
-        assert!(dir.exists());
-        let dir_str = dir.to_string_lossy();
-        assert!(dir_str.contains("janus") || dir_str.contains(".local/share"));
-    }
+    fn create_test_plan(
+        dir: &std::path::Path,
+        plan_id: &str,
+        title: &str,
+        is_phased: bool,
+    ) -> std::path::PathBuf {
+        let plans_dir = dir.join(".janus/plans");
+        fs::create_dir_all(&plans_dir).unwrap();
 
-    #[test]
-    fn test_cache_db_path_format() {
-        let hash = "aB3xY9zK1mP2qR4sT6uV8w";
-        let path = cache_db_path(hash);
+        let plan_path = plans_dir.join(format!("{}.md", plan_id));
+        let content = if is_phased {
+            format!(
+                r#"---
+id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# {}
 
-        assert!(path.ends_with(format!("{}.db", hash)));
-        assert_eq!(path.extension().unwrap().to_str().unwrap(), "db");
+Description of the plan.
+
+## Phase 1: Infrastructure
+
+### Tickets
+
+1. j-a1b2
+2. j-c3d4
+
+## Phase 2: Implementation
+
+### Tickets
+
+1. j-e5f6
+"#,
+                plan_id, title
+            )
+        } else {
+            format!(
+                r#"---
+id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# {}
+
+Description of the plan.
+
+## Tickets
+
+1. j-a1b2
+2. j-c3d4
+3. j-e5f6
+"#,
+                plan_id, title
+            )
+        };
+        fs::write(&plan_path, content).unwrap();
+        plan_path
     }
 
     #[tokio::test]
@@ -916,10 +224,6 @@ mod tests {
         let row = get_first_row(&mut rows).await;
         let mode: String = row.get(0).unwrap();
         assert_eq!(mode.to_lowercase(), "wal", "WAL mode should be enabled");
-
-        // Note: We don't verify synchronous mode because Turso may not respect
-        // PRAGMA synchronous= commands, preferring its own defaults. WAL is the
-        // critical optimization for concurrent access.
 
         let db_path = cache.cache_db_path();
         drop(cache);
@@ -981,35 +285,12 @@ mod tests {
             None
         };
 
-        assert_eq!(stored_version, Some(CACHE_VERSION.to_string()));
+        assert_eq!(stored_version, Some(database::CACHE_VERSION.to_string()));
 
         let db_path = cache.cache_db_path();
         drop(cache);
         fs::remove_file(&db_path).ok();
         fs::remove_dir(&repo_path).ok();
-    }
-
-    fn create_test_ticket(dir: &Path, ticket_id: &str, title: &str) -> PathBuf {
-        let tickets_dir = dir.join(".janus/items");
-        fs::create_dir_all(&tickets_dir).unwrap();
-
-        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
-        let content = format!(
-            r#"---
-id: {}
-status: new
-deps: []
-links: []
-created: 2024-01-01T00:00:00Z
-type: task
-priority: 2
----
-# {}
-"#,
-            ticket_id, title
-        );
-        fs::write(&ticket_path, content).unwrap();
-        ticket_path
     }
 
     #[tokio::test]
@@ -1252,21 +533,6 @@ priority: 2
         drop(cache);
         fs::remove_file(&db_path).ok();
         fs::remove_dir_all(&repo_path).ok();
-    }
-
-    #[test]
-    fn test_repo_hash_different_paths() {
-        let temp1 = tempfile::TempDir::new().unwrap();
-        let temp2 = tempfile::TempDir::new().unwrap();
-
-        let hash1 = repo_hash(temp1.path());
-        let hash2 = repo_hash(temp2.path());
-
-        // Different paths should produce different hashes
-        assert_ne!(hash1, hash2);
-        // Both should be valid 22-char base64 strings
-        assert_eq!(hash1.len(), 22);
-        assert_eq!(hash2.len(), 22);
     }
 
     #[test]
@@ -1749,61 +1015,6 @@ remote: github
     // Plan caching tests
     // =========================================================================
 
-    fn create_test_plan(dir: &Path, plan_id: &str, title: &str, is_phased: bool) -> PathBuf {
-        let plans_dir = dir.join(".janus/plans");
-        fs::create_dir_all(&plans_dir).unwrap();
-
-        let plan_path = plans_dir.join(format!("{}.md", plan_id));
-        let content = if is_phased {
-            format!(
-                r#"---
-id: {}
-uuid: 550e8400-e29b-41d4-a716-446655440000
-created: 2024-01-01T00:00:00Z
----
-# {}
-
-Description of the plan.
-
-## Phase 1: Infrastructure
-
-### Tickets
-
-1. j-a1b2
-2. j-c3d4
-
-## Phase 2: Implementation
-
-### Tickets
-
-1. j-e5f6
-"#,
-                plan_id, title
-            )
-        } else {
-            format!(
-                r#"---
-id: {}
-uuid: 550e8400-e29b-41d4-a716-446655440000
-created: 2024-01-01T00:00:00Z
----
-# {}
-
-Description of the plan.
-
-## Tickets
-
-1. j-a1b2
-2. j-c3d4
-3. j-e5f6
-"#,
-                plan_id, title
-            )
-        };
-        fs::write(&plan_path, content).unwrap();
-        plan_path
-    }
-
     #[tokio::test]
     #[serial]
     async fn test_sync_plans_simple_plan() {
@@ -2169,55 +1380,6 @@ Description of the plan.
         drop(cache);
         fs::remove_file(&db_path).ok();
         fs::remove_dir_all(&repo_path).ok();
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_cached_plan_metadata_all_tickets_phased() {
-        let plan = CachedPlanMetadata {
-            id: Some("plan-test".to_string()),
-            uuid: None,
-            title: Some("Test Plan".to_string()),
-            created: None,
-            structure_type: "phased".to_string(),
-            tickets: vec![],
-            phases: vec![
-                CachedPhase {
-                    number: "1".to_string(),
-                    name: "Phase One".to_string(),
-                    tickets: vec!["t1".to_string(), "t2".to_string()],
-                },
-                CachedPhase {
-                    number: "2".to_string(),
-                    name: "Phase Two".to_string(),
-                    tickets: vec!["t3".to_string()],
-                },
-            ],
-        };
-
-        let all = plan.all_tickets();
-        assert_eq!(all, vec!["t1", "t2", "t3"]);
-        assert!(plan.is_phased());
-        assert!(!plan.is_simple());
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_cached_plan_metadata_all_tickets_simple() {
-        let plan = CachedPlanMetadata {
-            id: Some("plan-test".to_string()),
-            uuid: None,
-            title: Some("Test Plan".to_string()),
-            created: None,
-            structure_type: "simple".to_string(),
-            tickets: vec!["t1".to_string(), "t2".to_string(), "t3".to_string()],
-            phases: vec![],
-        };
-
-        let all = plan.all_tickets();
-        assert_eq!(all, vec!["t1", "t2", "t3"]);
-        assert!(!plan.is_phased());
-        assert!(plan.is_simple());
     }
 
     #[tokio::test]
