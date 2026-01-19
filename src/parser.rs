@@ -6,7 +6,6 @@ use serde::de::DeserializeOwned;
 use serde_yaml_ng as yaml;
 
 use crate::error::{JanusError, Result};
-use crate::types::TicketMetadata;
 
 pub(crate) static FRONTMATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid")
@@ -102,8 +101,9 @@ impl ParsedDocument {
 /// Body content...
 /// ```
 ///
-/// This function returns a generic structure that can be converted to
-/// domain-specific types via `TryFrom` implementations.
+/// This function returns a generic structure that can be used to extract
+/// frontmatter fields and body content. For ticket-specific parsing,
+/// use `crate::ticket::parse_ticket` instead.
 pub fn parse_document(content: &str) -> Result<ParsedDocument> {
     let (frontmatter_raw, body) = split_frontmatter(content)?;
 
@@ -117,211 +117,33 @@ pub fn parse_document(content: &str) -> Result<ParsedDocument> {
     })
 }
 
-/// Parse a ticket file's content into TicketMetadata.
-///
-/// This is a convenience function that parses the document and converts it
-/// to TicketMetadata. For more control, use `parse_document()` directly and
-/// implement your own conversion.
-pub fn parse_ticket_content(content: &str) -> Result<TicketMetadata> {
-    let doc = parse_document(content)?;
-    TicketMetadata::try_from(doc)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{TicketPriority, TicketStatus, TicketType};
+
+    // ==================== Generic Document Parsing Tests ====================
 
     #[test]
-    fn test_parse_basic_ticket() {
-        let content = r#"---
-id: test-1234
-status: new
-deps: []
-links: []
-created: 2024-01-01T00:00:00Z
-type: task
-priority: 2
----
-# Test Ticket
-
-This is the description.
-"#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("test-1234".to_string()));
-        assert_eq!(metadata.status, Some(TicketStatus::New));
-        assert_eq!(metadata.title, Some("Test Ticket".to_string()));
-        assert_eq!(metadata.ticket_type, Some(TicketType::Task));
-        assert_eq!(metadata.priority, Some(TicketPriority::P2));
-        assert!(metadata.deps.is_empty());
+    fn test_split_frontmatter() {
+        let content = "---\nid: test\nstatus: new\n---\n# Title\n\nBody";
+        let (yaml, body) = split_frontmatter(content).unwrap();
+        assert_eq!(yaml, "id: test\nstatus: new");
+        assert_eq!(body, "# Title\n\nBody");
     }
 
     #[test]
-    fn test_parse_with_deps() {
-        let content = r#"---
-id: test-5678
-status: new
-deps: ["dep-1", "dep-2"]
-links: ["link-1"]
----
-# Another Ticket
-"#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.deps, vec!["dep-1", "dep-2"]);
-        assert_eq!(metadata.links, vec!["link-1"]);
-    }
-
-    #[test]
-    fn test_parse_missing_frontmatter() {
+    fn test_split_frontmatter_missing() {
         let content = "# No frontmatter\n\nJust content.";
-        let result = parse_ticket_content(content);
+        let result = split_frontmatter(content);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_parse_with_completion_summary() {
-        let content = r#"---
-id: j-a1b2
-status: complete
-deps: []
-links: []
-created: 2024-01-01T00:00:00Z
-type: task
----
-# Implement cache initialization
-
-Description of the task.
-
-## Completion Summary
-
-Successfully implemented cache initialization using Turso's async API.
-Key decisions:
-- Used `OnceCell` for global cache singleton
-- Implemented corruption detection and auto-recovery
-
-Performance results: Cold start ~22ms, subsequent lookups <5ms.
-"#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("j-a1b2".to_string()));
-        assert_eq!(metadata.status, Some(TicketStatus::Complete));
-
-        let summary = metadata.completion_summary.unwrap();
-        assert!(summary.contains("Successfully implemented cache initialization"));
-        assert!(summary.contains("OnceCell"));
-        assert!(summary.contains("Performance results"));
-    }
-
-    #[test]
-    fn test_parse_completion_summary_with_following_section() {
-        let content = r#"---
-id: j-c3d4
-status: complete
-deps: []
-links: []
----
-# Task Title
-
-Description.
-
-## Completion Summary
-
-This task is done.
-
-## Notes
-
-Some additional notes here.
-"#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        let summary = metadata.completion_summary.unwrap();
-        assert_eq!(summary, "This task is done.");
-        // Ensure Notes section is not included
-        assert!(!summary.contains("Notes"));
-        assert!(!summary.contains("additional notes"));
-    }
-
-    #[test]
-    fn test_parse_no_completion_summary() {
-        let content = r#"---
-id: j-e5f6
-status: new
-deps: []
-links: []
----
-# Task Without Summary
-
-Just a description, no completion summary section.
-"#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        assert!(metadata.completion_summary.is_none());
-    }
-
-    #[test]
-    fn test_parse_completion_summary_case_insensitive() {
-        let content = r#"---
-id: j-g7h8
-status: complete
-deps: []
-links: []
----
-# Task Title
-
-## COMPLETION SUMMARY
-
-All caps header should work.
-"#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        let summary = metadata.completion_summary.unwrap();
-        assert_eq!(summary, "All caps header should work.");
-    }
-
-    #[test]
-    fn test_parsed_document_extract_section_empty() {
-        let content = r#"---
-id: test
----
-# Title
-
-No summary here."#;
-        let doc = parse_document(content).unwrap();
-        assert!(doc.extract_section("completion summary").is_none());
-    }
-
-    #[test]
-    fn test_parsed_document_extract_section_at_end() {
-        let content = r#"---
-id: test
----
-# Title
-
-Description.
-
-## Completion Summary
-
-Final summary content.
-"#;
-        let doc = parse_document(content).unwrap();
-        let summary = doc.extract_section("completion summary").unwrap();
-        assert_eq!(summary, "Final summary content.");
-    }
-
-    #[test]
-    fn test_parsed_document_extract_title() {
-        let content = r#"---
-id: test
-status: new
----
-# My Test Title
-
-Body content here.
-"#;
-        let doc = parse_document(content).unwrap();
-        assert_eq!(doc.extract_title(), Some("My Test Title".to_string()));
+    fn test_split_frontmatter_crlf() {
+        let content = "---\r\nid: test\r\n---\r\n# Title";
+        let (yaml, body) = split_frontmatter(content).unwrap();
+        assert_eq!(yaml, "id: test");
+        assert_eq!(body, "# Title");
     }
 
     #[test]
@@ -348,147 +170,171 @@ Body content.
     }
 
     #[test]
-    fn test_yaml_with_multiline_string() {
+    fn test_parsed_document_extract_title() {
         let content = r#"---
-id: test-1234
+id: test
 status: new
-deps: []
-links: []
-created: 2024-01-01T00:00:00Z
-type: task
-priority: 2
-external-ref: |
-  This is a multi-line
-  string using YAML block
-  scalar syntax
 ---
-# Test Ticket
+# My Test Title
+
+Body content here.
+"#;
+        let doc = parse_document(content).unwrap();
+        assert_eq!(doc.extract_title(), Some("My Test Title".to_string()));
+    }
+
+    #[test]
+    fn test_parsed_document_extract_title_missing() {
+        let content = r#"---
+id: test
+---
+No H1 heading in this document.
+"#;
+        let doc = parse_document(content).unwrap();
+        assert!(doc.extract_title().is_none());
+    }
+
+    #[test]
+    fn test_parsed_document_extract_section() {
+        let content = r#"---
+id: test
+---
+# Title
 
 Description.
-"#;
 
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("test-1234".to_string()));
-        assert!(metadata.external_ref.is_some());
-        let ref_str = metadata.external_ref.unwrap();
-        assert!(ref_str.contains("multi-line"));
-        assert!(ref_str.contains("scalar syntax"));
+## My Section
+
+Section content here.
+
+## Another Section
+
+More content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let section = doc.extract_section("my section").unwrap();
+        assert_eq!(section, "Section content here.");
     }
 
     #[test]
-    fn test_yaml_with_comments() {
+    fn test_parsed_document_extract_section_at_end() {
         let content = r#"---
-# This is a YAML comment that should be ignored
-id: test-5678  # Inline comment
-status: next   # Another inline comment
-deps: []
-links: []
-created: 2024-01-01T00:00:00Z
-type: task
-priority: 1
+id: test
 ---
-# Comment Test
+# Title
 
-YAML comments should be handled properly.
+Description.
+
+## Final Section
+
+Final content.
 "#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("test-5678".to_string()));
-        assert_eq!(metadata.status, Some(TicketStatus::Next));
-        assert_eq!(metadata.priority, Some(TicketPriority::P1));
+        let doc = parse_document(content).unwrap();
+        let section = doc.extract_section("final section").unwrap();
+        assert_eq!(section, "Final content.");
     }
 
     #[test]
-    fn test_yaml_with_empty_arrays() {
+    fn test_parsed_document_extract_section_missing() {
         let content = r#"---
-id: test-9012
-status: new
-deps:
-links:
-created: 2024-01-01T00:00:00Z
-type: feature
-priority: 0
+id: test
 ---
-# Empty Arrays Test
+# Title
 
-Both deps and links should be empty vectors.
+No sections here."#;
+        let doc = parse_document(content).unwrap();
+        assert!(doc.extract_section("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_parsed_document_extract_section_case_insensitive() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## UPPERCASE SECTION
+
+Content.
 "#;
-
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("test-9012".to_string()));
-        assert!(metadata.deps.is_empty());
-        assert!(metadata.links.is_empty());
+        let doc = parse_document(content).unwrap();
+        assert!(doc.extract_section("uppercase section").is_some());
+        assert!(doc.extract_section("UPPERCASE SECTION").is_some());
     }
 
     #[test]
-    fn test_parse_with_crlf_line_endings() {
-        let content = "---\r\n\
-id: test-crlf\r\n\
-status: new\r\n\
-deps: []\r\n\
-links: []\r\n\
-created: 2024-01-01T00:00:00Z\r\n\
-type: task\r\n\
-priority: 2\r\n\
----\r\n\
-# CRLF Ticket\r\n\
-\r\n\
-This ticket uses Windows-style line endings.\r\n\
-";
+    fn test_parsed_document_deserialize_frontmatter() {
+        #[derive(serde::Deserialize)]
+        struct TestMeta {
+            id: String,
+            count: i32,
+        }
 
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("test-crlf".to_string()));
-        assert_eq!(metadata.status, Some(TicketStatus::New));
-        assert_eq!(metadata.title, Some("CRLF Ticket".to_string()));
-        assert_eq!(metadata.ticket_type, Some(TicketType::Task));
-        assert_eq!(metadata.priority, Some(TicketPriority::P2));
+        let content = r#"---
+id: test-123
+count: 42
+---
+# Title
+"#;
+        let doc = parse_document(content).unwrap();
+        let meta: TestMeta = doc.deserialize_frontmatter().unwrap();
+        assert_eq!(meta.id, "test-123");
+        assert_eq!(meta.count, 42);
     }
 
     #[test]
-    fn test_parse_with_crlf_completion_summary() {
-        let content = "---\r\n\
-id: j-a1b2\r\n\
-status: complete\r\n\
-deps: []\r\n\
-links: []\r\n\
-created: 2024-01-01T00:00:00Z\r\n\
-type: task\r\n\
----\r\n\
-# CRLF Summary Test\r\n\
-\r\n\
-Description.\r\n\
-\r\n\
-## Completion Summary\r\n\
-\r\n\
-Task completed with CRLF line endings.\r\n\
-";
-
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("j-a1b2".to_string()));
-        assert_eq!(metadata.status, Some(TicketStatus::Complete));
-        let summary = metadata.completion_summary.unwrap();
-        assert_eq!(summary, "Task completed with CRLF line endings.");
+    fn test_parse_document_with_yaml_comments() {
+        let content = r#"---
+# This is a YAML comment
+id: test-123  # Inline comment
+status: active
+---
+# Title
+"#;
+        let doc = parse_document(content).unwrap();
+        assert!(doc.frontmatter.contains_key("id"));
+        assert!(doc.frontmatter.contains_key("status"));
     }
 
     #[test]
-    fn test_parse_with_mixed_line_endings() {
+    fn test_parse_document_with_multiline_yaml() {
+        let content = r#"---
+id: test
+description: |
+  This is a multi-line
+  string in YAML
+---
+# Title
+"#;
+        let doc = parse_document(content).unwrap();
+        assert!(doc.frontmatter.contains_key("description"));
+    }
+
+    #[test]
+    fn test_parse_document_with_mixed_line_endings() {
         let content = "---\n\
-id: test-mixed\n\
-status: new\n\
-deps: []\r\n\
-links: []\r\n\
-created: 2024-01-01T00:00:00Z\n\
-type: task\r\n\
-priority: 2\r\n\
----\n\
-# Mixed Line Endings\r\n\
+id: test\r\n\
+status: active\n\
+---\r\n\
+# Title\r\n\
 \r\n\
-This document has mixed line endings.\r\n\
+Body with mixed endings.\n\
 ";
+        let doc = parse_document(content).unwrap();
+        assert!(doc.frontmatter.contains_key("id"));
+        assert!(doc.body.contains("Title"));
+    }
 
-        let metadata = parse_ticket_content(content).unwrap();
-        assert_eq!(metadata.id, Some("test-mixed".to_string()));
-        assert_eq!(metadata.status, Some(TicketStatus::New));
-        assert_eq!(metadata.title, Some("Mixed Line Endings".to_string()));
+    #[test]
+    fn test_frontmatter_regex_with_dashes_in_body() {
+        let content = r#"---
+id: test
+---
+# Title
+
+Body with --- multiple dashes --- here.
+"#;
+        let doc = parse_document(content).unwrap();
+        assert!(doc.body.contains("--- multiple dashes ---"));
     }
 }

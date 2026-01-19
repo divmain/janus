@@ -7,9 +7,9 @@ use turso::params;
 use turso::transaction::Transaction;
 
 use crate::error::{JanusError, Result};
-use crate::parser::parse_ticket_content;
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
+use crate::ticket::parse_ticket;
 use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
 
 /// Trait for items that can be cached in the SQLite database.
@@ -67,7 +67,7 @@ impl CacheableItem for TicketMetadata {
 
         let content = fs::read_to_string(&path).map_err(JanusError::Io)?;
 
-        let metadata = parse_ticket_content(&content)
+        let metadata = parse_ticket(&content)
             .map_err(|e| JanusError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
 
         let file_mtime = fs::metadata(&path)
