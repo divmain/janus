@@ -65,19 +65,37 @@ fn format_invalid_field_value(field: &str, value: &str, valid_values: &[String])
     )
 }
 
+/// Format the AmbiguousId error message
+fn format_ambiguous_id(id: &str, matches: &[String]) -> String {
+    format!(
+        "ambiguous ID '{}' matches multiple tickets: {}",
+        id,
+        matches.join(", ")
+    )
+}
+
+/// Format the AmbiguousPlanId error message
+fn format_ambiguous_plan_id(id: &str, matches: &[String]) -> String {
+    format!(
+        "ambiguous plan ID '{}' matches multiple plans: {}",
+        id,
+        matches.join(", ")
+    )
+}
+
 #[derive(Error, Debug)]
 pub enum JanusError {
     #[error("ticket '{0}' not found")]
     TicketNotFound(String),
 
-    #[error("ambiguous ID '{0}' matches multiple tickets")]
-    AmbiguousId(String),
+    #[error("{}", format_ambiguous_id(.0, .1))]
+    AmbiguousId(String, Vec<String>),
 
     #[error("plan '{0}' not found")]
     PlanNotFound(String),
 
-    #[error("ambiguous plan ID '{0}' matches multiple plans")]
-    AmbiguousPlanId(String),
+    #[error("{}", format_ambiguous_plan_id(.0, .1))]
+    AmbiguousPlanId(String, Vec<String>),
 
     #[error("phase '{0}' not found in plan")]
     PhaseNotFound(String),
@@ -420,5 +438,32 @@ mod tests {
         let msg = error.to_string();
         assert!(msg.contains("connection refused"));
         assert!(msg.contains("failed to fetch"));
+    }
+
+    #[test]
+    fn test_ambiguous_id_error_message() {
+        let matches = vec![
+            "j-abc1".to_string(),
+            "j-abc2".to_string(),
+            "j-abc3".to_string(),
+        ];
+        let error = JanusError::AmbiguousId("j-abc".to_string(), matches);
+        let msg = error.to_string();
+        assert!(msg.contains("j-abc"));
+        assert!(msg.contains("j-abc1"));
+        assert!(msg.contains("j-abc2"));
+        assert!(msg.contains("j-abc3"));
+        assert!(msg.contains("ambiguous ID"));
+    }
+
+    #[test]
+    fn test_ambiguous_plan_id_error_message() {
+        let matches = vec!["plan-alpha".to_string(), "plan-beta".to_string()];
+        let error = JanusError::AmbiguousPlanId("plan".to_string(), matches);
+        let msg = error.to_string();
+        assert!(msg.contains("plan"));
+        assert!(msg.contains("plan-alpha"));
+        assert!(msg.contains("plan-beta"));
+        assert!(msg.contains("ambiguous plan ID"));
     }
 }

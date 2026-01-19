@@ -139,7 +139,10 @@ pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Resul
         return Err(JanusError::TicketNotFound(id.to_string()));
     }
     if matching_ids.len() > 1 {
-        return Err(JanusError::AmbiguousId(id.to_string()));
+        return Err(JanusError::AmbiguousId(
+            id.to_string(),
+            matching_ids.iter().map(|s| s.to_string()).collect(),
+        ));
     }
 
     let root = matching_ids[0].clone();

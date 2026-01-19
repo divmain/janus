@@ -82,7 +82,12 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
                     let filename = format!("{}.md", &matches[0]);
                     return Ok(PathBuf::from(PLANS_DIR).join(filename));
                 }
-                _ => return Err(JanusError::AmbiguousPlanId(partial_id.to_string())),
+                _ => {
+                    return Err(JanusError::AmbiguousPlanId(
+                        partial_id.to_string(),
+                        matches.clone(),
+                    ));
+                }
             }
         }
     }
@@ -102,7 +107,10 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     match matches.len() {
         0 => Err(JanusError::PlanNotFound(partial_id.to_string())),
         1 => Ok(PathBuf::from(PLANS_DIR).join(matches[0])),
-        _ => Err(JanusError::AmbiguousPlanId(partial_id.to_string())),
+        _ => Err(JanusError::AmbiguousPlanId(
+            partial_id.to_string(),
+            matches.iter().map(|m| m.replace(".md", "")).collect(),
+        )),
     }
 }
 

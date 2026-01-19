@@ -34,7 +34,10 @@ fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
     match matches.len() {
         0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
         1 => Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(matches[0])),
-        _ => Err(JanusError::AmbiguousId(partial_id.to_string())),
+        _ => Err(JanusError::AmbiguousId(
+            partial_id.to_string(),
+            matches.iter().map(|m| m.replace(".md", "")).collect(),
+        )),
     }
 }
 
@@ -54,7 +57,17 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
                     let filename = format!("{}.md", &matches[0]);
                     return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(filename));
                 }
-                _ => return Err(JanusError::AmbiguousId(partial_id.to_string())),
+                _ => {
+                    let matching_ids: Vec<_> = matches.iter().map(|s| s.as_str()).collect();
+                    return Err(JanusError::AmbiguousId(
+                        partial_id.to_string(),
+                        matching_ids
+                            .iter()
+                            .copied()
+                            .map(|s| s.to_string())
+                            .collect(),
+                    ));
+                }
             }
         }
     }
