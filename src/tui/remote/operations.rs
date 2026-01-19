@@ -8,6 +8,62 @@ use std::collections::HashSet;
 
 use super::sync_preview::{SyncChange, SyncDirection};
 
+/// Sanitize a string to prevent YAML frontmatter injection
+/// Replaces "---" (YAML delimiter) with safe HTML entities
+fn sanitize_for_yaml(input: &str) -> String {
+    input.replace("---", "&#45;&#45;&#45;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_for_yaml_basic() {
+        assert_eq!(sanitize_for_yaml("Hello world"), "Hello world");
+    }
+
+    #[test]
+    fn test_sanitize_for_yaml_with_delimiter() {
+        assert_eq!(sanitize_for_yaml("---"), "&#45;&#45;&#45;");
+    }
+
+    #[test]
+    fn test_sanitize_for_yaml_multiple_delimiters() {
+        assert_eq!(
+            sanitize_for_yaml("---\n---"),
+            "&#45;&#45;&#45;\n&#45;&#45;&#45;"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_for_yaml_embedded_delimiter() {
+        assert_eq!(
+            sanitize_for_yaml("Some text\n---\nMore text"),
+            "Some text\n&#45;&#45;&#45;\nMore text"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_for_yaml_title_injection() {
+        let title = "--- malicious title ---";
+        let result = sanitize_for_yaml(title);
+        assert!(result.contains("&#45;&#45;&#45;"));
+        assert!(!result.contains("---"));
+    }
+
+    #[test]
+    fn test_sanitize_for_yaml_body_injection() {
+        let body = "Description\n---\nid: inject\n---\nMore text";
+        let result = sanitize_for_yaml(body);
+        assert!(!result.contains("---"));
+        assert_eq!(
+            result,
+            "Description\n&#45;&#45;&#45;\nid: inject\n&#45;&#45;&#45;\nMore text"
+        );
+    }
+}
+
 /// Adopt remote issues into local tickets
 pub fn adopt_issues(issues: &[RemoteIssue], _local_ids: &HashSet<String>) -> Result<Vec<String>> {
     let mut adopted_ids = Vec::new();
@@ -81,10 +137,13 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
 
     let frontmatter = frontmatter_lines.join("\n");
 
-    let body = if remote_issue.body.is_empty() {
-        format!("# {}\n", remote_issue.title)
+    let sanitized_title = sanitize_for_yaml(&remote_issue.title);
+    let sanitized_body = sanitize_for_yaml(&remote_issue.body);
+
+    let body = if sanitized_body.is_empty() {
+        format!("# {}\n", sanitized_title)
     } else {
-        format!("# {}\n\n{}\n", remote_issue.title, remote_issue.body)
+        format!("# {}\n\n{}\n", sanitized_title, sanitized_body)
     };
 
     let content = format!("{}\n{}", frontmatter, body);
