@@ -1,0 +1,756 @@
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
+use std::io;
+use std::str::FromStr;
+
+use crate::types::{
+    TicketPriority, TicketStatus, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES,
+};
+
+#[derive(Parser)]
+#[command(name = "janus")]
+#[command(about = "Plain-text issue tracking")]
+#[command(version)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Create a new ticket
+    #[command(visible_alias = "c")]
+    Create {
+        /// Ticket title
+        title: String,
+
+        /// Description text
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Design notes
+        #[arg(long)]
+        design: Option<String>,
+
+        /// Acceptance criteria
+        #[arg(long)]
+        acceptance: Option<String>,
+
+        /// Priority (0-4, default: 2)
+        #[arg(short, long, default_value = "2", value_parser = parse_priority)]
+        priority: TicketPriority,
+
+        /// Type: bug, feature, task, epic, chore (case-insensitive, default: task)
+        #[arg(short = 't', long = "type", default_value = "task", value_parser = parse_type)]
+        ticket_type: TicketType,
+
+        /// External reference (e.g., gh-123)
+        #[arg(long)]
+        external_ref: Option<String>,
+
+        /// Parent ticket ID
+        #[arg(long)]
+        parent: Option<String>,
+
+        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Display ticket with relationships
+    #[command(visible_alias = "s")]
+    Show {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Open ticket in $EDITOR
+    #[command(visible_alias = "e")]
+    Edit {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON (prints file path as JSON instead of opening editor)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Add timestamped note to ticket
+    AddNote {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Note text (reads from stdin if not provided)
+        #[arg(trailing_var_arg = true)]
+        text: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Mark ticket as in-progress
+    Start {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Mark ticket as complete
+    Close {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Reopen a closed ticket
+    Reopen {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Set ticket status
+    Status {
+        /// Ticket ID (partial match supported)
+        id: String,
+
+        /// New status: new, next, in_progress, complete, cancelled (case-insensitive)
+        #[arg(value_parser = parse_status)]
+        status: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Set a ticket field (priority, type, parent)
+    Set {
+        /// Ticket ID (can be partial)
+        id: String,
+
+        /// Field name to update (priority, type, parent)
+        field: String,
+
+        /// New value (use empty string to clear parent)
+        value: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Manage dependencies
+    Dep {
+        #[command(subcommand)]
+        action: DepAction,
+    },
+
+    /// Manage links
+    Link {
+        #[command(subcommand)]
+        action: LinkAction,
+    },
+
+    /// List tickets with optional filters
+    #[command(visible_alias = "l")]
+    Ls {
+        /// Show tickets ready to work on (no incomplete deps, status=new|next)
+        #[arg(long)]
+        ready: bool,
+
+        /// Show tickets with incomplete dependencies
+        #[arg(long)]
+        blocked: bool,
+
+        /// Show recently closed/cancelled tickets
+        #[arg(long)]
+        closed: bool,
+
+        /// Include closed/cancelled tickets in output
+        #[arg(long)]
+        all: bool,
+
+        /// Filter by specific status (mutually exclusive with --ready, --blocked, --closed)
+        #[arg(long, conflicts_with_all = ["ready", "blocked", "closed"])]
+        status: Option<String>,
+
+        /// Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Output tickets as JSON, optionally filtered with jq syntax
+    Query {
+        /// jq filter expression (e.g., '.status == "new"')
+        filter: Option<String>,
+    },
+
+    /// Browse issues with fuzzy search
+    View,
+
+    /// View issues on a Kanban board
+    Board,
+
+    /// Manage remote issues (use --help for subcommands)
+    Remote {
+        #[command(subcommand)]
+        action: RemoteAction,
+    },
+
+    /// Manage configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+
+    /// Cache management
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
+
+    /// Manage hooks
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+
+    /// Plan management
+    Plan {
+        #[command(subcommand)]
+        action: PlanAction,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for [possible values: bash, zsh, fish, powershell, elvish]
+        shell: Shell,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DepAction {
+    /// Add a dependency
+    Add {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID (ticket that must be completed first)
+        dep_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a dependency
+    Remove {
+        /// Ticket ID
+        id: String,
+        /// Dependency ID to remove
+        dep_id: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show dependency tree
+    Tree {
+        /// Ticket ID
+        id: String,
+        /// Show full tree (including duplicate nodes)
+        #[arg(long)]
+        full: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum LinkAction {
+    /// Link tickets together
+    Add {
+        /// Ticket IDs to link
+        #[arg(required = true, num_args = 2..)]
+        ids: Vec<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove link between tickets
+    Remove {
+        /// First ticket ID
+        id1: String,
+        /// Second ticket ID
+        id2: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigAction {
+    /// Show current configuration
+    Show {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set a configuration value
+    Set {
+        /// Configuration key (github.token, linear.api_key, default_remote)
+        key: String,
+        /// Value to set
+        value: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Get a configuration value
+    Get {
+        /// Configuration key (github.token, linear.api_key, default_remote)
+        key: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CacheAction {
+    /// Show cache status
+    Status {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Clear cache for current repo
+    Clear {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Force full cache rebuild
+    Rebuild {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print path to cache database
+    Path {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum HookAction {
+    /// List configured hooks
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install a hook recipe from GitHub
+    Install {
+        /// Recipe name (e.g., "git-sync")
+        recipe: String,
+    },
+    /// Run a hook manually for testing
+    Run {
+        /// Hook event name (e.g., "post_write", "ticket_created")
+        event: String,
+        /// Optional item ID for context
+        #[arg(long)]
+        id: Option<String>,
+    },
+    /// Enable hooks
+    Enable {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Disable hooks
+    Disable {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// View hook failure log
+    Log {
+        /// Number of most recent entries to show (default: all)
+        #[arg(short, long)]
+        lines: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum RemoteAction {
+    /// Browse remote issues in TUI
+    Browse {
+        /// Optional provider override (github or linear)
+        provider: Option<String>,
+    },
+
+    /// Import a remote issue and create a local ticket
+    Adopt {
+        /// Remote reference (e.g., github:owner/repo/123)
+        remote_ref: String,
+
+        /// Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Push a local ticket to create a remote issue
+    Push {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Link a local ticket to an existing remote issue
+    Link {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Remote reference
+        remote_ref: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Sync a local ticket with its remote issue
+    Sync {
+        /// Local ticket ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PlanAction {
+    /// Create a new plan
+    Create {
+        /// Plan title
+        title: String,
+
+        /// Add initial phase (creates a phased plan), can be repeated
+        #[arg(long = "phase", action = clap::ArgAction::Append)]
+        phases: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Display a plan with full details
+    Show {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Show raw file content instead of enhanced output
+        #[arg(long)]
+        raw: bool,
+
+        /// Show only the ticket list with statuses
+        #[arg(long = "tickets-only")]
+        tickets_only: bool,
+
+        /// Show only phase summary (phased plans)
+        #[arg(long = "phases-only")]
+        phases_only: bool,
+
+        /// Show full completion summaries for tickets in specified phase(s)
+        #[arg(long = "verbose-phase", action = clap::ArgAction::Append)]
+        verbose_phases: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Open plan in $EDITOR
+    Edit {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Output as JSON (prints file path as JSON instead of opening editor)
+        #[arg(long)]
+        json: bool,
+    },
+    /// List all plans
+    Ls {
+        /// Filter by computed status
+        #[arg(long)]
+        status: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add a ticket to a plan
+    AddTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to add
+        ticket_id: String,
+
+        /// Target phase (required for phased plans)
+        #[arg(long)]
+        phase: Option<String>,
+
+        /// Insert after specific ticket
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a ticket from a plan
+    RemoveTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to remove
+        ticket_id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Move a ticket between phases
+    MoveTicket {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Ticket ID to move
+        ticket_id: String,
+
+        /// Target phase (required)
+        #[arg(long = "to-phase")]
+        to_phase: String,
+
+        /// Insert after specific ticket in target phase
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position in target phase (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Add a new phase to a plan
+    AddPhase {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Phase name
+        phase_name: String,
+
+        /// Insert after specific phase
+        #[arg(long)]
+        after: Option<String>,
+
+        /// Insert at position (1-indexed)
+        #[arg(long)]
+        position: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a phase from a plan
+    RemovePhase {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Phase name or number
+        phase: String,
+
+        /// Force removal even if phase contains tickets
+        #[arg(long)]
+        force: bool,
+
+        /// Move tickets to another phase instead of removing
+        #[arg(long)]
+        migrate: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Reorder tickets or phases
+    Reorder {
+        /// Plan ID (can be partial)
+        plan_id: String,
+
+        /// Reorder tickets within a specific phase
+        #[arg(long)]
+        phase: Option<String>,
+
+        /// Reorder the phases themselves (not tickets within a phase)
+        #[arg(long = "reorder-phases")]
+        reorder_phases: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a plan
+    Delete {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rename a plan (update its title)
+    Rename {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// New title
+        new_title: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the next actionable item(s) in a plan
+    Next {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Show next item in current phase only
+        #[arg(long)]
+        phase: bool,
+
+        /// Show next item for each incomplete phase
+        #[arg(long)]
+        all: bool,
+
+        /// Number of next items to show (default: 1)
+        #[arg(long, default_value = "1")]
+        count: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show plan status summary
+    Status {
+        /// Plan ID (can be partial)
+        id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import a plan from a markdown file
+    Import {
+        /// File path (use "-" for stdin)
+        file: String,
+
+        /// Validate and show what would be created without creating anything
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Override the extracted title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Ticket type for created tasks (case-insensitive, default: task)
+        #[arg(long = "type", default_value = "task", value_parser = parse_type)]
+        ticket_type: TicketType,
+
+        /// Custom prefix for created ticket IDs
+        #[arg(long)]
+        prefix: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the importable plan format specification
+    ImportSpec,
+}
+
+fn parse_priority(s: &str) -> Result<TicketPriority, String> {
+    s.parse().map_err(|_| {
+        format!(
+            "Invalid priority. Must be one of: {}",
+            VALID_PRIORITIES.join(", ")
+        )
+    })
+}
+
+fn parse_type(s: &str) -> Result<TicketType, String> {
+    s.parse()
+        .map_err(|_| format!("Invalid type. Must be one of: {}", VALID_TYPES.join(", ")))
+}
+
+fn parse_status(s: &str) -> Result<String, String> {
+    TicketStatus::from_str(s)
+        .map(|_| s.to_string())
+        .map_err(|_| {
+            format!(
+                "Invalid status. Must be one of: {}",
+                VALID_STATUSES.join(", ")
+            )
+        })
+}
+
+pub fn generate_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    clap_complete::generate(shell, &mut cmd, "janus", &mut io::stdout());
+}
