@@ -145,6 +145,7 @@ impl TicketCache {
         };
 
         cache.initialize_database().await?;
+        cache.validate_cache_version().await?;
         cache.store_repo_path(&repo_path).await?;
 
         Ok(cache)
@@ -286,6 +287,33 @@ impl TicketCache {
             )
             .await?;
 
+        Ok(())
+    }
+
+    async fn get_meta(&self, key: &str) -> Result<Option<String>> {
+        let mut rows = self
+            .conn
+            .query("SELECT value FROM meta WHERE key = ?1", [key])
+            .await?;
+
+        match rows.next().await? {
+            Some(row) => {
+                let value: Option<String> = row.get(0).ok();
+                Ok(value)
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn validate_cache_version(&self) -> Result<()> {
+        if let Some(stored_version) = self.get_meta("cache_version").await?
+            && stored_version != CACHE_VERSION
+        {
+            return Err(CacheError::CacheVersionMismatch {
+                expected: CACHE_VERSION.to_string(),
+                found: stored_version,
+            });
+        }
         Ok(())
     }
 
