@@ -170,7 +170,7 @@ impl TicketCache {
 
         if let Err(error) = &result
             && database_exists
-            && is_corruption_error(&error.to_string())
+            && is_corruption_error(error)
         {
             eprintln!(
                 "Warning: Cache file appears corrupted at: {}",
@@ -810,8 +810,7 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                             e
                         );
 
-                        let error_str = e.to_string();
-                        if is_corruption_error(&error_str) {
+                        if is_corruption_error(&e) {
                             let db_path = cache.cache_db_path();
                             eprintln!("Cache appears corrupted at: {}", db_path.display());
                             eprintln!("Run 'janus cache clear' or 'janus cache rebuild' to fix this issue.");
@@ -823,15 +822,13 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                     }
                 }
                 Err(e) => {
-                    let error_str = e.to_string();
-
-                    if is_permission_error(&error_str) {
+                    if is_permission_error(&e) {
                         eprintln!(
                             "Warning: cannot access cache directory (permission denied). \
                              Falling back to file reads.",
                         );
                         eprintln!("Tip: Check file permissions or try 'janus cache rebuild'.");
-                    } else if is_corruption_error(&error_str) {
+                    } else if is_corruption_error(&e) {
                         eprintln!("Warning: cache database is corrupted. Falling back to file reads.");
                         eprintln!("Tip: Run 'janus cache clear' or 'janus cache rebuild' to fix this.");
                     } else {

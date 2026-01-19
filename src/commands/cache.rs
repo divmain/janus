@@ -41,12 +41,10 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
             }
         }
         Err(e) => {
-            let error_str = e.to_string();
-
             if output_json {
-                let status = if is_corruption_error(&error_str) {
+                let status = if is_corruption_error(&e) {
                     "corrupted"
-                } else if is_permission_error(&error_str) {
+                } else if is_permission_error(&e) {
                     "permission_denied"
                 } else {
                     "not_available"
@@ -54,15 +52,15 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
 
                 print_json(&json!({
                     "status": status,
-                    "error": error_str,
+                    "error": e.to_string(),
                 }))?;
-            } else if is_corruption_error(&error_str) {
+            } else if is_corruption_error(&e) {
                 eprintln!("Cache database is corrupted and cannot be opened.");
                 eprintln!("\nTo fix this issue:");
                 eprintln!("  1. Run 'janus cache clear' to delete the corrupted cache");
                 eprintln!("  2. Run any janus command to rebuild the cache automatically");
                 eprintln!("  3. Or run 'janus cache rebuild' to rebuild it manually");
-            } else if is_permission_error(&error_str) {
+            } else if is_permission_error(&e) {
                 eprintln!("Cache database cannot be accessed due to permission issues.");
                 eprintln!("\nTo fix this issue:");
                 eprintln!("  1. Check file permissions for:");
@@ -85,8 +83,7 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
     let db_path = match TicketCache::open().await {
         Ok(cache) => cache.cache_db_path(),
         Err(e) => {
-            let error_str = e.to_string();
-            if is_permission_error(&error_str) {
+            if is_permission_error(&e) {
                 return Err(e);
             }
 
@@ -198,13 +195,12 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                     if !output_json {
                         println!("Error: cache sync failed during rebuild: {}", e);
 
-                        let error_str = e.to_string();
-                        if is_permission_error(&error_str) {
+                        if is_permission_error(&e) {
                             println!(
                                 "\nPermission denied when accessing ticket files or cache directory."
                             );
                             println!("Please check file permissions and try again.");
-                        } else if is_corruption_error(&error_str) {
+                        } else if is_corruption_error(&e) {
                             println!("\nCache corruption detected during rebuild.");
                             println!("Please run 'janus cache clear' and try again.");
                         }
@@ -218,8 +214,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
             if !output_json {
                 println!("Error: failed to initialize cache during rebuild: {}", e);
 
-                let error_str = e.to_string();
-                if is_permission_error(&error_str) {
+                if is_permission_error(&e) {
                     println!("\nPermission denied when accessing cache directory.");
                     println!("Cache directory: {}", crate::cache::cache_dir().display());
                     println!("Please check file permissions and try again.");

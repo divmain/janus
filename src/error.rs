@@ -1,24 +1,37 @@
 use thiserror::Error;
 
-/// Check if an error message indicates database corruption.
+/// Check if an error indicates database corruption.
 ///
-/// This centralizes the string matching logic for corruption detection,
-/// which is used in multiple places for cache error handling.
-pub fn is_corruption_error(error: &str) -> bool {
-    error.contains("corrupted")
-        || error.contains("CORRUPT")
-        || error.contains("database disk image is malformed")
-        || error.contains("database file is corrupted")
-        || error.contains("malformed")
-        || error.contains("invalid database")
+/// This uses typed error matching on the turso::Error enum to detect corruption
+/// errors reliably without depending on error message strings. It inspects both
+/// direct turso errors and wrapped errors within JanusError::CacheDatabase.
+pub fn is_corruption_error(error: &JanusError) -> bool {
+    match error {
+        JanusError::CacheDatabase(turso_err) => {
+            matches!(
+                turso_err,
+                turso::Error::Corrupt(_) | turso::Error::NotAdb(_)
+            )
+        }
+        JanusError::CacheCorrupted(_) => true,
+        _ => false,
+    }
 }
 
-/// Check if an error message indicates a permission/access denied error.
+/// Check if an error indicates a permission/access denied error.
 ///
-/// This centralizes the string matching logic for permission detection,
-/// which is used in multiple places for cache error handling.
-pub fn is_permission_error(error: &str) -> bool {
-    error.contains("AccessDenied") || error.contains("Permission") || error.contains("denied")
+/// This uses typed error matching on the turso::Error enum to detect permission
+/// errors reliably without depending on error message strings. It inspects both
+/// direct turso errors and wrapped errors within JanusError::CacheDatabase.
+pub fn is_permission_error(error: &JanusError) -> bool {
+    match error {
+        JanusError::CacheDatabase(turso_err) => {
+            matches!(turso_err, turso::Error::IoError(kind) if *kind == std::io::ErrorKind::PermissionDenied)
+        }
+        JanusError::CacheAccessDenied(_) => true,
+        JanusError::Io(io_err) => io_err.kind() == std::io::ErrorKind::PermissionDenied,
+        _ => false,
+    }
 }
 
 /// Format the ImportFailed error message with issues
@@ -270,31 +283,69 @@ mod tests {
 
     #[test]
     fn test_is_corruption_error() {
-        // Should match various corruption indicators
-        assert!(is_corruption_error("database corrupted"));
-        assert!(is_corruption_error("SQLITE_CORRUPT"));
-        assert!(is_corruption_error("database disk image is malformed"));
-        assert!(is_corruption_error("database file is corrupted"));
-        assert!(is_corruption_error("file is malformed"));
-        assert!(is_corruption_error("invalid database header"));
+        use std::io::ErrorKind;
+
+        // Should match CacheDatabase with corruption error variants
+        assert!(is_corruption_error(&JanusError::CacheDatabase(
+            turso::Error::Corrupt("database corrupted".to_string())
+        )));
+        assert!(is_corruption_error(&JanusError::CacheDatabase(
+            turso::Error::NotAdb("not a database".to_string())
+        )));
+
+        // Should match CacheCorrupted variant
+        assert!(is_corruption_error(&JanusError::CacheCorrupted(
+            "corrupted".to_string()
+        )));
 
         // Should not match unrelated errors
-        assert!(!is_corruption_error("file not found"));
-        assert!(!is_corruption_error("connection refused"));
-        assert!(!is_corruption_error("timeout"));
+        assert!(!is_corruption_error(&JanusError::CacheDatabase(
+            turso::Error::Busy("database is locked".to_string())
+        )));
+        assert!(!is_corruption_error(&JanusError::CacheDatabase(
+            turso::Error::IoError(ErrorKind::NotFound)
+        )));
+        assert!(!is_corruption_error(&JanusError::TicketNotFound(
+            "test".to_string()
+        )));
     }
 
     #[test]
     fn test_is_permission_error() {
-        // Should match various permission indicators
-        assert!(is_permission_error("AccessDenied"));
-        assert!(is_permission_error("Permission denied"));
-        assert!(is_permission_error("access denied"));
+        use std::io::ErrorKind;
 
-        // Should not match unrelated errors
-        assert!(!is_permission_error("file not found"));
-        assert!(!is_permission_error("corrupted"));
-        assert!(!is_permission_error("timeout"));
+        // Should match CacheDatabase with permission denied errors
+        assert!(is_permission_error(&JanusError::CacheDatabase(
+            turso::Error::IoError(ErrorKind::PermissionDenied)
+        )));
+
+        // Should match CacheAccessDenied variant
+        assert!(is_permission_error(&JanusError::CacheAccessDenied(
+            PathBuf::from("/test")
+        )));
+
+        // Should match IO error with PermissionDenied
+        assert!(is_permission_error(&JanusError::Io(std::io::Error::new(
+            ErrorKind::PermissionDenied,
+            "denied"
+        ))));
+
+        // Should not match other IO errors
+        assert!(!is_permission_error(&JanusError::CacheDatabase(
+            turso::Error::IoError(ErrorKind::NotFound)
+        )));
+        assert!(!is_permission_error(&JanusError::Io(std::io::Error::new(
+            ErrorKind::NotFound,
+            "not found"
+        ))));
+
+        // Should not match non-IO errors
+        assert!(!is_permission_error(&JanusError::CacheDatabase(
+            turso::Error::Corrupt("corrupted".to_string())
+        )));
+        assert!(!is_permission_error(&JanusError::TicketNotFound(
+            "test".to_string()
+        )));
     }
 
     #[test]
