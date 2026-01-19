@@ -1,27 +1,8 @@
 use crate::cache;
 use crate::error::{JanusError, Result};
+use crate::ticket::repository::find_tickets;
 use crate::types::TICKETS_ITEMS_DIR;
-use std::fs;
 use std::path::PathBuf;
-
-pub fn find_tickets() -> Vec<String> {
-    fs::read_dir(TICKETS_ITEMS_DIR)
-        .ok()
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .filter_map(|e| {
-                    let name = e.file_name().to_string_lossy().into_owned();
-                    if name.ends_with(".md") {
-                        Some(name)
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
 
 fn validate_partial_id(id: &str) -> Result<String> {
     let trimmed = id.trim();

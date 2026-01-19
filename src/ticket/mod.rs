@@ -9,9 +9,10 @@ pub use builder::TicketBuilder;
 pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
 pub use editor::TicketEditor;
 pub use file::TicketFile;
-pub use locator::{TicketLocator, find_ticket_by_id, find_tickets};
+pub use locator::{TicketLocator, find_ticket_by_id};
 pub use repository::{
-    TicketRepository, build_ticket_map, get_all_tickets, get_all_tickets_from_disk, get_file_mtime,
+    TicketRepository, build_ticket_map, find_tickets, get_all_tickets, get_all_tickets_from_disk,
+    get_file_mtime,
 };
 
 use crate::error::Result;
