@@ -606,6 +606,15 @@ fn test_set_parent_nonexistent() {
 }
 
 #[test]
+fn test_set_parent_self_reference() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["set", &id, "parent", &id]);
+    assert!(stderr.contains("cannot be its own parent"));
+}
+
+#[test]
 fn test_set_invalid_field() {
     let janus = JanusTest::new();
 
