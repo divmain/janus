@@ -3,7 +3,7 @@ use std::fs;
 use serde_json::json;
 
 use super::CommandOutput;
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, iso_date, read_stdin};
 
@@ -19,6 +19,11 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
     } else {
         String::new()
     };
+
+    // Validate that note is not empty or only whitespace
+    if note.trim().is_empty() {
+        return Err(JanusError::EmptyNote);
+    }
 
     let mut content = fs::read_to_string(&ticket.file_path)?;
 

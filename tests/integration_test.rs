@@ -1536,6 +1536,26 @@ fn test_add_note_multiple() {
     assert!(content.contains("Note 2"));
 }
 
+#[test]
+fn test_add_note_empty_string() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["add-note", &id, ""]);
+
+    assert!(stderr.contains("empty"));
+}
+
+#[test]
+fn test_add_note_whitespace_only() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    let stderr = janus.run_failure(&["add-note", &id, "   \n\t  "]);
+
+    assert!(stderr.contains("empty"));
+}
+
 // ============================================================================
 // Edit command tests
 // ============================================================================

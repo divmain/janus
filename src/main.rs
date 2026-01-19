@@ -2,6 +2,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use std::io;
 use std::process::ExitCode;
+use std::str::FromStr;
 
 use janus::commands::{
     CreateOptions, cmd_add_note, cmd_adopt, cmd_board, cmd_cache_clear, cmd_cache_path,
@@ -15,7 +16,9 @@ use janus::commands::{
     cmd_remote_browse, cmd_remote_link, cmd_reopen, cmd_set, cmd_show, cmd_show_import_spec,
     cmd_start, cmd_status, cmd_sync, cmd_view,
 };
-use janus::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES};
+use janus::types::{
+    TicketPriority, TicketStatus, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES,
+};
 
 #[derive(Parser)]
 #[command(name = "janus")]
@@ -50,7 +53,7 @@ enum Commands {
         #[arg(short, long, default_value = "2", value_parser = parse_priority)]
         priority: TicketPriority,
 
-        /// Type: bug, feature, task, epic, chore (default: task)
+        /// Type: bug, feature, task, epic, chore (case-insensitive, default: task)
         #[arg(short = 't', long = "type", default_value = "task", value_parser = parse_type)]
         ticket_type: TicketType,
 
@@ -139,10 +142,10 @@ enum Commands {
 
     /// Set ticket status
     Status {
-        /// Ticket ID (can be partial)
+        /// Ticket ID (partial match supported)
         id: String,
 
-        /// New status (new, next, in_progress, complete, cancelled)
+        /// New status: new, next, in_progress, complete, cancelled (case-insensitive)
         #[arg(value_parser = parse_status)]
         status: String,
 
@@ -198,7 +201,7 @@ enum Commands {
         #[arg(long)]
         all: bool,
 
-        /// Filter by specific status
+        /// Filter by specific status (mutually exclusive with --ready, --blocked, --closed)
         #[arg(long, conflicts_with_all = ["ready", "blocked", "closed"])]
         status: Option<String>,
 
@@ -719,7 +722,7 @@ enum PlanAction {
         #[arg(long)]
         title: Option<String>,
 
-        /// Ticket type for created tasks (default: task)
+        /// Ticket type for created tasks (case-insensitive, default: task)
         #[arg(long = "type", default_value = "task", value_parser = parse_type)]
         ticket_type: TicketType,
 
@@ -750,14 +753,15 @@ fn parse_type(s: &str) -> Result<TicketType, String> {
 }
 
 fn parse_status(s: &str) -> Result<String, String> {
-    if VALID_STATUSES.contains(&s) {
-        Ok(s.to_string())
-    } else {
-        Err(format!(
-            "Invalid status. Must be one of: {}",
-            VALID_STATUSES.join(", ")
-        ))
-    }
+    // Validate by attempting to parse via TicketStatus::from_str (case-insensitive)
+    TicketStatus::from_str(s)
+        .map(|_| s.to_string())
+        .map_err(|_| {
+            format!(
+                "Invalid status. Must be one of: {}",
+                VALID_STATUSES.join(", ")
+            )
+        })
 }
 
 #[tokio::main]

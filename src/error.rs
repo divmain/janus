@@ -240,6 +240,9 @@ pub enum JanusError {
     #[error("dependency '{0}' not found in ticket")]
     DependencyNotFound(String),
 
+    #[error("circular dependency detected: {0}")]
+    CircularDependency(String),
+
     #[error("link not found between tickets")]
     LinkNotFound,
 
@@ -266,6 +269,9 @@ pub enum JanusError {
 
     #[error("operation requires an interactive terminal")]
     InteractiveTerminalRequired,
+
+    #[error("note content cannot be empty")]
+    EmptyNote,
 
     #[error("{0}")]
     Other(String),

@@ -50,6 +50,10 @@ impl fmt::Display for TicketStatus {
 impl FromStr for TicketStatus {
     type Err = JanusError;
 
+    /// Parses a ticket status from a string.
+    ///
+    /// Parsing is case-insensitive: "new", "NEW", and "New" all parse to TicketStatus::New.
+    /// Valid values: "new", "next", "in_progress", "complete", "cancelled"
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "new" => Ok(TicketStatus::New),
@@ -90,6 +94,10 @@ impl fmt::Display for TicketType {
 impl FromStr for TicketType {
     type Err = JanusError;
 
+    /// Parses a ticket type from a string.
+    ///
+    /// Parsing is case-insensitive: "bug", "BUG", and "Bug" all parse to TicketType::Bug.
+    /// Valid values: "bug", "feature", "task", "epic", "chore"
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "bug" => Ok(TicketType::Bug),
@@ -140,6 +148,10 @@ impl fmt::Display for TicketPriority {
 impl FromStr for TicketPriority {
     type Err = JanusError;
 
+    /// Parses a ticket priority from a string.
+    ///
+    /// Accepts numeric strings "0" through "4" (P0 = highest priority, P4 = lowest).
+    /// Case is not applicable for numeric values, but maintained for API consistency.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "0" => Ok(TicketPriority::P0),
@@ -267,5 +279,95 @@ mod tests {
         assert!(!TicketStatus::InProgress.is_not_started());
         assert!(!TicketStatus::Complete.is_not_started());
         assert!(!TicketStatus::Cancelled.is_not_started());
+    }
+
+    #[test]
+    fn test_ticket_status_from_str_case_insensitive() {
+        // Lowercase
+        assert_eq!("new".parse::<TicketStatus>().unwrap(), TicketStatus::New);
+        assert_eq!(
+            "in_progress".parse::<TicketStatus>().unwrap(),
+            TicketStatus::InProgress
+        );
+
+        // Uppercase
+        assert_eq!("NEW".parse::<TicketStatus>().unwrap(), TicketStatus::New);
+        assert_eq!("NEXT".parse::<TicketStatus>().unwrap(), TicketStatus::Next);
+        assert_eq!(
+            "IN_PROGRESS".parse::<TicketStatus>().unwrap(),
+            TicketStatus::InProgress
+        );
+        assert_eq!(
+            "COMPLETE".parse::<TicketStatus>().unwrap(),
+            TicketStatus::Complete
+        );
+        assert_eq!(
+            "CANCELLED".parse::<TicketStatus>().unwrap(),
+            TicketStatus::Cancelled
+        );
+
+        // Mixed case
+        assert_eq!("New".parse::<TicketStatus>().unwrap(), TicketStatus::New);
+        assert_eq!("Next".parse::<TicketStatus>().unwrap(), TicketStatus::Next);
+        assert_eq!(
+            "In_Progress".parse::<TicketStatus>().unwrap(),
+            TicketStatus::InProgress
+        );
+
+        // Invalid
+        assert!("invalid".parse::<TicketStatus>().is_err());
+        assert!("".parse::<TicketStatus>().is_err());
+    }
+
+    #[test]
+    fn test_ticket_type_from_str_case_insensitive() {
+        // Lowercase
+        assert_eq!("bug".parse::<TicketType>().unwrap(), TicketType::Bug);
+        assert_eq!(
+            "feature".parse::<TicketType>().unwrap(),
+            TicketType::Feature
+        );
+        assert_eq!("task".parse::<TicketType>().unwrap(), TicketType::Task);
+        assert_eq!("epic".parse::<TicketType>().unwrap(), TicketType::Epic);
+        assert_eq!("chore".parse::<TicketType>().unwrap(), TicketType::Chore);
+
+        // Uppercase
+        assert_eq!("BUG".parse::<TicketType>().unwrap(), TicketType::Bug);
+        assert_eq!(
+            "FEATURE".parse::<TicketType>().unwrap(),
+            TicketType::Feature
+        );
+        assert_eq!("TASK".parse::<TicketType>().unwrap(), TicketType::Task);
+        assert_eq!("EPIC".parse::<TicketType>().unwrap(), TicketType::Epic);
+        assert_eq!("CHORE".parse::<TicketType>().unwrap(), TicketType::Chore);
+
+        // Mixed case
+        assert_eq!("Bug".parse::<TicketType>().unwrap(), TicketType::Bug);
+        assert_eq!(
+            "Feature".parse::<TicketType>().unwrap(),
+            TicketType::Feature
+        );
+        assert_eq!("Task".parse::<TicketType>().unwrap(), TicketType::Task);
+
+        // Invalid
+        assert!("invalid".parse::<TicketType>().is_err());
+        assert!("".parse::<TicketType>().is_err());
+    }
+
+    #[test]
+    fn test_ticket_priority_from_str() {
+        // Valid numeric strings
+        assert_eq!("0".parse::<TicketPriority>().unwrap(), TicketPriority::P0);
+        assert_eq!("1".parse::<TicketPriority>().unwrap(), TicketPriority::P1);
+        assert_eq!("2".parse::<TicketPriority>().unwrap(), TicketPriority::P2);
+        assert_eq!("3".parse::<TicketPriority>().unwrap(), TicketPriority::P3);
+        assert_eq!("4".parse::<TicketPriority>().unwrap(), TicketPriority::P4);
+
+        // Invalid
+        assert!("5".parse::<TicketPriority>().is_err());
+        assert!("-1".parse::<TicketPriority>().is_err());
+        assert!("p0".parse::<TicketPriority>().is_err());
+        assert!("P0".parse::<TicketPriority>().is_err());
+        assert!("".parse::<TicketPriority>().is_err());
     }
 }

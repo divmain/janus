@@ -231,7 +231,16 @@ fn test_ls_all_flag() {
 fn test_ls_status_conflicts_with_filters() {
     let janus = JanusTest::new();
 
+    // Test --status conflicts with --ready
     let output = janus.run_failure(&["ls", "--status", "new", "--ready"]);
+    assert!(output.contains("cannot be used with") || output.contains("conflicts"));
+
+    // Test --status conflicts with --blocked
+    let output = janus.run_failure(&["ls", "--status", "new", "--blocked"]);
+    assert!(output.contains("cannot be used with") || output.contains("conflicts"));
+
+    // Test --status conflicts with --closed
+    let output = janus.run_failure(&["ls", "--status", "new", "--closed"]);
     assert!(output.contains("cannot be used with") || output.contains("conflicts"));
 }
 

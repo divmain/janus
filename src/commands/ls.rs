@@ -27,7 +27,8 @@ pub async fn cmd_ls(
                 Some(TicketStatus::Complete) | Some(TicketStatus::Cancelled)
             );
 
-            // --status flag behavior (has priority over other filters)
+            // --status flag is mutually exclusive with --ready, --blocked, --closed
+            // (enforced by clap's conflicts_with_all in main.rs)
             if let Some(filter) = status_filter {
                 let ticket_status = t.status.map(|s| s.to_string()).unwrap_or_default();
                 return ticket_status == filter;
