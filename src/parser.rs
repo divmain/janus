@@ -22,6 +22,33 @@ pub struct ParsedDocument {
     pub body: String,
 }
 
+/// Split content into YAML frontmatter and markdown body.
+///
+/// Handles CRLF line endings by normalizing to LF. Returns a tuple of
+/// (frontmatter_content, body_content) or an error if frontmatter is missing.
+pub fn split_frontmatter(content: &str) -> Result<(String, String)> {
+    let normalized = content.replace("\r\n", "\n");
+    let frontmatter_re =
+        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
+
+    let captures = frontmatter_re
+        .captures(&normalized)
+        .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
+
+    let frontmatter = captures
+        .get(1)
+        .map(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+    let body = captures
+        .get(2)
+        .map(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    Ok((frontmatter, body))
+}
+
 impl ParsedDocument {
     /// Extract the title from the body (first H1 heading)
     pub fn extract_title(&self) -> Option<String> {
@@ -73,24 +100,7 @@ impl ParsedDocument {
 /// This function returns a generic structure that can be converted to
 /// domain-specific types via `TryFrom` implementations.
 pub fn parse_document(content: &str) -> Result<ParsedDocument> {
-    let normalized = content.replace("\r\n", "\n");
-    let frontmatter_re =
-        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
-
-    let captures = frontmatter_re
-        .captures(&normalized)
-        .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
-
-    let frontmatter_raw = captures
-        .get(1)
-        .map(|m| m.as_str())
-        .unwrap_or("")
-        .to_string();
-    let body = captures
-        .get(2)
-        .map(|m| m.as_str())
-        .unwrap_or("")
-        .to_string();
+    let (frontmatter_raw, body) = split_frontmatter(content)?;
 
     let frontmatter: HashMap<String, yaml::Value> = yaml::from_str(&frontmatter_raw)
         .map_err(|e| JanusError::Other(format!("YAML parsing error: {}", e)))?;

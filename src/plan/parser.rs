@@ -12,6 +12,7 @@ use regex::Regex;
 use serde::Deserialize;
 
 use crate::error::{JanusError, Result};
+use crate::parser::split_frontmatter;
 use crate::plan::types::{
     FreeFormSection, ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask, Phase,
     PlanMetadata, PlanSection,
@@ -82,32 +83,12 @@ pub const PHASE_PATTERN: &str = r"(?i)^(phase|stage|part|step)\s+(\d+[a-z]?)\s*[
 /// Any content preserved verbatim...
 /// ```
 pub fn parse_plan_content(content: &str) -> Result<PlanMetadata> {
-    let normalized = content.replace("\r\n", "\n");
-    // Split frontmatter from body
-    let (yaml, body) = split_frontmatter(&normalized)?;
+    let (yaml, body) = split_frontmatter(content)?;
 
-    // Parse YAML frontmatter
-    let mut metadata = parse_yaml_frontmatter(yaml)?;
-
-    // Parse the markdown body
-    parse_body(body, &mut metadata)?;
+    let mut metadata = parse_yaml_frontmatter(&yaml)?;
+    parse_body(&body, &mut metadata)?;
 
     Ok(metadata)
-}
-
-/// Split content into YAML frontmatter and markdown body
-fn split_frontmatter(content: &str) -> Result<(&str, &str)> {
-    let frontmatter_re =
-        Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
-
-    let captures = frontmatter_re
-        .captures(content)
-        .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
-
-    let yaml = captures.get(1).map(|m| m.as_str()).unwrap_or("");
-    let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
-
-    Ok((yaml, body))
 }
 
 /// Parse YAML frontmatter into PlanMetadata fields
