@@ -189,7 +189,7 @@ impl Plan {
     ///
     /// Used internally when hooks should be handled at a higher level
     /// (e.g., plan creation where PlanCreated should be fired instead of PlanUpdated).
-    pub fn write_without_hooks(&self, content: &str) -> Result<()> {
+    pub(crate) fn write_without_hooks(&self, content: &str) -> Result<()> {
         if let Some(parent) = self.file_path.parent() {
             fs::create_dir_all(parent)?;
         }
