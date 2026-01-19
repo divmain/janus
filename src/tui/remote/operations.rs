@@ -3,6 +3,7 @@
 use crate::error::{JanusError, Result};
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef};
+use crate::ticket::TicketBuilder;
 use crate::types::TicketMetadata;
 use std::collections::HashSet;
 
@@ -110,47 +111,27 @@ fn build_remote_ref_from_issue(issue: &RemoteIssue) -> Result<RemoteRef> {
 
 /// Create a local ticket from a remote issue
 fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef) -> Result<String> {
-    use std::fs;
-    use std::path::PathBuf;
-
-    crate::utils::ensure_dir()?;
-
-    let id = crate::utils::generate_unique_id_with_prefix("task");
-    let now = crate::utils::iso_date();
-
     let status = remote_issue.status.to_ticket_status();
     let priority = remote_issue.priority.unwrap_or(2);
-
-    let mut frontmatter_lines = vec![
-        "---".to_string(),
-        format!("id: {}", id),
-        format!("status: {}", status),
-        "deps: []".to_string(),
-        "links: []".to_string(),
-        format!("created: {}", now),
-        "type: task".to_string(),
-        format!("priority: {}", priority),
-    ];
-
-    frontmatter_lines.push(format!("remote: {}", remote_ref));
-    frontmatter_lines.push("---".to_string());
-
-    let frontmatter = frontmatter_lines.join("\n");
 
     let sanitized_title = sanitize_for_yaml(&remote_issue.title);
     let sanitized_body = sanitize_for_yaml(&remote_issue.body);
 
     let body = if sanitized_body.is_empty() {
-        format!("# {}\n", sanitized_title)
+        None
     } else {
-        format!("# {}\n\n{}\n", sanitized_title, sanitized_body)
+        Some(sanitized_body)
     };
 
-    let content = format!("{}\n{}", frontmatter, body);
-
-    let file_path = PathBuf::from(crate::types::TICKETS_ITEMS_DIR).join(format!("{}.md", id));
-    fs::create_dir_all(crate::types::TICKETS_ITEMS_DIR)?;
-    fs::write(file_path, content)?;
+    let (id, _path) = TicketBuilder::new(&sanitized_title)
+        .description(body)
+        .status(status.to_string())
+        .ticket_type("task")
+        .priority(priority.to_string())
+        .remote(Some(remote_ref.to_string()))
+        .include_uuid(false)
+        .run_hooks(false)
+        .build()?;
 
     Ok(id)
 }

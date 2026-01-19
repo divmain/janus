@@ -10,14 +10,10 @@ mod validator;
 pub use edit::TicketEditService;
 pub use validator::{TicketFormValidator, ValidationResult};
 
-use std::fs;
-use std::path::PathBuf;
-
 use crate::error::Result;
-use crate::ticket::Ticket;
+use crate::ticket::{Ticket, TicketBuilder};
 use crate::tui::edit::extract_body_for_edit;
-use crate::types::{TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus, TicketType};
-use crate::utils::{generate_unique_id_with_prefix, iso_date};
+use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
 
 /// Service for ticket-related business operations
 ///
@@ -82,34 +78,20 @@ impl TicketService {
         priority: TicketPriority,
         body: &str,
     ) -> Result<String> {
-        let id = generate_unique_id_with_prefix("task");
-        let now = iso_date();
+        let description = if body.is_empty() {
+            None
+        } else {
+            Some(body.to_string())
+        };
 
-        let frontmatter_lines = vec![
-            "---".to_string(),
-            format!("id: {}", id),
-            format!("status: {}", status),
-            "deps: []".to_string(),
-            "links: []".to_string(),
-            format!("created: {}", now),
-            format!("type: {}", ticket_type),
-            format!("priority: {}", priority),
-            "---".to_string(),
-        ];
-
-        let frontmatter = frontmatter_lines.join("\n");
-
-        let mut sections = vec![format!("# {}", title)];
-        if !body.is_empty() {
-            sections.push(format!("\n{}", body));
-        }
-
-        let body_content = sections.join("\n");
-        let content = format!("{}\n{}\n", frontmatter, body_content);
-
-        fs::create_dir_all(TICKETS_ITEMS_DIR)?;
-        let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
-        fs::write(&file_path, content)?;
+        let (id, _path) = TicketBuilder::new(title)
+            .description(description)
+            .status(status.to_string())
+            .ticket_type(ticket_type.to_string())
+            .priority(priority.as_num().to_string())
+            .include_uuid(false)
+            .run_hooks(false)
+            .build()?;
 
         Ok(id)
     }
