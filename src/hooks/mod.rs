@@ -121,6 +121,10 @@ fn execute_hook(
     config: &Config,
     is_pre_hook: bool,
 ) -> Result<()> {
+    if script_name.contains('/') || script_name.contains('\\') || script_name.contains('\0') {
+        return Err(JanusError::HookSecurity("Invalid script name".to_string()));
+    }
+
     let janus_root = PathBuf::from(TICKETS_DIR);
     let hooks_dir = janus_root.join(HOOKS_DIR).canonicalize()?;
     let script_path = hooks_dir.join(script_name);
@@ -766,5 +770,78 @@ hooks:
 
         let result = run_pre_hooks(HookEvent::TicketCreated, &context);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn test_hook_script_with_path_separator() {
+        let temp_dir = setup_test_env();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create config with script containing path separator
+        let config_content = r#"
+hooks:
+  enabled: true
+  scripts:
+    pre_write: ../../../etc/passwd
+"#;
+        let config_path = temp_dir.path().join(".janus/config.yaml");
+        fs::write(&config_path, config_content).unwrap();
+
+        let context = HookContext::new()
+            .with_event(HookEvent::PreWrite)
+            .with_item_type(ItemType::Ticket);
+
+        let result = run_pre_hooks(HookEvent::PreWrite, &context);
+
+        // Should return a security error
+        assert!(matches!(result, Err(JanusError::HookSecurity(_))));
+    }
+
+    #[test]
+    #[serial]
+    fn test_hook_script_with_windows_path_separator() {
+        let temp_dir = setup_test_env();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create config with script containing Windows path separator
+        let config_content = "hooks:\n  enabled: true\n  scripts:\n    pre_write: \"..\\\\..\\\\windows\\\\system32\"\n";
+        let config_path = temp_dir.path().join(".janus/config.yaml");
+        fs::write(&config_path, config_content).unwrap();
+
+        let context = HookContext::new()
+            .with_event(HookEvent::PreWrite)
+            .with_item_type(ItemType::Ticket);
+
+        let result = run_pre_hooks(HookEvent::PreWrite, &context);
+
+        // Should return a security error
+        assert!(matches!(result, Err(JanusError::HookSecurity(_))));
+    }
+
+    #[test]
+    #[serial]
+    fn test_hook_script_with_null_byte() {
+        let temp_dir = setup_test_env();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create config with script containing null byte
+        let config_content =
+            "hooks:\n  enabled: true\n  scripts:\n    pre_write: \"foo\\x00bar\"\n";
+        let config_path = temp_dir.path().join(".janus/config.yaml");
+        fs::write(&config_path, config_content).unwrap();
+
+        let context = HookContext::new()
+            .with_event(HookEvent::PreWrite)
+            .with_item_type(ItemType::Ticket);
+
+        let result = run_pre_hooks(HookEvent::PreWrite, &context);
+
+        // Should return a security error (or config parse error)
+        match result {
+            Err(JanusError::HookSecurity(_)) => {}
+            Err(JanusError::YamlParse(_)) => {}
+            other => panic!("Expected HookSecurity or YamlParse error, got: {:?}", other),
+        }
     }
 }
