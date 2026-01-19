@@ -23,14 +23,18 @@ pub enum TicketStatus {
 impl TicketStatus {
     /// Returns true if this status represents a terminal state (complete or cancelled).
     /// Terminal states indicate no further work is expected on the ticket.
+    ///
+    /// This method delegates to `crate::status::is_terminal()` for centralized status logic.
     pub fn is_terminal(self) -> bool {
-        matches!(self, TicketStatus::Complete | TicketStatus::Cancelled)
+        crate::status::is_terminal(self)
     }
 
     /// Returns true if this status indicates work has not yet started (new or next).
     /// These are pre-work states where the ticket is queued but not actively being worked on.
+    ///
+    /// This method delegates to `crate::status::is_not_started()` for centralized status logic.
     pub fn is_not_started(self) -> bool {
-        matches!(self, TicketStatus::New | TicketStatus::Next)
+        crate::status::is_not_started(self)
     }
 }
 

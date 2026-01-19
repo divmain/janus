@@ -1,5 +1,4 @@
 pub mod parser;
-pub mod status;
 pub mod types;
 
 use std::collections::HashMap;
@@ -14,7 +13,7 @@ use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::types::{PLANS_DIR, TicketMetadata};
 
 // Re-export status computation functions
-pub use crate::plan::status::{
+pub use crate::status::plan::{
     compute_aggregate_status, compute_all_phase_statuses, compute_phase_status,
     compute_plan_status, resolve_ticket_or_warn,
 };

@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
+use crate::status::{is_not_started, is_terminal};
 use crate::types::{TicketMetadata, TicketStatus};
 
 // ============================================================================
@@ -208,15 +209,15 @@ pub fn compute_phase_status(
 /// | All not started (new/next)             | `new`         |
 /// | Any other combination                  | `in_progress` |
 ///
-/// Note: "Terminal" means `complete` or `cancelled` (see `TicketStatus::is_terminal`).
-/// "Not started" means `new` or `next` (see `TicketStatus::is_not_started`).
+/// Note: "Terminal" means `complete` or `cancelled` (see `is_terminal()`).
+/// "Not started" means `new` or `next` (see `is_not_started()`).
 pub fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
     if statuses.is_empty() {
         return TicketStatus::New;
     }
 
-    let all_terminal = statuses.iter().all(|s| s.is_terminal());
-    let all_not_started = statuses.iter().all(|s| s.is_not_started());
+    let all_terminal = statuses.iter().all(|&s| is_terminal(s));
+    let all_not_started = statuses.iter().all(|&s| is_not_started(s));
     let has_complete = statuses.contains(&TicketStatus::Complete);
     let has_cancelled = statuses.contains(&TicketStatus::Cancelled);
 
