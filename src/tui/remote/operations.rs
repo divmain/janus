@@ -346,13 +346,25 @@ pub async fn push_tickets_to_remote(
     ticket_ids: &[String],
     platform: Platform,
 ) -> (Vec<PushResult>, Vec<PushError>) {
+    use futures::stream::{self, StreamExt};
+
+    // Clone ticket_ids to owned Strings to avoid lifetime issues
+    let owned_ids: Vec<String> = ticket_ids.to_vec();
+
+    let results: Vec<_> = stream::iter(owned_ids)
+        .map(|ticket_id| async move { push_ticket_to_remote(&ticket_id, platform).await })
+        .buffer_unordered(5) // 5 concurrent pushes
+        .collect()
+        .await;
+
+    // Separate successes and errors
     let mut successes = Vec::new();
     let mut errors = Vec::new();
 
-    for ticket_id in ticket_ids {
-        match push_ticket_to_remote(ticket_id, platform).await {
-            Ok(result) => successes.push(result),
-            Err(e) => errors.push(e),
+    for result in results {
+        match result {
+            Ok(push_result) => successes.push(push_result),
+            Err(push_error) => errors.push(push_error),
         }
     }
 

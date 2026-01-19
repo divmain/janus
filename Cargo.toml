@@ -33,6 +33,7 @@ uuid = { version = "1.11", features = ["v4"] }
 
 # Async runtime for HTTP clients
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures = "0.3"
 
 # GitHub API client
 octocrab = "0.48"

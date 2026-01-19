@@ -1989,6 +1989,7 @@ dependencies = [
  "cynic",
  "cynic-codegen",
  "directories",
+ "futures",
  "fuzzy-matcher",
  "iocraft",
  "janus-schema",
