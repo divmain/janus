@@ -213,6 +213,47 @@ pub enum JanusError {
     #[error("hook security violation: {0}")]
     HookSecurity(String),
 
+    // Validation errors
+    #[error("ticket ID cannot be empty")]
+    EmptyTicketId,
+
+    #[error("ticket ID must contain only alphanumeric characters, hyphens, and underscores")]
+    InvalidTicketIdCharacters,
+
+    #[error("ticket cannot be its own parent")]
+    SelfParentTicket,
+
+    // Business logic errors
+    #[error("dependency '{0}' not found in ticket")]
+    DependencyNotFound(String),
+
+    #[error("link not found between tickets")]
+    LinkNotFound,
+
+    #[error("at least {expected} ticket IDs are required, got {provided}")]
+    InsufficientTicketIds { expected: usize, provided: usize },
+
+    #[error("unknown array field: {0}")]
+    UnknownArrayField(String),
+
+    #[error("invalid ticket type: {0}")]
+    InvalidTicketType(String),
+
+    #[error("invalid priority: {0}")]
+    InvalidPriority(String),
+
+    #[error("plan has no tickets section")]
+    PlanNoTicketsSection,
+
+    #[error("plan has no tickets section or phases")]
+    PlanNoTicketsOrPhases,
+
+    #[error("reordered list must contain the same tickets")]
+    ReorderTicketMismatch,
+
+    #[error("operation requires an interactive terminal")]
+    InteractiveTerminalRequired,
+
     #[error("{0}")]
     Other(String),
 

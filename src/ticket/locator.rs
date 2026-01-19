@@ -27,16 +27,14 @@ fn validate_partial_id(id: &str) -> Result<String> {
     let trimmed = id.trim();
 
     if trimmed.is_empty() {
-        return Err(JanusError::Other("ticket ID cannot be empty".into()));
+        return Err(JanusError::EmptyTicketId);
     }
 
     if !trimmed
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(JanusError::Other(
-            "ticket ID must contain only alphanumeric characters, hyphens, and underscores".into(),
-        ));
+        return Err(JanusError::InvalidTicketIdCharacters);
     }
 
     Ok(trimmed.to_string())
@@ -113,10 +111,8 @@ mod tests {
         let result = validate_partial_id("");
         assert!(result.is_err());
         match result.unwrap_err() {
-            JanusError::Other(msg) => {
-                assert!(msg.contains("cannot be empty"));
-            }
-            _ => panic!("Expected Other error for empty ID"),
+            JanusError::EmptyTicketId => {}
+            _ => panic!("Expected EmptyTicketId error for empty ID"),
         }
     }
 
@@ -125,10 +121,8 @@ mod tests {
         let result = validate_partial_id("   ");
         assert!(result.is_err());
         match result.unwrap_err() {
-            JanusError::Other(msg) => {
-                assert!(msg.contains("cannot be empty"));
-            }
-            _ => panic!("Expected Other error for whitespace-only ID"),
+            JanusError::EmptyTicketId => {}
+            _ => panic!("Expected EmptyTicketId error for whitespace-only ID"),
         }
     }
 
@@ -137,10 +131,8 @@ mod tests {
         let result = validate_partial_id("j@b1");
         assert!(result.is_err());
         match result.unwrap_err() {
-            JanusError::Other(msg) => {
-                assert!(msg.contains("must contain only alphanumeric"));
-            }
-            _ => panic!("Expected Other error for invalid characters"),
+            JanusError::InvalidTicketIdCharacters => {}
+            _ => panic!("Expected InvalidTicketIdCharacters error for invalid characters"),
         }
     }
 

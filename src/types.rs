@@ -97,7 +97,7 @@ impl FromStr for TicketType {
             "task" => Ok(TicketType::Task),
             "epic" => Ok(TicketType::Epic),
             "chore" => Ok(TicketType::Chore),
-            _ => Err(JanusError::Other(format!("invalid ticket type: {}", s))),
+            _ => Err(JanusError::InvalidTicketType(s.to_string())),
         }
     }
 }
@@ -147,7 +147,7 @@ impl FromStr for TicketPriority {
             "2" => Ok(TicketPriority::P2),
             "3" => Ok(TicketPriority::P3),
             "4" => Ok(TicketPriority::P4),
-            _ => Err(JanusError::Other(format!("invalid priority: {}", s))),
+            _ => Err(JanusError::InvalidPriority(s.to_string())),
         }
     }
 }

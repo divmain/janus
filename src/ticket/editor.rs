@@ -110,7 +110,7 @@ impl TicketEditor {
         match field {
             "deps" => Ok(&metadata.deps),
             "links" => Ok(&metadata.links),
-            _ => Err(JanusError::Other(format!("unknown array field: {}", field))),
+            _ => Err(JanusError::UnknownArrayField(field.to_string())),
         }
     }
 

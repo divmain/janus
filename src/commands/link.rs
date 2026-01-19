@@ -7,9 +7,10 @@ use crate::ticket::Ticket;
 /// Add symmetric links between tickets
 pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
     if ids.len() < 2 {
-        return Err(JanusError::Other(
-            "At least two ticket IDs are required".to_string(),
-        ));
+        return Err(JanusError::InsufficientTicketIds {
+            expected: 2,
+            provided: ids.len(),
+        });
     }
 
     // Find all tickets first to validate they exist
@@ -71,7 +72,7 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
     }
 
     if removed_count == 0 {
-        return Err(JanusError::Other("Link not found".to_string()));
+        return Err(JanusError::LinkNotFound);
     }
 
     let metadata1 = ticket1.read()?;

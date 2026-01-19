@@ -59,9 +59,7 @@ pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> R
                 // Validate parent ticket exists
                 let parent_ticket = Ticket::find(value).await?;
                 if parent_ticket.id == ticket.id {
-                    return Err(JanusError::Other(
-                        "ticket cannot be its own parent".to_string(),
-                    ));
+                    return Err(JanusError::SelfParentTicket);
                 }
                 new_value = parent_ticket.id.clone();
                 ticket.update_field("parent", &parent_ticket.id)?;

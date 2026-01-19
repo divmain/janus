@@ -40,7 +40,7 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result
 
     let removed = ticket.remove_from_array_field("deps", dep_id)?;
     if !removed {
-        return Err(JanusError::Other("Dependency not found".to_string()));
+        return Err(JanusError::DependencyNotFound(dep_id.to_string()));
     }
 
     let metadata = ticket.read()?;

@@ -166,9 +166,7 @@ pub async fn cmd_plan_reorder(
         let original_set: HashSet<_> = phase_obj.tickets.iter().collect();
         let new_set: HashSet<_> = new_ticket_order.iter().collect();
         if original_set != new_set {
-            return Err(JanusError::Other(
-                "Reordered list must contain the same tickets".to_string(),
-            ));
+            return Err(JanusError::ReorderTicketMismatch);
         }
 
         phase_obj.tickets = new_ticket_order;
@@ -176,7 +174,7 @@ pub async fn cmd_plan_reorder(
         // Reorder tickets in simple plan
         let tickets = metadata
             .tickets_section_mut()
-            .ok_or_else(|| JanusError::Other("Plan has no tickets section".to_string()))?;
+            .ok_or_else(|| JanusError::PlanNoTicketsSection)?;
 
         if tickets.is_empty() {
             println!("No tickets to reorder");
@@ -213,9 +211,7 @@ pub async fn cmd_plan_reorder(
         let original_set: HashSet<_> = tickets.iter().collect();
         let new_set: HashSet<_> = new_ticket_order.iter().collect();
         if original_set != new_set {
-            return Err(JanusError::Other(
-                "Reordered list must contain the same tickets".to_string(),
-            ));
+            return Err(JanusError::ReorderTicketMismatch);
         }
 
         *tickets = new_ticket_order;

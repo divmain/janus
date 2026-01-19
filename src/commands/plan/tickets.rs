@@ -77,7 +77,7 @@ pub async fn cmd_plan_add_ticket(
 
         let tickets = metadata
             .tickets_section_mut()
-            .ok_or_else(|| JanusError::Other("Plan has no tickets section".to_string()))?;
+            .ok_or_else(|| JanusError::PlanNoTicketsSection)?;
 
         // Add ticket to list
         if let Some(after_id) = after {
@@ -101,9 +101,7 @@ pub async fn cmd_plan_add_ticket(
             added_position = Some(tickets.len().saturating_sub(1));
         }
     } else {
-        return Err(JanusError::Other(
-            "Plan has no tickets section or phases".to_string(),
-        ));
+        return Err(JanusError::PlanNoTicketsOrPhases);
     }
 
     // Write updated plan

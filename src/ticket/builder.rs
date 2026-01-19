@@ -131,9 +131,9 @@ impl TicketBuilder {
 
         TicketStatus::from_str(&status).map_err(|_| JanusError::InvalidStatus(status.clone()))?;
         TicketType::from_str(&ticket_type)
-            .map_err(|_| JanusError::Other(format!("invalid ticket type: {}", ticket_type)))?;
+            .map_err(|_| JanusError::InvalidTicketType(ticket_type.clone()))?;
         TicketPriority::from_str(&priority)
-            .map_err(|_| JanusError::Other(format!("invalid priority: {}", priority)))?;
+            .map_err(|_| JanusError::InvalidPriority(priority.clone()))?;
 
         let mut frontmatter_lines = vec![
             "---".to_string(),

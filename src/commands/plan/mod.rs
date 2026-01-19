@@ -108,9 +108,7 @@ pub(crate) fn print_ticket_line(
 /// Open content in an editor and return the edited content
 pub(crate) fn edit_in_editor(content: &str) -> Result<String> {
     if !is_stdin_tty() {
-        return Err(JanusError::Other(
-            "Reorder requires an interactive terminal".to_string(),
-        ));
+        return Err(JanusError::InteractiveTerminalRequired);
     }
 
     // Create a temp file
