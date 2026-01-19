@@ -3,6 +3,25 @@ use std::path::PathBuf;
 
 use crate::types::TicketStatus;
 
+pub struct Progress {
+    pub completed: usize,
+    pub total: usize,
+}
+
+impl Progress {
+    pub fn percent(&self) -> f64 {
+        if self.total == 0 {
+            0.0
+        } else {
+            (self.completed as f64 / self.total as f64) * 100.0
+        }
+    }
+
+    pub fn format(&self) -> String {
+        format!("{}/{} ({:.0}%)", self.completed, self.total, self.percent())
+    }
+}
+
 /// Metadata parsed from a plan file's YAML frontmatter and markdown body
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlanMetadata {
@@ -283,21 +302,20 @@ pub struct PlanStatus {
 impl PlanStatus {
     /// Calculate progress as a percentage (0-100)
     pub fn progress_percent(&self) -> f64 {
-        if self.total_count == 0 {
-            0.0
-        } else {
-            (self.completed_count as f64 / self.total_count as f64) * 100.0
-        }
+        let progress = Progress {
+            completed: self.completed_count,
+            total: self.total_count,
+        };
+        progress.percent()
     }
 
     /// Format progress as a string (e.g., "5/12 (41%)")
     pub fn progress_string(&self) -> String {
-        format!(
-            "{}/{} ({:.0}%)",
-            self.completed_count,
-            self.total_count,
-            self.progress_percent()
-        )
+        let progress = Progress {
+            completed: self.completed_count,
+            total: self.total_count,
+        };
+        progress.format()
     }
 }
 
@@ -333,14 +351,17 @@ pub struct PhaseStatus {
 impl PhaseStatus {
     /// Calculate progress as a percentage (0-100)
     pub fn progress_percent(&self) -> f64 {
-        if self.total_count == 0 {
-            0.0
-        } else {
-            (self.completed_count as f64 / self.total_count as f64) * 100.0
-        }
+        let progress = Progress {
+            completed: self.completed_count,
+            total: self.total_count,
+        };
+        progress.percent()
     }
 
     /// Format progress as a string (e.g., "2/4")
+    ///
+    /// Note: Unlike PlanStatus, this does not include the percentage in the output.
+    /// If percentage is needed, use `progress_percent()`.
     pub fn progress_string(&self) -> String {
         format!("{}/{}", self.completed_count, self.total_count)
     }
@@ -698,15 +719,24 @@ mod tests {
             total_count: 12,
         };
 
-        assert!((status.progress_percent() - 41.67).abs() < 0.01);
-        assert_eq!(status.progress_string(), "5/12 (42%)");
+        let progress = Progress {
+            completed: 5,
+            total: 12,
+        };
+
+        assert!((status.progress_percent() - progress.percent()).abs() < 0.01);
+        assert_eq!(status.progress_string(), progress.format());
     }
 
     #[test]
     fn test_plan_status_empty() {
         let status = PlanStatus::default();
-        assert_eq!(status.progress_percent(), 0.0);
-        assert_eq!(status.progress_string(), "0/0 (0%)");
+        let progress = Progress {
+            completed: 0,
+            total: 0,
+        };
+        assert_eq!(status.progress_percent(), progress.percent());
+        assert_eq!(status.progress_string(), progress.format());
     }
 
     #[test]
@@ -719,7 +749,12 @@ mod tests {
             total_count: 2,
         };
 
-        assert_eq!(status.progress_percent(), 100.0);
+        let progress = Progress {
+            completed: 2,
+            total: 2,
+        };
+
+        assert_eq!(status.progress_percent(), progress.percent());
         assert_eq!(status.progress_string(), "2/2");
     }
 
@@ -886,5 +921,27 @@ mod tests {
     fn test_import_validation_error_display() {
         let err = ImportValidationError::at_line(5, "Test error");
         assert_eq!(format!("{}", err), "Line 5: Test error");
+    }
+
+    #[test]
+    fn test_progress() {
+        let progress = Progress {
+            completed: 5,
+            total: 12,
+        };
+
+        assert_eq!(progress.percent(), 5.0 / 12.0 * 100.0);
+        assert_eq!(progress.format(), "5/12 (42%)");
+    }
+
+    #[test]
+    fn test_progress_empty() {
+        let progress = Progress {
+            completed: 0,
+            total: 0,
+        };
+
+        assert_eq!(progress.percent(), 0.0);
+        assert_eq!(progress.format(), "0/0 (0%)");
     }
 }
