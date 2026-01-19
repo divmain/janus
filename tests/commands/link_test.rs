@@ -114,22 +114,3 @@ fn test_link_remove_not_found() {
     let stderr = janus.run_failure(&["link", "remove", &id1, &id2]);
     assert!(stderr.contains("not found"));
 }
-
-#[test]
-#[serial]
-fn test_unlink_legacy() {
-    let janus = JanusTest::new();
-
-    let id1 = janus
-        .run_success(&["create", "Ticket 1"])
-        .trim()
-        .to_string();
-    let id2 = janus
-        .run_success(&["create", "Ticket 2"])
-        .trim()
-        .to_string();
-
-    janus.run_success(&["link", "add", &id1, &id2]);
-    let output = janus.run_success(&["unlink", &id1, &id2]);
-    assert!(output.contains("Removed link"));
-}

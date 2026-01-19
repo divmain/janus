@@ -126,22 +126,3 @@ fn test_dep_tree_full() {
     assert!(output.contains(&id2));
     assert!(output.contains(&id3));
 }
-
-#[test]
-#[serial]
-fn test_undep_legacy() {
-    let janus = JanusTest::new();
-
-    let id1 = janus
-        .run_success(&["create", "Ticket 1"])
-        .trim()
-        .to_string();
-    let id2 = janus
-        .run_success(&["create", "Ticket 2"])
-        .trim()
-        .to_string();
-
-    janus.run_success(&["dep", "add", &id1, &id2]);
-    let output = janus.run_success(&["undep", &id1, &id2]);
-    assert!(output.contains("Removed dependency"));
-}

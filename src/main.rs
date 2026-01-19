@@ -173,28 +173,10 @@ enum Commands {
         action: DepAction,
     },
 
-    /// Legacy: add dependency (hidden, use `dep add` instead)
-    #[command(hide = true)]
-    Undep {
-        /// Ticket ID
-        id: String,
-        /// Dependency ID to remove
-        dep_id: String,
-    },
-
     /// Manage links
     Link {
         #[command(subcommand)]
         action: LinkAction,
-    },
-
-    /// Legacy: remove link (hidden, use `link remove` instead)
-    #[command(hide = true)]
-    Unlink {
-        /// First ticket ID
-        id1: String,
-        /// Second ticket ID
-        id2: String,
     },
 
     /// List tickets with optional filters
@@ -826,13 +808,11 @@ async fn main() -> ExitCode {
             DepAction::Remove { id, dep_id, json } => cmd_dep_remove(&id, &dep_id, json).await,
             DepAction::Tree { id, full, json } => cmd_dep_tree(&id, full, json).await,
         },
-        Commands::Undep { id, dep_id } => cmd_dep_remove(&id, &dep_id, false).await,
 
         Commands::Link { action } => match action {
             LinkAction::Add { ids, json } => cmd_link_add(&ids, json).await,
             LinkAction::Remove { id1, id2, json } => cmd_link_remove(&id1, &id2, json).await,
         },
-        Commands::Unlink { id1, id2 } => cmd_link_remove(&id1, &id2, false).await,
 
         Commands::Ls {
             ready,
