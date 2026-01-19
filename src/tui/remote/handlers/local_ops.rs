@@ -118,18 +118,55 @@ fn handle_unlink(ctx: &mut HandlerContext<'_>) {
         .collect();
     if !selected_ids.is_empty() {
         let mut unlinked = 0;
+        let mut errors: Vec<(String, String)> = Vec::new();
+
         for id in &selected_ids {
-            if operations::unlink_ticket(id).is_ok() {
-                unlinked += 1;
+            match operations::unlink_ticket(id) {
+                Ok(()) => unlinked += 1,
+                Err(e) => errors.push((id.clone(), e.to_string())),
             }
         }
+
+        // Always refresh and clear selection if any operations succeeded
         if unlinked > 0 {
+            ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
+            ctx.view_data.local_nav.selected_ids.set(HashSet::new());
+        }
+
+        // Report results
+        if errors.is_empty() {
             ctx.modals.toast.set(Some(Toast::info(format!(
                 "Unlinked {} ticket(s)",
                 unlinked
             ))));
-            ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
-            ctx.view_data.local_nav.selected_ids.set(HashSet::new());
+        } else if unlinked > 0 {
+            // Partial success
+            ctx.modals.toast.set(Some(Toast::warning(format!(
+                "Unlinked {}, failed {} (see logs)",
+                unlinked,
+                errors.len()
+            ))));
+            // Log detailed errors
+            for (id, err) in errors {
+                eprintln!("Failed to unlink {}: {}", id, err);
+            }
+        } else {
+            // Total failure
+            if errors.len() == 1 {
+                ctx.modals.toast.set(Some(Toast::error(format!(
+                    "Failed to unlink: {}",
+                    errors[0].1
+                ))));
+            } else {
+                ctx.modals.toast.set(Some(Toast::error(format!(
+                    "Failed to unlink {} ticket(s) (see logs)",
+                    errors.len()
+                ))));
+                // Log detailed errors
+                for (id, err) in errors {
+                    eprintln!("Failed to unlink {}: {}", id, err);
+                }
+            }
         }
     } else {
         // Unlink current item
