@@ -3,7 +3,7 @@
 //! This module breaks up the complex event handling logic into separate,
 //! focused handlers for each mode or operation type.
 
-mod context;
+pub mod context;
 mod filter_mode;
 mod global;
 mod link;
@@ -39,7 +39,7 @@ pub fn handle_key_event(ctx: &mut HandlerContext<'_>, code: KeyCode, modifiers: 
     let shift_held = modifiers.contains(KeyModifiers::SHIFT);
 
     // 1. Search mode has highest priority - captures all input
-    if ctx.search_focused.get() && search_mode::handle(ctx, code).is_handled() {
+    if ctx.search.focused.get() && search_mode::handle(ctx, code).is_handled() {
         return;
     }
 
@@ -49,17 +49,17 @@ pub fn handle_key_event(ctx: &mut HandlerContext<'_>, code: KeyCode, modifiers: 
     }
 
     // 3. Sync preview mode - when sync preview is open
-    if ctx.sync_preview.read().is_some() && sync::handle(ctx, code).is_handled() {
+    if ctx.modals.sync_preview.read().is_some() && sync::handle(ctx, code).is_handled() {
         return;
     }
 
     // 4. Filter modal mode - when filter modal is open
-    if ctx.filter_state.read().is_some() && filter_mode::handle(ctx, code).is_handled() {
+    if ctx.filters.filter_modal.read().is_some() && filter_mode::handle(ctx, code).is_handled() {
         return;
     }
 
     // 5. Link mode - when link mode is active
-    if ctx.link_mode.read().is_some() && link::handle_link_mode(ctx, code).is_handled() {
+    if ctx.modals.link_mode.read().is_some() && link::handle_link_mode(ctx, code).is_handled() {
         return;
     }
 
@@ -74,7 +74,7 @@ pub fn handle_key_event(ctx: &mut HandlerContext<'_>, code: KeyCode, modifiers: 
     }
 
     // 8. View-specific operations
-    if ctx.active_view.get() == ViewMode::Local {
+    if ctx.view_state.active_view.get() == ViewMode::Local {
         if local_ops::handle(ctx, code).is_handled() {
             return;
         }

@@ -425,38 +425,61 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 modifiers,
                 ..
             }) if kind != KeyEventKind::Release => {
-                // Build the handler context with all mutable state references
+                // Build the handler context with grouped state references
+                use handlers::context::{
+                    AsyncHandlers, FilteringState, ModalState, NavigationState, RemoteState,
+                    SearchState, ViewData, ViewState,
+                };
+
                 let mut ctx = HandlerContext {
-                    active_view: &mut active_view,
-                    show_detail: &mut show_detail,
-                    should_exit: &mut should_exit,
-                    local_tickets: &mut local_tickets,
-                    remote_issues: &mut remote_issues,
-                    local_selected_index: &mut local_selected_index,
-                    remote_selected_index: &mut remote_selected_index,
-                    local_scroll_offset: &mut local_scroll_offset,
-                    remote_scroll_offset: &mut remote_scroll_offset,
-                    local_selected_ids: &mut local_selected_ids,
-                    remote_selected_ids: &mut remote_selected_ids,
-                    local_count,
-                    remote_count,
-                    list_height,
-                    remote_loading: &mut remote_loading,
-                    toast: &mut toast,
-                    link_mode: &mut link_mode,
-                    sync_preview: &mut sync_preview,
-                    show_help_modal: &mut show_help_modal,
-                    show_error_modal: &mut show_error_modal,
-                    last_error: &last_error,
-                    search_query: &mut search_query,
-                    search_focused: &mut search_focused,
-                    provider: &mut provider,
-                    filter_state: &mut filter_state,
-                    active_filters: &mut active_filters,
-                    fetch_handler: &fetch_handler_for_events,
-                    push_handler: &push_handler_for_events,
-                    sync_fetch_handler: &sync_fetch_handler_for_events,
-                    sync_apply_handler: &sync_apply_handler_for_events,
+                    view_state: ViewState {
+                        active_view: &mut active_view,
+                        show_detail: &mut show_detail,
+                        should_exit: &mut should_exit,
+                    },
+                    view_data: ViewData {
+                        local_tickets: &mut local_tickets,
+                        remote_issues: &mut remote_issues,
+                        local_nav: NavigationState {
+                            selected_index: &mut local_selected_index,
+                            scroll_offset: &mut local_scroll_offset,
+                            selected_ids: &mut local_selected_ids,
+                        },
+                        remote_nav: NavigationState {
+                            selected_index: &mut remote_selected_index,
+                            scroll_offset: &mut remote_scroll_offset,
+                            selected_ids: &mut remote_selected_ids,
+                        },
+                        local_count,
+                        remote_count,
+                        list_height,
+                    },
+                    search: SearchState {
+                        query: &mut search_query,
+                        focused: &mut search_focused,
+                    },
+                    modals: ModalState {
+                        toast: &mut toast,
+                        link_mode: &mut link_mode,
+                        sync_preview: &mut sync_preview,
+                        show_help_modal: &mut show_help_modal,
+                        show_error_modal: &mut show_error_modal,
+                        last_error: &last_error,
+                    },
+                    filters: FilteringState {
+                        filter_modal: &mut filter_state,
+                        active_filters: &mut active_filters,
+                        provider: &mut provider,
+                    },
+                    remote: RemoteState {
+                        loading: &mut remote_loading,
+                    },
+                    handlers: AsyncHandlers {
+                        fetch_handler: &fetch_handler_for_events,
+                        push_handler: &push_handler_for_events,
+                        sync_fetch_handler: &sync_fetch_handler_for_events,
+                        sync_apply_handler: &sync_apply_handler_for_events,
+                    },
                 };
 
                 // Dispatch to the appropriate handler

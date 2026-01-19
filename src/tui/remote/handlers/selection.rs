@@ -12,7 +12,7 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
         return HandleResult::NotHandled;
     }
 
-    if ctx.active_view.get() == ViewMode::Local {
+    if ctx.view_state.active_view.get() == ViewMode::Local {
         toggle_local_selection(ctx);
     } else {
         toggle_remote_selection(ctx);
@@ -22,33 +22,33 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
 }
 
 fn toggle_local_selection(ctx: &mut HandlerContext<'_>) {
-    let tickets = ctx.local_tickets.read();
-    if let Some(ticket) = tickets.get(ctx.local_selected_index.get())
+    let tickets = ctx.view_data.local_tickets.read();
+    if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get())
         && let Some(id) = &ticket.id
     {
         let id = id.clone();
         drop(tickets);
-        let mut ids = ctx.local_selected_ids.read().clone();
+        let mut ids = ctx.view_data.local_nav.selected_ids.read().clone();
         if ids.contains(&id) {
             ids.remove(&id);
         } else {
             ids.insert(id);
         }
-        ctx.local_selected_ids.set(ids);
+        ctx.view_data.local_nav.selected_ids.set(ids);
     }
 }
 
 fn toggle_remote_selection(ctx: &mut HandlerContext<'_>) {
-    let issues = ctx.remote_issues.read();
-    if let Some(issue) = issues.get(ctx.remote_selected_index.get()) {
+    let issues = ctx.view_data.remote_issues.read();
+    if let Some(issue) = issues.get(ctx.view_data.remote_nav.selected_index.get()) {
         let id = issue.id.clone();
         drop(issues);
-        let mut ids = ctx.remote_selected_ids.read().clone();
+        let mut ids = ctx.view_data.remote_nav.selected_ids.read().clone();
         if ids.contains(&id) {
             ids.remove(&id);
         } else {
             ids.insert(id);
         }
-        ctx.remote_selected_ids.set(ids);
+        ctx.view_data.remote_nav.selected_ids.set(ids);
     }
 }

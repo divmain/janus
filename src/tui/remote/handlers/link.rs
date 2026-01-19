@@ -18,48 +18,56 @@ pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleRe
     }
 
     // Complete link operation
-    let Some(lm) = ctx.link_mode.read().clone() else {
+    let Some(lm) = ctx.modals.link_mode.read().clone() else {
         return HandleResult::NotHandled;
     };
     if lm.source_view == ViewMode::Local {
         // Source is local ticket, target is remote issue
-        let issues = ctx.remote_issues.read();
-        if let Some(issue) = issues.get(ctx.remote_selected_index.get()).cloned() {
+        let issues = ctx.view_data.remote_issues.read();
+        if let Some(issue) = issues
+            .get(ctx.view_data.remote_nav.selected_index.get())
+            .cloned()
+        {
             drop(issues);
             match operations::link_ticket_to_issue(&lm.source_id, &issue) {
                 Ok(()) => {
-                    ctx.toast.set(Some(Toast::info(format!(
+                    ctx.modals.toast.set(Some(Toast::info(format!(
                         "Linked {} to {}",
                         lm.source_id, issue.id
                     ))));
-                    ctx.local_tickets.set(get_all_tickets_from_disk());
+                    ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
                 }
                 Err(e) => {
-                    ctx.toast
+                    ctx.modals
+                        .toast
                         .set(Some(Toast::error(format!("Link failed: {}", e))));
                 }
             }
         }
     } else {
         // Source is remote issue, target is local ticket
-        let tickets = ctx.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.local_selected_index.get()).cloned() {
+        let tickets = ctx.view_data.local_tickets.read();
+        if let Some(ticket) = tickets
+            .get(ctx.view_data.local_nav.selected_index.get())
+            .cloned()
+        {
             drop(tickets);
             if let Some(ticket_id) = &ticket.id {
                 // Find the source remote issue
-                let issues = ctx.remote_issues.read();
+                let issues = ctx.view_data.remote_issues.read();
                 if let Some(source_issue) = issues.iter().find(|i| i.id == lm.source_id).cloned() {
                     drop(issues);
                     match operations::link_ticket_to_issue(ticket_id, &source_issue) {
                         Ok(()) => {
-                            ctx.toast.set(Some(Toast::info(format!(
+                            ctx.modals.toast.set(Some(Toast::info(format!(
                                 "Linked {} to {}",
                                 ticket_id, source_issue.id
                             ))));
-                            ctx.local_tickets.set(get_all_tickets_from_disk());
+                            ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
                         }
                         Err(e) => {
-                            ctx.toast
+                            ctx.modals
+                                .toast
                                 .set(Some(Toast::error(format!("Link failed: {}", e))));
                         }
                     }
@@ -68,8 +76,8 @@ pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleRe
         }
     }
 
-    ctx.link_mode.set(None);
-    ctx.active_view.set(lm.source_view);
+    ctx.modals.link_mode.set(None);
+    ctx.view_state.active_view.set(lm.source_view);
     HandleResult::Handled
 }
 
@@ -80,25 +88,26 @@ pub fn handle_link_start(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleR
     }
 
     // Link mode is not active, so start it
-    if ctx.active_view.get() == ViewMode::Local {
-        let tickets = ctx.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.local_selected_index.get())
+    if ctx.view_state.active_view.get() == ViewMode::Local {
+        let tickets = ctx.view_data.local_tickets.read();
+        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get())
             && let Some(id) = &ticket.id
         {
             let title = ticket.title.as_deref().unwrap_or("").to_string();
             let id_clone = id.clone();
             drop(tickets);
-            ctx.link_mode
+            ctx.modals
+                .link_mode
                 .set(Some(LinkModeState::new(ViewMode::Local, id_clone, title)));
-            ctx.active_view.set(ViewMode::Remote);
+            ctx.view_state.active_view.set(ViewMode::Remote);
         }
     } else {
-        let issues = ctx.remote_issues.read();
-        if let Some(issue) = issues.get(ctx.remote_selected_index.get()) {
+        let issues = ctx.view_data.remote_issues.read();
+        if let Some(issue) = issues.get(ctx.view_data.remote_nav.selected_index.get()) {
             let lm = LinkModeState::new(ViewMode::Remote, issue.id.clone(), issue.title.clone());
             drop(issues);
-            ctx.link_mode.set(Some(lm));
-            ctx.active_view.set(ViewMode::Local);
+            ctx.modals.link_mode.set(Some(lm));
+            ctx.view_state.active_view.set(ViewMode::Local);
         }
     }
 

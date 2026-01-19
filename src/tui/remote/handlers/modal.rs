@@ -12,31 +12,31 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     }
 
     // Dismiss modals in priority order
-    if ctx.show_error_modal.get() {
-        ctx.show_error_modal.set(false);
+    if ctx.modals.show_error_modal.get() {
+        ctx.modals.show_error_modal.set(false);
         return HandleResult::Handled;
     }
 
-    if ctx.show_help_modal.get() {
-        ctx.show_help_modal.set(false);
+    if ctx.modals.show_help_modal.get() {
+        ctx.modals.show_help_modal.set(false);
         return HandleResult::Handled;
     }
 
-    if ctx.sync_preview.read().is_some() {
-        ctx.sync_preview.set(None);
+    if ctx.modals.sync_preview.read().is_some() {
+        ctx.modals.sync_preview.set(None);
         return HandleResult::Handled;
     }
 
-    if ctx.filter_state.read().is_some() {
-        ctx.filter_state.set(None);
+    if ctx.filters.filter_modal.read().is_some() {
+        ctx.filters.filter_modal.set(None);
         return HandleResult::Handled;
     }
 
     {
-        let link_mode = ctx.link_mode.read().as_ref().cloned();
+        let link_mode = ctx.modals.link_mode.read().as_ref().cloned();
         if let Some(lm) = link_mode {
-            ctx.active_view.set(lm.source_view);
-            ctx.link_mode.set(None);
+            ctx.view_state.active_view.set(lm.source_view);
+            ctx.modals.link_mode.set(None);
             return HandleResult::Handled;
         }
     }

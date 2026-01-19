@@ -27,13 +27,20 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
 }
 
 fn handle_push(ctx: &mut HandlerContext<'_>) {
-    let selected_ids: Vec<String> = ctx.local_selected_ids.read().iter().cloned().collect();
+    let selected_ids: Vec<String> = ctx
+        .view_data
+        .local_nav
+        .selected_ids
+        .read()
+        .iter()
+        .cloned()
+        .collect();
     let tickets_to_push = if !selected_ids.is_empty() {
         selected_ids
     } else {
         // Push current item if no selection
-        let tickets = ctx.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.local_selected_index.get()) {
+        let tickets = ctx.view_data.local_tickets.read();
+        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get()) {
             if let Some(id) = &ticket.id {
                 vec![id.clone()]
             } else {
@@ -45,13 +52,14 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
     };
 
     if tickets_to_push.is_empty() {
-        ctx.toast
+        ctx.modals
+            .toast
             .set(Some(Toast::warning("No ticket selected to push")));
         return;
     }
 
     // Check if any tickets are already linked
-    let tickets_ref = ctx.local_tickets.read();
+    let tickets_ref = ctx.view_data.local_tickets.read();
     let already_linked: Vec<String> = tickets_to_push
         .iter()
         .filter(|id| {
@@ -64,7 +72,7 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
     drop(tickets_ref);
 
     if !already_linked.is_empty() {
-        ctx.toast.set(Some(Toast::warning(format!(
+        ctx.modals.toast.set(Some(Toast::warning(format!(
             "{} ticket(s) already linked, skipping",
             already_linked.len()
         ))));
@@ -74,25 +82,40 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
             .filter(|id| !already_linked.contains(id))
             .collect();
         if !unlinked.is_empty() {
-            ctx.toast.set(Some(Toast::info(format!(
+            ctx.modals.toast.set(Some(Toast::info(format!(
                 "Pushing {} ticket(s)...",
                 unlinked.len()
             ))));
-            let current_query = ctx.active_filters.read().clone();
-            ctx.push_handler.clone()((unlinked, ctx.provider.get(), current_query));
+            let current_query = ctx.filters.active_filters.read().clone();
+            ctx.handlers.push_handler.clone()((
+                unlinked,
+                ctx.filters.provider.get(),
+                current_query,
+            ));
         }
     } else {
-        ctx.toast.set(Some(Toast::info(format!(
+        ctx.modals.toast.set(Some(Toast::info(format!(
             "Pushing {} ticket(s)...",
             tickets_to_push.len()
         ))));
-        let current_query = ctx.active_filters.read().clone();
-        ctx.push_handler.clone()((tickets_to_push, ctx.provider.get(), current_query));
+        let current_query = ctx.filters.active_filters.read().clone();
+        ctx.handlers.push_handler.clone()((
+            tickets_to_push,
+            ctx.filters.provider.get(),
+            current_query,
+        ));
     }
 }
 
 fn handle_unlink(ctx: &mut HandlerContext<'_>) {
-    let selected_ids: Vec<String> = ctx.local_selected_ids.read().iter().cloned().collect();
+    let selected_ids: Vec<String> = ctx
+        .view_data
+        .local_nav
+        .selected_ids
+        .read()
+        .iter()
+        .cloned()
+        .collect();
     if !selected_ids.is_empty() {
         let mut unlinked = 0;
         for id in &selected_ids {
@@ -101,28 +124,31 @@ fn handle_unlink(ctx: &mut HandlerContext<'_>) {
             }
         }
         if unlinked > 0 {
-            ctx.toast.set(Some(Toast::info(format!(
+            ctx.modals.toast.set(Some(Toast::info(format!(
                 "Unlinked {} ticket(s)",
                 unlinked
             ))));
-            ctx.local_tickets.set(get_all_tickets_from_disk());
-            ctx.local_selected_ids.set(HashSet::new());
+            ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
+            ctx.view_data.local_nav.selected_ids.set(HashSet::new());
         }
     } else {
         // Unlink current item
-        let tickets = ctx.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.local_selected_index.get())
+        let tickets = ctx.view_data.local_tickets.read();
+        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get())
             && let Some(id) = &ticket.id
         {
             let id = id.clone();
             drop(tickets);
             match operations::unlink_ticket(&id) {
                 Ok(()) => {
-                    ctx.toast.set(Some(Toast::info(format!("Unlinked {}", id))));
-                    ctx.local_tickets.set(get_all_tickets_from_disk());
+                    ctx.modals
+                        .toast
+                        .set(Some(Toast::info(format!("Unlinked {}", id))));
+                    ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
                 }
                 Err(e) => {
-                    ctx.toast
+                    ctx.modals
+                        .toast
                         .set(Some(Toast::error(format!("Unlink failed: {}", e))));
                 }
             }

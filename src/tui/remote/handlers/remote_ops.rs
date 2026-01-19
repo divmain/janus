@@ -16,7 +16,7 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Char('a') => {
             // Only handle 'a' for adopt when NOT in sync preview
-            if ctx.sync_preview.read().is_none() {
+            if ctx.modals.sync_preview.read().is_none() {
                 handle_adopt(ctx);
                 return HandleResult::Handled;
             }
@@ -27,12 +27,20 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
 }
 
 fn handle_adopt(ctx: &mut HandlerContext<'_>) {
-    let selected_ids: Vec<String> = ctx.remote_selected_ids.read().iter().cloned().collect();
+    let selected_ids: Vec<String> = ctx
+        .view_data
+        .remote_nav
+        .selected_ids
+        .read()
+        .iter()
+        .cloned()
+        .collect();
     if selected_ids.is_empty() {
         return;
     }
 
     let issues: Vec<_> = ctx
+        .view_data
         .remote_issues
         .read()
         .iter()
@@ -40,15 +48,17 @@ fn handle_adopt(ctx: &mut HandlerContext<'_>) {
         .cloned()
         .collect();
 
-    match operations::adopt_issues(&issues, &ctx.local_selected_ids.read()) {
+    match operations::adopt_issues(&issues, &ctx.view_data.local_nav.selected_ids.read()) {
         Ok(ids) => {
-            ctx.toast
+            ctx.modals
+                .toast
                 .set(Some(Toast::info(format!("Adopted {} issues", ids.len()))));
-            ctx.local_tickets.set(get_all_tickets_from_disk());
-            ctx.remote_selected_ids.set(HashSet::new());
+            ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
+            ctx.view_data.remote_nav.selected_ids.set(HashSet::new());
         }
         Err(e) => {
-            ctx.toast
+            ctx.modals
+                .toast
                 .set(Some(Toast::error(format!("Adopt failed: {}", e))));
         }
     }

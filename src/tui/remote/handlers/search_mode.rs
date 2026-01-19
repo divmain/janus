@@ -9,12 +9,12 @@ use super::context::HandlerContext;
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Esc => {
-            ctx.search_query.set(String::new());
-            ctx.search_focused.set(false);
+            ctx.search.query.set(String::new());
+            ctx.search.focused.set(false);
             HandleResult::Handled
         }
         KeyCode::Enter | KeyCode::Tab => {
-            ctx.search_focused.set(false);
+            ctx.search.focused.set(false);
             HandleResult::Handled
         }
         _ => {

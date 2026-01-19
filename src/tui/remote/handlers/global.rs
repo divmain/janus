@@ -15,11 +15,11 @@ use super::sync;
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Char('q') => {
-            ctx.should_exit.set(true);
+            ctx.view_state.should_exit.set(true);
             HandleResult::Handled
         }
         KeyCode::Char('/') => {
-            ctx.search_focused.set(true);
+            ctx.search.focused.set(true);
             HandleResult::Handled
         }
         KeyCode::Char('P') => {
@@ -36,36 +36,38 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
         }
         KeyCode::Char('s') => {
             // Start sync (only when sync preview is not open)
-            if ctx.sync_preview.read().is_none() {
+            if ctx.modals.sync_preview.read().is_none() {
                 sync::handle_start_sync(ctx);
             }
             HandleResult::Handled
         }
         KeyCode::Char('?') => {
-            ctx.show_help_modal.set(true);
+            ctx.modals.show_help_modal.set(true);
             HandleResult::Handled
         }
         KeyCode::Char('e') => {
-            if ctx.last_error.read().is_some() {
-                ctx.show_error_modal.set(true);
+            if ctx.modals.last_error.read().is_some() {
+                ctx.modals.show_error_modal.set(true);
             }
             HandleResult::Handled
         }
         KeyCode::Enter => {
             // Toggle detail pane (only when no modal is open)
-            if ctx.filter_state.read().is_none() {
-                ctx.show_detail.set(!ctx.show_detail.get());
+            if ctx.filters.filter_modal.read().is_none() {
+                ctx.view_state
+                    .show_detail
+                    .set(!ctx.view_state.show_detail.get());
             }
             HandleResult::Handled
         }
         KeyCode::Tab => {
             // Switch views (only when filter modal is not open)
-            if ctx.filter_state.read().is_none() {
-                let new_view = match ctx.active_view.get() {
+            if ctx.filters.filter_modal.read().is_none() {
+                let new_view = match ctx.view_state.active_view.get() {
                     ViewMode::Local => ViewMode::Remote,
                     ViewMode::Remote => ViewMode::Local,
                 };
-                ctx.active_view.set(new_view);
+                ctx.view_state.active_view.set(new_view);
             }
             HandleResult::Handled
         }
@@ -76,43 +78,46 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
 fn handle_switch_provider(ctx: &mut HandlerContext<'_>) {
     use crate::remote::config::Platform;
 
-    let new_provider = match ctx.provider.get() {
+    let new_provider = match ctx.filters.provider.get() {
         Platform::GitHub => Platform::Linear,
         Platform::Linear => Platform::GitHub,
     };
-    ctx.provider.set(new_provider);
+    ctx.filters.provider.set(new_provider);
 
     // Clear selections when switching providers
-    ctx.local_selected_ids.set(HashSet::new());
-    ctx.remote_selected_ids.set(HashSet::new());
-    ctx.local_selected_index.set(0);
-    ctx.remote_selected_index.set(0);
-    ctx.local_scroll_offset.set(0);
-    ctx.remote_scroll_offset.set(0);
-    ctx.remote_issues.set(Vec::new());
-    ctx.remote_loading.set(true);
+    ctx.view_data.local_nav.selected_ids.set(HashSet::new());
+    ctx.view_data.remote_nav.selected_ids.set(HashSet::new());
+    ctx.view_data.local_nav.selected_index.set(0);
+    ctx.view_data.remote_nav.selected_index.set(0);
+    ctx.view_data.local_nav.scroll_offset.set(0);
+    ctx.view_data.remote_nav.scroll_offset.set(0);
+    ctx.view_data.remote_issues.set(Vec::new());
+    ctx.remote.loading.set(true);
 
     // Fetch issues for the new provider
-    let current_query = ctx.active_filters.read().clone();
-    ctx.fetch_handler.clone()((new_provider, current_query));
-    ctx.toast
+    let current_query = ctx.filters.active_filters.read().clone();
+    ctx.handlers.fetch_handler.clone()((new_provider, current_query));
+    ctx.modals
+        .toast
         .set(Some(Toast::info(format!("Switched to {}", new_provider))));
 }
 
 fn handle_refresh(ctx: &mut HandlerContext<'_>) {
-    if !ctx.remote_loading.get() {
-        ctx.remote_loading.set(true);
-        ctx.toast
+    if !ctx.remote.loading.get() {
+        ctx.remote.loading.set(true);
+        ctx.modals
+            .toast
             .set(Some(Toast::info("Refreshing remote issues...")));
-        let current_query = ctx.active_filters.read().clone();
-        ctx.fetch_handler.clone()((ctx.provider.get(), current_query));
+        let current_query = ctx.filters.active_filters.read().clone();
+        ctx.handlers.fetch_handler.clone()((ctx.filters.provider.get(), current_query));
     }
 }
 
 fn handle_open_filter(ctx: &mut HandlerContext<'_>) {
-    if ctx.filter_state.read().is_none() {
-        let current_query = ctx.active_filters.read().clone();
-        ctx.filter_state
+    if ctx.filters.filter_modal.read().is_none() {
+        let current_query = ctx.filters.active_filters.read().clone();
+        ctx.filters
+            .filter_modal
             .set(Some(FilterState::from_query(&current_query)));
     }
 }
