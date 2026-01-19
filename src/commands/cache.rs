@@ -1,7 +1,7 @@
 use serde_json::json;
 use std::fs;
 
-use super::{CommandOutput, print_json};
+use super::CommandOutput;
 use crate::cache::TicketCache;
 use crate::error::{Result, is_corruption_error, is_permission_error};
 
@@ -11,67 +11,74 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
             let db_path = cache.cache_db_path();
             let tickets = cache.get_all_tickets().await.unwrap_or_default();
 
-            if output_json {
-                let mut output = json!({
-                    "database_path": db_path.to_string_lossy(),
-                    "ticket_count": tickets.len(),
-                    "status": "healthy",
-                });
+            let mut output = json!({
+                "database_path": db_path.to_string_lossy(),
+                "ticket_count": tickets.len(),
+                "status": "healthy",
+            });
 
-                if let Ok(meta) = fs::metadata(&db_path) {
-                    output["database_size_bytes"] = json!(meta.len());
-                    if let Ok(modified) = meta.modified() {
-                        output["last_modified"] = json!(format!("{:?}", modified));
-                    }
-                }
-
-                print_json(&output)?;
+            let text = if let Ok(meta) = fs::metadata(&db_path) {
+                let size = meta.len();
+                let modified_text = if let Ok(modified) = meta.modified() {
+                    format!("  Last modified: {:?}", modified)
+                } else {
+                    String::new()
+                };
+                format!(
+                    "Cache status:\n  Database path: {}\n  Cached tickets: {}\n  Database size: {} bytes\n{}",
+                    db_path.display(),
+                    tickets.len(),
+                    size,
+                    modified_text
+                )
             } else {
-                println!("Cache status:");
-                println!("  Database path: {}", db_path.display());
-                println!("  Cached tickets: {}", tickets.len());
+                format!(
+                    "Cache status:\n  Database path: {}\n  Cached tickets: {}",
+                    db_path.display(),
+                    tickets.len()
+                )
+            };
 
-                if let Ok(meta) = fs::metadata(&db_path) {
-                    let size = meta.len();
-                    println!("  Database size: {} bytes", size);
-                    if let Ok(modified) = meta.modified() {
-                        println!("  Last modified: {:?}", modified);
-                    }
+            if let Ok(meta) = fs::metadata(&db_path) {
+                output["database_size_bytes"] = json!(meta.len());
+                if let Ok(modified) = meta.modified() {
+                    output["last_modified"] = json!(format!("{:?}", modified));
                 }
             }
+
+            CommandOutput::new(output)
+                .with_text(text)
+                .print(output_json)?;
         }
         Err(e) => {
-            if output_json {
-                let status = if is_corruption_error(&e) {
-                    "corrupted"
-                } else if is_permission_error(&e) {
-                    "permission_denied"
-                } else {
-                    "not_available"
-                };
-
-                print_json(&json!({
-                    "status": status,
-                    "error": e.to_string(),
-                }))?;
-            } else if is_corruption_error(&e) {
-                eprintln!("Cache database is corrupted and cannot be opened.");
-                eprintln!("\nTo fix this issue:");
-                eprintln!("  1. Run 'janus cache clear' to delete the corrupted cache");
-                eprintln!("  2. Run any janus command to rebuild the cache automatically");
-                eprintln!("  3. Or run 'janus cache rebuild' to rebuild it manually");
+            let status = if is_corruption_error(&e) {
+                "corrupted"
             } else if is_permission_error(&e) {
-                eprintln!("Cache database cannot be accessed due to permission issues.");
-                eprintln!("\nTo fix this issue:");
-                eprintln!("  1. Check file permissions for:");
-                let cache_dir = crate::cache::cache_dir();
-                eprintln!("     {}", cache_dir.display());
-                eprintln!("  2. Ensure the cache directory is writable");
-                eprintln!("  3. Try 'janus cache rebuild' after fixing permissions");
+                "permission_denied"
             } else {
-                eprintln!("Cache not available: {}", e);
-                eprintln!("Run 'janus cache rebuild' to create a cache.");
-            }
+                "not_available"
+            };
+
+            let text = if is_corruption_error(&e) {
+                "Cache database is corrupted and cannot be opened.\n\nTo fix this issue:\n  1. Run 'janus cache clear' to delete the corrupted cache\n  2. Run any janus command to rebuild the cache automatically\n  3. Or run 'janus cache rebuild' to rebuild it manually".to_string()
+            } else if is_permission_error(&e) {
+                format!(
+                    "Cache database cannot be accessed due to permission issues.\n\nTo fix this issue:\n  1. Check file permissions for:\n     {}\n  2. Ensure the cache directory is writable\n  3. Try 'janus cache rebuild' after fixing permissions",
+                    crate::cache::cache_dir().display()
+                )
+            } else {
+                format!(
+                    "Cache not available: {}\nRun 'janus cache rebuild' to create a cache.",
+                    e
+                )
+            };
+
+            CommandOutput::new(json!({
+                "status": status,
+                "error": e.to_string(),
+            }))
+            .with_text(text)
+            .print(output_json)?;
 
             return Err(e);
         }
@@ -90,18 +97,13 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
             if db_path_from_current_dir().exists() {
                 db_path_from_current_dir()
             } else {
-                if output_json {
-                    print_json(&json!({
-                        "action": "cache_clear",
-                        "success": true,
-                        "message": "Cache does not exist or has already been cleared",
-                    }))?;
-                } else {
-                    println!("Cache does not exist or has already been cleared.");
-                    println!(
-                        "\nThe cache will be created automatically on the next janus command."
-                    );
-                }
+                CommandOutput::new(json!({
+                    "action": "cache_clear",
+                    "success": true,
+                    "message": "Cache does not exist or has already been cleared",
+                }))
+                .with_text("Cache does not exist or has already been cleared.\n\nThe cache will be created automatically on the next janus command.")
+                .print(output_json)?;
                 return Ok(());
             }
         }
@@ -122,17 +124,13 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
         return Err(e.into());
     }
 
-    if output_json {
-        print_json(&json!({
-            "action": "cache_cleared",
-            "database_path": db_path.to_string_lossy(),
-            "success": true,
-        }))?;
-    } else {
-        println!("Cache cleared successfully.");
-        println!("\nNote: The cache will be rebuilt automatically on the next janus command.");
-    }
-    Ok(())
+    CommandOutput::new(json!({
+        "action": "cache_cleared",
+        "database_path": db_path.to_string_lossy(),
+        "success": true,
+    }))
+    .with_text("Cache cleared successfully.\n\nNote: The cache will be rebuilt automatically on the next janus command.")
+    .print(output_json)
 }
 
 pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
@@ -176,20 +174,18 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
                     let total_duration = start_total.elapsed();
 
-                    if output_json {
-                        print_json(&json!({
-                            "action": "cache_rebuilt",
-                            "ticket_count": ticket_count,
-                            "sync_time_ms": sync_duration.as_millis(),
-                            "total_time_ms": total_duration.as_millis(),
-                            "success": true,
-                        }))?;
-                    } else {
-                        println!("Cache rebuilt successfully:");
-                        println!("  Tickets cached: {}", ticket_count);
-                        println!("  Sync time: {:?}", sync_duration);
-                        println!("  Total time: {:?}", total_duration);
-                    }
+                    CommandOutput::new(json!({
+                        "action": "cache_rebuilt",
+                        "ticket_count": ticket_count,
+                        "sync_time_ms": sync_duration.as_millis(),
+                        "total_time_ms": total_duration.as_millis(),
+                        "success": true,
+                    }))
+                    .with_text(format!(
+                        "Cache rebuilt successfully:\n  Tickets cached: {}\n  Sync time: {:?}\n  Total time: {:?}",
+                        ticket_count, sync_duration, total_duration
+                    ))
+                    .print(output_json)?;
                 }
                 Err(e) => {
                     if !output_json {

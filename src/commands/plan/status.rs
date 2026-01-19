@@ -3,7 +3,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::display::format_status_colored;
 use crate::error::Result;
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
@@ -22,30 +22,32 @@ pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
     // Compute overall plan status
     let plan_status = compute_plan_status(&metadata, &ticket_map);
 
-    if output_json {
-        let phase_statuses = compute_all_phase_statuses(&metadata, &ticket_map);
-        let phases_json: Vec<_> = phase_statuses
-            .iter()
-            .map(|ps| {
-                json!({
-                    "number": ps.phase_number,
-                    "name": ps.phase_name,
-                    "status": ps.status.to_string(),
-                    "completed_count": ps.completed_count,
-                    "total_count": ps.total_count,
-                })
+    let phase_statuses = compute_all_phase_statuses(&metadata, &ticket_map);
+    let phases_json: Vec<_> = phase_statuses
+        .iter()
+        .map(|ps| {
+            json!({
+                "number": ps.phase_number,
+                "name": ps.phase_name,
+                "status": ps.status.to_string(),
+                "completed_count": ps.completed_count,
+                "total_count": ps.total_count,
             })
-            .collect();
+        })
+        .collect();
 
-        print_json(&json!({
-            "plan_id": plan.id,
-            "title": metadata.title,
-            "status": plan_status.status.to_string(),
-            "completed_count": plan_status.completed_count,
-            "total_count": plan_status.total_count,
-            "progress_percent": plan_status.progress_percent(),
-            "phases": phases_json,
-        }))?;
+    let output = json!({
+        "plan_id": plan.id,
+        "title": metadata.title,
+        "status": plan_status.status.to_string(),
+        "completed_count": plan_status.completed_count,
+        "total_count": plan_status.total_count,
+        "progress_percent": plan_status.progress_percent(),
+        "phases": phases_json,
+    });
+
+    if output_json {
+        CommandOutput::new(output).print(output_json)?;
         return Ok(());
     }
 
