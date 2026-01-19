@@ -18,8 +18,6 @@ pub enum HookEvent {
     TicketCreated,
     /// Fired after an existing ticket is updated
     TicketUpdated,
-    /// Fired after a ticket is deleted
-    TicketDeleted,
     /// Fired after a new plan is created
     PlanCreated,
     /// Fired after an existing plan is updated
@@ -47,7 +45,6 @@ impl HookEvent {
         match self {
             HookEvent::TicketCreated => "ticket_created",
             HookEvent::TicketUpdated => "ticket_updated",
-            HookEvent::TicketDeleted => "ticket_deleted",
             HookEvent::PlanCreated => "plan_created",
             HookEvent::PlanUpdated => "plan_updated",
             HookEvent::PlanDeleted => "plan_deleted",
@@ -63,7 +60,6 @@ impl HookEvent {
         &[
             HookEvent::TicketCreated,
             HookEvent::TicketUpdated,
-            HookEvent::TicketDeleted,
             HookEvent::PlanCreated,
             HookEvent::PlanUpdated,
             HookEvent::PlanDeleted,
@@ -88,7 +84,6 @@ impl FromStr for HookEvent {
         match s.to_lowercase().as_str() {
             "ticket_created" => Ok(HookEvent::TicketCreated),
             "ticket_updated" => Ok(HookEvent::TicketUpdated),
-            "ticket_deleted" => Ok(HookEvent::TicketDeleted),
             "plan_created" => Ok(HookEvent::PlanCreated),
             "plan_updated" => Ok(HookEvent::PlanUpdated),
             "plan_deleted" => Ok(HookEvent::PlanDeleted),
@@ -221,7 +216,7 @@ mod tests {
     #[test]
     fn test_hook_event_all() {
         let all = HookEvent::all();
-        assert_eq!(all.len(), 10);
+        assert_eq!(all.len(), 9);
         assert!(all.contains(&HookEvent::TicketCreated));
         assert!(all.contains(&HookEvent::PostDelete));
     }
@@ -269,7 +264,6 @@ mod tests {
         let events = [
             ("ticket_created", HookEvent::TicketCreated),
             ("ticket_updated", HookEvent::TicketUpdated),
-            ("ticket_deleted", HookEvent::TicketDeleted),
             ("plan_created", HookEvent::PlanCreated),
             ("plan_updated", HookEvent::PlanUpdated),
             ("plan_deleted", HookEvent::PlanDeleted),
