@@ -73,11 +73,12 @@ impl ParsedDocument {
 /// This function returns a generic structure that can be converted to
 /// domain-specific types via `TryFrom` implementations.
 pub fn parse_document(content: &str) -> Result<ParsedDocument> {
+    let normalized = content.replace("\r\n", "\n");
     let frontmatter_re =
         Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid");
 
     let captures = frontmatter_re
-        .captures(content)
+        .captures(&normalized)
         .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
 
     let frontmatter_raw = captures
@@ -402,5 +403,77 @@ Both deps and links should be empty vectors.
         assert_eq!(metadata.id, Some("test-9012".to_string()));
         assert!(metadata.deps.is_empty());
         assert!(metadata.links.is_empty());
+    }
+
+    #[test]
+    fn test_parse_with_crlf_line_endings() {
+        let content = "---\r\n\
+id: test-crlf\r\n\
+status: new\r\n\
+deps: []\r\n\
+links: []\r\n\
+created: 2024-01-01T00:00:00Z\r\n\
+type: task\r\n\
+priority: 2\r\n\
+---\r\n\
+# CRLF Ticket\r\n\
+\r\n\
+This ticket uses Windows-style line endings.\r\n\
+";
+
+        let metadata = parse_ticket_content(content).unwrap();
+        assert_eq!(metadata.id, Some("test-crlf".to_string()));
+        assert_eq!(metadata.status, Some(TicketStatus::New));
+        assert_eq!(metadata.title, Some("CRLF Ticket".to_string()));
+        assert_eq!(metadata.ticket_type, Some(TicketType::Task));
+        assert_eq!(metadata.priority, Some(TicketPriority::P2));
+    }
+
+    #[test]
+    fn test_parse_with_crlf_completion_summary() {
+        let content = "---\r\n\
+id: j-a1b2\r\n\
+status: complete\r\n\
+deps: []\r\n\
+links: []\r\n\
+created: 2024-01-01T00:00:00Z\r\n\
+type: task\r\n\
+---\r\n\
+# CRLF Summary Test\r\n\
+\r\n\
+Description.\r\n\
+\r\n\
+## Completion Summary\r\n\
+\r\n\
+Task completed with CRLF line endings.\r\n\
+";
+
+        let metadata = parse_ticket_content(content).unwrap();
+        assert_eq!(metadata.id, Some("j-a1b2".to_string()));
+        assert_eq!(metadata.status, Some(TicketStatus::Complete));
+        let summary = metadata.completion_summary.unwrap();
+        assert_eq!(summary, "Task completed with CRLF line endings.");
+    }
+
+    #[test]
+    fn test_parse_with_mixed_line_endings() {
+        let content = "---\n\
+id: test-mixed\n\
+status: new\n\
+deps: []\r\n\
+links: []\r\n\
+created: 2024-01-01T00:00:00Z\n\
+type: task\r\n\
+priority: 2\r\n\
+---\n\
+# Mixed Line Endings\r\n\
+\r\n\
+This document has mixed line endings.\r\n\
+";
+
+        let metadata = parse_ticket_content(content).unwrap();
+        assert_eq!(metadata.id, Some("test-mixed".to_string()));
+        assert_eq!(metadata.status, Some(TicketStatus::New));
+        assert_eq!(metadata.title, Some("Mixed Line Endings".to_string()));
     }
 }

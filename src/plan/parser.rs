@@ -82,8 +82,9 @@ pub const PHASE_PATTERN: &str = r"(?i)^(phase|stage|part|step)\s+(\d+[a-z]?)\s*[
 /// Any content preserved verbatim...
 /// ```
 pub fn parse_plan_content(content: &str) -> Result<PlanMetadata> {
+    let normalized = content.replace("\r\n", "\n");
     // Split frontmatter from body
-    let (yaml, body) = split_frontmatter(content)?;
+    let (yaml, body) = split_frontmatter(&normalized)?;
 
     // Parse YAML frontmatter
     let mut metadata = parse_yaml_frontmatter(yaml)?;
@@ -868,9 +869,10 @@ fn extract_import_acceptance_criteria<'a>(root: &'a AstNode<'a>) -> Vec<String> 
 /// 4. Implementation section must contain at least one `### Phase N:` section
 /// 5. Each phase must contain at least one `#### Task` header
 pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
+    let normalized = content.replace("\r\n", "\n");
     let arena = Arena::new();
     let options = Options::default();
-    let root = parse_document(&arena, content, &options);
+    let root = parse_document(&arena, &normalized, &options);
 
     let mut errors: Vec<ImportValidationError> = Vec::new();
 
@@ -3301,5 +3303,127 @@ Task description.
         assert!(design.contains("Architecture"));
         assert!(design.contains("Key Decisions"));
         assert!(design.contains("Decision one"));
+    }
+
+    #[test]
+    fn test_parse_plan_with_crlf_line_endings() {
+        let content = "---\r\n\
+id: plan-crlf\r\n\
+created: 2024-01-01T00:00:00Z\r\n\
+---\r\n\
+# CRLF Plan\r\n\
+\r\n\
+A plan with Windows-style line endings.\r\n\
+\r\n\
+## Acceptance Criteria\r\n\
+\r\n\
+- Criterion 1\r\n\
+- Criterion 2\r\n\
+\r\n\
+## Tickets\r\n\
+\r\n\
+1. j-a1b2\r\n\
+2. j-c3d4\r\n\
+";
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.id, Some("plan-crlf".to_string()));
+        assert_eq!(metadata.title, Some("CRLF Plan".to_string()));
+        assert_eq!(metadata.acceptance_criteria.len(), 2);
+        assert!(metadata.is_simple());
+        let tickets = metadata.all_tickets();
+        assert_eq!(tickets, vec!["j-a1b2", "j-c3d4"]);
+    }
+
+    #[test]
+    fn test_parse_phased_plan_with_crlf() {
+        let content = "---\r\n\
+id: plan-crlf-phased\r\n\
+created: 2024-01-01T00:00:00Z\r\n\
+---\r\n\
+# CRLF Phased Plan\r\n\
+\r\n\
+Overview.\r\n\
+\r\n\
+## Phase 1: First Phase\r\n\
+\r\n\
+First phase description.\r\n\
+\r\n\
+### Tickets\r\n\
+\r\n\
+1. j-a1b2\r\n\
+2. j-c3d4\r\n\
+\r\n\
+## Phase 2: Second Phase\r\n\
+\r\n\
+### Tickets\r\n\
+\r\n\
+1. j-e5f6\r\n\
+";
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.title, Some("CRLF Phased Plan".to_string()));
+        assert!(metadata.is_phased());
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 2);
+        assert_eq!(phases[0].number, "1");
+        assert_eq!(phases[0].name, "First Phase");
+        assert_eq!(phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(phases[1].tickets, vec!["j-e5f6"]);
+    }
+
+    #[test]
+    fn test_parse_importable_plan_with_crlf() {
+        let content = "# CRLF Importable Plan\r\n\
+\r\n\
+Introduction with CRLF line endings.\r\n\
+\r\n\
+## Design\r\n\
+\r\n\
+Design details on Windows.\r\n\
+\r\n\
+## Implementation\r\n\
+\r\n\
+### Phase 1: Setup\r\n\
+\r\n\
+Setup description.\r\n\
+\r\n\
+#### Task 1\r\n\
+\r\n\
+First task description.\r\n\
+";
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.title, "CRLF Importable Plan");
+        assert!(plan.description.unwrap().contains("Introduction"));
+        assert!(plan.design.unwrap().contains("Design details"));
+        assert_eq!(plan.phases.len(), 1);
+        assert_eq!(plan.phases[0].number, "1");
+        assert_eq!(plan.phases[0].tasks.len(), 1);
+        assert_eq!(plan.phases[0].tasks[0].title, "Task 1");
+    }
+
+    #[test]
+    fn test_parse_plan_with_mixed_line_endings() {
+        let content = "---\n\
+id: plan-mixed\n\
+created: 2024-01-01T00:00:00Z\n\
+---\n\
+# Mixed Line Endings\r\n\
+\r\n\
+Mixed line ending content.\r\n\
+\r\n\
+## Tickets\r\n\
+\r\n\
+1. j-a1b2\r\n\
+2. j-c3d4\n\
+3. j-e5f6\r\n\
+";
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.id, Some("plan-mixed".to_string()));
+        assert_eq!(metadata.title, Some("Mixed Line Endings".to_string()));
+        let tickets = metadata.all_tickets();
+        assert_eq!(tickets, vec!["j-a1b2", "j-c3d4", "j-e5f6"]);
     }
 }
