@@ -123,6 +123,10 @@ impl TicketEditor {
             return Ok(false);
         }
 
+        let mut new_array = current_array.clone();
+        new_array.push(value.to_string());
+        let json_value = serde_json::to_string(&new_array)?;
+
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
             .with_item_id(self.file.id())
@@ -133,10 +137,8 @@ impl TicketEditor {
         self.with_write_hooks(
             context,
             || {
-                let mut new_array = current_array.clone();
-                new_array.push(value.to_string());
-                let json_value = serde_json::to_string(&new_array)?;
-                self.update_field_internal(field, &json_value)
+                let new_content = update_field_in_content(&raw_content, field, &json_value)?;
+                self.file.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
         )?;
@@ -153,6 +155,16 @@ impl TicketEditor {
             return Ok(false);
         }
 
+        let new_array: Vec<_> = current_array
+            .iter()
+            .filter(|v: &&String| v.as_str() != value)
+            .collect();
+        let json_value = if new_array.is_empty() {
+            "[]".to_string()
+        } else {
+            serde_json::to_string(&new_array)?
+        };
+
         let context = HookContext::new()
             .with_item_type(ItemType::Ticket)
             .with_item_id(self.file.id())
@@ -163,28 +175,13 @@ impl TicketEditor {
         self.with_write_hooks(
             context,
             || {
-                let new_array: Vec<_> = current_array
-                    .iter()
-                    .filter(|v: &&String| v.as_str() != value)
-                    .collect();
-                let json_value = if new_array.is_empty() {
-                    "[]".to_string()
-                } else {
-                    serde_json::to_string(&new_array)?
-                };
-
-                self.update_field_internal(field, &json_value)
+                let new_content = update_field_in_content(&raw_content, field, &json_value)?;
+                self.file.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
         )?;
 
         Ok(true)
-    }
-
-    fn update_field_internal(&self, field: &str, value: &str) -> Result<()> {
-        let raw_content = self.file.read_raw()?;
-        let new_content = update_field_in_content(&raw_content, field, value)?;
-        self.file.write_raw(&new_content)
     }
 
     pub fn write_validated(&self, content: &str) -> Result<()> {
