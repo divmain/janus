@@ -5,6 +5,7 @@
 //! - `run`: Run a hook manually for testing
 //! - `enable`: Enable hooks
 //! - `disable`: Disable hooks
+//! - `log`: View hook failure log
 
 use std::collections::HashMap;
 use std::fs;
@@ -429,4 +430,96 @@ pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
     }))
     .with_text(format!("{} Hooks disabled", "✓".red()))
     .print(output_json)
+}
+
+/// Display hook failure log
+pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
+    let log_path = PathBuf::from(TICKETS_DIR).join("hooks.log");
+
+    if !log_path.exists() {
+        if output_json {
+            print_json(&json!({
+                "entries": [],
+                "message": "No hook failures logged"
+            }))?;
+        } else {
+            println!("No hook failures logged.");
+            println!();
+            println!("The hook failure log will appear here after a post-hook fails.");
+            println!("Log file: {}", log_path.display());
+        }
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&log_path)?;
+    let mut log_lines: Vec<&str> = content.lines().collect();
+
+    // If lines is specified, take only the last N lines
+    if let Some(n) = lines {
+        let start = log_lines.len().saturating_sub(n);
+        log_lines = log_lines[start..].to_vec();
+    }
+
+    if output_json {
+        let entries: Vec<_> = log_lines
+            .iter()
+            .filter_map(|line| {
+                // Parse log format: "TIMESTAMP: post-hook 'NAME' failed: ERROR"
+                let parts: Vec<&str> = line.splitn(2, ": post-hook '").collect();
+                if parts.len() == 2 {
+                    let timestamp = parts[0];
+                    let rest: Vec<&str> = parts[1].splitn(2, "' failed: ").collect();
+                    if rest.len() == 2 {
+                        return Some(json!({
+                            "timestamp": timestamp,
+                            "hook": rest[0],
+                            "error": rest[1],
+                        }));
+                    }
+                }
+                None
+            })
+            .collect();
+
+        print_json(&json!({
+            "entries": entries,
+            "total": entries.len(),
+        }))?;
+    } else if log_lines.is_empty() {
+        println!("No entries in hook failure log.");
+    } else {
+        let count = log_lines.len();
+        println!("Hook Failure Log:");
+        println!();
+        for line in &log_lines {
+            // Parse and colorize the output
+            let parts: Vec<&str> = line.splitn(2, ": post-hook '").collect();
+            if parts.len() == 2 {
+                let timestamp = parts[0];
+                let rest: Vec<&str> = parts[1].splitn(2, "' failed: ").collect();
+                if rest.len() == 2 {
+                    let hook_name = rest[0];
+                    let error = rest[1];
+                    println!(
+                        "{} {} {} {}",
+                        timestamp.dimmed(),
+                        hook_name.cyan(),
+                        "failed:".red(),
+                        error
+                    );
+                } else {
+                    println!("{}", line);
+                }
+            } else {
+                println!("{}", line);
+            }
+        }
+        println!();
+        println!("{} entries shown", count);
+        if lines.is_some() {
+            println!("Log file: {}", log_path.display());
+        }
+    }
+
+    Ok(())
 }

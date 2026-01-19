@@ -57,23 +57,25 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                     "error": error_str,
                 }))?;
             } else if is_corruption_error(&error_str) {
-                println!("Cache database is corrupted and cannot be opened.");
-                println!("\nTo fix this issue:");
-                println!("  1. Run 'janus cache clear' to delete the corrupted cache");
-                println!("  2. Run any janus command to rebuild the cache automatically");
-                println!("  3. Or run 'janus cache rebuild' to rebuild it manually");
+                eprintln!("Cache database is corrupted and cannot be opened.");
+                eprintln!("\nTo fix this issue:");
+                eprintln!("  1. Run 'janus cache clear' to delete the corrupted cache");
+                eprintln!("  2. Run any janus command to rebuild the cache automatically");
+                eprintln!("  3. Or run 'janus cache rebuild' to rebuild it manually");
             } else if is_permission_error(&error_str) {
-                println!("Cache database cannot be accessed due to permission issues.");
-                println!("\nTo fix this issue:");
-                println!("  1. Check file permissions for:");
+                eprintln!("Cache database cannot be accessed due to permission issues.");
+                eprintln!("\nTo fix this issue:");
+                eprintln!("  1. Check file permissions for:");
                 let cache_dir = crate::cache::cache_dir();
-                println!("     {}", cache_dir.display());
-                println!("  2. Ensure the cache directory is writable");
-                println!("  3. Try 'janus cache rebuild' after fixing permissions");
+                eprintln!("     {}", cache_dir.display());
+                eprintln!("  2. Ensure the cache directory is writable");
+                eprintln!("  3. Try 'janus cache rebuild' after fixing permissions");
             } else {
-                println!("Cache not available: {}", e);
-                println!("Run 'janus cache rebuild' to create a cache.");
+                eprintln!("Cache not available: {}", e);
+                eprintln!("Run 'janus cache rebuild' to create a cache.");
             }
+
+            return Err(e);
         }
     }
     Ok(())

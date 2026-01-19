@@ -24,7 +24,9 @@ pub use config::{cmd_config_get, cmd_config_set, cmd_config_show};
 pub use create::{CreateOptions, cmd_create};
 pub use dep::{cmd_dep_add, cmd_dep_remove, cmd_dep_tree};
 pub use edit::cmd_edit;
-pub use hook::{cmd_hook_disable, cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_run};
+pub use hook::{
+    cmd_hook_disable, cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run,
+};
 pub use link::{cmd_link_add, cmd_link_remove};
 pub use ls::cmd_ls;
 pub use plan::{

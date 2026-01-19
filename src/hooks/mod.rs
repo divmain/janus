@@ -11,6 +11,12 @@
 //! - **Post-hooks** (`post_write`, `post_delete`, `*_created`, `*_updated`, `*_deleted`):
 //!   Run after operations. Failures are logged as warnings but don't abort.
 //!
+//! # Hook Failure Logging
+//!
+//! Post-hook failures are automatically logged to `.janus/hooks.log` with timestamps
+//! for later review. This provides observability in automated environments where
+//! stderr output might be lost. Use `janus hook log` to view the failure log.
+//!
 //! # Environment Variables
 //!
 //! Hook scripts receive context via environment variables:
@@ -26,6 +32,8 @@
 pub mod types;
 
 use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -37,9 +45,13 @@ pub use types::{HookContext, HookEvent, ItemType};
 use crate::error::{JanusError, Result};
 use crate::remote::Config;
 use crate::types::TICKETS_DIR;
+use crate::utils::iso_date;
 
 /// The directory within .janus where hook scripts are stored.
 const HOOKS_DIR: &str = "hooks";
+
+/// The file within .janus where hook failures are logged.
+const HOOK_LOG_FILE: &str = "hooks.log";
 
 /// Run pre-operation hooks for the given event.
 ///
@@ -98,6 +110,7 @@ pub fn run_post_hooks(event: HookEvent, context: &HookContext) {
     if let Some(script_name) = config.hooks.get_script(event.as_str())
         && let Err(e) = execute_hook(event, script_name, context, &config, false)
     {
+        log_hook_failure(script_name, &e);
         eprintln!("Warning: post-hook '{}' failed: {}", script_name, e);
     }
 }
@@ -275,6 +288,50 @@ pub fn context_to_env(context: &HookContext, janus_root: &Path) -> HashMap<Strin
     env.insert("JANUS_ROOT".to_string(), janus_root.display().to_string());
 
     env
+}
+
+/// Log a hook failure to the hooks.log file.
+///
+/// Appends a timestamped entry to `.janus/hooks.log` with information about
+/// the hook failure. If writing to the log fails, a warning is printed to stderr
+/// but the error is not propagated since this is a non-critical operation.
+///
+/// # Arguments
+/// * `hook_name` - The name of the hook that failed
+/// * `error` - The error that occurred
+fn log_hook_failure(hook_name: &str, error: &JanusError) {
+    let log_path = PathBuf::from(TICKETS_DIR).join(HOOK_LOG_FILE);
+    let timestamp = iso_date();
+
+    // Extract the stderr message from PostHookFailed error, or use the full error
+    let error_detail = match error {
+        JanusError::PostHookFailed { message, .. } => {
+            if message.is_empty() {
+                "exited with non-zero status".to_string()
+            } else {
+                message.clone()
+            }
+        }
+        _ => error.to_string(),
+    };
+
+    let log_entry = format!(
+        "{}: post-hook '{}' failed: {}\n",
+        timestamp, hook_name, error_detail
+    );
+
+    // Try to append to the log file, but don't fail if we can't
+    match OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .and_then(|mut file| file.write_all(log_entry.as_bytes()))
+    {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Warning: failed to write to hook log file: {}", e);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -843,5 +900,102 @@ hooks:
             Err(JanusError::YamlParse(_)) => {}
             other => panic!("Expected HookSecurity or YamlParse error, got: {:?}", other),
         }
+    }
+
+    #[test]
+    #[serial]
+    fn test_post_hook_failure_logged() {
+        let temp_dir = setup_test_env();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create a failing post-hook script
+        let hooks_dir = temp_dir.path().join(".janus/hooks");
+        let script_path = hooks_dir.join("post-write.sh");
+        fs::write(&script_path, "#!/bin/sh\nexit 1\n").unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Create config
+        let config_content = r#"
+hooks:
+  enabled: true
+  timeout: 0
+  scripts:
+    post_write: post-write.sh
+"#;
+        let config_path = temp_dir.path().join(".janus/config.yaml");
+        fs::write(&config_path, config_content).unwrap();
+
+        let context = HookContext::new()
+            .with_event(HookEvent::PostWrite)
+            .with_item_type(ItemType::Ticket)
+            .with_item_id("j-test");
+
+        // Run post hook (should fail but not return error)
+        run_post_hooks(HookEvent::PostWrite, &context);
+
+        // Give it a moment to complete
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Verify the failure was logged
+        let log_path = temp_dir.path().join(".janus/hooks.log");
+        assert!(log_path.exists(), "Hook log file should be created");
+
+        let log_content = fs::read_to_string(&log_path).unwrap();
+        assert!(
+            log_content.contains("post-hook 'post-write.sh' failed"),
+            "Log should contain failure message. Got: {}",
+            log_content
+        );
+        // Verify timestamp format (ISO 8601)
+        assert!(
+            log_content.contains('T') && log_content.contains('Z'),
+            "Log should contain ISO 8601 timestamp. Got: {}",
+            log_content
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_multiple_post_hook_failures_logged() {
+        let temp_dir = setup_test_env();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+
+        // Create a failing post-hook script
+        let hooks_dir = temp_dir.path().join(".janus/hooks");
+        let script_path = hooks_dir.join("post-write.sh");
+        fs::write(&script_path, "#!/bin/sh\nexit 1\n").unwrap();
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Create config
+        let config_content = r#"
+hooks:
+  enabled: true
+  timeout: 0
+  scripts:
+    post_write: post-write.sh
+"#;
+        let config_path = temp_dir.path().join(".janus/config.yaml");
+        fs::write(&config_path, config_content).unwrap();
+
+        let context = HookContext::new()
+            .with_event(HookEvent::PostWrite)
+            .with_item_type(ItemType::Ticket)
+            .with_item_id("j-test");
+
+        // Run post hook multiple times
+        run_post_hooks(HookEvent::PostWrite, &context);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        run_post_hooks(HookEvent::PostWrite, &context);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Verify both failures were logged
+        let log_path = temp_dir.path().join(".janus/hooks.log");
+        let log_content = fs::read_to_string(&log_path).unwrap();
+
+        // Count occurrences of failure messages
+        let failure_count = log_content
+            .matches("post-hook 'post-write.sh' failed")
+            .count();
+        assert_eq!(failure_count, 2, "Log should contain two failure entries");
     }
 }
