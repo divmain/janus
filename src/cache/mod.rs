@@ -220,7 +220,8 @@ Description of the plan.
         let cache = TicketCache::open().await.unwrap();
 
         // Verify WAL mode is enabled (this is the key fix for concurrent access)
-        let mut rows = cache.conn().query("PRAGMA journal_mode", ()).await.unwrap();
+        let conn = cache.create_connection().await.unwrap();
+        let mut rows = conn.query("PRAGMA journal_mode", ()).await.unwrap();
         let row = get_first_row(&mut rows).await;
         let mode: String = row.get(0).unwrap();
         assert_eq!(mode.to_lowercase(), "wal", "WAL mode should be enabled");
@@ -247,8 +248,8 @@ Description of the plan.
 
         let cache = TicketCache::open().await.unwrap();
 
-        let mut rows = cache
-            .conn()
+        let conn = cache.create_connection().await.unwrap();
+        let mut rows = conn
             .query("SELECT value FROM meta WHERE key = 'repo_path'", ())
             .await
             .unwrap();
@@ -273,8 +274,8 @@ Description of the plan.
 
         let cache = TicketCache::open().await.unwrap();
 
-        let mut rows = cache
-            .conn()
+        let conn = cache.create_connection().await.unwrap();
+        let mut rows = conn
             .query("SELECT value FROM meta WHERE key = 'cache_version'", ())
             .await
             .unwrap();
@@ -311,7 +312,9 @@ Description of the plan.
         assert!(changed);
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM tickets", ())
             .await
             .unwrap();
@@ -340,7 +343,9 @@ Description of the plan.
         assert!(changed1);
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM tickets", ())
             .await
             .unwrap();
@@ -356,7 +361,9 @@ Description of the plan.
         assert!(changed2);
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM tickets", ())
             .await
             .unwrap();
@@ -384,7 +391,9 @@ Description of the plan.
         cache.sync().await.unwrap();
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM tickets", ())
             .await
             .unwrap();
@@ -400,7 +409,9 @@ Description of the plan.
         assert!(changed);
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM tickets", ())
             .await
             .unwrap();
@@ -430,7 +441,9 @@ Description of the plan.
         cache.sync().await.unwrap();
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT title FROM tickets WHERE ticket_id = ?1", ["j-a1b2"])
             .await
             .unwrap();
@@ -453,7 +466,9 @@ Description of the plan.
         assert!(changed);
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT title FROM tickets WHERE ticket_id = ?1", ["j-a1b2"])
             .await
             .unwrap();
@@ -585,7 +600,9 @@ priority: 2
 
         // Verify deps were stored correctly
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query(
                 "SELECT deps, links FROM tickets WHERE ticket_id = ?1",
                 ["j-a1b2"],
@@ -647,7 +664,9 @@ remote: github
 
         // Verify all fields were stored correctly
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query(
                 "SELECT status, title, priority, ticket_type, parent, external_ref, remote 
                  FROM tickets WHERE ticket_id = ?1",
@@ -703,7 +722,9 @@ remote: github
         let cache2 = TicketCache::open().await.unwrap();
 
         let mut rows = cache2
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM tickets", ())
             .await
             .unwrap();
@@ -730,7 +751,9 @@ remote: github
 
         // Query for indexes
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query(
                 "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tickets'",
                 (),
@@ -774,7 +797,9 @@ remote: github
         assert!(!changed);
 
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM tickets", ())
             .await
             .unwrap();
@@ -1032,7 +1057,9 @@ remote: github
 
         // Verify plan was cached
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query("SELECT COUNT(*) FROM plans", ())
             .await
             .unwrap();
@@ -1360,7 +1387,9 @@ remote: github
 
         // Query for indexes on plans table
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query(
                 "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='plans'",
                 (),
@@ -1411,7 +1440,9 @@ remote: github
 
         // Verify the valid ticket was synced
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query(
                 "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
                 ["j-valid"],
@@ -1424,7 +1455,9 @@ remote: github
 
         // Verify the invalid ticket was not synced
         let mut rows = cache
-            .conn()
+            .create_connection()
+            .await
+            .unwrap()
             .query(
                 "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
                 ["j-invalid"],

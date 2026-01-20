@@ -23,13 +23,13 @@ impl TicketCache {
 
     /// Get all cached tickets.
     pub async fn get_all_tickets(&self) -> Result<Vec<TicketMetadata>> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary,
-                    spawned_from, spawn_context, depth
-             FROM tickets",
+                deps, links, parent, created, external_ref, remote, completion_summary,
+                spawned_from, spawn_context, depth
+         FROM tickets",
                 (),
             )
             .await?;
@@ -44,13 +44,13 @@ impl TicketCache {
 
     /// Get a single ticket by ID.
     pub async fn get_ticket(&self, id: &str) -> Result<Option<TicketMetadata>> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary,
-                    spawned_from, spawn_context, depth
-             FROM tickets WHERE ticket_id = ?1",
+                deps, links, parent, created, external_ref, remote, completion_summary,
+                spawned_from, spawn_context, depth
+         FROM tickets WHERE ticket_id = ?1",
                 [id],
             )
             .await?;
@@ -65,8 +65,8 @@ impl TicketCache {
 
     /// Find tickets by partial ID (prefix match).
     pub async fn find_by_partial_id(&self, partial: &str) -> Result<Vec<String>> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query(
                 "SELECT ticket_id FROM tickets WHERE ticket_id LIKE ?1",
                 [format!("{}%", partial)],
@@ -100,11 +100,11 @@ impl TicketCache {
 
     /// Get all cached plans.
     pub async fn get_all_plans(&self) -> Result<Vec<CachedPlanMetadata>> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query(
                 "SELECT plan_id, uuid, title, created, structure_type, tickets_json, phases_json
-                 FROM plans",
+             FROM plans",
                 (),
             )
             .await?;
@@ -119,11 +119,11 @@ impl TicketCache {
 
     /// Get a single plan by ID.
     pub async fn get_plan(&self, id: &str) -> Result<Option<CachedPlanMetadata>> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query(
                 "SELECT plan_id, uuid, title, created, structure_type, tickets_json, phases_json
-                 FROM plans WHERE plan_id = ?1",
+             FROM plans WHERE plan_id = ?1",
                 [id],
             )
             .await?;
@@ -138,8 +138,8 @@ impl TicketCache {
 
     /// Find plans by partial ID (prefix match).
     pub async fn find_plan_by_partial_id(&self, partial: &str) -> Result<Vec<String>> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query(
                 "SELECT plan_id FROM plans WHERE plan_id LIKE ?1",
                 [format!("{}%", partial)],
@@ -158,8 +158,8 @@ impl TicketCache {
     ///
     /// This queries the cache for tickets where `spawned_from` matches the given ID.
     pub async fn get_children_count(&self, id: &str) -> Result<usize> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query("SELECT COUNT(*) FROM tickets WHERE spawned_from = ?1", [id])
             .await?;
 

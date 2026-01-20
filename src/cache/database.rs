@@ -8,6 +8,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use turso::{Builder, Connection, Database};
 
@@ -22,18 +23,14 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 /// Current cache schema version. Increment when schema changes.
 pub(crate) const CACHE_VERSION: &str = "6";
 
-/// The main cache struct that wraps database connection and metadata.
 pub struct TicketCache {
-    #[allow(dead_code)]
-    pub(crate) db: Database,
-    pub(crate) conn: Connection,
+    pub(crate) db: Arc<Database>,
     #[allow(dead_code)]
     pub(crate) repo_path: PathBuf,
     pub(crate) repo_hash: String,
 }
 
 impl TicketCache {
-    /// Open or create a cache database for the current directory.
     pub async fn open() -> Result<Self> {
         let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
 
@@ -47,16 +44,12 @@ impl TicketCache {
         }
 
         let db_path_str = db_path.to_string_lossy();
-        let db = Builder::new_local(&db_path_str).build().await?;
+        let db = Arc::new(Builder::new_local(&db_path_str).build().await?);
+
         let conn = db.connect()?;
 
-        // Set busy timeout to handle concurrent access from multiple janus processes.
-        // This causes SQLite to retry with exponential backoff rather than failing immediately.
         conn.busy_timeout(BUSY_TIMEOUT)?;
 
-        // Enable WAL (Write-Ahead Logging) mode for better concurrent access.
-        // Readers no longer block writers and vice versa, improving performance for
-        // multi-terminal workflows.
         {
             let mut rows = conn.query("PRAGMA journal_mode=WAL", ()).await?;
             rows.next().await?;
@@ -64,14 +57,13 @@ impl TicketCache {
 
         let cache = Self {
             db,
-            conn,
             repo_path: repo_path.clone(),
             repo_hash,
         };
 
-        cache.initialize_database().await?;
-        cache.validate_cache_version().await?;
-        cache.store_repo_path(&repo_path).await?;
+        cache.initialize_database(&conn).await?;
+        cache.validate_cache_version(&conn).await?;
+        cache.store_repo_path(&repo_path, &conn).await?;
 
         Ok(cache)
     }
@@ -111,21 +103,18 @@ impl TicketCache {
         result
     }
 
-    /// Initialize the database schema.
-    async fn initialize_database(&self) -> Result<()> {
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS meta (
+    async fn initialize_database(&self, conn: &Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )",
-                (),
-            )
-            .await?;
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS tickets (
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tickets (
                 ticket_id TEXT PRIMARY KEY,
                 uuid TEXT,
                 mtime_ns INTEGER NOT NULL,
@@ -144,56 +133,48 @@ impl TicketCache {
                 spawn_context TEXT,
                 depth INTEGER
             )",
-                (),
-            )
-            .await?;
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)",
-                (),
-            )
-            .await?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)",
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)",
-                (),
-            )
-            .await?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)",
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(ticket_type)",
-                (),
-            )
-            .await?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(ticket_type)",
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_status_priority ON tickets(status, priority)",
-                (),
-            )
-            .await?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_status_priority ON tickets(status, priority)",
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_spawned_from ON tickets(spawned_from)",
-                (),
-            )
-            .await?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_spawned_from ON tickets(spawned_from)",
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_depth ON tickets(depth)",
-                (),
-            )
-            .await?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_depth ON tickets(depth)",
+            (),
+        )
+        .await?;
 
-        // Plans table
-        self.conn
-            .execute(
-                "CREATE TABLE IF NOT EXISTS plans (
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS plans (
                 plan_id TEXT PRIMARY KEY,
                 uuid TEXT,
                 mtime_ns INTEGER NOT NULL,
@@ -203,44 +184,40 @@ impl TicketCache {
                 tickets_json TEXT,
                 phases_json TEXT
             )",
-                (),
-            )
-            .await?;
+            (),
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_plans_structure_type ON plans(structure_type)",
-                (),
-            )
-            .await?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_plans_structure_type ON plans(structure_type)",
+            (),
+        )
+        .await?;
 
         Ok(())
     }
 
-    /// Store the repository path in the meta table.
-    async fn store_repo_path(&self, repo_path: &Path) -> Result<()> {
+    async fn store_repo_path(&self, repo_path: &Path, conn: &Connection) -> Result<()> {
         let path_str = repo_path.to_string_lossy().to_string();
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('repo_path', ?1)",
-                [path_str],
-            )
-            .await?;
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('repo_path', ?1)",
+            [path_str],
+        )
+        .await?;
 
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('cache_version', ?1)",
-                [CACHE_VERSION],
-            )
-            .await?;
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('cache_version', ?1)",
+            [CACHE_VERSION],
+        )
+        .await?;
 
         Ok(())
     }
 
-    /// Get a metadata value from the meta table.
+    #[allow(dead_code)]
     pub(crate) async fn get_meta(&self, key: &str) -> Result<Option<String>> {
-        let mut rows = self
-            .conn
+        let conn = self.create_connection().await?;
+        let mut rows = conn
             .query("SELECT value FROM meta WHERE key = ?1", [key])
             .await?;
 
@@ -253,9 +230,13 @@ impl TicketCache {
         }
     }
 
-    /// Validate that the cache version matches the expected version.
-    async fn validate_cache_version(&self) -> Result<()> {
-        if let Some(stored_version) = self.get_meta("cache_version").await?
+    async fn validate_cache_version(&self, conn: &Connection) -> Result<()> {
+        if let Some(row) = conn
+            .query("SELECT value FROM meta WHERE key = ?1", ["cache_version"])
+            .await?
+            .next()
+            .await?
+            && let Ok(stored_version) = row.get::<String>(0)
             && stored_version != CACHE_VERSION
         {
             return Err(CacheError::CacheVersionMismatch {
@@ -263,17 +244,42 @@ impl TicketCache {
                 found: stored_version,
             });
         }
+
         Ok(())
     }
 
-    /// Get the path to the cache database file.
     pub fn cache_db_path(&self) -> PathBuf {
         cache_db_path(&self.repo_hash)
     }
 
-    /// Get a reference to the database connection.
-    #[cfg(test)]
-    pub(crate) fn conn(&self) -> &Connection {
-        &self.conn
+    pub async fn create_connection(&self) -> Result<Arc<Connection>> {
+        let mut last_error = None;
+
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            }
+
+            match self.db.connect() {
+                Ok(conn) => {
+                    if let Err(e) = conn.busy_timeout(BUSY_TIMEOUT) {
+                        last_error = Some(e);
+                        continue;
+                    }
+                    return Ok(Arc::new(conn));
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        let error_msg = last_error
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "Unknown error".to_string());
+        Err(CacheError::CacheAccessFailed(
+            self.cache_db_path(),
+            error_msg,
+        ))
     }
 }

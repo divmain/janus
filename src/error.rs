@@ -193,6 +193,9 @@ pub enum JanusError {
     #[error("cannot access cache directory: {0}")]
     CacheAccessDenied(std::path::PathBuf),
 
+    #[error("cache access failed at {0}: {1}")]
+    CacheAccessFailed(std::path::PathBuf, String),
+
     #[error("cache database error: {0}")]
     CacheDatabase(#[from] turso::Error),
 

@@ -99,7 +99,8 @@ impl TicketCache {
         }
 
         // Use transaction for atomicity
-        let tx = self.conn.transaction().await?;
+        let conn = self.create_connection().await?;
+        let tx = conn.unchecked_transaction().await?;
 
         for (metadata, mtime_ns) in &items_to_upsert {
             metadata.insert_into_cache(&tx, *mtime_ns).await?;
@@ -165,7 +166,8 @@ impl TicketCache {
             T::id_column(),
             T::table_name()
         );
-        let mut rows = self.conn.query(&query, ()).await?;
+        let conn = self.create_connection().await?;
+        let mut rows = conn.query(&query, ()).await?;
 
         while let Some(row) = rows.next().await? {
             let id: String = row.get(0)?;
