@@ -43,11 +43,7 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
         .file_stem()
         .and_then(|s| {
             let id = s.to_string_lossy().into_owned();
-            if id.is_empty() {
-                None
-            } else {
-                Some(id)
-            }
+            if id.is_empty() { None } else { Some(id) }
         })
         .ok_or_else(|| {
             JanusError::InvalidFormat(format!(
@@ -56,6 +52,44 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
                 file_path.display()
             ))
         })
+}
+
+/// Validate an identifier string (alphanumeric, hyphens, and underscores only)
+///
+/// This is a generic validation function used by both ticket ID and prefix validators.
+/// It trims whitespace, checks for non-empty strings, and validates that only
+/// alphanumeric characters, hyphens, and underscores are present.
+///
+/// # Arguments
+///
+/// * `s` - The string to validate
+/// * `name` - A descriptive name for the identifier (used in error messages)
+///
+/// # Returns
+///
+/// * `Ok(String)` - The trimmed, validated identifier
+/// * `Err(JanusError)` - An error describing what went wrong
+pub fn validate_identifier(s: &str, name: &str) -> Result<String> {
+    let trimmed = s.trim();
+
+    if trimmed.is_empty() {
+        return Err(JanusError::InvalidFormat(format!(
+            "{} cannot be empty",
+            name
+        )));
+    }
+
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(JanusError::InvalidFormat(format!(
+            "{} '{}' contains invalid characters. Use only letters, numbers, hyphens, and underscores",
+            name, trimmed
+        )));
+    }
+
+    Ok(trimmed.to_string())
 }
 
 /// Get the git user.name config value
@@ -106,19 +140,16 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
         ));
     }
 
-    // Check that prefix contains only valid characters (alphanumeric, hyphens, underscores)
-    if !prefix
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(JanusError::InvalidPrefix(
+    // Use the generic identifier validator and convert the error to InvalidPrefix
+    validate_identifier(prefix, "Prefix").map_err(|_| {
+        JanusError::InvalidPrefix(
             prefix.to_string(),
             format!(
                 "Prefix '{}' contains invalid characters. Use only letters, numbers, hyphens, and underscores",
                 prefix
             ),
-        ));
-    }
+        )
+    })?;
 
     Ok(())
 }

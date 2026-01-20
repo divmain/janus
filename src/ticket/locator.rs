@@ -2,7 +2,7 @@ use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
 use crate::types::TICKETS_ITEMS_DIR;
-use crate::utils::extract_id_from_path;
+use crate::utils::{extract_id_from_path, validate_identifier};
 use std::path::PathBuf;
 
 /// Ticket-specific implementation of the Findable trait
@@ -30,20 +30,16 @@ impl Findable for TicketFinder {
 }
 
 fn validate_partial_id(id: &str) -> Result<String> {
-    let trimmed = id.trim();
-
-    if trimmed.is_empty() {
-        return Err(JanusError::EmptyTicketId);
-    }
-
-    if !trimmed
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(JanusError::InvalidTicketIdCharacters);
-    }
-
-    Ok(trimmed.to_string())
+    // Use the generic identifier validator and convert errors to ticket-specific types
+    validate_identifier(id, "Ticket ID").map_err(|e| {
+        // Map generic errors to specific ticket errors
+        let msg = e.to_string();
+        if msg.contains("cannot be empty") {
+            JanusError::EmptyTicketId
+        } else {
+            JanusError::InvalidTicketIdCharacters
+        }
+    })
 }
 
 pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
