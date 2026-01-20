@@ -262,6 +262,24 @@ pub struct TicketWithBlockers {
     pub open_blockers: Vec<String>,
 }
 
+pub fn validate_field_name(field: &str, operation: &str) -> crate::error::Result<()> {
+    if !VALID_TICKET_FIELDS.contains(&field) {
+        return Err(JanusError::InvalidField {
+            field: field.to_string(),
+            valid_fields: VALID_TICKET_FIELDS.iter().map(|s| s.to_string()).collect(),
+        });
+    }
+
+    if IMMUTABLE_TICKET_FIELDS.contains(&field) {
+        return Err(JanusError::Other(format!(
+            "cannot {} immutable field '{}'",
+            operation, field
+        )));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,5 +476,63 @@ status: new
         assert!(metadata.spawned_from.is_none());
         assert!(metadata.spawn_context.is_none());
         assert!(metadata.depth.is_none());
+    }
+
+    #[test]
+    fn test_validate_field_name_valid() {
+        assert!(validate_field_name("status", "update").is_ok());
+        assert!(validate_field_name("priority", "update").is_ok());
+        assert!(validate_field_name("type", "update").is_ok());
+    }
+
+    #[test]
+    fn test_validate_field_name_invalid() {
+        let result = validate_field_name("unknown_field", "update");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidField {
+                field,
+                valid_fields: _,
+            } => {
+                assert_eq!(field, "unknown_field");
+            }
+            _ => panic!("Expected InvalidField error"),
+        }
+    }
+
+    #[test]
+    fn test_validate_field_name_immutable_id() {
+        let result = validate_field_name("id", "update");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot update immutable field 'id'"));
+            }
+            _ => panic!("Expected Other error for immutable field"),
+        }
+    }
+
+    #[test]
+    fn test_validate_field_name_immutable_uuid() {
+        let result = validate_field_name("uuid", "update");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot update immutable field 'uuid'"));
+            }
+            _ => panic!("Expected Other error for immutable field"),
+        }
+    }
+
+    #[test]
+    fn test_validate_field_name_remove_immutable() {
+        let result = validate_field_name("id", "remove");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::Other(msg) => {
+                assert!(msg.contains("cannot remove immutable field 'id'"));
+            }
+            _ => panic!("Expected Other error for immutable field"),
+        }
     }
 }

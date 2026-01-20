@@ -3,6 +3,8 @@ mod content;
 mod editor;
 mod file;
 mod locator;
+mod manipulator;
+mod parser;
 mod repository;
 
 pub use builder::TicketBuilder;
@@ -18,6 +20,7 @@ pub use repository::{
 use crate::error::Result;
 use crate::hooks::{HookContext, ItemType};
 use crate::types::TicketMetadata;
+use crate::ticket::parser::parse;
 use std::path::PathBuf;
 
 pub struct Ticket {
@@ -54,7 +57,7 @@ impl Ticket {
 
     pub fn read(&self) -> Result<TicketMetadata> {
         let raw_content = self.file.read_raw()?;
-        let mut metadata = content::parse(&raw_content)?;
+        let mut metadata = parse(&raw_content)?;
         metadata.file_path = Some(self.file.file_path().clone());
         Ok(metadata)
     }

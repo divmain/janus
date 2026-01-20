@@ -1,10 +1,12 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
-use crate::ticket::content::{
-    extract_field_value, parse, remove_field as remove_field_from_content,
-    update_field as update_field_in_content, validate_field_name,
-};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
+use crate::ticket::content::validate_field_name;
 use crate::ticket::file::TicketFile;
+use crate::ticket::manipulator::{
+    extract_field_value, remove_field as remove_field_from_content,
+    update_field as update_field_in_content,
+};
+use crate::ticket::parser::parse;
 use serde_json;
 
 pub struct TicketEditor {
