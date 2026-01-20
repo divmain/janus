@@ -302,6 +302,9 @@ pub enum JanusError {
 
     #[error("cache data integrity error: {0}")]
     CacheDataIntegrity(String),
+
+    #[error("failed to extract column {column} from database row: {error}")]
+    CacheColumnExtraction { column: usize, error: String },
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;

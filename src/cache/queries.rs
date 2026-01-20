@@ -176,43 +176,124 @@ impl TicketCache {
     // =========================================================================
 
     async fn row_to_ticket_metadata(row: &turso::Row) -> Result<TicketMetadata> {
-        let id: Option<String> = row.get(0).ok();
-        let uuid: Option<String> = row.get(1).ok();
-        let status_str: Option<String> = row.get(2).ok();
-        let title: Option<String> = row.get(3).ok();
-        let priority_num: Option<i64> = row.get(4).ok();
-        let type_str: Option<String> = row.get(5).ok();
-        let deps_json: Option<String> = row.get(6).ok();
-        let links_json: Option<String> = row.get(7).ok();
-        let parent: Option<String> = row.get(8).ok();
-        let created: Option<String> = row.get(9).ok();
-        let external_ref: Option<String> = row.get(10).ok();
-        let remote: Option<String> = row.get(11).ok();
-        let completion_summary: Option<String> = row.get(12).ok();
-        let spawned_from: Option<String> = row.get(13).ok();
-        let spawn_context: Option<String> = row.get(14).ok();
-        let depth_num: Option<i64> = row.get(15).ok();
-
-        // Parse status with explicit error handling
-        let status = if let Some(ref s) = status_str {
-            match s.parse() {
-                Ok(status) => Some(status),
-                Err(_) => {
-                    eprintln!(
-                        "Warning: Failed to parse status '{}' for ticket '{:?}'. Status will be None.",
-                        s, id
-                    );
-                    None
-                }
+        let id: Option<String> = Some(row.get::<String>(0).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 0,
+                error: e.to_string(),
             }
-        } else {
-            None
-        };
+        })?);
 
-        // Parse ticket_type with explicit error handling
-        let ticket_type = if let Some(ref s) = type_str {
+        let uuid: Option<String> = row.get::<Option<String>>(1).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 1,
+                error: e.to_string(),
+            }
+        })?;
+
+        let status: Option<crate::types::TicketStatus> = row
+            .get::<Option<String>>(2)
+            .map_err(|e| {
+                CacheError::CacheColumnExtraction {
+                    column: 2,
+                    error: e.to_string(),
+                }
+            })?
+            .and_then(|s| s.parse().ok());
+
+        let title: Option<String> = row.get::<Option<String>>(3).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 3,
+                error: e.to_string(),
+            }
+        })?;
+
+        let priority_num: Option<i64> = row.get::<Option<i64>>(4).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 4,
+                error: e.to_string(),
+            }
+        })?;
+
+        let type_str: Option<String> = row.get::<Option<String>>(5).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 5,
+                error: e.to_string(),
+            }
+        })?;
+
+        let deps_json: Option<String> = row.get::<Option<String>>(6).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 6,
+                error: e.to_string(),
+            }
+        })?;
+
+        let links_json: Option<String> = row.get::<Option<String>>(7).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 7,
+                error: e.to_string(),
+            }
+        })?;
+
+        let parent: Option<String> = row.get::<Option<String>>(8).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 8,
+                error: e.to_string(),
+            }
+        })?;
+
+        let created: Option<String> = row.get::<Option<String>>(9).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 9,
+                error: e.to_string(),
+            }
+        })?;
+
+        let external_ref: Option<String> = row.get::<Option<String>>(10).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 10,
+                error: e.to_string(),
+            }
+        })?;
+
+        let remote: Option<String> = row.get::<Option<String>>(11).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 11,
+                error: e.to_string(),
+            }
+        })?;
+
+        let completion_summary: Option<String> =
+            row.get::<Option<String>>(12).map_err(|e| CacheError::CacheColumnExtraction {
+                column: 12,
+                error: e.to_string(),
+            })?;
+
+        let spawned_from: Option<String> = row.get::<Option<String>>(13).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 13,
+                error: e.to_string(),
+            }
+        })?;
+
+        let spawn_context: Option<String> = row.get::<Option<String>>(14).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 14,
+                error: e.to_string(),
+            }
+        })?;
+
+        let depth_num: Option<i64> = row.get::<Option<i64>>(15).map_err(|e| {
+            CacheError::CacheColumnExtraction {
+                column: 15,
+                error: e.to_string(),
+            }
+        })?;
+
+        // Parse ticket_type (optional domain field)
+        let ticket_type: Option<crate::types::TicketType> = type_str.and_then(|s| {
             match s.parse() {
-                Ok(ticket_type) => Some(ticket_type),
+                Ok(tt) => Some(tt),
                 Err(_) => {
                     eprintln!(
                         "Warning: Failed to parse ticket_type '{}' for ticket '{:?}'. Type will be None.",
@@ -221,13 +302,11 @@ impl TicketCache {
                     None
                 }
             }
-        } else {
-            None
-        };
+        });
 
-        // Parse priority with explicit error handling
-        let priority = match priority_num {
-            Some(n) => match n {
+        // Parse priority (optional domain field)
+        let priority: Option<crate::types::TicketPriority> = priority_num.and_then(|n| {
+            match n {
                 0 => Some(crate::types::TicketPriority::P0),
                 1 => Some(crate::types::TicketPriority::P1),
                 2 => Some(crate::types::TicketPriority::P2),
@@ -240,17 +319,16 @@ impl TicketCache {
                     );
                     None
                 }
-            },
-            None => None,
-        };
+            }
+        });
 
         // Convert depth from i64 to u32
-        let depth = depth_num.and_then(|n| u32::try_from(n).ok());
+        let depth: Option<u32> = depth_num.and_then(|n| u32::try_from(n).ok());
 
         let deps = Self::deserialize_array(deps_json.as_deref())?;
         let links = Self::deserialize_array(links_json.as_deref())?;
 
-        Ok(TicketMetadata {
+        let metadata = TicketMetadata {
             id,
             uuid,
             title,
@@ -268,17 +346,65 @@ impl TicketCache {
             spawned_from,
             spawn_context,
             depth,
-        })
+        };
+
+        if metadata.id.is_none() {
+            return Err(CacheError::CacheDataIntegrity(
+                "ticket metadata missing required field 'id'".to_string(),
+            ));
+        }
+
+        Ok(metadata)
     }
 
     async fn row_to_plan_metadata(row: &turso::Row) -> Result<CachedPlanMetadata> {
-        let id: Option<String> = row.get(0).ok();
-        let uuid: Option<String> = row.get(1).ok();
-        let title: Option<String> = row.get(2).ok();
-        let created: Option<String> = row.get(3).ok();
-        let structure_type: Option<String> = row.get(4).ok();
-        let tickets_json: Option<String> = row.get(5).ok();
-        let phases_json: Option<String> = row.get(6).ok();
+        let id: Option<String> =
+            Some(row.get::<String>(0).map_err(|e| CacheError::CacheColumnExtraction {
+                column: 0,
+                error: e.to_string(),
+            })?);
+
+        let uuid: Option<String> = row
+            .get::<Option<String>>(1)
+            .map_err(|e| CacheError::CacheColumnExtraction {
+                column: 1,
+                error: e.to_string(),
+            })?;
+
+        let title: Option<String> = row
+            .get::<Option<String>>(2)
+            .map_err(|e| CacheError::CacheColumnExtraction {
+                column: 2,
+                error: e.to_string(),
+            })?;
+
+        let created: Option<String> = row
+            .get::<Option<String>>(3)
+            .map_err(|e| CacheError::CacheColumnExtraction {
+                column: 3,
+                error: e.to_string(),
+            })?;
+
+        let structure_type: Option<String> = row
+            .get::<Option<String>>(4)
+            .map_err(|e| CacheError::CacheColumnExtraction {
+                column: 4,
+                error: e.to_string(),
+            })?;
+
+        let tickets_json: Option<String> = row
+            .get::<Option<String>>(5)
+            .map_err(|e| CacheError::CacheColumnExtraction {
+                column: 5,
+                error: e.to_string(),
+            })?;
+
+        let phases_json: Option<String> = row
+            .get::<Option<String>>(6)
+            .map_err(|e| CacheError::CacheColumnExtraction {
+                column: 6,
+                error: e.to_string(),
+            })?;
 
         // Deserialize tickets for simple plans with explicit error handling
         let tickets: Vec<String> = if let Some(json_str) = tickets_json.as_deref() {
@@ -331,7 +457,7 @@ impl TicketCache {
             }
         };
 
-        Ok(CachedPlanMetadata {
+        let metadata = CachedPlanMetadata {
             id,
             uuid,
             title,
@@ -339,7 +465,15 @@ impl TicketCache {
             structure_type,
             tickets,
             phases,
-        })
+        };
+
+        if metadata.id.is_none() {
+            return Err(CacheError::CacheDataIntegrity(
+                "plan metadata missing required field 'id'".to_string(),
+            ));
+        }
+
+        Ok(metadata)
     }
 
     /// Deserialize a JSON array from a database column.
