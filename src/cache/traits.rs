@@ -9,6 +9,7 @@ use turso::transaction::Transaction;
 use crate::error::{JanusError, Result};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
+use crate::utils::generate_uuid;
 use crate::ticket::parse_ticket;
 use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
 
@@ -103,7 +104,7 @@ impl CacheableItem for TicketMetadata {
                     Ok(id)
                 }
             });
-        let uuid = self.uuid.clone();
+        let uuid = self.uuid.clone().unwrap_or_else(generate_uuid);
         let status = self.status.map(|s| s.to_string());
         let priority = self.priority.map(|p| p.as_num() as i64);
         let ticket_type = self.ticket_type.map(|t| t.to_string());
@@ -216,7 +217,7 @@ impl CacheableItem for PlanMetadata {
                     Ok(id)
                 }
             });
-        let uuid = self.uuid.clone();
+        let uuid = self.uuid.clone().unwrap_or_else(generate_uuid);
         let title = self.title.clone();
         let created = self.created.clone();
 

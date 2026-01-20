@@ -354,6 +354,12 @@ impl TicketCache {
             ));
         }
 
+        if metadata.uuid.is_none() {
+            return Err(CacheError::CacheDataIntegrity(
+                "ticket metadata missing required field 'uuid'".to_string(),
+            ));
+        }
+
         Ok(metadata)
     }
 
@@ -470,6 +476,12 @@ impl TicketCache {
         if metadata.id.is_none() {
             return Err(CacheError::CacheDataIntegrity(
                 "plan metadata missing required field 'id'".to_string(),
+            ));
+        }
+
+        if metadata.uuid.is_none() {
+            return Err(CacheError::CacheDataIntegrity(
+                "plan metadata missing required field 'uuid'".to_string(),
             ));
         }
 

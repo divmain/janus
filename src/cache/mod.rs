@@ -118,6 +118,7 @@ mod tests {
         let content = format!(
             r#"---
 id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
@@ -998,6 +999,7 @@ remote: github
         let ticket_path = tickets_dir.join("j-full.md");
         let content = r#"---
 id: j-full
+uuid: 550e8400-e29b-41d4-a716-446655440000
 status: in_progress
 deps: ["j-dep1", "j-dep2"]
 links: ["j-link1"]
@@ -1487,6 +1489,7 @@ remote: github
         let content = format!(
             r#"---
 id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
