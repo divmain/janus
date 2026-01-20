@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, ItemType};
 use crate::ticket::locator::TicketLocator;
 use std::fs;
@@ -21,14 +21,41 @@ impl TicketFile {
     }
 
     pub fn read_raw(&self) -> Result<String> {
-        Ok(fs::read_to_string(&self.locator.file_path)?)
+        fs::read_to_string(&self.locator.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to read ticket at {}: {}",
+                    self.locator.file_path.display(),
+                    e
+                ),
+            ))
+        })
     }
 
     pub fn write_raw(&self, content: &str) -> Result<()> {
         if let Some(parent) = self.locator.file_path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create directory for ticket at {}: {}",
+                        parent.display(),
+                        e
+                    ),
+                ))
+            })?;
         }
-        fs::write(&self.locator.file_path, content)?;
+        fs::write(&self.locator.file_path, content).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to write ticket at {}: {}",
+                    self.locator.file_path.display(),
+                    e
+                ),
+            ))
+        })?;
         Ok(())
     }
 

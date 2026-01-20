@@ -107,7 +107,12 @@ impl Plan {
     /// Parses the full plan file including YAML frontmatter, title, description,
     /// acceptance criteria, phases/tickets, and free-form sections.
     pub fn read(&self) -> Result<PlanMetadata> {
-        let content = fs::read_to_string(&self.file_path)?;
+        let content = fs::read_to_string(&self.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to read plan at {}: {}", self.file_path.display(), e),
+            ))
+        })?;
         let mut metadata = parse_plan_content(&content)?;
         metadata.file_path = Some(self.file_path.clone());
         Ok(metadata)
@@ -115,7 +120,12 @@ impl Plan {
 
     /// Read the raw content of the plan file
     pub fn read_content(&self) -> Result<String> {
-        Ok(fs::read_to_string(&self.file_path)?)
+        fs::read_to_string(&self.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to read plan at {}: {}", self.file_path.display(), e),
+            ))
+        })
     }
 
     /// Build a hook context for this plan.
@@ -142,9 +152,23 @@ impl Plan {
 
         // Perform the write
         if let Some(parent) = self.file_path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create directory for plan at {}: {}",
+                        parent.display(),
+                        e
+                    ),
+                ))
+            })?;
         }
-        fs::write(&self.file_path, content)?;
+        fs::write(&self.file_path, content).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to write plan at {}: {}", self.file_path.display(), e),
+            ))
+        })?;
 
         // Run post-write hooks (fire-and-forget)
         run_post_hooks(HookEvent::PostWrite, &context);
@@ -159,9 +183,23 @@ impl Plan {
     /// (e.g., plan creation where PlanCreated should be fired instead of PlanUpdated).
     pub(crate) fn write_without_hooks(&self, content: &str) -> Result<()> {
         if let Some(parent) = self.file_path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create directory for plan at {}: {}",
+                        parent.display(),
+                        e
+                    ),
+                ))
+            })?;
         }
-        fs::write(&self.file_path, content)?;
+        fs::write(&self.file_path, content).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to write plan at {}: {}", self.file_path.display(), e),
+            ))
+        })?;
         Ok(())
     }
 
@@ -181,7 +219,12 @@ impl Plan {
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
         // Perform the delete
-        fs::remove_file(&self.file_path)?;
+        fs::remove_file(&self.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to delete plan at {}: {}", self.file_path.display(), e),
+            ))
+        })?;
 
         // Run post-delete hooks (fire-and-forget)
         run_post_hooks(HookEvent::PostDelete, &context);
