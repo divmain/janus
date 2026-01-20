@@ -12,7 +12,8 @@ impl DirScanner {
     /// Find all markdown files in a directory
     ///
     /// Returns a vector of filenames (e.g., "j-a1b2.md") found in the directory.
-    /// Returns an empty vector if the directory doesn't exist or can't be read.
+    /// Returns an empty vector if the directory doesn't exist.
+    /// Returns an error if the directory exists but cannot be read (permission denied, I/O error, etc.).
     ///
     /// # Arguments
     ///
@@ -24,28 +25,28 @@ impl DirScanner {
     /// use janus::utils::DirScanner;
     /// use std::path::Path;
     ///
-    /// let files = DirScanner::find_markdown_files(Path::new(".janus/items"));
+    /// let files = DirScanner::find_markdown_files(Path::new(".janus/items"))?;
     /// for file in files {
     ///     println!("Found: {}", file);
     /// }
+    /// # Ok::<(), janus::error::JanusError>(())
     /// ```
-    pub fn find_markdown_files<P: AsRef<Path>>(dir_path: P) -> Vec<String> {
-        fs::read_dir(dir_path)
-            .ok()
-            .map(|entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        let name = e.file_name().to_string_lossy().into_owned();
-                        if name.ends_with(".md") {
-                            Some(name)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+    pub fn find_markdown_files<P: AsRef<Path>>(dir_path: P) -> Result<Vec<String>, std::io::Error> {
+        match fs::read_dir(dir_path) {
+            Ok(entries) => Ok(entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    if name.ends_with(".md") {
+                        Some(name)
+                    } else {
+                        None
+                    }
+                })
+                .collect()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(e) => Err(e),
+        }
     }
 
     /// Get the modification time of a file
@@ -75,6 +76,8 @@ impl DirScanner {
     ///
     /// Returns a vector of tuples containing (filename, full_path, modification_time).
     /// Files without accessible modification times are excluded from the results.
+    /// Returns an empty vector if the directory doesn't exist.
+    /// Returns an error if the directory exists but cannot be read (permission denied, I/O error, etc.).
     ///
     /// # Arguments
     ///
@@ -86,20 +89,24 @@ impl DirScanner {
     /// use janus::utils::DirScanner;
     /// use std::path::Path;
     ///
-    /// let files = DirScanner::scan_with_mtime(Path::new(".janus/items"));
+    /// let files = DirScanner::scan_with_mtime(Path::new(".janus/items"))?;
     /// for (filename, path, mtime) in files {
     ///     println!("{}: {:?} (modified: {:?})", filename, path, mtime);
     /// }
+    /// # Ok::<(), std::io::Error>(())
     /// ```
-    pub fn scan_with_mtime<P: AsRef<Path>>(dir_path: P) -> Vec<(String, PathBuf, SystemTime)> {
+    pub fn scan_with_mtime<P: AsRef<Path>>(
+        dir_path: P,
+    ) -> Result<Vec<(String, PathBuf, SystemTime)>, std::io::Error> {
         let dir_path = dir_path.as_ref();
-        Self::find_markdown_files(dir_path)
+        let files = Self::find_markdown_files(dir_path)?;
+        Ok(files
             .into_iter()
             .filter_map(|filename| {
                 let path = dir_path.join(&filename);
                 Self::get_file_mtime(&path).map(|mtime| (filename, path, mtime))
             })
-            .collect()
+            .collect())
     }
 }
 
@@ -112,7 +119,7 @@ mod tests {
     #[test]
     fn test_find_markdown_files_empty_dir() {
         let temp_dir = TempDir::new().unwrap();
-        let files = DirScanner::find_markdown_files(temp_dir.path());
+        let files = DirScanner::find_markdown_files(temp_dir.path()).unwrap();
         assert_eq!(files.len(), 0);
     }
 
@@ -127,7 +134,7 @@ mod tests {
         fs::write(dir_path.join("not-markdown.txt"), "content").unwrap();
         fs::write(dir_path.join("readme.MD"), "content").unwrap(); // wrong case
 
-        let mut files = DirScanner::find_markdown_files(dir_path);
+        let mut files = DirScanner::find_markdown_files(dir_path).unwrap();
         files.sort();
 
         assert_eq!(files.len(), 2);
@@ -137,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_find_markdown_files_nonexistent_dir() {
-        let files = DirScanner::find_markdown_files("/nonexistent/directory");
+        let files = DirScanner::find_markdown_files("/nonexistent/directory").unwrap();
         assert_eq!(files.len(), 0);
     }
 
@@ -166,7 +173,7 @@ mod tests {
         fs::write(dir_path.join("ticket1.md"), "content1").unwrap();
         fs::write(dir_path.join("ticket2.md"), "content2").unwrap();
 
-        let results = DirScanner::scan_with_mtime(dir_path);
+        let results = DirScanner::scan_with_mtime(dir_path).unwrap();
         assert_eq!(results.len(), 2);
 
         for (filename, path, mtime) in results {
@@ -179,7 +186,46 @@ mod tests {
     #[test]
     fn test_scan_with_mtime_empty_dir() {
         let temp_dir = TempDir::new().unwrap();
-        let results = DirScanner::scan_with_mtime(temp_dir.path());
+        let results = DirScanner::scan_with_mtime(temp_dir.path()).unwrap();
         assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_find_markdown_files_notfound_returns_empty() {
+        // Test that NotFound error returns Ok(Vec::new())
+        let result = DirScanner::find_markdown_files("/path/that/does/not/exist/at/all");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    #[cfg(unix)] // Permission tests are platform-specific
+    fn test_find_markdown_files_permission_denied_propagates_error() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path().join("no_read_perms");
+        fs::create_dir(&dir_path).unwrap();
+
+        // Create a file inside to ensure directory is not empty
+        fs::write(dir_path.join("test.md"), "content").unwrap();
+
+        // Remove read permissions
+        let mut perms = fs::metadata(&dir_path).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&dir_path, perms).unwrap();
+
+        // Should return an error, not Ok(Vec::new())
+        let result = DirScanner::find_markdown_files(&dir_path);
+
+        // Restore permissions so cleanup can work
+        let mut perms = fs::metadata(&dir_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&dir_path, perms).unwrap();
+
+        // Verify the error is a permission denied error
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
     }
 }

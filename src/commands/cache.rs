@@ -9,7 +9,14 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     match TicketCache::open().await {
         Ok(cache) => {
             let db_path = cache.cache_db_path();
-            let tickets = cache.get_all_tickets().await.unwrap_or_default();
+            let tickets = match cache.get_all_tickets().await {
+                Ok(tickets) => tickets,
+                Err(e) => {
+                    eprintln!("Warning: failed to read tickets from cache: {}", e);
+                    eprintln!("Falling back to empty ticket list for status display.");
+                    Vec::new()
+                }
+            };
 
             let mut output = json!({
                 "database_path": db_path.to_string_lossy(),
@@ -170,7 +177,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 Ok(_changed) => {
                     let sync_duration = start_sync.elapsed();
 
-                    let ticket_count = cache.get_all_tickets().await.unwrap_or_default().len();
+                    let ticket_count = cache.get_all_tickets().await?.len();
 
                     let total_duration = start_total.elapsed();
 

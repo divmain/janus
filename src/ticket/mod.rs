@@ -39,16 +39,16 @@ impl Ticket {
         })
     }
 
-    pub fn new(file_path: PathBuf) -> Self {
-        let locator = TicketLocator::new(file_path.clone());
+    pub fn new(file_path: PathBuf) -> Result<Self> {
+        let locator = TicketLocator::new(file_path.clone())?;
         let file = TicketFile::new(locator.clone());
         let editor = TicketEditor::new(file.clone());
-        Ticket {
+        Ok(Ticket {
             file_path: locator.file_path.clone(),
             id: locator.id.clone(),
             file,
             editor,
-        }
+        })
     }
 
     pub fn read(&self) -> Result<TicketMetadata> {

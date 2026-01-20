@@ -29,7 +29,16 @@ pub async fn cmd_ls(
             // --status flag is mutually exclusive with --ready, --blocked, --closed
             // (enforced by clap's conflicts_with_all in main.rs)
             if let Some(filter) = status_filter {
-                let ticket_status = t.status.map(|s| s.to_string()).unwrap_or_default();
+                let ticket_status = match t.status {
+                    Some(status) => status.to_string(),
+                    None => {
+                        eprintln!(
+                            "Warning: ticket '{}' has missing status field, treating as 'new'",
+                            t.id.as_deref().unwrap_or("unknown")
+                        );
+                        TicketStatus::New.to_string()
+                    }
+                };
                 return ticket_status == filter;
             }
 

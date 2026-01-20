@@ -151,7 +151,10 @@ pub fn check_link_conflicts<'a>(
 
 /// Create sync changes between a local ticket and remote issue
 #[allow(dead_code)]
-pub fn create_sync_changes(ticket: &TicketMetadata, issue: &RemoteIssue) -> Vec<SyncChange> {
+pub fn create_sync_changes(
+    ticket: &TicketMetadata,
+    issue: &RemoteIssue,
+) -> Result<Vec<SyncChange>> {
     let mut changes = Vec::new();
 
     let local_title = ticket.title.as_deref().unwrap_or("");
@@ -164,7 +167,12 @@ pub fn create_sync_changes(ticket: &TicketMetadata, issue: &RemoteIssue) -> Vec<
         });
     }
 
-    let local_status = ticket.status.unwrap_or_default();
+    let local_status = ticket.status.ok_or_else(|| {
+        JanusError::Other(format!(
+            "Ticket '{}' is missing status field and may be corrupted",
+            ticket.id.as_deref().unwrap_or("unknown")
+        ))
+    })?;
     let remote_status = issue.status.to_ticket_status();
     if local_status != remote_status {
         changes.push(SyncChange {
@@ -175,7 +183,7 @@ pub fn create_sync_changes(ticket: &TicketMetadata, issue: &RemoteIssue) -> Vec<
         });
     }
 
-    changes
+    Ok(changes)
 }
 
 /// Link a local ticket to a remote issue
@@ -405,7 +413,7 @@ pub async fn fetch_remote_issue_for_ticket(
 pub fn build_sync_changes(
     ticket: &TicketMetadata,
     issue: &crate::remote::RemoteIssue,
-) -> Vec<SyncChange> {
+) -> Result<Vec<SyncChange>> {
     let mut changes = Vec::new();
 
     // Compare title
@@ -420,7 +428,12 @@ pub fn build_sync_changes(
     }
 
     // Compare status
-    let local_status = ticket.status.unwrap_or_default();
+    let local_status = ticket.status.ok_or_else(|| {
+        JanusError::Other(format!(
+            "Ticket '{}' is missing status field and may be corrupted",
+            ticket.id.as_deref().unwrap_or("unknown")
+        ))
+    })?;
     let remote_status = issue.status.to_ticket_status();
     if local_status != remote_status {
         changes.push(SyncChange {
@@ -444,7 +457,7 @@ pub fn build_sync_changes(
         }
     }
 
-    changes
+    Ok(changes)
 }
 
 /// Apply a single sync change to a local ticket

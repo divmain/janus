@@ -32,7 +32,10 @@ pub use crate::plan::parser::{
 
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
-    DirScanner::find_markdown_files(PLANS_DIR)
+    DirScanner::find_markdown_files(PLANS_DIR).unwrap_or_else(|e| {
+        eprintln!("Warning: failed to read plans directory: {}", e);
+        Vec::new()
+    })
 }
 
 /// Find a plan file by partial ID
@@ -86,6 +89,7 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
 }
 
 /// A plan handle for reading and writing plan files
+#[derive(Debug)]
 pub struct Plan {
     pub file_path: PathBuf,
     pub id: String,
@@ -95,16 +99,24 @@ impl Plan {
     /// Find a plan by its (partial) ID
     pub async fn find(partial_id: &str) -> Result<Self> {
         let file_path = find_plan_by_id(partial_id).await?;
-        Ok(Plan::new(file_path))
+        Plan::new(file_path)
     }
 
     /// Create a plan handle for a given file path
-    pub fn new(file_path: PathBuf) -> Self {
+    pub fn new(file_path: PathBuf) -> Result<Self> {
         let id = file_path
             .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        Plan { file_path, id }
+            .and_then(|s| {
+                let id = s.to_string_lossy().into_owned();
+                if id.is_empty() { None } else { Some(id) }
+            })
+            .ok_or_else(|| {
+                JanusError::InvalidFormat(format!(
+                    "Invalid plan file path: {}",
+                    file_path.display()
+                ))
+            })?;
+        Ok(Plan { file_path, id })
     }
 
     /// Create a plan handle for a new plan with the given ID
@@ -385,5 +397,39 @@ This is the description.
         let plan = Plan::with_id("plan-test");
         assert_eq!(plan.id, "plan-test");
         assert_eq!(plan.file_path, PathBuf::from(".janus/plans/plan-test.md"));
+    }
+
+    #[test]
+    fn test_plan_new_valid_path() {
+        let path = PathBuf::from(".janus/plans/plan-abc123.md");
+        let plan = Plan::new(path).unwrap();
+        assert_eq!(plan.id, "plan-abc123");
+    }
+
+    #[test]
+    fn test_plan_new_invalid_path_no_stem() {
+        let path = PathBuf::from("/");
+        let result = Plan::new(path);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidFormat(msg) => {
+                assert!(msg.contains("Invalid plan file path"));
+            }
+            _ => panic!("Expected InvalidFormat error"),
+        }
+    }
+
+    #[test]
+    fn test_plan_new_invalid_path_empty_stem() {
+        // Empty path has no file_stem
+        let path = PathBuf::from("");
+        let result = Plan::new(path);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidFormat(msg) => {
+                assert!(msg.contains("Invalid plan file path"));
+            }
+            _ => panic!("Expected InvalidFormat error"),
+        }
     }
 }

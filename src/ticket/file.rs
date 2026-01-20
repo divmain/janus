@@ -13,10 +13,10 @@ impl TicketFile {
         TicketFile { locator }
     }
 
-    pub fn from_path(file_path: PathBuf) -> Self {
-        TicketFile {
-            locator: TicketLocator::new(file_path),
-        }
+    pub fn from_path(file_path: PathBuf) -> Result<Self> {
+        Ok(TicketFile {
+            locator: TicketLocator::new(file_path)?,
+        })
     }
 
     pub fn read_raw(&self) -> Result<String> {

@@ -82,17 +82,25 @@ pub struct TicketLocator {
 }
 
 impl TicketLocator {
-    pub fn new(file_path: PathBuf) -> Self {
+    pub fn new(file_path: PathBuf) -> Result<Self> {
         let id = file_path
             .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        TicketLocator { file_path, id }
+            .and_then(|s| {
+                let id = s.to_string_lossy().into_owned();
+                if id.is_empty() { None } else { Some(id) }
+            })
+            .ok_or_else(|| {
+                JanusError::InvalidFormat(format!(
+                    "Invalid ticket file path: {}",
+                    file_path.display()
+                ))
+            })?;
+        Ok(TicketLocator { file_path, id })
     }
 
     pub async fn find(partial_id: &str) -> Result<Self> {
         let file_path = find_ticket_by_id(partial_id).await?;
-        Ok(TicketLocator::new(file_path))
+        TicketLocator::new(file_path)
     }
 }
 
@@ -149,5 +157,38 @@ mod tests {
         let result = validate_partial_id("  j-a1b2  ");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "j-a1b2");
+    }
+
+    #[test]
+    fn test_ticket_locator_new_valid_path() {
+        let path = PathBuf::from("/path/to/j-a1b2.md");
+        let result = TicketLocator::new(path.clone());
+        assert!(result.is_ok());
+        let locator = result.unwrap();
+        assert_eq!(locator.id, "j-a1b2");
+        assert_eq!(locator.file_path, path);
+    }
+
+    #[test]
+    fn test_ticket_locator_new_invalid_empty_path() {
+        let path = PathBuf::from("");
+        let result = TicketLocator::new(path);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidFormat(msg) => {
+                assert!(msg.contains("Invalid ticket file path"));
+            }
+            _ => panic!("Expected InvalidFormat error"),
+        }
+    }
+
+    #[test]
+    fn test_ticket_locator_new_valid_path_with_underscores() {
+        let path = PathBuf::from("/path/to/ticket_123.md");
+        let result = TicketLocator::new(path.clone());
+        assert!(result.is_ok());
+        let locator = result.unwrap();
+        assert_eq!(locator.id, "ticket_123");
+        assert_eq!(locator.file_path, path);
     }
 }

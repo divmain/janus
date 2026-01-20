@@ -203,9 +203,19 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
     let provider = create_provider(&remote_ref.platform(), &config)?;
     let remote_issue = provider.fetch_issue(&remote_ref).await?;
 
-    // Get local values
-    let local_title = metadata.title.clone().unwrap_or_default();
-    let local_status = metadata.status.unwrap_or_default();
+    // Get local values (validate required fields)
+    let local_title = metadata.title.clone().ok_or_else(|| {
+        JanusError::Other(format!(
+            "Ticket {} is missing required field 'title' (file may be corrupted)",
+            ticket.id
+        ))
+    })?;
+    let local_status = metadata.status.ok_or_else(|| {
+        JanusError::Other(format!(
+            "Ticket {} is missing required field 'status' (file may be corrupted)",
+            ticket.id
+        ))
+    })?;
     let local_content = ticket.read_content()?;
     let _local_body = extract_body(&local_content);
 

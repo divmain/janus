@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 pub fn find_tickets() -> Vec<String> {
     use crate::types::TICKETS_ITEMS_DIR;
 
-    DirScanner::find_markdown_files(TICKETS_ITEMS_DIR)
+    DirScanner::find_markdown_files(TICKETS_ITEMS_DIR).unwrap_or_else(|e| {
+        eprintln!("Warning: failed to read tickets directory: {}", e);
+        Vec::new()
+    })
 }
 
 pub struct TicketRepository;

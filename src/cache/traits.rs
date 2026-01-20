@@ -88,7 +88,21 @@ impl CacheableItem for TicketMetadata {
         tx: &'a Transaction<'a>,
         mtime_ns: i64,
     ) -> impl std::future::Future<Output = Result<()>> + Send + 'a {
-        let ticket_id = self.id.clone().unwrap_or_default();
+        let ticket_id = self
+            .id
+            .clone()
+            .ok_or_else(|| {
+                JanusError::CacheDataIntegrity("Ticket missing ID field - cannot cache".to_string())
+            })
+            .and_then(|id| {
+                if id.is_empty() {
+                    Err(JanusError::CacheDataIntegrity(
+                        "Ticket has empty ID field - cannot cache".to_string(),
+                    ))
+                } else {
+                    Ok(id)
+                }
+            });
         let uuid = self.uuid.clone();
         let status = self.status.map(|s| s.to_string());
         let priority = self.priority.map(|p| p.as_num() as i64);
@@ -103,6 +117,7 @@ impl CacheableItem for TicketMetadata {
         let completion_summary = self.completion_summary.clone();
 
         async move {
+            let ticket_id = ticket_id?;
             tx.execute(
                 "INSERT OR REPLACE INTO tickets (
                     ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
@@ -179,7 +194,21 @@ impl CacheableItem for PlanMetadata {
         tx: &'a Transaction<'a>,
         mtime_ns: i64,
     ) -> impl std::future::Future<Output = Result<()>> + Send + 'a {
-        let plan_id = self.id.clone().unwrap_or_default();
+        let plan_id = self
+            .id
+            .clone()
+            .ok_or_else(|| {
+                JanusError::CacheDataIntegrity("Plan missing ID field - cannot cache".to_string())
+            })
+            .and_then(|id| {
+                if id.is_empty() {
+                    Err(JanusError::CacheDataIntegrity(
+                        "Plan has empty ID field - cannot cache".to_string(),
+                    ))
+                } else {
+                    Ok(id)
+                }
+            });
         let uuid = self.uuid.clone();
         let title = self.title.clone();
         let created = self.created.clone();
@@ -209,6 +238,7 @@ impl CacheableItem for PlanMetadata {
         };
 
         async move {
+            let plan_id = plan_id?;
             tx.execute(
                 "INSERT OR REPLACE INTO plans (
                     plan_id, uuid, mtime_ns, title, created, structure_type, tickets_json, phases_json

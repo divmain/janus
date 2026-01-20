@@ -97,10 +97,9 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
 
     // Try to read the body content
     let body = if let Some(file_path) = &ticket.file_path {
-        let ticket_handle = Ticket::new(file_path.clone());
-        ticket_handle
-            .read_content()
+        Ticket::new(file_path.clone())
             .ok()
+            .and_then(|ticket_handle| ticket_handle.read_content().ok())
             .and_then(|content| extract_ticket_body(&content))
             .unwrap_or_default()
     } else {

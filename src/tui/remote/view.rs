@@ -259,16 +259,28 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         .await
                     {
                         Ok((metadata, issue)) => {
-                            let changes = super::operations::build_sync_changes(&metadata, &issue);
-                            let remote_ref = metadata.remote.clone().unwrap_or_default();
+                            match super::operations::build_sync_changes(&metadata, &issue) {
+                                Ok(changes) => {
+                                    let remote_ref = metadata.remote.clone().unwrap_or_default();
 
-                            for change in changes {
-                                all_changes.push(SyncChangeWithContext {
-                                    ticket_id: ticket_id.clone(),
-                                    remote_ref: remote_ref.clone(),
-                                    change,
-                                    decision: None,
-                                });
+                                    for change in changes {
+                                        all_changes.push(SyncChangeWithContext {
+                                            ticket_id: ticket_id.clone(),
+                                            remote_ref: remote_ref.clone(),
+                                            change,
+                                            decision: None,
+                                        });
+                                    }
+                                }
+                                Err(e) => {
+                                    last_error_setter.set(Some((
+                                        "SyncError".to_string(),
+                                        format!(
+                                            "Failed to build sync changes for {}: {}",
+                                            ticket_id, e
+                                        ),
+                                    )));
+                                }
                             }
                         }
                         Err(e) => {

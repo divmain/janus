@@ -387,7 +387,8 @@ fn collect_text<'a>(node: &'a AstNode<'a>, text: &mut String) {
 /// Render a single AST node back to markdown
 pub(crate) fn render_node_to_markdown<'a>(node: &'a AstNode<'a>, options: &Options) -> String {
     let mut output = Vec::new();
-    comrak::format_commonmark(node, options, &mut output).unwrap_or_default();
+    comrak::format_commonmark(node, options, &mut output)
+        .expect("failed to format markdown node to in-memory buffer");
     String::from_utf8_lossy(&output).to_string()
 }
 
