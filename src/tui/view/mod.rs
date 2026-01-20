@@ -116,35 +116,26 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut editing_body = hooks.use_state(String::new);
 
     // Action queue for async ticket operations
-    // Use Arc<Mutex> for thread-safe access to the channel
-    let action_channel: State<
-        std::sync::Arc<std::sync::Mutex<Option<mpsc::UnboundedReceiver<ViewAction>>>>,
-    > = hooks.use_state(|| std::sync::Arc::new(std::sync::Mutex::new(None)));
-
-    // Create the channel on first render
-    let mut action_tx: State<Option<mpsc::UnboundedSender<ViewAction>>> = hooks.use_state(|| None);
-
-    // Initialize channel on first render
-    let mut channel_initialized = hooks.use_state(|| false);
-    if !channel_initialized.get() {
-        channel_initialized.set(true);
-        let (tx, rx) = mpsc::unbounded_channel::<ViewAction>();
-        action_tx.set(Some(tx));
-        if let Ok(mut guard) = action_channel.read().lock() {
-            *guard = Some(rx);
-        }
+    // Channel is created once via use_state initializer - the tuple is split across two state slots
+    // Note: We store the channel parts in a shared struct to ensure they're from the same channel
+    struct ActionChannel {
+        tx: mpsc::UnboundedSender<ViewAction>,
+        rx: std::sync::Arc<std::sync::Mutex<mpsc::UnboundedReceiver<ViewAction>>>,
     }
-
-    // Get the sender for event handlers
-    let action_tx_ref = action_tx.read();
-    let action_sender = action_tx_ref
-        .clone()
-        .expect("action sender should be initialized");
+    let channel: State<ActionChannel> = hooks.use_state(|| {
+        let (tx, rx) = mpsc::unbounded_channel::<ViewAction>();
+        ActionChannel {
+            tx,
+            rx: std::sync::Arc::new(std::sync::Mutex::new(rx)),
+        }
+    });
+    let action_sender = channel.read().tx.clone();
+    let action_channel = channel.read().rx.clone();
 
     // Async action queue processor
     // This handler processes pending actions from the queue
     let action_processor: Handler<()> = hooks.use_async_handler({
-        let action_channel = action_channel.read().clone();
+        let action_channel = action_channel.clone();
         let needs_reload_setter = needs_reload;
         let toast_setter = toast;
         let editing_ticket_id_setter = editing_ticket_id;
@@ -164,18 +155,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             async move {
                 // Collect pending actions from the channel
                 let actions: Vec<ViewAction> = {
-                    let mut guard: std::sync::MutexGuard<
-                        '_,
-                        Option<mpsc::UnboundedReceiver<ViewAction>>,
-                    > = match action_channel.lock() {
-                        Ok(g) => g,
-                        Err(_) => return,
+                    let Ok(mut guard) = action_channel.lock() else {
+                        return;
                     };
                     let mut actions = Vec::new();
-                    if let Some(rx) = guard.as_mut() {
-                        while let Ok(action) = rx.try_recv() {
-                            actions.push(action);
-                        }
+                    while let Ok(action) = guard.try_recv() {
+                        actions.push(action);
                     }
                     actions
                 };
