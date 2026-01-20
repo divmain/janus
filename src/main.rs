@@ -104,6 +104,7 @@ async fn main() -> ExitCode {
             max_depth,
             next_in_plan,
             limit,
+            sort_by,
             json,
         } => {
             cmd_ls(
@@ -117,6 +118,7 @@ async fn main() -> ExitCode {
                 max_depth,
                 next_in_plan.as_deref(),
                 limit,
+                sort_by.as_str(),
                 json,
             )
             .await

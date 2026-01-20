@@ -126,6 +126,7 @@ impl CommandOutput {
 /// Re-export display formatting functions for convenience
 pub use crate::display::{
     FormatOptions, format_deps, format_ticket_bullet, format_ticket_line, sort_by_priority,
+    sort_tickets_by,
 };
 
 /// Print a JSON value as pretty-printed output

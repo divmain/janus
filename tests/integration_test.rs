@@ -2025,6 +2025,107 @@ fn test_ls_next_in_plan_with_limit() {
     );
 }
 
+#[test]
+fn test_ls_sort_by_priority() {
+    let janus = JanusTest::new();
+
+    let t1_id = janus
+        .run_success(&["create", "Task 1", "--priority", "3"])
+        .trim()
+        .to_string();
+    let t2_id = janus
+        .run_success(&["create", "Task 2", "--priority", "1"])
+        .trim()
+        .to_string();
+    let t3_id = janus
+        .run_success(&["create", "Task 3", "--priority", "0"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["ls", "--sort-by", "priority"]);
+    let lines: Vec<&str> = output.lines().collect();
+
+    assert_eq!(lines.len(), 3, "Should show 3 tickets");
+    assert!(lines[0].contains(&t3_id), "P0 ticket should be first");
+    assert!(lines[1].contains(&t2_id), "P1 ticket should be second");
+    assert!(lines[2].contains(&t1_id), "P3 ticket should be third");
+}
+
+#[test]
+fn test_ls_sort_by_id() {
+    let janus = JanusTest::new();
+
+    janus.run_success(&["create", "Zebra"]);
+    janus.run_success(&["create", "Alpha"]);
+    janus.run_success(&["create", "Middle"]);
+
+    let output = janus.run_success(&["ls", "--sort-by", "id"]);
+    let lines: Vec<&str> = output.lines().collect();
+
+    assert_eq!(lines.len(), 3, "Should show 3 tickets");
+    let ids: Vec<&str> = lines
+        .iter()
+        .filter_map(|l| l.split_whitespace().next())
+        .collect();
+
+    assert!(ids[0] < ids[1], "IDs should be sorted alphabetically");
+    assert!(ids[1] < ids[2], "IDs should be sorted alphabetically");
+}
+
+#[test]
+fn test_ls_sort_by_created() {
+    let janus = JanusTest::new();
+
+    let t1_id = janus.run_success(&["create", "First"]).trim().to_string();
+
+    // Small delay to ensure different timestamps
+    std::thread::sleep(std::time::Duration::from_millis(10));
+
+    let t2_id = janus.run_success(&["create", "Second"]).trim().to_string();
+
+    std::thread::sleep(std::time::Duration::from_millis(10));
+
+    let t3_id = janus.run_success(&["create", "Third"]).trim().to_string();
+
+    let output = janus.run_success(&["ls", "--sort-by", "created"]);
+    let lines: Vec<&str> = output.lines().collect();
+
+    assert_eq!(lines.len(), 3, "Should show 3 tickets");
+    assert!(
+        lines[0].contains(&t3_id),
+        "Most recent ticket should be first"
+    );
+    assert!(lines[1].contains(&t2_id), "Middle ticket should be second");
+    assert!(lines[2].contains(&t1_id), "Oldest ticket should be last");
+}
+
+#[test]
+fn test_ls_sort_by_invalid_uses_priority() {
+    let janus = JanusTest::new();
+
+    let t1_id = janus
+        .run_success(&["create", "Task 1", "--priority", "3"])
+        .trim()
+        .to_string();
+    let t2_id = janus
+        .run_success(&["create", "Task 2", "--priority", "0"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["ls", "--sort-by", "invalid"]);
+    let lines: Vec<&str> = output.lines().collect();
+
+    assert_eq!(lines.len(), 2, "Should show 2 tickets");
+    assert!(
+        lines[0].contains(&t2_id),
+        "P0 ticket should be first (fallback to priority)"
+    );
+    assert!(
+        lines[1].contains(&t1_id),
+        "P3 ticket should be second (fallback to priority)"
+    );
+}
+
 // ============================================================================
 // Add-note command tests
 // ============================================================================
@@ -2641,12 +2742,10 @@ fn test_cache_path_command() {
 
     assert!(cache_path.is_absolute());
     assert!(cache_path.to_string_lossy().contains("janus"));
-    assert!(
-        cache_path
-            .extension()
-            .map(|ext| ext == "db")
-            .unwrap_or(false)
-    );
+    assert!(cache_path
+        .extension()
+        .map(|ext| ext == "db")
+        .unwrap_or(false));
 }
 
 #[test]

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::{
     CommandOutput, FormatOptions, format_deps, format_ticket_line, get_next_items_phased,
-    get_next_items_simple, sort_by_priority, ticket_to_json,
+    get_next_items_simple, sort_tickets_by, ticket_to_json,
 };
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
@@ -33,11 +33,12 @@ pub async fn cmd_ls(
     max_depth: Option<u32>,
     next_in_plan: Option<&str>,
     limit: Option<usize>,
+    sort_by: &str,
     output_json: bool,
 ) -> Result<()> {
     // Handle --next-in-plan filter specially as it uses different logic
     if let Some(plan_id) = next_in_plan {
-        return cmd_ls_next_in_plan(plan_id, limit, output_json).await;
+        return cmd_ls_next_in_plan(plan_id, limit, sort_by, output_json).await;
     }
 
     let (tickets, ticket_map) = get_all_tickets_with_map().await;
@@ -146,7 +147,7 @@ pub async fn cmd_ls(
 
     // Sort by priority then apply limit if specified
     let mut display_tickets = filtered;
-    sort_by_priority(&mut display_tickets);
+    sort_tickets_by(&mut display_tickets, sort_by);
 
     // Apply limit: if --closed with no explicit --limit, default to 20
     let limit = limit.unwrap_or(if filter_closed { 20 } else { usize::MAX });
@@ -210,7 +211,7 @@ fn matches_spawning_filters(ticket: &TicketMetadata, filters: &SpawningFilters) 
 }
 
 /// Handle --next-in-plan filter using plan next logic
-async fn cmd_ls_next_in_plan(plan_id: &str, limit: Option<usize>, output_json: bool) -> Result<()> {
+async fn cmd_ls_next_in_plan(plan_id: &str, limit: Option<usize>, sort_by: &str, output_json: bool) -> Result<()> {
     let plan = Plan::find(plan_id).await?;
     let metadata = plan.read()?;
     let ticket_map = build_ticket_map().await;
@@ -241,7 +242,7 @@ async fn cmd_ls_next_in_plan(plan_id: &str, limit: Option<usize>, output_json: b
         .collect();
 
     // Sort by priority
-    sort_by_priority(&mut display_tickets);
+    sort_tickets_by(&mut display_tickets, sort_by);
 
     // Apply limit
     if let Some(limit) = limit {

@@ -232,6 +232,10 @@ pub enum Commands {
         #[arg(long)]
         limit: Option<usize>,
 
+        /// Sort tickets by field (priority, created, id; default: priority)
+        #[arg(long, default_value = "priority")]
+        sort_by: String,
+
         /// Output as JSON
         #[arg(long)]
         json: bool,
