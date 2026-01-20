@@ -2,6 +2,7 @@ use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
 use crate::types::TICKETS_ITEMS_DIR;
+use crate::utils::extract_id_from_path;
 use std::path::PathBuf;
 
 /// Ticket-specific implementation of the Findable trait
@@ -58,18 +59,7 @@ pub struct TicketLocator {
 
 impl TicketLocator {
     pub fn new(file_path: PathBuf) -> Result<Self> {
-        let id = file_path
-            .file_stem()
-            .and_then(|s| {
-                let id = s.to_string_lossy().into_owned();
-                if id.is_empty() { None } else { Some(id) }
-            })
-            .ok_or_else(|| {
-                JanusError::InvalidFormat(format!(
-                    "Invalid ticket file path: {}",
-                    file_path.display()
-                ))
-            })?;
+        let id = extract_id_from_path(&file_path, "ticket")?;
         Ok(TicketLocator { file_path, id })
     }
 

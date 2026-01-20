@@ -9,8 +9,11 @@ use std::path::Path;
 use std::process::Command;
 use uuid::Uuid;
 
-use crate::error::JanusError;
+use crate::error::{JanusError, Result};
 use crate::types::TICKETS_ITEMS_DIR;
+
+#[cfg(test)]
+use std::path::PathBuf;
 
 // Re-export DirScanner for convenience
 pub use dir_scanner::DirScanner;
@@ -18,6 +21,41 @@ pub use dir_scanner::DirScanner;
 /// Ensure the tickets directory exists
 pub fn ensure_dir() -> io::Result<()> {
     fs::create_dir_all(TICKETS_ITEMS_DIR)
+}
+
+/// Extract an ID from a file path's stem
+///
+/// This is a shared utility function used by both ticket and plan modules to extract
+/// the ID from a file path. It gets the file stem, converts it to a string, checks if
+/// it's empty, and returns an error with a formatted message if invalid.
+///
+/// # Arguments
+///
+/// * `file_path` - The path to extract the ID from
+/// * `entity_type` - The type of entity (e.g., "ticket", "plan") for error messages
+///
+/// # Returns
+///
+/// * `Ok(String)` - The extracted ID
+/// * `Err(JanusError::InvalidFormat)` - If the path has no valid file stem
+pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<String> {
+    file_path
+        .file_stem()
+        .and_then(|s| {
+            let id = s.to_string_lossy().into_owned();
+            if id.is_empty() {
+                None
+            } else {
+                Some(id)
+            }
+        })
+        .ok_or_else(|| {
+            JanusError::InvalidFormat(format!(
+                "Invalid {} file path: {}",
+                entity_type,
+                file_path.display()
+            ))
+        })
 }
 
 /// Get the git user.name config value
@@ -44,7 +82,7 @@ pub fn generate_uuid() -> String {
 }
 
 /// Generate a unique ticket ID with a custom prefix
-pub fn generate_id_with_custom_prefix(custom_prefix: Option<&str>) -> Result<String, JanusError> {
+pub fn generate_id_with_custom_prefix(custom_prefix: Option<&str>) -> Result<String> {
     match custom_prefix {
         Some(prefix) if !prefix.is_empty() => {
             validate_prefix(prefix)?;
@@ -55,7 +93,7 @@ pub fn generate_id_with_custom_prefix(custom_prefix: Option<&str>) -> Result<Str
 }
 
 /// Validate that a prefix is not reserved and is valid
-pub fn validate_prefix(prefix: &str) -> Result<(), JanusError> {
+pub fn validate_prefix(prefix: &str) -> Result<()> {
     const RESERVED_PREFIXES: &[&str] = &["plan"];
 
     if RESERVED_PREFIXES.contains(&prefix) {
@@ -360,6 +398,67 @@ mod tests {
                 "Error for '{}' should mention invalid characters",
                 prefix
             );
+        }
+    }
+
+    #[test]
+    fn test_extract_id_from_path_valid_ticket() {
+        let path = PathBuf::from("/path/to/j-a1b2.md");
+        let id = extract_id_from_path(&path, "ticket").unwrap();
+        assert_eq!(id, "j-a1b2");
+    }
+
+    #[test]
+    fn test_extract_id_from_path_valid_plan() {
+        let path = PathBuf::from(".janus/plans/plan-abc123.md");
+        let id = extract_id_from_path(&path, "plan").unwrap();
+        assert_eq!(id, "plan-abc123");
+    }
+
+    #[test]
+    fn test_extract_id_from_path_invalid_empty() {
+        let path = PathBuf::from("");
+        let result = extract_id_from_path(&path, "ticket");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidFormat(msg) => {
+                assert!(msg.contains("Invalid ticket file path"));
+            }
+            _ => panic!("Expected InvalidFormat error"),
+        }
+    }
+
+    #[test]
+    fn test_extract_id_from_path_invalid_no_stem() {
+        let path = PathBuf::from("/");
+        let result = extract_id_from_path(&path, "plan");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidFormat(msg) => {
+                assert!(msg.contains("Invalid plan file path"));
+            }
+            _ => panic!("Expected InvalidFormat error"),
+        }
+    }
+
+    #[test]
+    fn test_extract_id_from_path_error_message_includes_entity_type() {
+        let path = PathBuf::from("");
+
+        // Test ticket error message
+        let ticket_result = extract_id_from_path(&path, "ticket");
+        assert!(ticket_result.is_err());
+        if let Err(JanusError::InvalidFormat(msg)) = ticket_result {
+            assert!(msg.contains("ticket"));
+            assert!(!msg.contains("plan"));
+        }
+
+        // Test plan error message
+        let plan_result = extract_id_from_path(&path, "plan");
+        assert!(plan_result.is_err());
+        if let Err(JanusError::InvalidFormat(msg)) = plan_result {
+            assert!(msg.contains("plan"));
+            assert!(!msg.contains("ticket"));
         }
     }
 }

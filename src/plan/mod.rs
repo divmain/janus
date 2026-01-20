@@ -12,7 +12,7 @@ use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hoo
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::types::{PLANS_DIR, TicketMetadata};
-use crate::utils::DirScanner;
+use crate::utils::{DirScanner, extract_id_from_path};
 
 // Re-export status computation functions
 pub use crate::status::plan::{
@@ -84,18 +84,7 @@ impl Plan {
 
     /// Create a plan handle for a given file path
     pub fn new(file_path: PathBuf) -> Result<Self> {
-        let id = file_path
-            .file_stem()
-            .and_then(|s| {
-                let id = s.to_string_lossy().into_owned();
-                if id.is_empty() { None } else { Some(id) }
-            })
-            .ok_or_else(|| {
-                JanusError::InvalidFormat(format!(
-                    "Invalid plan file path: {}",
-                    file_path.display()
-                ))
-            })?;
+        let id = extract_id_from_path(&file_path, "plan")?;
         Ok(Plan { file_path, id })
     }
 
