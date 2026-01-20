@@ -4,6 +4,7 @@ use serde_json::json;
 
 use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
+use crate::events::{log_phase_added, log_phase_removed};
 use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanSection};
@@ -98,6 +99,9 @@ pub async fn cmd_plan_add_phase(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
+    // Log the event
+    log_phase_added(&plan.id, &next_number.to_string(), phase_name);
+
     CommandOutput::new(json!({
         "plan_id": plan.id,
         "action": "phase_added",
@@ -180,6 +184,9 @@ pub async fn cmd_plan_remove_phase(
     // Write updated plan
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
+
+    // Log the event
+    log_phase_removed(&plan.id, &phase_number, &phase_name, migrated_tickets);
 
     CommandOutput::new(json!({
         "plan_id": plan.id,

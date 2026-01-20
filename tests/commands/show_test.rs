@@ -122,3 +122,68 @@ fn test_show_not_found() {
     let stderr = janus.run_failure(&["show", "nonexistent"]);
     assert!(stderr.contains("not found"));
 }
+
+#[test]
+#[serial]
+fn test_show_children_count_displayed() {
+    let janus = JanusTest::new();
+
+    // Create a parent ticket
+    let parent_id = janus.run_success(&["create", "Parent"]).trim().to_string();
+
+    // Create 3 child tickets spawned from parent
+    janus.run_success(&["create", "Child 1", "--spawned-from", &parent_id]);
+    janus.run_success(&["create", "Child 2", "--spawned-from", &parent_id]);
+    janus.run_success(&["create", "Child 3", "--spawned-from", &parent_id]);
+
+    // Show should display children count
+    let output = janus.run_success(&["show", &parent_id]);
+    assert!(
+        output.contains("3 spawned from this ticket"),
+        "Expected '3 spawned from this ticket' in output:\n{}",
+        output
+    );
+}
+
+#[test]
+#[serial]
+fn test_show_children_count_not_displayed_when_zero() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with no children
+    let id = janus
+        .run_success(&["create", "Solo ticket"])
+        .trim()
+        .to_string();
+
+    // Show should NOT display children count when 0
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        !output.contains("spawned from this ticket"),
+        "Expected no children count for ticket with no spawned children:\n{}",
+        output
+    );
+}
+
+#[test]
+#[serial]
+fn test_show_children_count_in_json() {
+    let janus = JanusTest::new();
+
+    // Create a parent ticket
+    let parent_id = janus.run_success(&["create", "Parent"]).trim().to_string();
+
+    // Create 2 child tickets spawned from parent
+    janus.run_success(&["create", "Child 1", "--spawned-from", &parent_id]);
+    janus.run_success(&["create", "Child 2", "--spawned-from", &parent_id]);
+
+    // Show with JSON output should include children_count
+    let output = janus.run_success(&["show", &parent_id, "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).expect("Invalid JSON");
+
+    assert_eq!(
+        json["children_count"], 2,
+        "Expected children_count to be 2 in JSON output:\n{}",
+        output
+    );
+}

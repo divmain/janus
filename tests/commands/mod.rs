@@ -6,6 +6,7 @@ mod common;
 mod aliases_test;
 mod create_test;
 mod dep_test;
+mod graph_test;
 mod link_test;
 mod ls_test;
 mod misc_test;

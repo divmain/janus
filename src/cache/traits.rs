@@ -115,14 +115,18 @@ impl CacheableItem for TicketMetadata {
         let external_ref = self.external_ref.clone();
         let remote = self.remote.clone();
         let completion_summary = self.completion_summary.clone();
+        let spawned_from = self.spawned_from.clone();
+        let spawn_context = self.spawn_context.clone();
+        let depth = self.depth.map(|d| d as i64);
 
         async move {
             let ticket_id = ticket_id?;
             tx.execute(
                 "INSERT OR REPLACE INTO tickets (
                     ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    deps, links, parent, created, external_ref, remote, completion_summary,
+                    spawned_from, spawn_context, depth
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
                 params![
                     ticket_id,
                     uuid,
@@ -138,6 +142,9 @@ impl CacheableItem for TicketMetadata {
                     external_ref,
                     remote,
                     completion_summary,
+                    spawned_from,
+                    spawn_context,
+                    depth,
                 ],
             )
             .await?;

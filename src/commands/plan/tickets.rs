@@ -4,6 +4,7 @@ use serde_json::json;
 
 use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
+use crate::events::{log_ticket_added_to_plan, log_ticket_moved, log_ticket_removed_from_plan};
 use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::PlanSection;
@@ -108,6 +109,9 @@ pub async fn cmd_plan_add_ticket(
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
 
+    // Log the event
+    log_ticket_added_to_plan(&plan.id, &resolved_ticket_id, added_to_phase.as_deref());
+
     CommandOutput::new(json!({
         "plan_id": plan.id,
         "ticket_id": resolved_ticket_id,
@@ -167,12 +171,15 @@ pub async fn cmd_plan_remove_ticket(
     }
 
     if !found {
-        return Err(JanusError::TicketNotInPlan(resolved_id));
+        return Err(JanusError::TicketNotInPlan(resolved_id.clone()));
     }
 
     // Write updated plan
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
+
+    // Log the event
+    log_ticket_removed_from_plan(&plan.id, &resolved_id, removed_from_phase.as_deref());
 
     CommandOutput::new(json!({
         "plan_id": plan.id,
@@ -250,6 +257,11 @@ pub async fn cmd_plan_move_ticket(
     // Write updated plan
     let content = serialize_plan(&metadata);
     plan.write(&content)?;
+
+    // Log the event
+    if let Some(from) = &found_in_phase {
+        log_ticket_moved(&plan.id, &resolved_id, from, to_phase);
+    }
 
     CommandOutput::new(json!({
         "plan_id": plan.id,

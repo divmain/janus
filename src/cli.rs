@@ -56,6 +56,14 @@ pub enum Commands {
         #[arg(long)]
         prefix: Option<String>,
 
+        /// ID of ticket this was spawned from (decomposition provenance)
+        #[arg(long)]
+        spawned_from: Option<String>,
+
+        /// Context explaining why this ticket was spawned
+        #[arg(long)]
+        spawn_context: Option<String>,
+
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -111,6 +119,14 @@ pub enum Commands {
     Close {
         /// Ticket ID (can be partial)
         id: String,
+
+        /// Completion summary text (required unless --no-summary is used)
+        #[arg(long, group = "summary_choice")]
+        summary: Option<String>,
+
+        /// Explicitly close without a summary
+        #[arg(long, group = "summary_choice")]
+        no_summary: bool,
 
         /// Output as JSON
         #[arg(long)]
@@ -192,6 +208,22 @@ pub enum Commands {
         #[arg(long, conflicts_with_all = ["ready", "blocked", "closed"])]
         status: Option<String>,
 
+        /// Show tickets spawned from a specific parent (direct children only)
+        #[arg(long)]
+        spawned_from: Option<String>,
+
+        /// Show tickets at specific decomposition depth (0 = root tickets)
+        #[arg(long)]
+        depth: Option<u32>,
+
+        /// Show tickets up to specified depth
+        #[arg(long)]
+        max_depth: Option<u32>,
+
+        /// Show next actionable tickets in a plan (uses same logic as `janus plan next`)
+        #[arg(long)]
+        next_in_plan: Option<String>,
+
         /// Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
         #[arg(long)]
         limit: Option<usize>,
@@ -243,10 +275,48 @@ pub enum Commands {
         action: PlanAction,
     },
 
+    /// Output ticket relationship graphs in DOT or Mermaid format
+    Graph {
+        /// Show dependencies only (blocking/blocked-by relationships)
+        #[arg(long)]
+        deps: bool,
+
+        /// Show spawning relationships only (parent/child via spawned-from)
+        #[arg(long)]
+        spawn: bool,
+
+        /// Show both deps and spawning relationships (default)
+        #[arg(long)]
+        all: bool,
+
+        /// Output format: dot (default) or mermaid
+        #[arg(long, default_value = "dot")]
+        format: String,
+
+        /// Start from specific ticket (subgraph reachable from this ticket)
+        #[arg(long)]
+        root: Option<String>,
+
+        /// Graph tickets in a specific plan
+        #[arg(long)]
+        plan: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Generate shell completions
     Completions {
         /// Shell to generate completions for [possible values: bash, zsh, fish, powershell, elvish]
         shell: Shell,
+    },
+
+    /// Start MCP (Model Context Protocol) server for AI agent integration
+    Mcp {
+        /// Show MCP protocol version instead of starting server
+        #[arg(long)]
+        version: bool,
     },
 }
 

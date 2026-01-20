@@ -9,7 +9,7 @@ use janus::cli::{Cli, Commands};
 use janus::commands::{
     CreateOptions, cmd_add_note, cmd_adopt, cmd_board, cmd_cache_clear, cmd_cache_path,
     cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set,
-    cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_edit,
+    cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_edit, cmd_graph,
     cmd_hook_disable, cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run,
     cmd_link_add, cmd_link_remove, cmd_ls, cmd_plan_add_phase, cmd_plan_add_ticket,
     cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls,
@@ -34,6 +34,8 @@ async fn main() -> ExitCode {
             external_ref,
             parent,
             prefix,
+            spawned_from,
+            spawn_context,
             json,
         } => cmd_create(
             CreateOptions {
@@ -46,6 +48,8 @@ async fn main() -> ExitCode {
                 external_ref,
                 parent,
                 prefix,
+                spawned_from,
+                spawn_context,
             },
             json,
         ),
@@ -62,7 +66,12 @@ async fn main() -> ExitCode {
         }
 
         Commands::Start { id, json } => cmd_start(&id, json).await,
-        Commands::Close { id, json } => cmd_close(&id, json).await,
+        Commands::Close {
+            id,
+            summary,
+            no_summary,
+            json,
+        } => cmd_close(&id, summary.as_deref(), no_summary, json).await,
         Commands::Reopen { id, json } => cmd_reopen(&id, json).await,
         Commands::Status { id, status, json } => cmd_status(&id, &status, json).await,
         Commands::Set {
@@ -89,9 +98,28 @@ async fn main() -> ExitCode {
             closed,
             all,
             status,
+            spawned_from,
+            depth,
+            max_depth,
+            next_in_plan,
             limit,
             json,
-        } => cmd_ls(ready, blocked, closed, all, status.as_deref(), limit, json).await,
+        } => {
+            cmd_ls(
+                ready,
+                blocked,
+                closed,
+                all,
+                status.as_deref(),
+                spawned_from.as_deref(),
+                depth,
+                max_depth,
+                next_in_plan.as_deref(),
+                limit,
+                json,
+            )
+            .await
+        }
 
         Commands::Query { filter } => cmd_query(filter.as_deref()).await,
 
@@ -248,9 +276,38 @@ async fn main() -> ExitCode {
             PlanAction::ImportSpec => cmd_show_import_spec(),
         },
 
+        Commands::Graph {
+            deps,
+            spawn,
+            all,
+            format,
+            root,
+            plan,
+            json,
+        } => {
+            cmd_graph(
+                deps,
+                spawn,
+                all,
+                &format,
+                root.as_deref(),
+                plan.as_deref(),
+                json,
+            )
+            .await
+        }
+
         Commands::Completions { shell } => {
             generate_completions(shell);
             Ok(())
+        }
+
+        Commands::Mcp { version } => {
+            if version {
+                janus::mcp::cmd_mcp_version()
+            } else {
+                janus::mcp::cmd_mcp().await
+            }
         }
     };
 

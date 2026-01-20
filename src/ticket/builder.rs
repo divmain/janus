@@ -22,6 +22,9 @@ pub struct TicketBuilder {
     uuid: Option<String>,
     created: Option<String>,
     run_hooks: bool,
+    spawned_from: Option<String>,
+    spawn_context: Option<String>,
+    depth: Option<u32>,
 }
 
 impl TicketBuilder {
@@ -42,6 +45,9 @@ impl TicketBuilder {
             uuid: None,
             created: None,
             run_hooks: true,
+            spawned_from: None,
+            spawn_context: None,
+            depth: None,
         }
     }
 
@@ -115,6 +121,21 @@ impl TicketBuilder {
         self
     }
 
+    pub fn spawned_from(mut self, spawned_from: Option<impl Into<String>>) -> Self {
+        self.spawned_from = spawned_from.map(|s| s.into());
+        self
+    }
+
+    pub fn spawn_context(mut self, spawn_context: Option<impl Into<String>>) -> Self {
+        self.spawn_context = spawn_context.map(|s| s.into());
+        self
+    }
+
+    pub fn depth(mut self, depth: Option<u32>) -> Self {
+        self.depth = depth;
+        self
+    }
+
     pub fn build(self) -> Result<(String, PathBuf)> {
         utils::ensure_dir()?;
 
@@ -158,6 +179,15 @@ impl TicketBuilder {
         }
         if let Some(ref remote) = self.remote {
             frontmatter_lines.push(format!("remote: {}", remote));
+        }
+        if let Some(ref spawned_from) = self.spawned_from {
+            frontmatter_lines.push(format!("spawned-from: {}", spawned_from));
+        }
+        if let Some(ref spawn_context) = self.spawn_context {
+            frontmatter_lines.push(format!("spawn-context: {}", spawn_context));
+        }
+        if let Some(depth) = self.depth {
+            frontmatter_lines.push(format!("depth: {}", depth));
         }
 
         frontmatter_lines.push("---".to_string());
@@ -308,5 +338,77 @@ mod tests {
             .build();
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_with_spawned_from() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_with_spawned_from");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test Spawned Ticket")
+            .spawned_from(Some("j-parent"))
+            .spawn_context(Some("Test context"))
+            .depth(Some(1))
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_ok());
+        let (id, path) = result.unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(content.contains(&format!("id: {}", id)));
+        assert!(content.contains("spawned-from: j-parent"));
+        assert!(content.contains("spawn-context: Test context"));
+        assert!(content.contains("depth: 1"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_without_spawning_fields() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_builder_without_spawning_fields");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let result = TicketBuilder::new("Test Regular Ticket")
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_ok());
+        let (_id, path) = result.unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        // Spawning fields should not be present when not set
+        assert!(!content.contains("spawned-from"));
+        assert!(!content.contains("spawn-context"));
+        assert!(!content.contains("depth"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_builder_spawned_from_with_depth_zero() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp
+            .path()
+            .join("test_builder_spawned_from_with_depth_zero");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create a ticket spawned from a root ticket (depth 0)
+        let result = TicketBuilder::new("Test Spawned From Root")
+            .spawned_from(Some("j-root"))
+            .depth(Some(1))
+            .run_hooks(false)
+            .build();
+
+        assert!(result.is_ok());
+        let (_id, path) = result.unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        assert!(content.contains("spawned-from: j-root"));
+        assert!(content.contains("depth: 1"));
     }
 }

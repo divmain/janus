@@ -35,7 +35,7 @@ pub use delete::{cmd_plan_delete, cmd_plan_rename};
 pub use edit::cmd_plan_edit;
 pub use import::{cmd_plan_import, cmd_show_import_spec};
 pub use ls::cmd_plan_ls;
-pub use next::cmd_plan_next;
+pub use next::{NextItemResult, cmd_plan_next, get_next_items_phased, get_next_items_simple};
 pub use phases::{cmd_plan_add_phase, cmd_plan_remove_phase};
 pub use reorder::cmd_plan_reorder;
 pub use show::cmd_plan_show;

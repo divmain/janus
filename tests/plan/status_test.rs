@@ -58,7 +58,7 @@ fn test_plan_status_with_progress() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
 
     // Complete one ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get status
     let output = janus.run_success(&["plan", "status", &plan_id]);
@@ -145,7 +145,7 @@ fn test_plan_status_complete() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
 
     // Complete the ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get status
     let output = janus.run_success(&["plan", "status", &plan_id]);

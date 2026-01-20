@@ -60,7 +60,7 @@ fn test_plan_next_skips_complete() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
 
     // Complete first ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get next item - should be ticket2
     let output = janus.run_success(&["plan", "next", &plan_id]);
@@ -173,7 +173,7 @@ fn test_plan_next_phased_skips_complete_phase() {
     ]);
 
     // Complete Phase 1 ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get next item - should show from Phase 2
     let output = janus.run_success(&["plan", "next", &plan_id]);
@@ -199,7 +199,7 @@ fn test_plan_next_all_complete() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
 
     // Complete the ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get next item - should say no actionable items
     let output = janus.run_success(&["plan", "next", &plan_id]);

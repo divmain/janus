@@ -27,7 +27,8 @@ impl TicketCache {
             .conn
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary
+                    deps, links, parent, created, external_ref, remote, completion_summary,
+                    spawned_from, spawn_context, depth
              FROM tickets",
                 (),
             )
@@ -47,7 +48,8 @@ impl TicketCache {
             .conn
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary
+                    deps, links, parent, created, external_ref, remote, completion_summary,
+                    spawned_from, spawn_context, depth
              FROM tickets WHERE ticket_id = ?1",
                 [id],
             )
@@ -152,6 +154,23 @@ impl TicketCache {
         Ok(matches)
     }
 
+    /// Get the count of tickets spawned from a given ticket.
+    ///
+    /// This queries the cache for tickets where `spawned_from` matches the given ID.
+    pub async fn get_children_count(&self, id: &str) -> Result<usize> {
+        let mut rows = self
+            .conn
+            .query("SELECT COUNT(*) FROM tickets WHERE spawned_from = ?1", [id])
+            .await?;
+
+        if let Some(row) = rows.next().await? {
+            let count: i64 = row.get(0)?;
+            Ok(count as usize)
+        } else {
+            Ok(0)
+        }
+    }
+
     // =========================================================================
     // Row conversion helpers
     // =========================================================================
@@ -170,6 +189,9 @@ impl TicketCache {
         let external_ref: Option<String> = row.get(10).ok();
         let remote: Option<String> = row.get(11).ok();
         let completion_summary: Option<String> = row.get(12).ok();
+        let spawned_from: Option<String> = row.get(13).ok();
+        let spawn_context: Option<String> = row.get(14).ok();
+        let depth_num: Option<i64> = row.get(15).ok();
 
         // Parse status with explicit error handling
         let status = if let Some(ref s) = status_str {
@@ -222,6 +244,9 @@ impl TicketCache {
             None => None,
         };
 
+        // Convert depth from i64 to u32
+        let depth = depth_num.and_then(|n| u32::try_from(n).ok());
+
         let deps = Self::deserialize_array(deps_json.as_deref())?;
         let links = Self::deserialize_array(links_json.as_deref())?;
 
@@ -240,6 +265,9 @@ impl TicketCache {
             remote,
             file_path: None,
             completion_summary,
+            spawned_from,
+            spawn_context,
+            depth,
         })
     }
 

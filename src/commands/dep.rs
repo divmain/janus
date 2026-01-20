@@ -5,6 +5,7 @@ use serde_json::json;
 
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
+use crate::events::{log_dependency_added, log_dependency_removed};
 use crate::ticket::{Ticket, build_ticket_map};
 use crate::types::TicketMetadata;
 
@@ -92,6 +93,11 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()
     let added = ticket.add_to_array_field("deps", &dep_ticket.id)?;
     let metadata = ticket.read()?;
 
+    // Log the event if dependency was actually added
+    if added {
+        log_dependency_added(&ticket.id, &dep_ticket.id);
+    }
+
     let text = if added {
         format!("Added dependency: {} -> {}", ticket.id, dep_ticket.id)
     } else {
@@ -116,6 +122,9 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result
     if !removed {
         return Err(JanusError::DependencyNotFound(dep_id.to_string()));
     }
+
+    // Log the event
+    log_dependency_removed(&ticket.id, dep_id);
 
     let metadata = ticket.read()?;
     CommandOutput::new(json!({

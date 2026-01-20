@@ -67,6 +67,9 @@ tempfile = "3"
 # Timeout support for child processes
 wait-timeout = "0.2"
 
+# MCP (Model Context Protocol) server
+rmcp = { version = "0.13", features = ["server", "macros", "transport-io"] }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

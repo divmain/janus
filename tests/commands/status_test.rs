@@ -25,14 +25,58 @@ fn test_status_start() {
 
 #[test]
 #[serial]
-fn test_status_close() {
+fn test_status_close_no_summary() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    janus.run_success(&["close", &id]);
+    janus.run_success(&["close", &id, "--no-summary"]);
 
     let content = janus.read_ticket(&id);
     assert!(content.contains("status: complete"));
+    // Should not contain completion summary section
+    assert!(!content.contains("## Completion Summary"));
+}
+
+#[test]
+#[serial]
+fn test_status_close_with_summary() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    janus.run_success(&["close", &id, "--summary", "Fixed the bug successfully"]);
+
+    let content = janus.read_ticket(&id);
+    assert!(content.contains("status: complete"));
+    assert!(content.contains("## Completion Summary"));
+    assert!(content.contains("Fixed the bug successfully"));
+}
+
+#[test]
+#[serial]
+fn test_status_close_requires_summary_flag() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+
+    // Should fail without --summary or --no-summary
+    let stderr = janus.run_failure(&["close", &id]);
+    assert!(stderr.contains("--summary") || stderr.contains("--no-summary"));
+}
+
+#[test]
+#[serial]
+fn test_status_close_summary_and_no_summary_conflict() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+
+    // Should fail when both are specified
+    let stderr = janus.run_failure(&["close", &id, "--summary", "Test", "--no-summary"]);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("conflicts"),
+        "Expected conflict error, got: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -41,7 +85,7 @@ fn test_status_reopen() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    janus.run_success(&["close", &id]);
+    janus.run_success(&["close", &id, "--no-summary"]);
     janus.run_success(&["reopen", &id]);
 
     let content = janus.read_ticket(&id);

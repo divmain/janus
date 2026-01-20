@@ -4,7 +4,7 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::commands::format_ticket_bullet;
 use crate::error::Result;
-use crate::ticket::{Ticket, build_ticket_map};
+use crate::ticket::{Ticket, build_ticket_map, get_children_count};
 use crate::types::{TicketMetadata, TicketStatus};
 
 /// Display a ticket with its relationships
@@ -42,6 +42,9 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
             blockers.push(dep);
         }
     }
+
+    // Get count of tickets spawned from this ticket
+    let spawned_count = get_children_count(&ticket.id).await;
 
     // Build JSON data (needed for both output formats)
     let blockers_json: Vec<_> = blockers
@@ -88,6 +91,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
         "blocking": blocking_json,
         "children": children_json,
         "linked": linked_json,
+        "children_count": spawned_count,
     });
 
     // Build text output
@@ -118,6 +122,15 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
                     output.push_str(&format!("\n{}", format_ticket_bullet(linked)));
                 }
             }
+        }
+
+        // Print spawned children count (only if > 0)
+        if spawned_count > 0 {
+            output.push_str(&format!(
+                "\n\n{} {} spawned from this ticket",
+                "Children:".green().bold(),
+                spawned_count
+            ));
         }
 
         output

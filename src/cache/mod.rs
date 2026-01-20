@@ -1440,4 +1440,76 @@ remote: github
         fs::remove_file(&db_path).ok();
         fs::remove_dir_all(&repo_path).ok();
     }
+
+    fn create_test_ticket_with_spawned_from(
+        dir: &std::path::Path,
+        ticket_id: &str,
+        title: &str,
+        spawned_from: &str,
+    ) -> std::path::PathBuf {
+        let tickets_dir = dir.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let content = format!(
+            r#"---
+id: {}
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+spawned-from: {}
+---
+# {}
+"#,
+            ticket_id, spawned_from, title
+        );
+        fs::write(&ticket_path, content).unwrap();
+        ticket_path
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_get_children_count() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_get_children_count");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create a parent ticket
+        create_test_ticket(&repo_path, "j-parent", "Parent Ticket");
+
+        // Create 3 child tickets spawned from the parent
+        create_test_ticket_with_spawned_from(&repo_path, "j-child1", "Child 1", "j-parent");
+        create_test_ticket_with_spawned_from(&repo_path, "j-child2", "Child 2", "j-parent");
+        create_test_ticket_with_spawned_from(&repo_path, "j-child3", "Child 3", "j-parent");
+
+        // Create another ticket with no children
+        create_test_ticket(&repo_path, "j-solo", "Solo Ticket");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Test: parent should have 3 children
+        let parent_count = cache.get_children_count("j-parent").await.unwrap();
+        assert_eq!(parent_count, 3, "Parent should have 3 children");
+
+        // Test: solo ticket should have 0 children
+        let solo_count = cache.get_children_count("j-solo").await.unwrap();
+        assert_eq!(solo_count, 0, "Solo ticket should have 0 children");
+
+        // Test: nonexistent ticket should have 0 children
+        let nonexistent_count = cache.get_children_count("j-nonexistent").await.unwrap();
+        assert_eq!(
+            nonexistent_count, 0,
+            "Nonexistent ticket should have 0 children"
+        );
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
 }

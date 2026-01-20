@@ -2,6 +2,7 @@ use serde_json::json;
 
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
+use crate::events::log_field_updated;
 use crate::ticket::Ticket;
 use crate::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_TYPES};
 
@@ -74,6 +75,9 @@ pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> R
     } else {
         new_value.clone()
     };
+
+    // Log the event
+    log_field_updated(&ticket.id, field, previous_value.as_deref(), &new_value);
 
     CommandOutput::new(json!({
         "id": ticket.id,

@@ -133,14 +133,14 @@ pub async fn cmd_plan_next(
 }
 
 /// Helper struct for next item results
-struct NextItemResult {
-    phase_number: String,
-    phase_name: String,
-    tickets: Vec<(String, Option<TicketMetadata>)>,
+pub struct NextItemResult {
+    pub phase_number: String,
+    pub phase_name: String,
+    pub tickets: Vec<(String, Option<TicketMetadata>)>,
 }
 
 /// Get next actionable items for a phased plan
-fn get_next_items_phased(
+pub fn get_next_items_phased(
     metadata: &PlanMetadata,
     ticket_map: &HashMap<String, TicketMetadata>,
     phase_only: bool,
@@ -206,7 +206,7 @@ fn get_next_items_phased(
 }
 
 /// Get next actionable items for a simple plan
-fn get_next_items_simple(
+pub fn get_next_items_simple(
     metadata: &PlanMetadata,
     ticket_map: &HashMap<String, TicketMetadata>,
     count: usize,

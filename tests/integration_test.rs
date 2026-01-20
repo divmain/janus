@@ -339,6 +339,161 @@ fn test_create_with_reserved_prefix_fails() {
     );
 }
 
+// ============================================================================
+// Spawning metadata tests
+// ============================================================================
+
+#[test]
+fn test_create_with_spawned_from() {
+    let janus = JanusTest::new();
+
+    // Create a parent ticket
+    let parent_id = janus
+        .run_success(&["create", "Parent ticket"])
+        .trim()
+        .to_string();
+
+    // Create a child ticket spawned from the parent
+    let child_id = janus
+        .run_success(&[
+            "create",
+            "Child ticket",
+            "--spawned-from",
+            &parent_id,
+            "--spawn-context",
+            "Needs OAuth setup first",
+        ])
+        .trim()
+        .to_string();
+
+    let child_content = janus.read_ticket(&child_id);
+    assert!(
+        child_content.contains(&format!("spawned-from: {}", parent_id)),
+        "Child should have spawned-from field"
+    );
+    assert!(
+        child_content.contains("spawn-context: Needs OAuth setup first"),
+        "Child should have spawn-context field"
+    );
+    assert!(
+        child_content.contains("depth: 1"),
+        "Child should have depth: 1 (parent has implicit depth 0)"
+    );
+}
+
+#[test]
+fn test_create_spawned_chain_depth() {
+    let janus = JanusTest::new();
+
+    // Create a root ticket (no spawning fields)
+    let root_id = janus
+        .run_success(&["create", "Root ticket"])
+        .trim()
+        .to_string();
+
+    // Create depth-1 ticket
+    let depth1_id = janus
+        .run_success(&["create", "Depth 1 ticket", "--spawned-from", &root_id])
+        .trim()
+        .to_string();
+
+    let depth1_content = janus.read_ticket(&depth1_id);
+    assert!(
+        depth1_content.contains("depth: 1"),
+        "First spawn should have depth 1"
+    );
+
+    // Create depth-2 ticket
+    let depth2_id = janus
+        .run_success(&["create", "Depth 2 ticket", "--spawned-from", &depth1_id])
+        .trim()
+        .to_string();
+
+    let depth2_content = janus.read_ticket(&depth2_id);
+    assert!(
+        depth2_content.contains("depth: 2"),
+        "Second spawn should have depth 2"
+    );
+}
+
+#[test]
+fn test_create_without_spawning_fields() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["create", "Regular ticket"]);
+    let id = output.trim();
+
+    let content = janus.read_ticket(id);
+
+    // Spawning fields should not be present
+    assert!(
+        !content.contains("spawned-from"),
+        "Regular ticket should not have spawned-from"
+    );
+    assert!(
+        !content.contains("spawn-context"),
+        "Regular ticket should not have spawn-context"
+    );
+    assert!(
+        !content.contains("depth"),
+        "Regular ticket should not have depth"
+    );
+}
+
+#[test]
+fn test_create_spawned_from_nonexistent_parent() {
+    let janus = JanusTest::new();
+
+    // Create a ticket spawned from a non-existent parent
+    // This should still work but set depth to 1
+    let child_id = janus
+        .run_success(&["create", "Orphan ticket", "--spawned-from", "j-nonexistent"])
+        .trim()
+        .to_string();
+
+    let child_content = janus.read_ticket(&child_id);
+    assert!(
+        child_content.contains("spawned-from: j-nonexistent"),
+        "Should still record spawned-from even if parent doesn't exist"
+    );
+    assert!(
+        child_content.contains("depth: 1"),
+        "Should default to depth 1 when parent not found"
+    );
+}
+
+#[test]
+fn test_create_spawned_with_other_options() {
+    let janus = JanusTest::new();
+
+    // Create a parent
+    let parent_id = janus.run_success(&["create", "Parent"]).trim().to_string();
+
+    // Create spawned ticket with other options
+    let child_id = janus
+        .run_success(&[
+            "create",
+            "Spawned bug",
+            "--spawned-from",
+            &parent_id,
+            "--type",
+            "bug",
+            "--priority",
+            "0",
+            "--description",
+            "Fix critical issue",
+        ])
+        .trim()
+        .to_string();
+
+    let child_content = janus.read_ticket(&child_id);
+    assert!(child_content.contains(&format!("spawned-from: {}", parent_id)));
+    assert!(child_content.contains("type: bug"));
+    assert!(child_content.contains("priority: 0"));
+    assert!(child_content.contains("Fix critical issue"));
+    assert!(child_content.contains("depth: 1"));
+}
+
 #[test]
 fn test_create_with_invalid_prefix_characters_fails() {
     let janus = JanusTest::new();
@@ -390,7 +545,7 @@ fn test_status_close() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    janus.run_success(&["close", &id]);
+    janus.run_success(&["close", &id, "--no-summary"]);
 
     let content = janus.read_ticket(&id);
     assert!(content.contains("status: complete"));
@@ -401,7 +556,7 @@ fn test_status_reopen() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    janus.run_success(&["close", &id]);
+    janus.run_success(&["close", &id, "--no-summary"]);
     janus.run_success(&["reopen", &id]);
 
     let content = janus.read_ticket(&id);
@@ -1046,7 +1201,7 @@ fn test_ls_status_filter() {
         .run_success(&["create", "Closed ticket"])
         .trim()
         .to_string();
-    janus.run_success(&["close", &id2]);
+    janus.run_success(&["close", &id2, "--no-summary"]);
 
     let output = janus.run_success(&["ls", "--status", "new"]);
     assert!(output.contains(&id1));
@@ -1093,7 +1248,7 @@ fn test_ready_after_dep_closed() {
     assert!(!output.contains(&blocked_id));
 
     // Close dependency
-    janus.run_success(&["close", &dep_id]);
+    janus.run_success(&["close", &dep_id, "--no-summary"]);
 
     // Now ready
     let output = janus.run_success(&["ls", "--ready"]);
@@ -1146,7 +1301,7 @@ fn test_closed() {
 
     let id1 = janus.run_success(&["create", "Open"]).trim().to_string();
     let id2 = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &id2]);
+    janus.run_success(&["close", &id2, "--no-summary"]);
 
     let output = janus.run_success(&["ls", "--closed"]);
     assert!(!output.contains(&id1));
@@ -1163,7 +1318,7 @@ fn test_closed_limit() {
             .run_success(&["create", &format!("Ticket {}", i)])
             .trim()
             .to_string();
-        janus.run_success(&["close", &id]);
+        janus.run_success(&["close", &id, "--no-summary"]);
     }
 
     let output = janus.run_success(&["ls", "--closed", "--limit", "2"]);
@@ -1237,7 +1392,7 @@ fn test_ls_closed_flag() {
 
     let open_id = janus.run_success(&["create", "Open"]).trim().to_string();
     let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     let output = janus.run_success(&["ls", "--closed"]);
 
@@ -1255,7 +1410,7 @@ fn test_ls_closed_with_limit() {
             .run_success(&["create", &format!("Ticket {}", i)])
             .trim()
             .to_string();
-        janus.run_success(&["close", &id]);
+        janus.run_success(&["close", &id, "--no-summary"]);
     }
 
     let output = janus.run_success(&["ls", "--closed", "--limit", "2"]);
@@ -1293,7 +1448,7 @@ fn test_ls_all_flag() {
 
     let open_id = janus.run_success(&["create", "Open"]).trim().to_string();
     let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     // Without --all, closed tickets should not appear
     let output_without_all = janus.run_success(&["ls"]);
@@ -1330,6 +1485,52 @@ fn test_ls_limit_without_closed() {
         line_count, 3,
         "Should show exactly 3 tickets when --limit 3 is used"
     );
+}
+
+#[test]
+fn test_ls_next_in_plan_phased() {
+    let janus = JanusTest::new();
+
+    // Create tickets
+    let t1_id = janus
+        .run_success(&["create", "Phase 1 Task"])
+        .trim()
+        .to_string();
+    let t2_id = janus
+        .run_success(&["create", "Phase 2 Task"])
+        .trim()
+        .to_string();
+
+    // Create a phased plan and capture the ID from JSON output
+    let plan_output = janus.run_success(&[
+        "plan",
+        "create",
+        "Phased Plan",
+        "--phase",
+        "Phase 1",
+        "--phase",
+        "Phase 2",
+        "--json",
+    ]);
+    let plan_json: serde_json::Value =
+        serde_json::from_str(&plan_output).expect("Plan create should output JSON");
+    let plan_id = plan_json["id"].as_str().unwrap().to_string();
+
+    // Add tickets to phases
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t1_id, "--phase", "1"]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t2_id, "--phase", "2"]);
+
+    // --next-in-plan should show tickets from incomplete phases
+    let output = janus.run_success(&["ls", "--next-in-plan", &plan_id]);
+    assert!(output.contains(&t1_id), "Phase 1 task should appear");
+    assert!(output.contains(&t2_id), "Phase 2 task should appear");
+
+    // Complete phase 1 ticket
+    janus.run_success(&["close", &t1_id, "--no-summary"]);
+
+    let output = janus.run_success(&["ls", "--next-in-plan", &plan_id]);
+    assert!(!output.contains(&t1_id), "Completed task should not appear");
+    assert!(output.contains(&t2_id), "Phase 2 task should still appear");
 }
 
 #[test]
@@ -1399,7 +1600,7 @@ fn test_ls_closed_default_limit() {
             .run_success(&["create", &format!("Ticket {}", i)])
             .trim()
             .to_string();
-        janus.run_success(&["close", &id]);
+        janus.run_success(&["close", &id, "--no-summary"]);
     }
 
     // --closed without explicit --limit should default to 20
@@ -1418,7 +1619,7 @@ fn test_ls_closed_custom_limit() {
             .run_success(&["create", &format!("Ticket {}", i)])
             .trim()
             .to_string();
-        janus.run_success(&["close", &id]);
+        janus.run_success(&["close", &id, "--no-summary"]);
     }
 
     // --closed --limit 5 should show 5 tickets
@@ -1442,7 +1643,7 @@ fn test_ls_all_with_other_filters() {
         .run_success(&["create", "Closed ticket"])
         .trim()
         .to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     // --all should show all tickets
     let output = janus.run_success(&["ls", "--all"]);
@@ -1469,7 +1670,7 @@ fn test_ls_all_three_filters_union() {
 
     // Create a closed ticket
     let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     // Combine all three filters - should show union of all
     let output = janus.run_success(&["ls", "--ready", "--blocked", "--closed"]);
@@ -1503,6 +1704,325 @@ fn test_ls_json_output_works() {
     // Test --json flag with --blocked
     let _output = janus.run_success(&["ls", "--blocked", "--json"]);
     // No blocked tickets, so should be empty or just contain the ready one
+}
+
+// ============================================================================
+// Spawning-related filter tests
+// ============================================================================
+
+#[test]
+fn test_ls_spawned_from_filter() {
+    let janus = JanusTest::new();
+
+    // Create a parent ticket
+    let parent_id = janus
+        .run_success(&["create", "Parent ticket"])
+        .trim()
+        .to_string();
+
+    // Create child tickets spawned from the parent
+    let child1_id = janus
+        .run_success(&["create", "Child 1", "--spawned-from", &parent_id])
+        .trim()
+        .to_string();
+    let child2_id = janus
+        .run_success(&["create", "Child 2", "--spawned-from", &parent_id])
+        .trim()
+        .to_string();
+
+    // Create an unrelated ticket
+    let _unrelated_id = janus
+        .run_success(&["create", "Unrelated ticket"])
+        .trim()
+        .to_string();
+
+    // Filter by spawned-from should show only direct children
+    let output = janus.run_success(&["ls", "--spawned-from", &parent_id]);
+    assert!(output.contains(&child1_id), "Child 1 should appear");
+    assert!(output.contains(&child2_id), "Child 2 should appear");
+    assert!(
+        !output.contains(&parent_id) || output.matches(&parent_id).count() == 0,
+        "Parent should not appear in list"
+    );
+    assert!(
+        !output.contains("Unrelated"),
+        "Unrelated ticket should not appear"
+    );
+}
+
+#[test]
+fn test_ls_spawned_from_partial_id() {
+    let janus = JanusTest::new();
+
+    // Create a parent and child
+    let parent_id = janus.run_success(&["create", "Parent"]).trim().to_string();
+    let child_id = janus
+        .run_success(&["create", "Child", "--spawned-from", &parent_id])
+        .trim()
+        .to_string();
+
+    // Use partial ID for the filter
+    let partial = parent_id.split('-').last().unwrap();
+    let output = janus.run_success(&["ls", "--spawned-from", partial]);
+    assert!(output.contains(&child_id));
+}
+
+#[test]
+fn test_ls_spawned_from_no_children() {
+    let janus = JanusTest::new();
+
+    // Create a parent with no children
+    let parent_id = janus
+        .run_success(&["create", "Lonely parent"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["ls", "--spawned-from", &parent_id]);
+    assert!(
+        output.trim().is_empty(),
+        "Should return empty for parent with no children"
+    );
+}
+
+#[test]
+fn test_ls_spawned_from_nonexistent_fails() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["ls", "--spawned-from", "nonexistent-id"]);
+    assert!(stderr.contains("not found"));
+}
+
+#[test]
+fn test_ls_depth_zero_shows_root_tickets() {
+    let janus = JanusTest::new();
+
+    // Create root tickets (no spawned_from)
+    let root1_id = janus.run_success(&["create", "Root 1"]).trim().to_string();
+    let root2_id = janus.run_success(&["create", "Root 2"]).trim().to_string();
+
+    // Create child ticket
+    let child_id = janus
+        .run_success(&["create", "Child", "--spawned-from", &root1_id])
+        .trim()
+        .to_string();
+
+    // depth 0 should show only root tickets
+    let output = janus.run_success(&["ls", "--depth", "0"]);
+    assert!(output.contains(&root1_id), "Root 1 should appear");
+    assert!(output.contains(&root2_id), "Root 2 should appear");
+    assert!(!output.contains(&child_id), "Child should not appear");
+}
+
+#[test]
+fn test_ls_depth_one_shows_first_level_children() {
+    let janus = JanusTest::new();
+
+    // Create hierarchy
+    let root_id = janus.run_success(&["create", "Root"]).trim().to_string();
+    let child_id = janus
+        .run_success(&["create", "Child", "--spawned-from", &root_id])
+        .trim()
+        .to_string();
+    let grandchild_id = janus
+        .run_success(&["create", "Grandchild", "--spawned-from", &child_id])
+        .trim()
+        .to_string();
+
+    // depth 1 should show only first-level children
+    let output = janus.run_success(&["ls", "--depth", "1"]);
+    assert!(!output.contains(&root_id), "Root should not appear");
+    assert!(output.contains(&child_id), "Child should appear");
+    assert!(
+        !output.contains(&grandchild_id),
+        "Grandchild should not appear"
+    );
+}
+
+#[test]
+fn test_ls_max_depth_shows_tickets_up_to_depth() {
+    let janus = JanusTest::new();
+
+    // Create hierarchy
+    let root_id = janus.run_success(&["create", "Root"]).trim().to_string();
+    let child_id = janus
+        .run_success(&["create", "Child", "--spawned-from", &root_id])
+        .trim()
+        .to_string();
+    let grandchild_id = janus
+        .run_success(&["create", "Grandchild", "--spawned-from", &child_id])
+        .trim()
+        .to_string();
+
+    // max-depth 1 should show root and children, but not grandchildren
+    let output = janus.run_success(&["ls", "--max-depth", "1"]);
+    assert!(output.contains(&root_id), "Root should appear");
+    assert!(output.contains(&child_id), "Child should appear");
+    assert!(
+        !output.contains(&grandchild_id),
+        "Grandchild should not appear"
+    );
+
+    // max-depth 2 should show all
+    let output = janus.run_success(&["ls", "--max-depth", "2"]);
+    assert!(output.contains(&root_id), "Root should appear");
+    assert!(output.contains(&child_id), "Child should appear");
+    assert!(output.contains(&grandchild_id), "Grandchild should appear");
+}
+
+#[test]
+fn test_ls_max_depth_zero_shows_only_roots() {
+    let janus = JanusTest::new();
+
+    // Create hierarchy
+    let root_id = janus.run_success(&["create", "Root"]).trim().to_string();
+    let _child_id = janus
+        .run_success(&["create", "Child", "--spawned-from", &root_id])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["ls", "--max-depth", "0"]);
+    assert!(output.contains(&root_id), "Root should appear");
+    assert!(!output.contains("Child"), "Child should not appear");
+}
+
+#[test]
+fn test_ls_next_in_plan_simple() {
+    let janus = JanusTest::new();
+
+    // Create tickets
+    let t1_id = janus.run_success(&["create", "Task 1"]).trim().to_string();
+    let t2_id = janus.run_success(&["create", "Task 2"]).trim().to_string();
+
+    // Create a simple plan and capture the ID from JSON output
+    let plan_output = janus.run_success(&["plan", "create", "Test Plan", "--json"]);
+    let plan_json: serde_json::Value =
+        serde_json::from_str(&plan_output).expect("Plan create should output JSON");
+    let plan_id = plan_json["id"].as_str().unwrap().to_string();
+
+    // Add tickets to the plan
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t1_id]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t2_id]);
+
+    // Mark first ticket as complete
+    janus.run_success(&["close", &t1_id, "--no-summary"]);
+
+    // --next-in-plan should show only incomplete tickets
+    let output = janus.run_success(&["ls", "--next-in-plan", &plan_id]);
+    assert!(!output.contains(&t1_id), "Completed task should not appear");
+    assert!(output.contains(&t2_id), "Incomplete task should appear");
+}
+
+#[test]
+fn test_ls_next_in_plan_with_json() {
+    let janus = JanusTest::new();
+
+    // Create and set up a plan
+    let t1_id = janus.run_success(&["create", "Task"]).trim().to_string();
+    let plan_output = janus.run_success(&["plan", "create", "Test Plan", "--json"]);
+    let plan_json: serde_json::Value =
+        serde_json::from_str(&plan_output).expect("Plan create should output JSON");
+    let plan_id = plan_json["id"].as_str().unwrap().to_string();
+
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t1_id]);
+
+    // Test JSON output
+    let output = janus.run_success(&["ls", "--next-in-plan", &plan_id, "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).expect("Should be valid JSON");
+    assert!(json.is_array());
+    assert!(!json.as_array().unwrap().is_empty());
+}
+
+#[test]
+fn test_ls_next_in_plan_not_found() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["ls", "--next-in-plan", "nonexistent-plan"]);
+    assert!(stderr.contains("not found"));
+}
+
+#[test]
+fn test_ls_spawned_from_with_ready_filter() {
+    let janus = JanusTest::new();
+
+    // Create parent and children
+    let parent_id = janus.run_success(&["create", "Parent"]).trim().to_string();
+    let ready_child_id = janus
+        .run_success(&["create", "Ready Child", "--spawned-from", &parent_id])
+        .trim()
+        .to_string();
+    let blocked_child_id = janus
+        .run_success(&["create", "Blocked Child", "--spawned-from", &parent_id])
+        .trim()
+        .to_string();
+
+    // Add dependency to make one child blocked
+    let blocker_id = janus.run_success(&["create", "Blocker"]).trim().to_string();
+    janus.run_success(&["dep", "add", &blocked_child_id, &blocker_id]);
+
+    // Combine filters: spawned-from AND ready
+    let output = janus.run_success(&["ls", "--spawned-from", &parent_id, "--ready"]);
+    assert!(
+        output.contains(&ready_child_id),
+        "Ready child should appear"
+    );
+    assert!(
+        !output.contains("Blocked Child"),
+        "Blocked child should not appear"
+    );
+}
+
+#[test]
+fn test_ls_depth_with_status_filter() {
+    let janus = JanusTest::new();
+
+    // Create hierarchy with different statuses
+    let root_id = janus.run_success(&["create", "Root"]).trim().to_string();
+    let child_id = janus
+        .run_success(&["create", "Child", "--spawned-from", &root_id])
+        .trim()
+        .to_string();
+
+    // Close the child
+    janus.run_success(&["close", &child_id, "--no-summary"]);
+
+    // depth 1 with status filter should work together
+    let output = janus.run_success(&["ls", "--depth", "1", "--status", "complete"]);
+    assert!(output.contains(&child_id), "Completed child should appear");
+
+    let output = janus.run_success(&["ls", "--depth", "1", "--status", "new"]);
+    assert!(
+        !output.contains(&child_id),
+        "Completed child should not appear with new filter"
+    );
+}
+
+#[test]
+fn test_ls_next_in_plan_with_limit() {
+    let janus = JanusTest::new();
+
+    // Create multiple tickets
+    let t1_id = janus.run_success(&["create", "Task 1"]).trim().to_string();
+    let t2_id = janus.run_success(&["create", "Task 2"]).trim().to_string();
+    let t3_id = janus.run_success(&["create", "Task 3"]).trim().to_string();
+
+    // Create a plan and capture the ID from JSON output
+    let plan_output = janus.run_success(&["plan", "create", "Test Plan", "--json"]);
+    let plan_json: serde_json::Value =
+        serde_json::from_str(&plan_output).expect("Plan create should output JSON");
+    let plan_id = plan_json["id"].as_str().unwrap().to_string();
+
+    // Add all tickets
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t1_id]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t2_id]);
+    janus.run_success(&["plan", "add-ticket", &plan_id, &t3_id]);
+
+    // With limit 2, should show only 2 tickets
+    let output = janus.run_success(&["ls", "--next-in-plan", &plan_id, "--limit", "2"]);
+    let line_count = output.lines().count();
+    assert_eq!(
+        line_count, 2,
+        "Should show exactly 2 tickets with --limit 2"
+    );
 }
 
 // ============================================================================
@@ -3467,7 +3987,7 @@ fn test_plan_next_skips_complete() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
 
     // Complete first ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get next item - should be ticket2
     let output = janus.run_success(&["plan", "next", &plan_id]);
@@ -3580,7 +4100,7 @@ fn test_plan_next_phased_skips_complete_phase() {
     ]);
 
     // Complete Phase 1 ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get next item - should show from Phase 2
     let output = janus.run_success(&["plan", "next", &plan_id]);
@@ -3606,7 +4126,7 @@ fn test_plan_next_all_complete() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
 
     // Complete the ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get next item - should say no actionable items
     let output = janus.run_success(&["plan", "next", &plan_id]);
@@ -3766,7 +4286,7 @@ fn test_plan_status_with_progress() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2]);
 
     // Complete one ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get status
     let output = janus.run_success(&["plan", "status", &plan_id]);
@@ -3853,7 +4373,7 @@ fn test_plan_status_complete() {
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket1]);
 
     // Complete the ticket
-    janus.run_success(&["close", &ticket1]);
+    janus.run_success(&["close", &ticket1, "--no-summary"]);
 
     // Get status
     let output = janus.run_success(&["plan", "status", &plan_id]);

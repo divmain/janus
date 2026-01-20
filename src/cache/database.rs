@@ -20,7 +20,7 @@ use super::paths::{cache_db_path, cache_dir, repo_hash};
 const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Current cache schema version. Increment when schema changes.
-pub(crate) const CACHE_VERSION: &str = "5";
+pub(crate) const CACHE_VERSION: &str = "6";
 
 /// The main cache struct that wraps database connection and metadata.
 pub struct TicketCache {
@@ -139,7 +139,10 @@ impl TicketCache {
                 created TEXT,
                 external_ref TEXT,
                 remote TEXT,
-                completion_summary TEXT
+                completion_summary TEXT,
+                spawned_from TEXT,
+                spawn_context TEXT,
+                depth INTEGER
             )",
                 (),
             )
@@ -169,6 +172,20 @@ impl TicketCache {
         self.conn
             .execute(
                 "CREATE INDEX IF NOT EXISTS idx_tickets_status_priority ON tickets(status, priority)",
+                (),
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_spawned_from ON tickets(spawned_from)",
+                (),
+            )
+            .await?;
+
+        self.conn
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_depth ON tickets(depth)",
                 (),
             )
             .await?;

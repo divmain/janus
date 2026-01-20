@@ -4,6 +4,7 @@ use serde_json::json;
 
 use crate::commands::CommandOutput;
 use crate::error::Result;
+use crate::events::log_plan_created;
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
@@ -66,6 +67,9 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
     // Run post-write hooks (fire-and-forget)
     run_post_hooks(HookEvent::PostWrite, &context);
     run_post_hooks(HookEvent::PlanCreated, &context);
+
+    // Log the event
+    log_plan_created(&id, title, !phases.is_empty(), phases);
 
     CommandOutput::new(json!({
         "id": id,

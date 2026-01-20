@@ -100,3 +100,23 @@ pub async fn get_all_tickets_with_map() -> (Vec<TicketMetadata>, HashMap<String,
 pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
     DirScanner::get_file_mtime(path)
 }
+
+/// Get the count of tickets spawned from a given ticket.
+///
+/// This function uses the cache when available, falling back to
+/// scanning all tickets and counting matches.
+pub async fn get_children_count(ticket_id: &str) -> usize {
+    if let Some(cache) = cache::get_or_init_cache().await {
+        if let Ok(count) = cache.get_children_count(ticket_id).await {
+            return count;
+        }
+        eprintln!("Warning: cache read failed, falling back to file reads");
+    }
+
+    // Fallback: scan all tickets and count matches
+    let tickets = get_all_tickets().await;
+    tickets
+        .iter()
+        .filter(|t| t.spawned_from.as_ref() == Some(&ticket_id.to_string()))
+        .count()
+}

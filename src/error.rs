@@ -291,6 +291,9 @@ pub enum JanusError {
     #[error("note content cannot be empty")]
     EmptyNote,
 
+    #[error("closing a ticket requires either --summary <TEXT> or --no-summary")]
+    SummaryRequired,
+
     #[error("{0}")]
     Other(String),
 

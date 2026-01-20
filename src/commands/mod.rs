@@ -5,6 +5,7 @@ mod config;
 pub mod create;
 mod dep;
 mod edit;
+mod graph;
 mod hook;
 mod link;
 mod ls;
@@ -24,16 +25,18 @@ pub use config::{cmd_config_get, cmd_config_set, cmd_config_show};
 pub use create::{CreateOptions, cmd_create};
 pub use dep::{cmd_dep_add, cmd_dep_remove, cmd_dep_tree};
 pub use edit::cmd_edit;
+pub use graph::cmd_graph;
 pub use hook::{
     cmd_hook_disable, cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run,
 };
 pub use link::{cmd_link_add, cmd_link_remove};
 pub use ls::cmd_ls;
 pub use plan::{
-    cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete, cmd_plan_edit,
-    cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next, cmd_plan_remove_phase,
-    cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder, cmd_plan_show, cmd_plan_status,
-    cmd_show_import_spec,
+    NextItemResult, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete,
+    cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next,
+    cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder,
+    cmd_plan_show, cmd_plan_status, cmd_show_import_spec, get_next_items_phased,
+    get_next_items_simple,
 };
 pub use query::cmd_query;
 pub use remote_browse::cmd_remote_browse;

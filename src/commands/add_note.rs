@@ -4,6 +4,7 @@ use serde_json::json;
 
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
+use crate::events::log_note_added;
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, iso_date, read_stdin};
 
@@ -37,6 +38,9 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
     content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
 
     fs::write(&ticket.file_path, content)?;
+
+    // Log the event
+    log_note_added(&ticket.id, &note);
 
     CommandOutput::new(json!({
         "id": ticket.id,

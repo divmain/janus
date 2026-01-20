@@ -90,6 +90,67 @@ fn test_query_json_format() {
     }
 }
 
+#[test]
+#[serial]
+fn test_query_includes_children_count() {
+    let janus = JanusTest::new();
+
+    // Create a parent ticket
+    let parent_id = janus.run_success(&["create", "Parent"]).trim().to_string();
+
+    // Create 2 child tickets spawned from parent
+    janus.run_success(&["create", "Child 1", "--spawned-from", &parent_id]);
+    janus.run_success(&["create", "Child 2", "--spawned-from", &parent_id]);
+
+    // Query all tickets and find the parent
+    let output = janus.run_success(&["query"]);
+
+    // Find the parent ticket line and verify children_count
+    for line in output.lines() {
+        if !line.trim().is_empty() {
+            let json: serde_json::Value =
+                serde_json::from_str(line).expect("Output should be valid JSON");
+            if json["id"] == parent_id {
+                assert_eq!(
+                    json["children_count"], 2,
+                    "Expected children_count to be 2 for parent ticket:\n{}",
+                    line
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[serial]
+fn test_query_children_count_zero_for_leaf_tickets() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with no spawned children
+    let id = janus
+        .run_success(&["create", "Leaf ticket"])
+        .trim()
+        .to_string();
+
+    // Query all tickets and find the ticket
+    let output = janus.run_success(&["query"]);
+
+    // Find the ticket line and verify children_count is 0
+    for line in output.lines() {
+        if !line.trim().is_empty() {
+            let json: serde_json::Value =
+                serde_json::from_str(line).expect("Output should be valid JSON");
+            if json["id"] == id {
+                assert_eq!(
+                    json["children_count"], 0,
+                    "Expected children_count to be 0 for leaf ticket:\n{}",
+                    line
+                );
+            }
+        }
+    }
+}
+
 // ============================================================================
 // Error handling tests
 // ============================================================================

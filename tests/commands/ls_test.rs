@@ -49,7 +49,7 @@ fn test_ls_status_filter() {
         .run_success(&["create", "Closed ticket"])
         .trim()
         .to_string();
-    janus.run_success(&["close", &id2]);
+    janus.run_success(&["close", &id2, "--no-summary"]);
 
     let output = janus.run_success(&["ls", "--status", "new"]);
     assert!(output.contains(&id1));
@@ -78,7 +78,7 @@ fn test_ready_after_dep_closed() {
     assert!(!output.contains(&blocked_id));
 
     // Close dependency
-    janus.run_success(&["close", &dep_id]);
+    janus.run_success(&["close", &dep_id, "--no-summary"]);
 
     // Now ready
     let output = janus.run_success(&["ls", "--ready"]);
@@ -154,7 +154,7 @@ fn test_ls_closed_flag() {
 
     let open_id = janus.run_success(&["create", "Open"]).trim().to_string();
     let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     let output = janus.run_success(&["ls", "--closed"]);
 
@@ -173,7 +173,7 @@ fn test_ls_closed_with_limit() {
             .run_success(&["create", &format!("Ticket {}", i)])
             .trim()
             .to_string();
-        janus.run_success(&["close", &id]);
+        janus.run_success(&["close", &id, "--no-summary"]);
     }
 
     let output = janus.run_success(&["ls", "--closed", "--limit", "2"]);
@@ -213,7 +213,7 @@ fn test_ls_all_flag() {
 
     let open_id = janus.run_success(&["create", "Open"]).trim().to_string();
     let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     // Without --all, closed tickets should not appear
     let output_without_all = janus.run_success(&["ls"]);
@@ -352,7 +352,7 @@ fn test_ls_closed_default_limit() {
             .run_success(&["create", &format!("Ticket {}", i)])
             .trim()
             .to_string();
-        janus.run_success(&["close", &id]);
+        janus.run_success(&["close", &id, "--no-summary"]);
     }
 
     // --closed without explicit --limit should default to 20
@@ -372,7 +372,7 @@ fn test_ls_closed_custom_limit() {
             .run_success(&["create", &format!("Ticket {}", i)])
             .trim()
             .to_string();
-        janus.run_success(&["close", &id]);
+        janus.run_success(&["close", &id, "--no-summary"]);
     }
 
     // --closed --limit 5 should show 5 tickets
@@ -397,7 +397,7 @@ fn test_ls_all_with_other_filters() {
         .run_success(&["create", "Closed ticket"])
         .trim()
         .to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     // --all should show all tickets
     let output = janus.run_success(&["ls", "--all"]);
@@ -425,7 +425,7 @@ fn test_ls_all_three_filters_union() {
 
     // Create a closed ticket
     let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &closed_id]);
+    janus.run_success(&["close", &closed_id, "--no-summary"]);
 
     // Combine all three filters - should show union of all
     let output = janus.run_success(&["ls", "--ready", "--blocked", "--closed"]);

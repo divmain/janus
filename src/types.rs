@@ -181,6 +181,9 @@ pub const VALID_TICKET_FIELDS: &[&str] = &[
     "external-ref",
     "remote",
     "parent",
+    "spawned-from",
+    "spawn-context",
+    "depth",
 ];
 
 pub const IMMUTABLE_TICKET_FIELDS: &[&str] = &["id", "uuid"];
@@ -223,6 +226,18 @@ pub struct TicketMetadata {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+
+    /// ID of the parent ticket that spawned this one (decomposition provenance)
+    #[serde(rename = "spawned-from", skip_serializing_if = "Option::is_none")]
+    pub spawned_from: Option<String>,
+
+    /// Brief context explaining why this ticket was created from the parent
+    #[serde(rename = "spawn-context", skip_serializing_if = "Option::is_none")]
+    pub spawn_context: Option<String>,
+
+    /// Auto-computed decomposition depth (0 = root ticket, parent.depth + 1 otherwise)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
 
     #[serde(skip)]
     pub file_path: Option<PathBuf>,
@@ -357,5 +372,91 @@ mod tests {
         assert!("p0".parse::<TicketPriority>().is_err());
         assert!("P0".parse::<TicketPriority>().is_err());
         assert!("".parse::<TicketPriority>().is_err());
+    }
+
+    #[test]
+    fn test_spawning_metadata_fields_in_valid_fields() {
+        // Verify spawning metadata fields are in VALID_TICKET_FIELDS
+        assert!(VALID_TICKET_FIELDS.contains(&"spawned-from"));
+        assert!(VALID_TICKET_FIELDS.contains(&"spawn-context"));
+        assert!(VALID_TICKET_FIELDS.contains(&"depth"));
+    }
+
+    #[test]
+    fn test_ticket_metadata_default_spawning_fields_none() {
+        // Verify spawning fields default to None
+        let metadata = TicketMetadata::default();
+        assert!(metadata.spawned_from.is_none());
+        assert!(metadata.spawn_context.is_none());
+        assert!(metadata.depth.is_none());
+    }
+
+    #[test]
+    fn test_ticket_metadata_spawning_fields_serialization() {
+        use serde_yaml_ng as yaml;
+
+        // Test that spawning fields serialize correctly when present
+        let mut metadata = TicketMetadata::default();
+        metadata.id = Some("j-test".to_string());
+        metadata.spawned_from = Some("j-parent".to_string());
+        metadata.spawn_context = Some("Test context".to_string());
+        metadata.depth = Some(2);
+
+        let yaml_str = yaml::to_string(&metadata).unwrap();
+        assert!(yaml_str.contains("spawned-from: j-parent"));
+        assert!(yaml_str.contains("spawn-context: Test context"));
+        assert!(yaml_str.contains("depth: 2"));
+    }
+
+    #[test]
+    fn test_ticket_metadata_spawning_fields_skip_serialization_when_none() {
+        use serde_yaml_ng as yaml;
+
+        // Test that spawning fields are skipped when None
+        let mut metadata = TicketMetadata::default();
+        metadata.id = Some("j-test".to_string());
+        // Leave spawning fields as None
+
+        let yaml_str = yaml::to_string(&metadata).unwrap();
+        assert!(!yaml_str.contains("spawned-from"));
+        assert!(!yaml_str.contains("spawn-context"));
+        assert!(!yaml_str.contains("depth"));
+    }
+
+    #[test]
+    fn test_ticket_metadata_spawning_fields_deserialization() {
+        use serde_yaml_ng as yaml;
+
+        // Test that spawning fields deserialize correctly
+        let yaml_str = r#"
+id: j-test
+spawned-from: j-parent
+spawn-context: Auth implementation requires OAuth setup first
+depth: 2
+"#;
+        let metadata: TicketMetadata = yaml::from_str(yaml_str).unwrap();
+        assert_eq!(metadata.id, Some("j-test".to_string()));
+        assert_eq!(metadata.spawned_from, Some("j-parent".to_string()));
+        assert_eq!(
+            metadata.spawn_context,
+            Some("Auth implementation requires OAuth setup first".to_string())
+        );
+        assert_eq!(metadata.depth, Some(2));
+    }
+
+    #[test]
+    fn test_ticket_metadata_spawning_fields_deserialization_missing() {
+        use serde_yaml_ng as yaml;
+
+        // Test that missing spawning fields deserialize as None
+        let yaml_str = r#"
+id: j-test
+status: new
+"#;
+        let metadata: TicketMetadata = yaml::from_str(yaml_str).unwrap();
+        assert_eq!(metadata.id, Some("j-test".to_string()));
+        assert!(metadata.spawned_from.is_none());
+        assert!(metadata.spawn_context.is_none());
+        assert!(metadata.depth.is_none());
     }
 }
