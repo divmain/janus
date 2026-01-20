@@ -10,7 +10,8 @@ use tokio::sync::mpsc;
 
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, Header, SearchBox, TicketDetail, TicketList, Toast,
-    ToastNotification, browser_shortcuts, edit_shortcuts, empty_shortcuts, search_shortcuts,
+    ToastNotification, browser_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
+    search_shortcuts,
 };
 use crate::tui::edit::{EditForm, EditResult};
 use crate::tui::edit_state::EditFormState;
@@ -308,30 +309,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         (edit_state.get_edit_ticket(), edit_state.get_edit_body())
     };
 
-    // Determine if we should show an empty state - check loading first
-    let empty_state_kind: Option<EmptyStateKind> = if is_loading.get() {
-        Some(EmptyStateKind::Loading)
-    } else {
-        match init_result.get() {
-            InitResult::NoJanusDir => Some(EmptyStateKind::NoJanusDir),
-            InitResult::EmptyDir => {
-                if total_ticket_count == 0 {
-                    Some(EmptyStateKind::NoTickets)
-                } else {
-                    None
-                }
-            }
-            InitResult::Ok => {
-                if total_ticket_count == 0 {
-                    Some(EmptyStateKind::NoTickets)
-                } else if ticket_count == 0 && !query_str.is_empty() {
-                    Some(EmptyStateKind::NoSearchResults)
-                } else {
-                    None
-                }
-            }
-        }
-    };
+    // Determine if we should show an empty state
+    let empty_state_kind = compute_empty_state(
+        is_loading.get(),
+        init_result.get(),
+        total_ticket_count,
+        ticket_count,
+        &query_str,
+    );
 
     // Show empty state if needed (except for no search results, which shows inline)
     let show_full_empty_state = matches!(

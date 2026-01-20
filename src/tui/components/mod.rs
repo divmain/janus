@@ -13,7 +13,7 @@ pub mod ticket_detail;
 pub mod ticket_list;
 pub mod toast;
 
-pub use empty_state::{EmptyState, EmptyStateKind, EmptyStateProps};
+pub use empty_state::{EmptyState, EmptyStateKind, EmptyStateProps, compute_empty_state};
 pub use footer::{
     Footer, FooterProps, Shortcut, board_shortcuts, browser_shortcuts, edit_shortcuts,
     empty_shortcuts, search_shortcuts,

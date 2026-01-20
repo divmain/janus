@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use crate::ticket::Ticket;
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, InlineSearchBox, TicketCard, Toast, ToastNotification,
-    board_shortcuts, edit_shortcuts, empty_shortcuts,
+    board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::edit::{EditForm, EditResult, extract_body_for_edit};
 use crate::tui::edit_state::EditFormState;
@@ -358,30 +358,14 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         (edit_state.get_edit_ticket(), edit_state.get_edit_body())
     };
 
-    // Determine if we should show an empty state - check loading first
-    let empty_state_kind: Option<EmptyStateKind> = if is_loading.get() {
-        Some(EmptyStateKind::Loading)
-    } else {
-        match init_result.get() {
-            InitResult::NoJanusDir => Some(EmptyStateKind::NoJanusDir),
-            InitResult::EmptyDir => {
-                if all_ticket_count == 0 {
-                    Some(EmptyStateKind::NoTickets)
-                } else {
-                    None
-                }
-            }
-            InitResult::Ok => {
-                if all_ticket_count == 0 {
-                    Some(EmptyStateKind::NoTickets)
-                } else if total_tickets == 0 && !query_str.is_empty() {
-                    Some(EmptyStateKind::NoSearchResults)
-                } else {
-                    None
-                }
-            }
-        }
-    };
+    // Determine if we should show an empty state
+    let empty_state_kind = compute_empty_state(
+        is_loading.get(),
+        init_result.get(),
+        all_ticket_count,
+        total_tickets,
+        &query_str,
+    );
 
     // Show empty state if needed (except for no search results, which shows inline)
     let show_full_empty_state = matches!(
