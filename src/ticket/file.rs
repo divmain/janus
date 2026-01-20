@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::hooks::{HookContext, ItemType};
 use crate::ticket::locator::TicketLocator;
 use std::fs;
 use std::path::PathBuf;
@@ -41,5 +42,16 @@ impl TicketFile {
 
     pub fn locator(&self) -> &TicketLocator {
         &self.locator
+    }
+
+    /// Build a hook context for this ticket file.
+    ///
+    /// This is a convenience method to avoid repeating the same hook context
+    /// construction pattern throughout the codebase.
+    pub fn hook_context(&self) -> HookContext {
+        HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(&self.locator.id)
+            .with_file_path(&self.locator.file_path)
     }
 }

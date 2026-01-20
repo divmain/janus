@@ -16,6 +16,7 @@ pub use repository::{
 };
 
 use crate::error::Result;
+use crate::hooks::{HookContext, ItemType};
 use crate::types::TicketMetadata;
 use std::path::PathBuf;
 
@@ -80,5 +81,16 @@ impl Ticket {
 
     pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
         self.editor.remove_from_array_field(field, value)
+    }
+
+    /// Build a hook context for this ticket.
+    ///
+    /// This is a convenience method to avoid repeating the same hook context
+    /// construction pattern throughout the codebase.
+    pub fn hook_context(&self) -> HookContext {
+        HookContext::new()
+            .with_item_type(ItemType::Ticket)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path)
     }
 }

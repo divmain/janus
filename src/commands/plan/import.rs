@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::commands::{CommandOutput, print_json};
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
+use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
 use crate::plan::{
@@ -417,10 +417,7 @@ pub async fn cmd_plan_import(
     let plan_handle = Plan::with_id(&plan_id);
 
     // Build hook context for plan creation
-    let context = HookContext::new()
-        .with_item_type(ItemType::Plan)
-        .with_item_id(&plan_id)
-        .with_file_path(&plan_handle.file_path);
+    let context = plan_handle.hook_context();
 
     // Run pre-write hook (can abort)
     run_pre_hooks(HookEvent::PreWrite, &context)?;

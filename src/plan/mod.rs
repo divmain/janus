@@ -129,16 +129,24 @@ impl Plan {
         Ok(fs::read_to_string(&self.file_path)?)
     }
 
+    /// Build a hook context for this plan.
+    ///
+    /// This is a convenience method to avoid repeating the same hook context
+    /// construction pattern throughout the codebase.
+    pub fn hook_context(&self) -> HookContext {
+        HookContext::new()
+            .with_item_type(ItemType::Plan)
+            .with_item_id(&self.id)
+            .with_file_path(&self.file_path)
+    }
+
     /// Write content to the plan file
     ///
     /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `PlanUpdated`
     /// hooks after successful write.
     pub fn write(&self, content: &str) -> Result<()> {
         // Build hook context
-        let context = HookContext::new()
-            .with_item_type(ItemType::Plan)
-            .with_item_id(&self.id)
-            .with_file_path(&self.file_path);
+        let context = self.hook_context();
 
         // Run pre-write hook (can abort)
         run_pre_hooks(HookEvent::PreWrite, &context)?;
@@ -178,10 +186,7 @@ impl Plan {
         }
 
         // Build hook context
-        let context = HookContext::new()
-            .with_item_type(ItemType::Plan)
-            .with_item_id(&self.id)
-            .with_file_path(&self.file_path);
+        let context = self.hook_context();
 
         // Run pre-delete hook (can abort)
         run_pre_hooks(HookEvent::PreDelete, &context)?;

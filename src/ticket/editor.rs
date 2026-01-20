@@ -1,5 +1,5 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
 use crate::ticket::content::{
     extract_field_value, parse, remove_field as remove_field_from_content,
     update_field as update_field_in_content, validate_field_name,
@@ -43,10 +43,9 @@ impl TicketEditor {
         let raw_content = self.file.read_raw()?;
         let old_value = extract_field_value(&raw_content, field);
 
-        let mut context = HookContext::new()
-            .with_item_type(ItemType::Ticket)
-            .with_item_id(self.file.id())
-            .with_file_path(self.file.file_path())
+        let mut context = self
+            .file
+            .hook_context()
             .with_field_name(field)
             .with_new_value(value);
 
@@ -70,11 +69,7 @@ impl TicketEditor {
         let raw_content = self.file.read_raw()?;
         let old_value = extract_field_value(&raw_content, field);
 
-        let mut context = HookContext::new()
-            .with_item_type(ItemType::Ticket)
-            .with_item_id(self.file.id())
-            .with_file_path(self.file.file_path())
-            .with_field_name(field);
+        let mut context = self.file.hook_context().with_field_name(field);
 
         if let Some(ref old_val) = old_value {
             context = context.with_old_value(old_val);
@@ -114,10 +109,9 @@ impl TicketEditor {
         new_array.push(value.to_string());
         let json_value = serde_json::to_string(&new_array)?;
 
-        let context = HookContext::new()
-            .with_item_type(ItemType::Ticket)
-            .with_item_id(self.file.id())
-            .with_file_path(self.file.file_path())
+        let context = self
+            .file
+            .hook_context()
             .with_field_name(field)
             .with_new_value(value);
 
@@ -152,10 +146,9 @@ impl TicketEditor {
             serde_json::to_string(&new_array)?
         };
 
-        let context = HookContext::new()
-            .with_item_type(ItemType::Ticket)
-            .with_item_id(self.file.id())
-            .with_file_path(self.file.file_path())
+        let context = self
+            .file
+            .hook_context()
             .with_field_name(field)
             .with_old_value(value);
 
@@ -177,10 +170,7 @@ impl TicketEditor {
     }
 
     pub fn write(&self, content: &str) -> Result<()> {
-        let context = HookContext::new()
-            .with_item_type(ItemType::Ticket)
-            .with_item_id(self.file.id())
-            .with_file_path(self.file.file_path());
+        let context = self.file.hook_context();
 
         self.with_write_hooks(
             context,
