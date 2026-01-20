@@ -300,22 +300,22 @@ pub struct PlanStatus {
 }
 
 impl PlanStatus {
-    /// Calculate progress as a percentage (0-100)
-    pub fn progress_percent(&self) -> f64 {
-        let progress = Progress {
+    /// Get the progress for this plan
+    fn progress(&self) -> Progress {
+        Progress {
             completed: self.completed_count,
             total: self.total_count,
-        };
-        progress.percent()
+        }
+    }
+
+    /// Calculate progress as a percentage (0-100)
+    pub fn progress_percent(&self) -> f64 {
+        self.progress().percent()
     }
 
     /// Format progress as a string (e.g., "5/12 (41%)")
     pub fn progress_string(&self) -> String {
-        let progress = Progress {
-            completed: self.completed_count,
-            total: self.total_count,
-        };
-        progress.format()
+        self.progress().format()
     }
 }
 
@@ -349,13 +349,17 @@ pub struct PhaseStatus {
 }
 
 impl PhaseStatus {
-    /// Calculate progress as a percentage (0-100)
-    pub fn progress_percent(&self) -> f64 {
-        let progress = Progress {
+    /// Get the progress for this phase
+    fn progress(&self) -> Progress {
+        Progress {
             completed: self.completed_count,
             total: self.total_count,
-        };
-        progress.percent()
+        }
+    }
+
+    /// Calculate progress as a percentage (0-100)
+    pub fn progress_percent(&self) -> f64 {
+        self.progress().percent()
     }
 
     /// Format progress as a string (e.g., "2/4")
