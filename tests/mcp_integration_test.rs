@@ -561,16 +561,22 @@ fn test_mcp_call_create_ticket() {
     assert!(response["result"]["content"].is_array());
     let content = response["result"]["content"].as_array().unwrap();
     let text = content[0]["text"].as_str().unwrap();
-    let result: serde_json::Value = serde_json::from_str(text).unwrap();
 
-    assert_eq!(result["success"], true);
-    assert!(result["id"].is_string());
-    assert_eq!(result["title"], "MCP Created Ticket");
-    assert_eq!(result["type"], "bug");
-    assert_eq!(result["priority"], 1);
+    // Output is now plain text: Created ticket **j-abcd**: "Title"
+    assert!(
+        text.contains("Created ticket"),
+        "Should contain 'Created ticket'"
+    );
+    assert!(
+        text.contains("MCP Created Ticket"),
+        "Should contain the title"
+    );
 
-    // Verify ticket was created
-    let id = result["id"].as_str().unwrap();
+    // Extract ID from the response (format: Created ticket **j-xxxx**: "Title")
+    let id = text
+        .split("**")
+        .nth(1)
+        .expect("Should have ID in bold markers");
     assert!(janus.ticket_exists(id));
 }
 
@@ -648,11 +654,11 @@ fn test_mcp_call_update_status() {
 
     let content = response["result"]["content"].as_array().unwrap();
     let text = content[0]["text"].as_str().unwrap();
-    let result: serde_json::Value = serde_json::from_str(text).unwrap();
 
-    assert_eq!(result["success"], true);
-    assert_eq!(result["new_status"], "in_progress");
-    assert_eq!(result["previous_status"], "new");
+    // Output is now plain text: Updated **j-xxxx** status: new → in_progress
+    assert!(text.contains("Updated"), "Should contain 'Updated'");
+    assert!(text.contains("new"), "Should contain previous status");
+    assert!(text.contains("in_progress"), "Should contain new status");
 
     // Verify status changed
     let ticket_content = janus.read_ticket(&id);
@@ -688,9 +694,12 @@ fn test_mcp_call_add_note() {
 
     let content = response["result"]["content"].as_array().unwrap();
     let text = content[0]["text"].as_str().unwrap();
-    let result: serde_json::Value = serde_json::from_str(text).unwrap();
 
-    assert_eq!(result["success"], true);
+    // Output is now plain text: Added note to **j-xxxx** at <timestamp>
+    assert!(
+        text.contains("Added note to"),
+        "Should contain 'Added note to'"
+    );
 
     // Verify note was added
     let ticket_content = janus.read_ticket(&id);
