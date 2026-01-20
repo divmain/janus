@@ -39,64 +39,40 @@ pub fn handle(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
 }
 
 fn handle_down(ctx: &mut ViewHandlerContext<'_>) {
-    let mut selected = ctx.selected_index.get();
-    let mut scroll = ctx.scroll_offset.get();
-    navigation::scroll_down(
-        &mut selected,
-        &mut scroll,
+    navigation::apply_scroll_down(
+        ctx.selected_index,
+        ctx.scroll_offset,
         ctx.filtered_count,
         ctx.list_height,
     );
-    ctx.selected_index.set(selected);
-    ctx.scroll_offset.set(scroll);
 }
 
 fn handle_up(ctx: &mut ViewHandlerContext<'_>) {
-    let mut selected = ctx.selected_index.get();
-    let mut scroll = ctx.scroll_offset.get();
-    navigation::scroll_up(&mut selected, &mut scroll);
-    ctx.selected_index.set(selected);
-    ctx.scroll_offset.set(scroll);
+    navigation::apply_scroll_up(ctx.selected_index, ctx.scroll_offset);
 }
 
 fn handle_go_top(ctx: &mut ViewHandlerContext<'_>) {
-    let mut selected = ctx.selected_index.get();
-    let mut scroll = ctx.scroll_offset.get();
-    navigation::scroll_to_top(&mut selected, &mut scroll);
-    ctx.selected_index.set(selected);
-    ctx.scroll_offset.set(scroll);
+    navigation::apply_scroll_to_top(ctx.selected_index, ctx.scroll_offset);
 }
 
 fn handle_go_bottom(ctx: &mut ViewHandlerContext<'_>) {
-    let mut selected = ctx.selected_index.get();
-    let mut scroll = ctx.scroll_offset.get();
-    navigation::scroll_to_bottom(
-        &mut selected,
-        &mut scroll,
+    navigation::apply_scroll_to_bottom(
+        ctx.selected_index,
+        ctx.scroll_offset,
         ctx.filtered_count,
         ctx.list_height,
     );
-    ctx.selected_index.set(selected);
-    ctx.scroll_offset.set(scroll);
 }
 
 fn handle_page_down(ctx: &mut ViewHandlerContext<'_>) {
-    let mut selected = ctx.selected_index.get();
-    let mut scroll = ctx.scroll_offset.get();
-    navigation::page_down(
-        &mut selected,
-        &mut scroll,
+    navigation::apply_page_down(
+        ctx.selected_index,
+        ctx.scroll_offset,
         ctx.filtered_count,
         ctx.list_height,
     );
-    ctx.selected_index.set(selected);
-    ctx.scroll_offset.set(scroll);
 }
 
 fn handle_page_up(ctx: &mut ViewHandlerContext<'_>) {
-    let mut selected = ctx.selected_index.get();
-    let mut scroll = ctx.scroll_offset.get();
-    navigation::page_up(&mut selected, &mut scroll, ctx.list_height);
-    ctx.selected_index.set(selected);
-    ctx.scroll_offset.set(scroll);
+    navigation::apply_page_up(ctx.selected_index, ctx.scroll_offset, ctx.list_height);
 }
