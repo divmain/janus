@@ -70,8 +70,9 @@ async fn main() -> ExitCode {
             id,
             summary,
             no_summary,
+            cancel,
             json,
-        } => cmd_close(&id, summary.as_deref(), no_summary, json).await,
+        } => cmd_close(&id, summary.as_deref(), no_summary, cancel, json).await,
         Commands::Reopen { id, json } => cmd_reopen(&id, json).await,
         Commands::Status { id, status, json } => cmd_status(&id, &status, json).await,
         Commands::Set {

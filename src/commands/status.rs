@@ -120,6 +120,7 @@ pub async fn cmd_close(
     id: &str,
     summary: Option<&str>,
     no_summary: bool,
+    cancel: bool,
     output_json: bool,
 ) -> Result<()> {
     // Require either --summary or --no-summary
@@ -127,7 +128,13 @@ pub async fn cmd_close(
         return Err(JanusError::SummaryRequired);
     }
 
-    update_status_with_summary(id, TicketStatus::Complete, summary, output_json).await
+    let new_status = if cancel {
+        TicketStatus::Cancelled
+    } else {
+        TicketStatus::Complete
+    };
+
+    update_status_with_summary(id, new_status, summary, output_json).await
 }
 
 /// Reopen a ticket (set status back to "new")

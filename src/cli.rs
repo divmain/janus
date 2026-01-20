@@ -128,6 +128,10 @@ pub enum Commands {
         #[arg(long, group = "summary_choice")]
         no_summary: bool,
 
+        /// Mark ticket as cancelled instead of complete
+        #[arg(long)]
+        cancel: bool,
+
         /// Output as JSON
         #[arg(long)]
         json: bool,
