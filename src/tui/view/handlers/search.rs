@@ -2,6 +2,7 @@
 
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
+use crate::tui::handlers::{SearchAction, handle_search_input};
 use crate::tui::state::Pane;
 
 use super::HandleResult;
@@ -13,25 +14,20 @@ pub fn handle(
     code: KeyCode,
     modifiers: KeyModifiers,
 ) -> HandleResult {
-    match code {
-        KeyCode::Esc => {
-            // Clear search and switch to list
+    match handle_search_input(code, modifiers, true) {
+        SearchAction::ClearAndExit => {
             ctx.search_query.set(String::new());
             ctx.active_pane.set(Pane::List);
             HandleResult::Handled
         }
-        KeyCode::Enter | KeyCode::Tab => {
-            // Switch to list pane after searching
+        SearchAction::Exit => {
             ctx.active_pane.set(Pane::List);
             HandleResult::Handled
         }
-        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => {
+        SearchAction::Quit => {
             ctx.should_exit.set(true);
             HandleResult::Handled
         }
-        _ => {
-            // Let the search box component handle other keys
-            HandleResult::Handled
-        }
+        SearchAction::Continue => HandleResult::Handled,
     }
 }
