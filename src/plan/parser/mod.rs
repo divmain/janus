@@ -117,6 +117,45 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
     Ok(metadata)
 }
 
+/// Tracks which structured sections have been encountered during parsing.
+///
+/// This state machine ensures:
+/// - First "Acceptance Criteria" section is parsed as structured data
+/// - First "Tickets" section (in simple plans) is parsed as structured data
+/// - Subsequent duplicates are treated as free-form sections
+/// - Phase sections can appear multiple times (tracked separately)
+#[derive(Debug, Default)]
+struct ParsedSections {
+    acceptance_criteria: bool,
+    tickets: bool,
+}
+
+impl ParsedSections {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns true if Acceptance Criteria hasn't been parsed yet, and marks it as parsed.
+    fn try_claim_acceptance_criteria(&mut self) -> bool {
+        if self.acceptance_criteria {
+            false
+        } else {
+            self.acceptance_criteria = true;
+            true
+        }
+    }
+
+    /// Returns true if Tickets section hasn't been parsed yet, and marks it as parsed.
+    fn try_claim_tickets(&mut self) -> bool {
+        if self.tickets {
+            false
+        } else {
+            self.tickets = true;
+            true
+        }
+    }
+}
+
 /// Parse the markdown body to extract title, description, and sections
 fn parse_body(body: &str, metadata: &mut PlanMetadata) -> Result<()> {
     let arena = Arena::new();
@@ -135,17 +174,11 @@ fn parse_body(body: &str, metadata: &mut PlanMetadata) -> Result<()> {
         }
     }
 
-    // Process H2 sections
-    let mut found_acceptance_criteria = false;
-    let mut found_tickets_section = false;
+    // Process H2 sections with explicit state tracking
+    let mut parsed = ParsedSections::new();
 
     for section in h2_sections {
-        classify_and_add_section(
-            section,
-            metadata,
-            &mut found_acceptance_criteria,
-            &mut found_tickets_section,
-        );
+        classify_and_add_section(section, metadata, &mut parsed);
     }
 
     Ok(())
@@ -278,27 +311,27 @@ impl SectionCollector {
 fn classify_and_add_section(
     section: H2Section,
     metadata: &mut PlanMetadata,
-    found_acceptance_criteria: &mut bool,
-    found_tickets_section: &mut bool,
+    parsed: &mut ParsedSections,
 ) {
     let heading_lower = section.heading.to_lowercase();
 
     // Check for Acceptance Criteria (case-insensitive, exact match)
-    if heading_lower == "acceptance criteria" && !*found_acceptance_criteria {
-        *found_acceptance_criteria = true;
+    // Only the first occurrence is parsed as structured data
+    if heading_lower == "acceptance criteria" && parsed.try_claim_acceptance_criteria() {
         metadata.acceptance_criteria = sections::parse_list_items(&section.content);
         return;
     }
 
     // Check for Tickets section (simple plans, case-insensitive, exact match)
-    if heading_lower == "tickets" && !*found_tickets_section {
-        *found_tickets_section = true;
+    // Only the first occurrence is parsed as structured data
+    if heading_lower == "tickets" && parsed.try_claim_tickets() {
         let tickets = sections::parse_ticket_list(&section.content);
         metadata.sections.push(PlanSection::Tickets(tickets));
         return;
     }
 
     // Check for Phase header: "Phase N: Name" or "Phase N - Name"
+    // Phases can appear multiple times (Phase 1, Phase 2, etc.)
     if let Some(phase) = try_parse_phase_header(&section.heading) {
         let parsed_phase = sections::parse_phase_content(phase, &section);
         metadata.sections.push(PlanSection::Phase(parsed_phase));
