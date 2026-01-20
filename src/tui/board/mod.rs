@@ -15,7 +15,8 @@ use crate::tui::components::{
 };
 use crate::tui::edit::{EditForm, EditResult, extract_body_for_edit};
 use crate::tui::edit_state::EditFormState;
-use crate::tui::repository::{InitResult, TicketRepository, janus_dir_exists};
+use crate::tui::hooks::use_ticket_loader;
+use crate::tui::repository::InitResult;
 use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
@@ -108,44 +109,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let action_channel = channel.read().rx.clone();
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
-    let load_handler: Handler<()> = hooks.use_async_handler({
-        let tickets_setter = all_tickets;
-        let loading_setter = is_loading;
-        let init_result_setter = init_result;
-
-        move |()| {
-            let mut tickets_setter = tickets_setter;
-            let mut loading_setter = loading_setter;
-            let mut init_result_setter = init_result_setter;
-
-            async move {
-                let start = std::time::Instant::now();
-
-                if !janus_dir_exists() {
-                    init_result_setter.set(InitResult::NoJanusDir);
-                    loading_setter.set(false);
-                    return;
-                }
-
-                let tickets = TicketRepository::load_tickets().await;
-
-                if tickets.is_empty() {
-                    init_result_setter.set(InitResult::EmptyDir);
-                } else {
-                    init_result_setter.set(InitResult::Ok);
-                }
-
-                // Ensure minimum 100ms display time to prevent flicker
-                let elapsed = start.elapsed();
-                if elapsed < std::time::Duration::from_millis(100) {
-                    tokio::time::sleep(std::time::Duration::from_millis(100) - elapsed).await;
-                }
-
-                tickets_setter.set(tickets);
-                loading_setter.set(false);
-            }
-        }
-    });
+    let load_handler: Handler<()> =
+        hooks.use_async_handler(use_ticket_loader(all_tickets, is_loading, init_result));
 
     // Trigger initial load on mount
     let mut load_started = hooks.use_state(|| false);
