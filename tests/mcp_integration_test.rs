@@ -598,10 +598,25 @@ fn test_mcp_call_list_tickets() {
 
     let content = response["result"]["content"].as_array().unwrap();
     let text = content[0]["text"].as_str().unwrap();
-    let result: serde_json::Value = serde_json::from_str(text).unwrap();
 
-    assert_eq!(result["count"], 2);
-    assert!(result["tickets"].is_array());
+    // Verify markdown output format
+    assert!(text.contains("# Tickets"), "Should have markdown header");
+    assert!(
+        text.contains("| ID | Title | Status | Type | Priority |"),
+        "Should have table header"
+    );
+    assert!(
+        text.contains("Ticket 1"),
+        "Should contain first ticket title"
+    );
+    assert!(
+        text.contains("Ticket 2"),
+        "Should contain second ticket title"
+    );
+    assert!(
+        text.contains("**Total:** 2 tickets"),
+        "Should show total count"
+    );
 }
 
 #[test]
