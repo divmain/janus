@@ -4,6 +4,7 @@ pub mod commands;
 pub mod display;
 pub mod error;
 pub mod events;
+pub mod finder;
 pub mod formatting;
 pub mod hooks;
 pub mod mcp;

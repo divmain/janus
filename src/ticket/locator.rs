@@ -1,8 +1,32 @@
 use crate::cache;
 use crate::error::{JanusError, Result};
-use crate::ticket::repository::find_tickets;
+use crate::finder::Findable;
 use crate::types::TICKETS_ITEMS_DIR;
 use std::path::PathBuf;
+
+/// Ticket-specific implementation of the Findable trait
+struct TicketFinder;
+
+impl Findable for TicketFinder {
+    fn directory() -> &'static str {
+        TICKETS_ITEMS_DIR
+    }
+
+    fn cache_find_by_partial_id(
+        cache: &cache::TicketCache,
+        partial_id: &str,
+    ) -> impl std::future::Future<Output = Result<Vec<String>>> + Send {
+        cache.find_by_partial_id(partial_id)
+    }
+
+    fn not_found_error(partial_id: String) -> JanusError {
+        JanusError::TicketNotFound(partial_id)
+    }
+
+    fn ambiguous_id_error(partial_id: String, matches: Vec<String>) -> JanusError {
+        JanusError::AmbiguousId(partial_id, matches)
+    }
+}
 
 fn validate_partial_id(id: &str) -> Result<String> {
     let trimmed = id.trim();
@@ -21,58 +45,9 @@ fn validate_partial_id(id: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
-    let files = find_tickets();
-
-    let exact_name = format!("{}.md", partial_id);
-    if files.iter().any(|f| f == &exact_name) {
-        return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(&exact_name));
-    }
-
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
-
-    match matches.len() {
-        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
-        1 => Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(matches[0])),
-        _ => Err(JanusError::AmbiguousId(
-            partial_id.to_string(),
-            matches.iter().map(|m| m.replace(".md", "")).collect(),
-        )),
-    }
-}
-
 pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     let partial_id = validate_partial_id(partial_id)?;
-
-    if let Some(cache) = cache::get_or_init_cache().await {
-        let exact_match_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", partial_id));
-        if exact_match_path.exists() {
-            return Ok(exact_match_path);
-        }
-
-        if let Ok(matches) = cache.find_by_partial_id(&partial_id).await {
-            match matches.len() {
-                0 => {}
-                1 => {
-                    let filename = format!("{}.md", &matches[0]);
-                    return Ok(PathBuf::from(TICKETS_ITEMS_DIR).join(filename));
-                }
-                _ => {
-                    let matching_ids: Vec<_> = matches.iter().map(|s| s.as_str()).collect();
-                    return Err(JanusError::AmbiguousId(
-                        partial_id.to_string(),
-                        matching_ids
-                            .iter()
-                            .copied()
-                            .map(|s| s.to_string())
-                            .collect(),
-                    ));
-                }
-            }
-        }
-    }
-
-    find_ticket_by_id_impl(&partial_id)
+    crate::finder::find_by_partial_id::<TicketFinder>(&partial_id).await
 }
 
 #[derive(Debug, Clone)]

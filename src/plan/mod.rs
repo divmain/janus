@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use crate::cache;
 use crate::error::{JanusError, Result};
+use crate::finder::Findable;
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
@@ -30,6 +31,30 @@ pub use crate::plan::parser::{
     is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
 };
 
+/// Plan-specific implementation of the Findable trait
+struct PlanFinder;
+
+impl Findable for PlanFinder {
+    fn directory() -> &'static str {
+        PLANS_DIR
+    }
+
+    fn cache_find_by_partial_id(
+        cache: &cache::TicketCache,
+        partial_id: &str,
+    ) -> impl std::future::Future<Output = Result<Vec<String>>> + Send {
+        cache.find_plan_by_partial_id(partial_id)
+    }
+
+    fn not_found_error(partial_id: String) -> JanusError {
+        JanusError::PlanNotFound(partial_id)
+    }
+
+    fn ambiguous_id_error(partial_id: String, matches: Vec<String>) -> JanusError {
+        JanusError::AmbiguousPlanId(partial_id, matches)
+    }
+}
+
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
     DirScanner::find_markdown_files(PLANS_DIR).unwrap_or_else(|e| {
@@ -40,52 +65,7 @@ fn find_plans() -> Vec<String> {
 
 /// Find a plan file by partial ID
 pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
-    // Try cache first
-    if let Some(cache) = cache::get_or_init_cache().await {
-        // Exact match check - file exists?
-        let exact_match_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", partial_id));
-        if exact_match_path.exists() {
-            return Ok(exact_match_path);
-        }
-
-        // Partial match via cache
-        if let Ok(matches) = cache.find_plan_by_partial_id(partial_id).await {
-            match matches.len() {
-                0 => {}
-                1 => {
-                    let filename = format!("{}.md", &matches[0]);
-                    return Ok(PathBuf::from(PLANS_DIR).join(filename));
-                }
-                _ => {
-                    return Err(JanusError::AmbiguousPlanId(
-                        partial_id.to_string(),
-                        matches.clone(),
-                    ));
-                }
-            }
-        }
-    }
-
-    // FALLBACK: Original file-based implementation
-    let files = find_plans();
-
-    // Check for exact match first
-    let exact_name = format!("{}.md", partial_id);
-    if files.iter().any(|f| f == &exact_name) {
-        return Ok(PathBuf::from(PLANS_DIR).join(&exact_name));
-    }
-
-    // Then check for partial matches
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
-
-    match matches.len() {
-        0 => Err(JanusError::PlanNotFound(partial_id.to_string())),
-        1 => Ok(PathBuf::from(PLANS_DIR).join(matches[0])),
-        _ => Err(JanusError::AmbiguousPlanId(
-            partial_id.to_string(),
-            matches.iter().map(|m| m.replace(".md", "")).collect(),
-        )),
-    }
+    crate::finder::find_by_partial_id::<PlanFinder>(partial_id).await
 }
 
 /// A plan handle for reading and writing plan files
