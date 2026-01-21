@@ -2,7 +2,7 @@
 
 use crate::cache;
 use crate::ticket::get_all_tickets_from_disk;
-use crate::types::{TICKETS_DIR, TicketMetadata};
+use crate::types::{TicketMetadata, janus_root};
 
 /// Result of initializing the ticket repository
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -18,7 +18,7 @@ pub enum InitResult {
 
 /// Check if the Janus directory exists
 pub fn janus_dir_exists() -> bool {
-    std::path::Path::new(TICKETS_DIR).is_dir()
+    janus_root().is_dir()
 }
 
 /// Repository for loading and managing ticket data

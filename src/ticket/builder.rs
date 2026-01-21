@@ -1,6 +1,6 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
-use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketStatus, TicketType};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent, ItemType};
+use crate::types::{tickets_items_dir, TicketPriority, TicketStatus, TicketType};
 use crate::utils;
 use std::fs;
 use std::path::PathBuf;
@@ -209,7 +209,8 @@ impl TicketBuilder {
         let body = sections.join("\n");
         let content = format!("{}\n{}\n", frontmatter, body);
 
-        let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", id));
+        let items_dir = tickets_items_dir();
+        let file_path = items_dir.join(format!("{}.md", id));
 
         if self.run_hooks {
             let context = HookContext::new()
@@ -219,12 +220,13 @@ impl TicketBuilder {
 
             run_pre_hooks(HookEvent::PreWrite, &context)?;
 
-            fs::create_dir_all(TICKETS_ITEMS_DIR).map_err(|e| {
+            fs::create_dir_all(&items_dir).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
                     e.kind(),
                     format!(
                         "Failed to create tickets directory at {}: {}",
-                        TICKETS_ITEMS_DIR, e
+                        items_dir.display(),
+                        e
                     ),
                 ))
             })?;
@@ -238,12 +240,13 @@ impl TicketBuilder {
             run_post_hooks(HookEvent::PostWrite, &context);
             run_post_hooks(HookEvent::TicketCreated, &context);
         } else {
-            fs::create_dir_all(TICKETS_ITEMS_DIR).map_err(|e| {
+            fs::create_dir_all(&items_dir).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
                     e.kind(),
                     format!(
                         "Failed to create tickets directory at {}: {}",
-                        TICKETS_ITEMS_DIR, e
+                        items_dir.display(),
+                        e
                     ),
                 ))
             })?;

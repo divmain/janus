@@ -10,7 +10,7 @@ use crate::error::{JanusError, Result};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
 use crate::ticket::parse_ticket;
-use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
+use crate::types::{TicketMetadata, plans_dir, tickets_items_dir};
 use crate::utils::generate_uuid;
 
 /// Trait for items that can be cached in the SQLite database.
@@ -19,7 +19,8 @@ use crate::utils::generate_uuid;
 /// tickets and plans, enabling a single generic sync implementation.
 pub trait CacheableItem: Sized {
     /// The directory where items of this type are stored (e.g., ".janus/items")
-    fn directory() -> &'static str;
+    /// Returns a PathBuf to support dynamic paths via JANUS_ROOT environment variable.
+    fn directory() -> PathBuf;
 
     /// The name of the ID column in the database (e.g., "ticket_id")
     fn id_column() -> &'static str;
@@ -47,8 +48,8 @@ pub trait CacheableItem: Sized {
 // =============================================================================
 
 impl CacheableItem for TicketMetadata {
-    fn directory() -> &'static str {
-        TICKETS_ITEMS_DIR
+    fn directory() -> PathBuf {
+        tickets_items_dir()
     }
 
     fn id_column() -> &'static str {
@@ -64,7 +65,7 @@ impl CacheableItem for TicketMetadata {
     }
 
     fn parse_from_file(id: &str) -> Result<(Self, i64)> {
-        let path = PathBuf::from(Self::directory()).join(format!("{}.md", id));
+        let path = Self::directory().join(format!("{}.md", id));
 
         let content = fs::read_to_string(&path).map_err(JanusError::Io)?;
 
@@ -160,8 +161,8 @@ impl CacheableItem for TicketMetadata {
 // =============================================================================
 
 impl CacheableItem for PlanMetadata {
-    fn directory() -> &'static str {
-        PLANS_DIR
+    fn directory() -> PathBuf {
+        plans_dir()
     }
 
     fn id_column() -> &'static str {
@@ -177,7 +178,7 @@ impl CacheableItem for PlanMetadata {
     }
 
     fn parse_from_file(id: &str) -> Result<(Self, i64)> {
-        let path = PathBuf::from(Self::directory()).join(format!("{}.md", id));
+        let path = Self::directory().join(format!("{}.md", id));
 
         let content = fs::read_to_string(&path).map_err(JanusError::Io)?;
 

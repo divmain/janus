@@ -1,12 +1,10 @@
-use std::path::PathBuf;
-
 use serde_json::json;
 
 use super::CommandOutput;
 use crate::error::Result;
 use crate::events::log_ticket_created;
 use crate::ticket::{TicketBuilder, parse_ticket};
-use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketType};
+use crate::types::{TicketPriority, TicketType, tickets_items_dir};
 
 /// Options for creating a new ticket
 pub struct CreateOptions {
@@ -48,7 +46,7 @@ fn compute_depth(spawned_from: Option<&str>) -> Option<u32> {
     let spawned_from_id = spawned_from?;
 
     // Try to find and read the parent ticket from disk
-    let parent_path = PathBuf::from(TICKETS_ITEMS_DIR).join(format!("{}.md", spawned_from_id));
+    let parent_path = tickets_items_dir().join(format!("{}.md", spawned_from_id));
 
     if let Ok(content) = std::fs::read_to_string(&parent_path)
         && let Ok(parent_meta) = parse_ticket(&content)

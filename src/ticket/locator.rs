@@ -1,7 +1,7 @@
 use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
-use crate::types::TICKETS_ITEMS_DIR;
+use crate::types::tickets_items_dir;
 use crate::utils::{extract_id_from_path, validate_identifier};
 use std::path::PathBuf;
 
@@ -9,8 +9,8 @@ use std::path::PathBuf;
 struct TicketFinder;
 
 impl Findable for TicketFinder {
-    fn directory() -> &'static str {
-        TICKETS_ITEMS_DIR
+    fn directory() -> PathBuf {
+        tickets_items_dir()
     }
 
     fn cache_find_by_partial_id(

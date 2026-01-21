@@ -34,7 +34,7 @@ pub mod types;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -44,7 +44,7 @@ pub use types::{HookContext, HookEvent, ItemType};
 
 use crate::error::{JanusError, Result};
 use crate::remote::Config;
-use crate::types::TICKETS_DIR;
+use crate::types::janus_root;
 use crate::utils::iso_date;
 
 /// The directory within .janus where hook scripts are stored.
@@ -138,8 +138,8 @@ fn execute_hook(
         return Err(JanusError::HookSecurity("Invalid script name".to_string()));
     }
 
-    let janus_root = PathBuf::from(TICKETS_DIR);
-    let hooks_dir = janus_root.join(HOOKS_DIR).canonicalize()?;
+    let j_root = janus_root();
+    let hooks_dir = j_root.join(HOOKS_DIR).canonicalize()?;
     let script_path = hooks_dir.join(script_name);
 
     if !script_path.exists() {
@@ -160,11 +160,11 @@ fn execute_hook(
 
     // Use the event parameter to override context.event for env vars
     let context_with_event = context.clone().with_event(event);
-    let env_vars = context_to_env(&context_with_event, &janus_root);
+    let env_vars = context_to_env(&context_with_event, &j_root);
 
     let mut cmd = Command::new(&script_path);
     cmd.envs(env_vars);
-    cmd.current_dir(&janus_root);
+    cmd.current_dir(&j_root);
 
     let timeout_secs = config.hooks.timeout;
 
@@ -300,7 +300,7 @@ pub fn context_to_env(context: &HookContext, janus_root: &Path) -> HashMap<Strin
 /// * `hook_name` - The name of the hook that failed
 /// * `error` - The error that occurred
 fn log_hook_failure(hook_name: &str, error: &JanusError) {
-    let log_path = PathBuf::from(TICKETS_DIR).join(HOOK_LOG_FILE);
+    let log_path = janus_root().join(HOOK_LOG_FILE);
     let timestamp = iso_date();
 
     // Extract the stderr message from PostHookFailed error, or use the full error
@@ -339,6 +339,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
 
     use serial_test::serial;
     use tempfile::TempDir;

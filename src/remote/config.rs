@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{JanusError, Result};
-use crate::types::TICKETS_DIR;
+use crate::types::janus_root;
 
 /// Main configuration structure
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -146,7 +146,7 @@ impl HooksConfig {
 impl Config {
     /// Get the path to the config file
     pub fn config_path() -> PathBuf {
-        PathBuf::from(TICKETS_DIR).join("config.yaml")
+        janus_root().join("config.yaml")
     }
 
     /// Load configuration from file, or return default if not found

@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
 
 use crate::error::{JanusError as CacheError, Result};
@@ -46,7 +46,7 @@ impl TicketCache {
     /// Scans the item's directory, compares mtimes with cached values,
     /// and updates the cache with any changes.
     async fn sync_items<T: CacheableItem>(&mut self) -> Result<bool> {
-        let dir = PathBuf::from(T::directory());
+        let dir = T::directory();
 
         if !dir.exists() {
             fs::create_dir_all(&dir).map_err(CacheError::Io)?;

@@ -22,14 +22,16 @@ use crate::utils::DirScanner;
 /// find-by-partial-ID implementation.
 pub trait Findable {
     /// The directory where entity files are stored (e.g., ".janus/items", ".janus/plans")
-    fn directory() -> &'static str;
+    /// Returns a PathBuf to support dynamic paths via JANUS_ROOT environment variable.
+    fn directory() -> PathBuf;
 
     /// Find all entity files in the directory (returns filenames like "id.md")
     fn find_files() -> Vec<String> {
-        DirScanner::find_markdown_files(Self::directory()).unwrap_or_else(|e| {
+        let dir = Self::directory();
+        DirScanner::find_markdown_files_from_path(&dir).unwrap_or_else(|e| {
             eprintln!(
                 "Warning: failed to read {} directory: {}",
-                Self::directory(),
+                dir.display(),
                 e
             );
             Vec::new()
@@ -58,10 +60,12 @@ pub trait Findable {
 /// 4. Handle exact vs partial matches
 /// 5. Return appropriate errors
 pub async fn find_by_partial_id<T: Findable>(partial_id: &str) -> Result<PathBuf> {
+    let dir = T::directory();
+
     // Try cache first
     if let Some(cache) = cache::get_or_init_cache().await {
         // Exact match check - does file exist?
-        let exact_match_path = PathBuf::from(T::directory()).join(format!("{}.md", partial_id));
+        let exact_match_path = dir.join(format!("{}.md", partial_id));
         if exact_match_path.exists() {
             return Ok(exact_match_path);
         }
@@ -72,7 +76,7 @@ pub async fn find_by_partial_id<T: Findable>(partial_id: &str) -> Result<PathBuf
                 0 => {}
                 1 => {
                     let filename = format!("{}.md", &matches[0]);
-                    return Ok(PathBuf::from(T::directory()).join(filename));
+                    return Ok(dir.join(filename));
                 }
                 _ => {
                     return Err(T::ambiguous_id_error(partial_id.to_string(), matches));
@@ -87,12 +91,13 @@ pub async fn find_by_partial_id<T: Findable>(partial_id: &str) -> Result<PathBuf
 
 /// Filesystem-based find implementation (fallback when cache unavailable).
 fn find_by_partial_id_impl<T: Findable>(partial_id: &str) -> Result<PathBuf> {
+    let dir = T::directory();
     let files = T::find_files();
 
     // Check for exact match first
     let exact_name = format!("{}.md", partial_id);
     if files.iter().any(|f| f == &exact_name) {
-        return Ok(PathBuf::from(T::directory()).join(&exact_name));
+        return Ok(dir.join(&exact_name));
     }
 
     // Then check for partial matches
@@ -100,7 +105,7 @@ fn find_by_partial_id_impl<T: Findable>(partial_id: &str) -> Result<PathBuf> {
 
     match matches.len() {
         0 => Err(T::not_found_error(partial_id.to_string())),
-        1 => Ok(PathBuf::from(T::directory()).join(matches[0])),
+        1 => Ok(dir.join(matches[0])),
         _ => Err(T::ambiguous_id_error(
             partial_id.to_string(),
             matches.iter().map(|m| m.replace(".md", "")).collect(),
@@ -116,8 +121,8 @@ mod tests {
     struct MockEntity;
 
     impl Findable for MockEntity {
-        fn directory() -> &'static str {
-            ".janus/test"
+        fn directory() -> PathBuf {
+            PathBuf::from(".janus/test")
         }
 
         fn cache_find_by_partial_id(
@@ -144,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_findable_trait_methods() {
-        assert_eq!(MockEntity::directory(), ".janus/test");
+        assert_eq!(MockEntity::directory(), PathBuf::from(".janus/test"));
         let files = MockEntity::find_files();
         // Directory doesn't exist, should return empty vec
         assert_eq!(files.len(), 0);

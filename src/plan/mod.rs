@@ -11,7 +11,7 @@ use crate::finder::Findable;
 use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
-use crate::types::{PLANS_DIR, TicketMetadata};
+use crate::types::{TicketMetadata, plans_dir};
 use crate::utils::{DirScanner, extract_id_from_path};
 
 // Re-export status computation functions
@@ -35,8 +35,8 @@ pub use crate::plan::parser::{
 struct PlanFinder;
 
 impl Findable for PlanFinder {
-    fn directory() -> &'static str {
-        PLANS_DIR
+    fn directory() -> PathBuf {
+        plans_dir()
     }
 
     fn cache_find_by_partial_id(
@@ -57,7 +57,7 @@ impl Findable for PlanFinder {
 
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
-    DirScanner::find_markdown_files(PLANS_DIR).unwrap_or_else(|e| {
+    DirScanner::find_markdown_files(plans_dir()).unwrap_or_else(|e| {
         eprintln!("Warning: failed to read plans directory: {}", e);
         Vec::new()
     })
@@ -90,7 +90,7 @@ impl Plan {
 
     /// Create a plan handle for a new plan with the given ID
     pub fn with_id(id: &str) -> Self {
-        let file_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", id));
+        let file_path = plans_dir().join(format!("{}.md", id));
         Plan {
             file_path,
             id: id.to_string(),
@@ -285,9 +285,10 @@ pub async fn get_all_plans() -> Vec<PlanMetadata> {
         if let Ok(cached_plans) = cache.get_all_plans().await {
             // Convert cached plans to full PlanMetadata
             let mut plans = Vec::new();
+            let p_dir = plans_dir();
             for cached in cached_plans {
                 if let Some(id) = &cached.id {
-                    let file_path = PathBuf::from(PLANS_DIR).join(format!("{}.md", id));
+                    let file_path = p_dir.join(format!("{}.md", id));
                     // If the file exists, read it to get full metadata
                     // This ensures we get all sections, not just cached fields
                     if file_path.exists()
@@ -320,9 +321,10 @@ pub async fn get_all_plans() -> Vec<PlanMetadata> {
 pub fn get_all_plans_from_disk() -> Vec<PlanMetadata> {
     let files = find_plans();
     let mut plans = Vec::new();
+    let p_dir = plans_dir();
 
     for file in files {
-        let file_path = PathBuf::from(PLANS_DIR).join(&file);
+        let file_path = p_dir.join(&file);
         match fs::read_to_string(&file_path) {
             Ok(content) => match parse_plan_content(&content) {
                 Ok(mut metadata) => {
@@ -348,22 +350,25 @@ pub fn get_all_plans_from_disk() -> Vec<PlanMetadata> {
 
 /// Ensure the plans directory exists
 pub fn ensure_plans_dir() -> Result<()> {
-    fs::create_dir_all(PLANS_DIR).map_err(|e| {
+    let p_dir = plans_dir();
+    fs::create_dir_all(&p_dir).map_err(|e| {
         JanusError::Io(std::io::Error::new(
             e.kind(),
-            format!("Failed to create plans directory at {}: {}", PLANS_DIR, e),
+            format!(
+                "Failed to create plans directory at {}: {}",
+                p_dir.display(),
+                e
+            ),
         ))
     })
 }
 
 /// Generate a unique plan ID with collision checking
 pub fn generate_plan_id() -> String {
-    use std::path::Path;
-
     use crate::utils::generate_hash;
 
     const RETRIES_PER_LENGTH: u32 = 40;
-    let plans_dir = Path::new(PLANS_DIR);
+    let p_dir = plans_dir();
 
     for length in 4..=8 {
         for _ in 0..RETRIES_PER_LENGTH {
@@ -371,7 +376,7 @@ pub fn generate_plan_id() -> String {
             let candidate = format!("plan-{}", hash);
             let filename = format!("{}.md", candidate);
 
-            if !plans_dir.join(&filename).exists() {
+            if !p_dir.join(&filename).exists() {
                 return candidate;
             }
         }

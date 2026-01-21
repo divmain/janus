@@ -32,6 +32,14 @@ impl DirScanner {
     /// # Ok::<(), janus::error::JanusError>(())
     /// ```
     pub fn find_markdown_files<P: AsRef<Path>>(dir_path: P) -> Result<Vec<String>, std::io::Error> {
+        Self::find_markdown_files_from_path(dir_path.as_ref())
+    }
+
+    /// Find all markdown files in a directory (PathBuf variant)
+    ///
+    /// This is an alias for `find_markdown_files` that explicitly takes a Path reference.
+    /// Useful when working with PathBuf instances from JANUS_ROOT-aware functions.
+    pub fn find_markdown_files_from_path(dir_path: &Path) -> Result<Vec<String>, std::io::Error> {
         match fs::read_dir(dir_path) {
             Ok(entries) => Ok(entries
                 .filter_map(|e| e.ok())

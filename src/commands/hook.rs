@@ -23,7 +23,7 @@ use crate::hooks::types::HookEvent;
 use crate::hooks::{HookContext, ItemType, context_to_env};
 use crate::remote::config::Config;
 use crate::ticket::Ticket;
-use crate::types::TICKETS_DIR;
+use crate::types::janus_root;
 
 /// The directory within .janus where hook scripts are stored.
 const HOOKS_DIR: &str = "hooks";
@@ -161,7 +161,7 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
     };
 
     // Check for conflicts and prompt user
-    let janus_dir = PathBuf::from(TICKETS_DIR);
+    let janus_dir = janus_root();
     let mut files_to_write: Vec<(PathBuf, String, bool)> = Vec::new(); // (path, content, is_executable)
 
     for (relative_path, content) in &files_to_install {
@@ -351,8 +351,8 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
             ))
         })?;
 
-    let janus_root = PathBuf::from(TICKETS_DIR);
-    let hooks_dir = janus_root.join(HOOKS_DIR).canonicalize()?;
+    let j_root = janus_root();
+    let hooks_dir = j_root.join(HOOKS_DIR).canonicalize()?;
     let script_path = hooks_dir.join(script_name);
 
     if !script_path.exists() {
@@ -395,7 +395,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
     }
 
     // Build environment variables
-    let env_vars = context_to_env(&context, &janus_root);
+    let env_vars = context_to_env(&context, &j_root);
 
     println!("Running hook: {} → {}", event.cyan(), script_name);
     println!();
@@ -410,7 +410,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
     // Execute the script
     let output = std::process::Command::new(&script_path)
         .envs(env_vars)
-        .current_dir(&janus_root)
+        .current_dir(&j_root)
         .output()?;
 
     // Print output
@@ -468,7 +468,7 @@ pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
 
 /// Display hook failure log
 pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
-    let log_path = PathBuf::from(TICKETS_DIR).join("hooks.log");
+    let log_path = janus_root().join("hooks.log");
 
     if !log_path.exists() {
         if output_json {

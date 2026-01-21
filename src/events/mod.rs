@@ -33,14 +33,14 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
-use crate::types::TICKETS_DIR;
+use crate::types::janus_root;
 
 /// The name of the events log file
 const EVENTS_FILE: &str = "events.ndjson";
 
 /// Get the path to the events log file
 pub fn events_file_path() -> PathBuf {
-    PathBuf::from(TICKETS_DIR).join(EVENTS_FILE)
+    janus_root().join(EVENTS_FILE)
 }
 
 /// Log an event to the events log file

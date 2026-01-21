@@ -3,12 +3,12 @@ use crate::utils::DirScanner;
 use crate::{TicketMetadata, cache};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
-    use crate::types::TICKETS_ITEMS_DIR;
+    use crate::types::tickets_items_dir;
 
-    DirScanner::find_markdown_files(TICKETS_ITEMS_DIR)
+    DirScanner::find_markdown_files(tickets_items_dir())
 }
 
 pub struct TicketRepository;
@@ -26,13 +26,14 @@ impl TicketRepository {
     }
 
     fn get_all_from_disk() -> Result<Vec<TicketMetadata>, std::io::Error> {
-        use crate::types::TICKETS_ITEMS_DIR;
+        use crate::types::tickets_items_dir;
 
         let files = find_tickets()?;
         let mut tickets = Vec::new();
+        let items_dir = tickets_items_dir();
 
         for file in files {
-            let file_path = PathBuf::from(TICKETS_ITEMS_DIR).join(&file);
+            let file_path = items_dir.join(&file);
             match fs::read_to_string(&file_path) {
                 Ok(content_str) => match content::parse(&content_str) {
                     Ok(mut metadata) => {

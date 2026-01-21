@@ -31,5 +31,5 @@ pub use ticket::{
 };
 pub use types::{
     PLANS_DIR, TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus,
-    TicketType,
+    TicketType, janus_root, plans_dir, tickets_items_dir,
 };

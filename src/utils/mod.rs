@@ -10,7 +10,7 @@ use std::process::Command;
 use uuid::Uuid;
 
 use crate::error::{JanusError, Result};
-use crate::types::TICKETS_ITEMS_DIR;
+use crate::types::tickets_items_dir;
 
 #[cfg(test)]
 use std::path::PathBuf;
@@ -20,7 +20,7 @@ pub use dir_scanner::DirScanner;
 
 /// Ensure the tickets directory exists
 pub fn ensure_dir() -> io::Result<()> {
-    fs::create_dir_all(TICKETS_ITEMS_DIR)
+    fs::create_dir_all(tickets_items_dir())
 }
 
 /// Extract an ID from a file path's stem
@@ -43,7 +43,11 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
         .file_stem()
         .and_then(|s| {
             let id = s.to_string_lossy().into_owned();
-            if id.is_empty() { None } else { Some(id) }
+            if id.is_empty() {
+                None
+            } else {
+                Some(id)
+            }
         })
         .ok_or_else(|| {
             JanusError::InvalidFormat(format!(
@@ -158,7 +162,7 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
 /// Returns a short ID that does not exist in the tickets directory
 pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
     const RETRIES_PER_LENGTH: u32 = 40;
-    let tickets_dir = Path::new(TICKETS_ITEMS_DIR);
+    let tickets_dir = tickets_items_dir();
 
     for length in 4..=8 {
         for _ in 0..RETRIES_PER_LENGTH {

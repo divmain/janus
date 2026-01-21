@@ -80,6 +80,7 @@ cynic-codegen = { version = "3", features = ["rkyv"] }
 tempfile = "3"
 serial_test = "3"
 criterion = "0.5"
+insta = { version = "1.39", features = ["filters"] }
 
 [[bench]]
 name = "cache"
