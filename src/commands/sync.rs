@@ -332,17 +332,17 @@ enum SyncChoice {
 
 fn prompt_sync_choice() -> Result<SyncChoice> {
     loop {
-        print!("Sync? [l]ocal->remote, [r]emote->local, [s]kip: ");
+        print!("Sync? [L]ocal->remote (default), [r]emote->local, [s]kip: ");
         io::stdout().flush()?;
 
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
 
         match input.trim().to_lowercase().as_str() {
-            "l" | "local" => return Ok(SyncChoice::LocalToRemote),
+            "l" | "local" | "" => return Ok(SyncChoice::LocalToRemote),
             "r" | "remote" => return Ok(SyncChoice::RemoteToLocal),
-            "s" | "skip" | "" => return Ok(SyncChoice::Skip),
-            _ => println!("Invalid input. Please enter 'l', 'r', or 's'."),
+            "s" | "skip" => return Ok(SyncChoice::Skip),
+            _ => println!("Invalid input. Please enter 'l', 'r', or 's' (or press Enter for local->remote)."),
         }
     }
 }
