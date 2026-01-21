@@ -26,7 +26,12 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
         return Err(JanusError::EmptyNote);
     }
 
-    let mut content = fs::read_to_string(&ticket.file_path)?;
+    let mut content = fs::read_to_string(&ticket.file_path).map_err(|e| {
+        JanusError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to read ticket at {}: {}", ticket.file_path.display(), e),
+        ))
+    })?;
 
     // Add Notes section if it doesn't exist
     if !content.contains("## Notes") {
@@ -37,7 +42,12 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
     let timestamp = iso_date();
     content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
 
-    fs::write(&ticket.file_path, content)?;
+    fs::write(&ticket.file_path, content).map_err(|e| {
+        JanusError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to write ticket at {}: {}", ticket.file_path.display(), e),
+        ))
+    })?;
 
     // Log the event
     log_note_added(&ticket.id, &note);

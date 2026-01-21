@@ -156,7 +156,12 @@ impl Config {
             return Ok(Config::default());
         }
 
-        let content = fs::read_to_string(&path)?;
+        let content = fs::read_to_string(&path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to read config at {}: {}", path.display(), e),
+            ))
+        })?;
         let config: Config = serde_yaml_ng::from_str(&content)?;
         Ok(config)
     }
@@ -167,11 +172,21 @@ impl Config {
 
         // Ensure .janus directory exists
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to create directory for config at {}: {}", parent.display(), e),
+                ))
+            })?;
         }
 
         let content = serde_yaml_ng::to_string(self)?;
-        fs::write(&path, content)?;
+        fs::write(&path, content).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to write config at {}: {}", path.display(), e),
+            ))
+        })?;
         Ok(())
     }
 

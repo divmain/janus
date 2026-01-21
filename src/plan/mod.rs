@@ -347,8 +347,13 @@ pub fn get_all_plans_from_disk() -> Vec<PlanMetadata> {
 }
 
 /// Ensure the plans directory exists
-pub fn ensure_plans_dir() -> std::io::Result<()> {
-    fs::create_dir_all(PLANS_DIR)
+pub fn ensure_plans_dir() -> Result<()> {
+    fs::create_dir_all(PLANS_DIR).map_err(|e| {
+        JanusError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to create plans directory at {}: {}", PLANS_DIR, e),
+        ))
+    })
 }
 
 /// Generate a unique plan ID with collision checking

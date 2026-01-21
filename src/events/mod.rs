@@ -74,11 +74,29 @@ fn log_event_impl(event: Event) -> std::io::Result<()> {
 
     // Ensure the .janus directory exists
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to create directory for events at {}: {}",
+                    parent.display(),
+                    e
+                ),
+            )
+        })?;
     }
 
     // Open file in append mode, creating if necessary
-    let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("Failed to open events file at {}: {}", path.display(), e),
+            )
+        })?;
 
     // Acquire exclusive lock on Unix
     #[cfg(unix)]
@@ -122,7 +140,12 @@ pub fn read_events() -> std::io::Result<Vec<Event>> {
         return Ok(Vec::new());
     }
 
-    let content = std::fs::read_to_string(&path)?;
+    let content = std::fs::read_to_string(&path).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!("Failed to read events file at {}: {}", path.display(), e),
+        )
+    })?;
     let mut events = Vec::new();
 
     for (line_num, line) in content.lines().enumerate() {
@@ -155,7 +178,12 @@ pub fn read_events() -> std::io::Result<Vec<Event>> {
 pub fn clear_events() -> std::io::Result<()> {
     let path = events_file_path();
     if path.exists() {
-        std::fs::remove_file(&path)?;
+        std::fs::remove_file(&path).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("Failed to remove events file at {}: {}", path.display(), e),
+            )
+        })?;
     }
     Ok(())
 }

@@ -203,7 +203,12 @@ pub async fn cmd_plan_import(
         std::io::stdin().read_to_string(&mut buffer)?;
         buffer
     } else {
-        fs::read_to_string(input)?
+        fs::read_to_string(input).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to read plan import file at {}: {}", input, e),
+            ))
+        })?
     };
 
     // 2. Parse the importable plan

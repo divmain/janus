@@ -198,15 +198,35 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
     // Create directories and write files
     for (path, content, is_executable) in &files_to_write {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to create directory for hook at {}: {}", parent.display(), e),
+                ))
+            })?;
         }
-        fs::write(path, content)?;
+        fs::write(path, content).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to write hook file at {}: {}", path.display(), e),
+            ))
+        })?;
 
         // Set executable bit on hook scripts
         if *is_executable {
-            let mut perms = fs::metadata(path)?.permissions();
+            let mut perms = fs::metadata(path).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to get metadata for hook at {}: {}", path.display(), e),
+                ))
+            })?.permissions();
             perms.set_mode(0o755);
-            fs::set_permissions(path, perms)?;
+            fs::set_permissions(path, perms).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to set permissions for hook at {}: {}", path.display(), e),
+                ))
+            })?;
         }
 
         println!("  Installed {}", path.display().to_string().green());
@@ -451,7 +471,12 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
         return Ok(());
     }
 
-    let content = fs::read_to_string(&log_path)?;
+    let content = fs::read_to_string(&log_path).map_err(|e| {
+        JanusError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to read hook log at {}: {}", log_path.display(), e),
+        ))
+    })?;
     let mut log_lines: Vec<&str> = content.lines().collect();
 
     // If lines is specified, take only the last N lines

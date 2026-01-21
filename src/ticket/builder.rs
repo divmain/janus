@@ -1,6 +1,6 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
-use crate::types::{TICKETS_ITEMS_DIR, TicketPriority, TicketStatus, TicketType};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent, ItemType};
+use crate::types::{TicketPriority, TicketStatus, TicketType, TICKETS_ITEMS_DIR};
 use crate::utils;
 use std::fs;
 use std::path::PathBuf;
@@ -219,14 +219,40 @@ impl TicketBuilder {
 
             run_pre_hooks(HookEvent::PreWrite, &context)?;
 
-            fs::create_dir_all(TICKETS_ITEMS_DIR)?;
-            fs::write(&file_path, &content)?;
+            fs::create_dir_all(TICKETS_ITEMS_DIR).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create tickets directory at {}: {}",
+                        TICKETS_ITEMS_DIR, e
+                    ),
+                ))
+            })?;
+            fs::write(&file_path, &content).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to write ticket at {}: {}", file_path.display(), e),
+                ))
+            })?;
 
             run_post_hooks(HookEvent::PostWrite, &context);
             run_post_hooks(HookEvent::TicketCreated, &context);
         } else {
-            fs::create_dir_all(TICKETS_ITEMS_DIR)?;
-            fs::write(&file_path, &content)?;
+            fs::create_dir_all(TICKETS_ITEMS_DIR).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create tickets directory at {}: {}",
+                        TICKETS_ITEMS_DIR, e
+                    ),
+                ))
+            })?;
+            fs::write(&file_path, &content).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to write ticket at {}: {}", file_path.display(), e),
+                ))
+            })?;
         }
 
         Ok((id, file_path))
