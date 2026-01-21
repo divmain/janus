@@ -62,6 +62,12 @@ impl TicketBuilder {
         self
     }
 
+    /// Set the remote reference (e.g., "linear:org/ISSUE-123" or "github:owner/repo/456")
+    pub fn remote(mut self, remote: &str) -> Self {
+        self.metadata.remote = Some(remote.to_string());
+        self
+    }
+
     /// Build the ticket metadata
     pub fn build(self) -> TicketMetadata {
         self.metadata
@@ -189,6 +195,15 @@ pub fn mock_remote_issues(specs: &[(&str, RemoteStatus)]) -> Vec<RemoteIssue> {
         .collect()
 }
 
+/// Create a ticket that is linked to a remote issue
+pub fn mock_linked_ticket(id: &str, remote_ref: &str, status: TicketStatus) -> TicketMetadata {
+    TicketBuilder::new(id)
+        .title(&format!("Linked ticket {}", id))
+        .status(status)
+        .remote(remote_ref)
+        .build()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +300,26 @@ mod tests {
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].status, RemoteStatus::Open);
         assert_eq!(issues[1].status, RemoteStatus::Closed);
+    }
+
+    #[test]
+    fn test_ticket_builder_with_remote() {
+        let ticket = TicketBuilder::new("j-linked")
+            .title("Linked ticket")
+            .remote("linear:acme/ENG-123")
+            .build();
+
+        assert_eq!(ticket.id, Some("j-linked".to_string()));
+        assert_eq!(ticket.remote, Some("linear:acme/ENG-123".to_string()));
+    }
+
+    #[test]
+    fn test_mock_linked_ticket() {
+        let ticket =
+            mock_linked_ticket("j-lnk1", "github:owner/repo/456", TicketStatus::InProgress);
+        assert_eq!(ticket.id, Some("j-lnk1".to_string()));
+        assert_eq!(ticket.remote, Some("github:owner/repo/456".to_string()));
+        assert_eq!(ticket.status, Some(TicketStatus::InProgress));
+        assert!(ticket.title.unwrap().contains("j-lnk1"));
     }
 }
