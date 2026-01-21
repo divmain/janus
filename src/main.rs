@@ -126,11 +126,11 @@ async fn main() -> ExitCode {
 
         Commands::Query { filter } => cmd_query(filter.as_deref()).await,
 
-        Commands::View => cmd_view(),
-        Commands::Board => cmd_board(),
+        Commands::View => cmd_view().await,
+        Commands::Board => cmd_board().await,
 
         Commands::Remote { action } => match action {
-            RemoteAction::Browse { provider } => cmd_remote_browse(provider.as_deref()),
+            RemoteAction::Browse { provider } => cmd_remote_browse(provider.as_deref()).await,
             RemoteAction::Adopt {
                 remote_ref,
                 prefix,
