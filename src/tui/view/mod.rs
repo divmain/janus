@@ -9,6 +9,8 @@ pub mod model;
 use iocraft::prelude::*;
 use tokio::sync::{Mutex, mpsc};
 
+use crate::formatting::extract_ticket_body;
+use crate::ticket::Ticket;
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, Header, SearchBox, TicketDetail, TicketList, Toast,
     ToastNotification, browser_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
@@ -60,6 +62,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut selected_index = hooks.use_state(|| 0usize);
     let mut scroll_offset = hooks.use_state(|| 0usize);
     let mut detail_scroll_offset = hooks.use_state(|| 0usize);
+    let mut max_detail_scroll = hooks.use_state(|| 0usize);
     let mut active_pane = hooks.use_state(|| Pane::List); // Start on list, not search
     let mut should_exit = hooks.use_state(|| false);
     let mut needs_reload = hooks.use_state(|| false);
@@ -226,6 +229,31 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         .get(selected_index.get())
         .map(|ft| ft.ticket.clone());
 
+    // Compute max detail scroll (body line count - 1, or 0 if no body)
+    let current_max_detail_scroll = if let Some(ref ticket) = selected_ticket {
+        if let Some(ref file_path) = ticket.file_path {
+            match Ticket::new(file_path.clone()) {
+                Ok(ticket_handle) => match ticket_handle.read_content() {
+                    Ok(content) => extract_ticket_body(&content)
+                        .map(|body| body.lines().count().saturating_sub(1))
+                        .unwrap_or(0),
+                    Err(_) => 0,
+                },
+                Err(_) => 0,
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    // Update max_detail_scroll state and reset detail scroll if ticket changed
+    if max_detail_scroll.get() != current_max_detail_scroll {
+        max_detail_scroll.set(current_max_detail_scroll);
+        detail_scroll_offset.set(0);
+    }
+
     // Calculate available height for the list (required for scroll state management)
     // Total height - header (1) - search box (3) - footer (1) - borders (2)
     // NOTE: This calculated value is needed for scroll/navigation logic in handlers
@@ -268,6 +296,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         editing_body: &mut editing_body,
                         filtered_count: filtered_len,
                         list_height,
+                        max_detail_scroll: max_detail_scroll.get(),
                         filtered_tickets: &filtered_for_events,
                         action_tx: &action_sender_for_events,
                     };

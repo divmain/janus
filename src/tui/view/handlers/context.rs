@@ -42,6 +42,7 @@ pub struct ViewHandlerContext<'a> {
     // Computed values (read-only)
     pub filtered_count: usize,
     pub list_height: usize,
+    pub max_detail_scroll: usize,
 
     // Ticket data for operations
     pub filtered_tickets: &'a [FilteredTicket],

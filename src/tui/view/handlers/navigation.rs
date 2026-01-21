@@ -5,8 +5,8 @@ use iocraft::prelude::KeyCode;
 use crate::tui::navigation;
 use crate::tui::state::Pane;
 
-use super::context::ViewHandlerContext;
 use super::HandleResult;
+use super::context::ViewHandlerContext;
 
 /// Handle navigation keys
 pub fn handle(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -50,7 +50,8 @@ fn handle_detail_navigation(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> 
     match code {
         KeyCode::Char('j') | KeyCode::Down => {
             let current = ctx.detail_scroll_offset.get();
-            ctx.detail_scroll_offset.set(current.saturating_add(1));
+            let new_scroll = current.saturating_add(1).min(ctx.max_detail_scroll);
+            ctx.detail_scroll_offset.set(new_scroll);
             HandleResult::Handled
         }
         KeyCode::Char('k') | KeyCode::Up => {
@@ -63,15 +64,15 @@ fn handle_detail_navigation(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> 
             HandleResult::Handled
         }
         KeyCode::Char('G') => {
-            // Go to bottom - set a large value, the display will clamp it
-            ctx.detail_scroll_offset.set(usize::MAX / 2);
+            // Go to bottom - set to max scrollable value
+            ctx.detail_scroll_offset.set(ctx.max_detail_scroll);
             HandleResult::Handled
         }
         KeyCode::PageDown => {
             let current = ctx.detail_scroll_offset.get();
             let page_size = ctx.list_height.saturating_sub(10).max(1);
-            ctx.detail_scroll_offset
-                .set(current.saturating_add(page_size));
+            let new_scroll = current.saturating_add(page_size).min(ctx.max_detail_scroll);
+            ctx.detail_scroll_offset.set(new_scroll);
             HandleResult::Handled
         }
         KeyCode::PageUp => {

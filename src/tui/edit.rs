@@ -231,7 +231,9 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                 // Field-specific handling
                 match focused_field.get() {
                     EditField::Title => handle_text_input(&mut title, code),
-                    EditField::Body => handle_body_input(&mut body, &mut body_scroll_offset, code, height),
+                    EditField::Body => {
+                        handle_body_input(&mut body, &mut body_scroll_offset, code, height)
+                    }
                     EditField::Status => handle_select_input(&mut status, code),
                     EditField::Type => handle_select_input(&mut ticket_type, code),
                     EditField::Priority => handle_select_input(&mut priority, code),
@@ -550,11 +552,16 @@ fn handle_text_input(state: &mut State<String>, code: KeyCode) {
 }
 
 /// Handle text input for body field with scrolling support
-fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>, code: KeyCode, terminal_height: u16) {
+fn handle_body_input(
+    state: &mut State<String>,
+    scroll_offset: &mut State<usize>,
+    code: KeyCode,
+    terminal_height: u16,
+) {
     let body_text = state.to_string();
     let lines: Vec<&str> = body_text.lines().collect();
     let total_lines = lines.len();
-    
+
     // Estimate visible lines in body area: ~30% of terminal height after modal chrome
     // This is approximate since flexbox handles actual sizing
     let effective_visible = ((terminal_height as usize) * 90 / 100 / 3).max(3);
