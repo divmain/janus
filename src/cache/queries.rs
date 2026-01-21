@@ -192,13 +192,17 @@ impl TicketCache {
                     error: e.to_string(),
                 })?;
 
-        let status: Option<crate::types::TicketStatus> = row
-            .get::<Option<String>>(2)
-            .map_err(|e| CacheError::CacheColumnExtraction {
+        let status: Option<crate::types::TicketStatus> =
+            if let Some(s) = row.get::<Option<String>>(2).map_err(|e| CacheError::CacheColumnExtraction {
                 column: 2,
                 error: e.to_string(),
-            })?
-            .and_then(|s| s.parse().ok());
+            })? {
+                Some(s.parse().map_err(|e| CacheError::CacheDataIntegrity(format!(
+                    "failed to parse status for ticket '{:?}': {}", id.as_deref().unwrap_or("unknown"), e
+                )))?)
+            } else {
+                None
+            };
 
         let title: Option<String> =
             row.get::<Option<String>>(3)
@@ -292,37 +296,43 @@ impl TicketCache {
                 })?;
 
         // Parse ticket_type (optional domain field)
-        let ticket_type: Option<crate::types::TicketType> = type_str.and_then(|s| {
-            match s.parse() {
-                Ok(tt) => Some(tt),
-                Err(_) => {
-                    eprintln!(
-                        "Warning: Failed to parse ticket_type '{}' for ticket '{:?}'. Type will be None.",
-                        s, id
-                    );
-                    None
-                }
-            }
-        });
+        let ticket_type: Option<crate::types::TicketType> = if let Some(s) = type_str {
+            Some(s.parse().map_err(|e| CacheError::CacheDataIntegrity(format!(
+                "failed to parse ticket_type '{}' for ticket '{:?}': {}",
+                s, id.as_deref().unwrap_or("unknown"), e
+            )))?)
+        } else {
+            None
+        };
 
         // Parse priority (optional domain field)
-        let priority: Option<crate::types::TicketPriority> = priority_num.and_then(|n| match n {
-            0 => Some(crate::types::TicketPriority::P0),
-            1 => Some(crate::types::TicketPriority::P1),
-            2 => Some(crate::types::TicketPriority::P2),
-            3 => Some(crate::types::TicketPriority::P3),
-            4 => Some(crate::types::TicketPriority::P4),
-            _ => {
-                eprintln!(
-                    "Warning: Invalid priority value {} for ticket '{:?}'. Priority will be None.",
-                    n, id
-                );
-                None
-            }
-        });
+        let priority: Option<crate::types::TicketPriority> = if let Some(n) = priority_num {
+            Some(match n {
+                0 => crate::types::TicketPriority::P0,
+                1 => crate::types::TicketPriority::P1,
+                2 => crate::types::TicketPriority::P2,
+                3 => crate::types::TicketPriority::P3,
+                4 => crate::types::TicketPriority::P4,
+                _ => {
+                    return Err(CacheError::CacheDataIntegrity(format!(
+                        "invalid priority value {} for ticket '{:?}': must be 0-4",
+                        n, id.as_deref().unwrap_or("unknown")
+                    )))
+                }
+            })
+        } else {
+            None
+        };
 
         // Convert depth from i64 to u32
-        let depth: Option<u32> = depth_num.and_then(|n| u32::try_from(n).ok());
+        let depth: Option<u32> = if let Some(n) = depth_num {
+            Some(u32::try_from(n).map_err(|_| CacheError::CacheDataIntegrity(format!(
+                "depth value {} does not fit in u32 for ticket '{:?}'",
+                n, id.as_deref().unwrap_or("unknown")
+            )))?)
+        } else {
+            None
+        };
 
         let deps = Self::deserialize_array(deps_json.as_deref())?;
         let links = Self::deserialize_array(links_json.as_deref())?;
@@ -414,34 +424,22 @@ impl TicketCache {
                     error: e.to_string(),
                 })?;
 
-        // Deserialize tickets for simple plans with explicit error handling
+        // Deserialize tickets for simple plans
         let tickets: Vec<String> = if let Some(json_str) = tickets_json.as_deref() {
-            match serde_json::from_str(json_str) {
-                Ok(tickets) => tickets,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to deserialize plan tickets JSON for plan '{:?}': {}. Using empty array.",
-                        id, e
-                    );
-                    vec![]
-                }
-            }
+            serde_json::from_str(json_str).map_err(|e| CacheError::CacheDataIntegrity(format!(
+                "failed to deserialize plan tickets JSON for plan '{:?}': {}",
+                id.as_deref().unwrap_or("unknown"), e
+            )))?
         } else {
             vec![]
         };
 
-        // Deserialize phases for phased plans with explicit error handling
+        // Deserialize phases for phased plans
         let phases: Vec<CachedPhase> = if let Some(json_str) = phases_json.as_deref() {
-            match serde_json::from_str(json_str) {
-                Ok(phases) => phases,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to deserialize plan phases JSON for plan '{:?}': {}. Using empty array.",
-                        id, e
-                    );
-                    vec![]
-                }
-            }
+            serde_json::from_str(json_str).map_err(|e| CacheError::CacheDataIntegrity(format!(
+                "failed to deserialize plan phases JSON for plan '{:?}': {}",
+                id.as_deref().unwrap_or("unknown"), e
+            )))?
         } else {
             vec![]
         };
