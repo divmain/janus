@@ -23,6 +23,32 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 /// Current cache schema version. Increment when schema changes.
 pub(crate) const CACHE_VERSION: &str = "6";
 
+/// Maximum number of retry attempts when creating database connections.
+/// 
+/// This retry logic handles transient errors during connection creation, such as:
+/// - Database file lock contention from concurrent processes
+/// - Temporary I/O errors
+/// - Filesystem issues during WAL file access
+/// 
+/// **Limitations:**
+/// - Uses fixed delay (no exponential backoff)
+/// - Short total timeout (~150ms) may be insufficient for genuine database contention
+/// - Does not distinguish between retryable and non-retryable errors
+/// 
+/// For operations requiring stronger concurrency guarantees, consider using
+/// SQLite's built-in BUSY_TIMEOUT mechanism instead.
+const MAX_RETRIES: u32 = 3;
+
+/// Base delay between retry attempts in milliseconds.
+/// 
+/// Each retry waits this duration before attempting to reconnect. The total
+/// maximum timeout is approximately `BASE_RETRY_DELAY_MS * MAX_RETRIES`.
+/// 
+/// **Note:** This value is intentionally conservative (~50ms) to provide
+/// a reasonable balance between responsiveness and recovery time. For
+/// production environments with higher contention, this may need adjustment.
+const BASE_RETRY_DELAY_MS: u64 = 50;
+
 pub struct TicketCache {
     pub(crate) db: Arc<Database>,
     #[allow(dead_code)]
@@ -255,9 +281,9 @@ impl TicketCache {
     pub async fn create_connection(&self) -> Result<Arc<Connection>> {
         let mut last_error = None;
 
-        for attempt in 0..3 {
+        for attempt in 0..MAX_RETRIES {
             if attempt > 0 {
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(BASE_RETRY_DELAY_MS)).await;
             }
 
             match self.db.connect() {
