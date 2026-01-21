@@ -26,6 +26,7 @@ pub fn TabBar(props: &TabBarProps) -> impl Into<AnyElement<'static>> {
     element! {
         View(
             width: 100pct,
+            flex_shrink: 0.0,
             padding_left: 1,
             border_edges: Edges::Bottom,
             border_style: BorderStyle::Single,

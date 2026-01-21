@@ -42,6 +42,7 @@ pub fn Footer(props: &FooterProps) -> impl Into<AnyElement<'static>> {
             width: 100pct,
             height: 1,
             flex_direction: FlexDirection::Row,
+            flex_shrink: 0.0,
             padding_left: 1,
             padding_right: 1,
             gap: 2,

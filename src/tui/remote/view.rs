@@ -713,6 +713,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 flex_grow: 1.0,
                 width: 100pct,
                 flex_direction: FlexDirection::Row,
+                overflow: Overflow::Hidden,
             ) {
                 // List pane
                 ListPane(

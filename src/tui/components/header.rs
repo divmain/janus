@@ -41,6 +41,7 @@ pub fn Header<'a>(props: &HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
             width: 100pct,
             height: 1,
             flex_direction: FlexDirection::Row,
+            flex_shrink: 0.0,
             justify_content: JustifyContent::SpaceBetween,
             padding_left: 1,
             padding_right: 1,

@@ -377,6 +377,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         flex_grow: 1.0,
                         flex_direction: FlexDirection::Column,
                         width: 100pct,
+                        overflow: Overflow::Hidden,
                     ) {
                         // Search box
                         View(
@@ -409,6 +410,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                     flex_grow: 1.0,
                                     flex_direction: FlexDirection::Row,
                                     width: 100pct,
+                                    overflow: Overflow::Hidden,
                                 ) {
                                     // Left pane: Ticket list (fixed width)
                                     View(

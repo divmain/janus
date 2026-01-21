@@ -38,6 +38,7 @@ pub fn SelectionBar(props: &SelectionBarProps) -> impl Into<AnyElement<'static>>
     element! {
         View(
             width: 100pct,
+            flex_shrink: 0.0,
             padding_left: 1,
             border_edges: Edges::Top,
             border_style: BorderStyle::Single,

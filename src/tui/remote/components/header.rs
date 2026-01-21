@@ -23,6 +23,7 @@ pub fn RemoteHeader(props: &RemoteHeaderProps) -> impl Into<AnyElement<'static>>
     element! {
         View(
             width: 100pct,
+            flex_shrink: 0.0,
             padding_left: 1,
             padding_right: 1,
         ) {

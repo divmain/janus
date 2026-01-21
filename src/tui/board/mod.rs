@@ -409,6 +409,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                 width: 100pct,
                 height: 1,
                 flex_direction: FlexDirection::Row,
+                flex_shrink: 0.0,
                 justify_content: JustifyContent::SpaceBetween,
                 padding_left: 1,
                 padding_right: 1,
@@ -453,6 +454,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         flex_grow: 1.0,
                         flex_direction: FlexDirection::Column,
                         width: 100pct,
+                        overflow: Overflow::Hidden,
                     ) {
                         // Search bar
                         View(
