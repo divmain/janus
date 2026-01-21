@@ -19,7 +19,10 @@ pub struct TicketDetailProps {
     pub has_focus: bool,
     /// Scroll offset for the body content
     pub scroll_offset: usize,
-    /// Visible height of the detail pane
+    /// Visible height of the detail pane (required for body scroll calculations)
+    /// NOTE: This is needed to calculate how many body lines to show and for
+    /// scroll indicator logic. The component uses `height: 100pct` for layout,
+    /// but scroll state management needs the actual row count.
     pub visible_height: usize,
 }
 
@@ -125,6 +128,7 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
             View(
                 width: 100pct,
                 padding: 1,
+                flex_shrink: 0.0,
                 border_edges: Edges::Bottom,
                 border_style: BorderStyle::Single,
                 border_color: theme.border,
@@ -151,6 +155,7 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                 padding_left: 1,
                 padding_right: 1,
                 padding_top: 1,
+                flex_shrink: 0.0,
                 flex_direction: FlexDirection::Column,
                 gap: 0,
             ) {
@@ -203,6 +208,7 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
             View(
                 width: 100pct,
                 margin_top: 1,
+                flex_shrink: 0.0,
                 border_edges: Edges::Bottom,
                 border_style: BorderStyle::Single,
                 border_color: theme.border,
@@ -217,7 +223,6 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                 flex_direction: FlexDirection::Column,
             ) {
                 #({
-                    // Debug: show body length if empty
                     if body.is_empty() {
                         vec![element! {
                             Text(
@@ -228,43 +233,59 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                     } else {
                         let lines: Vec<&str> = body.lines().collect();
                         let total_lines = lines.len();
-                        // Metadata section takes ~10 lines (header + 5 metadata rows + separator + padding)
-                        let body_visible_height = props.visible_height.saturating_sub(10).max(5);
                         let scroll = props.scroll_offset.min(total_lines.saturating_sub(1));
 
-                        // Show scroll indicator if scrolled down
+                        let has_content_above = scroll > 0;
+                        let has_content_below = scroll + 1 < total_lines; // At least some content below scroll position
+
                         let mut elements: Vec<AnyElement<'static>> = Vec::new();
 
-                        if scroll > 0 {
+                        // Up indicator (fixed height)
+                        if has_content_above {
                             elements.push(element! {
-                                Text(
-                                    content: format!("... {} more lines above ...", scroll),
-                                    color: theme.text_dimmed,
-                                )
+                                View(height: 1, flex_shrink: 0.0) {
+                                    Text(
+                                        content: format!("↑ {} more above", scroll),
+                                        color: theme.text_dimmed,
+                                    )
+                                }
                             }.into());
                         }
 
-                        // Calculate visible range
-                        let indicator_overhead = if scroll > 0 { 1 } else { 0 }
-                            + if scroll + body_visible_height < total_lines { 1 } else { 0 };
-                        let visible_lines = body_visible_height.saturating_sub(indicator_overhead).max(1);
+                        // Body lines container (fills remaining space)
+                        let visible_lines: Vec<AnyElement<'static>> = lines
+                            .iter()
+                            .skip(scroll)
+                            .map(|line| {
+                                let line_owned = line.to_string();
+                                element! {
+                                    View(height: 1, flex_shrink: 0.0) {
+                                        Text(content: line_owned, color: theme.text)
+                                    }
+                                }.into()
+                            })
+                            .collect();
 
-                        // Display visible lines
-                        for line in lines.iter().skip(scroll).take(visible_lines) {
-                            let line_owned = line.to_string();
-                            elements.push(element! {
-                                Text(content: line_owned, color: theme.text)
-                            }.into());
-                        }
+                        elements.push(element! {
+                            View(
+                                flex_grow: 1.0,
+                                flex_direction: FlexDirection::Column,
+                                overflow: Overflow::Hidden,
+                            ) {
+                                #(visible_lines)
+                            }
+                        }.into());
 
-                        // Show scroll indicator if more below
-                        let remaining = total_lines.saturating_sub(scroll + visible_lines);
-                        if remaining > 0 {
+                        // Down indicator (fixed height)
+                        if has_content_below {
+                            let remaining = total_lines.saturating_sub(scroll + 1);
                             elements.push(element! {
-                                Text(
-                                    content: format!("... {} more lines below ...", remaining),
-                                    color: theme.text_dimmed,
-                                )
+                                View(height: 1, flex_shrink: 0.0) {
+                                    Text(
+                                        content: format!("↓ {} more below", remaining),
+                                        color: theme.text_dimmed,
+                                    )
+                                }
                             }.into());
                         }
 

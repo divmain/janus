@@ -498,7 +498,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     let unlink_handler_for_events = unlink_handler.clone();
 
-    // Calculate list height
+    // Calculate visible list height for scroll/pagination calculations
+    // This is NOT for layout (handled by flexbox) but for determining how many
+    // items fit in the visible area for keyboard navigation and scroll offset.
+    // Subtracts: header(1) + tabs(1) + search(1) + link_banner(1) + selection_bar(1) + footer(1) + borders(1) = 7
     let list_height = height.saturating_sub(7) as usize;
 
     // Get current values for rendering

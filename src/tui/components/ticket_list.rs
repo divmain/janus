@@ -8,7 +8,6 @@ use iocraft::prelude::*;
 use crate::tui::search::FilteredTicket;
 use crate::tui::theme::theme;
 use crate::types::TicketStatus;
-use crate::utils::truncate_string;
 
 /// Props for the TicketList component
 #[derive(Default, Props)]
@@ -21,10 +20,12 @@ pub struct TicketListProps {
     pub scroll_offset: usize,
     /// Whether the list has focus
     pub has_focus: bool,
-    /// Number of visible rows
+    /// Number of visible rows (required for scroll indicator calculations)
+    /// NOTE: This is passed from the parent because scroll logic needs to know
+    /// how many rows fit in the visible area for "X more above/below" indicators.
+    /// The component uses `height: 100pct` for declarative layout, but scroll
+    /// state management needs the actual row count.
     pub visible_height: usize,
-    /// Width of the list pane in characters
-    pub width: usize,
 }
 
 /// Scrollable ticket list with selection
@@ -92,13 +93,11 @@ pub fn TicketList(props: &TicketListProps) -> impl Into<AnyElement<'static>> {
             #(visible_tickets.iter().enumerate().map(|(i, ft)| {
                 let actual_index = start + i;
                 let is_selected = actual_index == props.selected_index;
-                let row_width = props.width;
                 element! {
                     TicketRow(
                         ticket: ft.clone(),
                         is_selected: is_selected,
                         has_focus: props.has_focus && is_selected,
-                        width: row_width,
                     )
                 }
             }))
@@ -129,8 +128,6 @@ pub struct TicketRowProps {
     pub is_selected: bool,
     /// Whether this row has focus
     pub has_focus: bool,
-    /// Width of the row in characters
-    pub width: usize,
 }
 
 /// Single ticket row in the list
@@ -169,13 +166,6 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
         TicketStatus::Cancelled => "can",
     };
 
-    // Calculate available width for title
-    // Fixed elements: indicator(1) + space+id(9) + space+status(6) + space before title(1) + borders(2) + padding(2)
-    // Total fixed overhead: ~21 characters
-    let fixed_overhead = 21;
-    let max_title_len = props.width.saturating_sub(fixed_overhead).max(10);
-    let truncated_title = truncate_string(title, max_title_len);
-
     element! {
         View(
             height: 1,
@@ -185,26 +175,34 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
             padding_right: 1,
             background_color: bg_color,
         ) {
-            // Selection indicator
-            Text(content: indicator, color: text_color)
+            // Selection indicator - fixed width, won't shrink
+            View(width: 2, flex_shrink: 0.0) {
+                Text(content: indicator, color: text_color)
+            }
 
-            // Ticket ID
-            Text(
-                content: format!(" {:<8}", id),
-                color: if props.is_selected { Color::White } else { theme.id_color },
-            )
+            // Ticket ID - fixed width, won't shrink
+            View(width: 9, flex_shrink: 0.0) {
+                Text(
+                    content: format!("{:<8}", id),
+                    color: if props.is_selected { Color::White } else { theme.id_color },
+                )
+            }
 
-            // Status badge
-            Text(
-                content: format!(" [{}]", status_str),
-                color: if props.is_selected { Color::White } else { status_color },
-            )
+            // Status badge - fixed width, won't shrink
+            View(width: 6, flex_shrink: 0.0) {
+                Text(
+                    content: format!("[{}]", status_str),
+                    color: if props.is_selected { Color::White } else { status_color },
+                )
+            }
 
-            // Title (with possible fuzzy highlighting)
-            Text(
-                content: format!(" {}", truncated_title),
-                color: text_color,
-            )
+            // Title - flexible, takes remaining space and truncates via overflow
+            View(flex_grow: 1.0, overflow: Overflow::Hidden) {
+                Text(
+                    content: format!(" {}", title),
+                    color: text_color,
+                )
+            }
         }
     }
 }

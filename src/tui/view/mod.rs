@@ -226,12 +226,13 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         .get(selected_index.get())
         .map(|ft| ft.ticket.clone());
 
-    // Calculate available height for the list
+    // Calculate available height for the list (required for scroll state management)
     // Total height - header (1) - search box (3) - footer (1) - borders (2)
+    // NOTE: This calculated value is needed for scroll/navigation logic in handlers
+    // and components. The declarative layout uses `height: 100pct` to fill space,
+    // but scroll calculations need the actual row count for page-up/down and
+    // scroll indicator logic.
     let list_height = height.saturating_sub(7) as usize;
-
-    // Calculate width for the left pane (35% of terminal width)
-    let list_width = (width as usize * 35) / 100;
 
     // Keyboard event handling
     hooks.use_terminal_events({
@@ -412,11 +413,9 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                     width: 100pct,
                                     overflow: Overflow::Hidden,
                                 ) {
-                                    // Left pane: Ticket list (fixed width)
+                                    // Left pane: Ticket list (35% width via declarative flexbox)
                                     View(
                                         width: 35pct,
-                                        min_width: 35pct,
-                                        max_width: 35pct,
                                         height: 100pct,
                                         flex_shrink: 0.0,
                                     ) {
@@ -426,17 +425,13 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                             scroll_offset: scroll_offset.get(),
                                             has_focus: active_pane.get() == Pane::List && !is_editing,
                                             visible_height: list_height,
-                                            width: list_width,
                                         )
                                     }
 
-                                    // Right pane: Ticket detail (takes remaining space)
+                                    // Right pane: Ticket detail (takes remaining 65% via declarative flexbox)
                                     View(
-                                        width: 65pct,
-                                        min_width: 65pct,
-                                        max_width: 65pct,
+                                        flex_grow: 1.0,
                                         height: 100pct,
-                                        flex_shrink: 0.0,
                                     ) {
                                         TicketDetail(
                                             ticket: selected_ticket.clone(),

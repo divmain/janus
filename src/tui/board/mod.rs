@@ -393,10 +393,6 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         board_shortcuts()
     };
 
-    // Calculate column width
-    let visible_count = visible_indices.len().max(1) as u16;
-    let column_width = width / visible_count;
-
     element! {
         View(
             width,
@@ -506,7 +502,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
                                             element! {
                                                 View(
-                                                    width: column_width,
+                                                    flex_grow: 1.0,
+                                                    flex_shrink: 0.0,
                                                     flex_direction: FlexDirection::Column,
                                                     align_items: AlignItems::Center,
                                                     border_edges: Edges::Bottom,
@@ -554,7 +551,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
                                             element! {
                                                 View(
-                                                    width: column_width,
+                                                    flex_grow: 1.0,
+                                                    flex_shrink: 0.0,
                                                     height: 100pct,
                                                     flex_direction: FlexDirection::Column,
                                                     padding_left: 1,

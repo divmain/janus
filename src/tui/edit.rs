@@ -84,7 +84,7 @@ struct SaveRequest {
 #[component]
 pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyElement<'a>> {
     let theme = theme();
-    let (width, height) = hooks.use_terminal_size();
+    let (_width, height) = hooks.use_terminal_size();
 
     // Get initial values from props
     let initial_ticket = props.ticket.clone().unwrap_or_default();
@@ -188,28 +188,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
         }
     }
 
-    // Calculate modal size (90% of screen)
-    let modal_width = width * 90 / 100;
-    let modal_height = height * 90 / 100;
-    
-    // Calculate available height for body text area content
-    // This accounts for all fixed elements in the modal layout:
-    // - Modal border: 2 (top + bottom)
-    // - Header: 2 (content + bottom border)  
-    // - Footer: 1
-    // - Form padding: 2 (top + bottom)
-    // - Form gaps: 4 (gap:1 between ~5 elements)
-    // - Title field: 4 (label + bordered input with border)
-    // - Status/Type row: 3 (bordered)
-    // - Priority row: 3 (bordered)
-    // - Separator: 2 (border + margin)
-    // - Description label: 1
-    // - Body border: 2 (top + bottom)
-    // - Body padding: 2 (top + bottom)
-    // Total: ~28 lines of fixed overhead
-    let fixed_overhead: u16 = 28;
-    let body_content_height = (modal_height.saturating_sub(fixed_overhead) as usize).max(3);
-
     // Keyboard handling
     hooks.use_terminal_events({
         move |event| {
@@ -253,7 +231,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                 // Field-specific handling
                 match focused_field.get() {
                     EditField::Title => handle_text_input(&mut title, code),
-                    EditField::Body => handle_body_input(&mut body, &mut body_scroll_offset, code, modal_height),
+                    EditField::Body => handle_body_input(&mut body, &mut body_scroll_offset, code, height),
                     EditField::Status => handle_select_input(&mut status, code),
                     EditField::Type => handle_select_input(&mut ticket_type, code),
                     EditField::Priority => handle_select_input(&mut priority, code),
@@ -289,8 +267,8 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
         ) {
             // Modal content
             View(
-                width: modal_width,
-                height: modal_height,
+                width: 90pct,
+                height: 90pct,
                 flex_direction: FlexDirection::Column,
                 border_style: BorderStyle::Round,
                 border_color: theme.border_focused,
@@ -518,16 +496,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                         let mut elements: Vec<AnyElement<'static>> = Vec::new();
 
                                         let body_scroll = scroll_offset_val;
-
-                                        // Calculate overhead for scroll indicators AND cursor
-                                        // The cursor takes 1 line when body field is focused
-                                        let cursor_overhead = if is_body_focused { 1 } else { 0 };
                                         let has_more_above = body_scroll > 0;
-                                        let has_more_below = body_scroll + body_content_height < total_lines + cursor_overhead;
-                                        let indicator_overhead = if has_more_above { 1 } else { 0 }
-                                            + if has_more_below { 1 } else { 0 };
-                                        let total_overhead = indicator_overhead + cursor_overhead;
-                                        let visible_count = body_content_height.saturating_sub(total_overhead).max(1);
 
                                         if has_more_above {
                                             elements.push(element! {
@@ -535,17 +504,11 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                             }.into());
                                         }
 
-                                        for line in lines.iter().skip(body_scroll).take(visible_count) {
+                                        // Render all lines from scroll offset - flexbox overflow handles clipping
+                                        for line in lines.iter().skip(body_scroll) {
                                             let line_owned = line.to_string();
                                             elements.push(element! {
                                                 Text(content: line_owned, color: theme.text)
-                                            }.into());
-                                        }
-
-                                        let remaining = total_lines.saturating_sub(body_scroll + visible_count);
-                                        if remaining > 0 {
-                                            elements.push(element! {
-                                                Text(content: "↓", color: theme.text_dimmed)
                                             }.into());
                                         }
 
@@ -587,20 +550,14 @@ fn handle_text_input(state: &mut State<String>, code: KeyCode) {
 }
 
 /// Handle text input for body field with scrolling support
-fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>, code: KeyCode, modal_height: u16) {
+fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>, code: KeyCode, terminal_height: u16) {
     let body_text = state.to_string();
     let lines: Vec<&str> = body_text.lines().collect();
     let total_lines = lines.len();
     
-    // Use the same calculation as rendering for consistency
-    // Fixed overhead of ~28 lines for modal chrome, form fields, borders, etc.
-    let fixed_overhead: u16 = 28;
-    let body_content_height = (modal_height.saturating_sub(fixed_overhead) as usize).max(3);
-    
-    // Account for cursor (always present since we're in body input) and worst-case indicators
-    // Worst case: both up and down indicators (2) + cursor (1) = 3 lines of overhead
-    let max_overhead = 3;
-    let effective_visible = body_content_height.saturating_sub(max_overhead).max(1);
+    // Estimate visible lines in body area: ~30% of terminal height after modal chrome
+    // This is approximate since flexbox handles actual sizing
+    let effective_visible = ((terminal_height as usize) * 90 / 100 / 3).max(3);
 
     match code {
         KeyCode::Char(c) if c != 'j' && c != 'k' => {
