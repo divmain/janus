@@ -1,0 +1,10 @@
+---
+source: tests/tui_view_test.rs
+expression: "(vm.list.selected_index, vm.list.scroll_offset, vm.list.visible_count,\nvm.list.tickets.len())"
+---
+(
+    15,
+    10,
+    10,
+    30,
+)

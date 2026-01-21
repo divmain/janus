@@ -1,0 +1,9 @@
+---
+source: tests/tui_view_test.rs
+expression: "(vm.search.is_focused, vm.list.is_focused, vm.detail.is_focused)"
+---
+(
+    false,
+    true,
+    false,
+)

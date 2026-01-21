@@ -1,0 +1,8 @@
+---
+source: tests/tui_view_test.rs
+expression: "(state.selected_index, state.scroll_offset)"
+---
+(
+    3,
+    0,
+)

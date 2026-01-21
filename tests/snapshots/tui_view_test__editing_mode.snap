@@ -1,0 +1,13 @@
+---
+source: tests/tui_view_test.rs
+expression: "(vm.is_editing,\nvm.shortcuts.iter().map(|s| s.key.clone()).collect::<Vec<_>>())"
+---
+(
+    true,
+    [
+        "Tab",
+        "S-Tab",
+        "C-s",
+        "Esc",
+    ],
+)

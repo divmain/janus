@@ -1,0 +1,11 @@
+---
+source: tests/tui_view_test.rs
+expression: "(&vm.empty_state, vm.list.tickets.len(), vm.total_all_tickets)"
+---
+(
+    Some(
+        NoSearchResults,
+    ),
+    0,
+    2,
+)

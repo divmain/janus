@@ -1,0 +1,12 @@
+---
+source: tests/tui_view_test.rs
+expression: "(vm.total_all_tickets, vm.list.tickets.len(), vm.list.selected_index,\nvm.detail.ticket.as_ref().and_then(|t| t.id.clone()),)"
+---
+(
+    5,
+    5,
+    0,
+    Some(
+        "j-1",
+    ),
+)

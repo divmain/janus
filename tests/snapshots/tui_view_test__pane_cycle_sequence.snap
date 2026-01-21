@@ -1,0 +1,9 @@
+---
+source: tests/tui_view_test.rs
+expression: "(pane1, pane2, pane3)"
+---
+(
+    Detail,
+    Search,
+    List,
+)

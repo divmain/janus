@@ -4,6 +4,7 @@
 //! fuzzy search, keyboard navigation, and inline detail viewing.
 
 pub mod handlers;
+pub mod model;
 
 use iocraft::prelude::*;
 use tokio::sync::{Mutex, mpsc};
