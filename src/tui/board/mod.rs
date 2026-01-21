@@ -4,6 +4,7 @@
 //! by status in a kanban-style board layout with columns for each status.
 
 pub mod handlers;
+pub mod model;
 
 use iocraft::prelude::*;
 use tokio::sync::{Mutex, mpsc};

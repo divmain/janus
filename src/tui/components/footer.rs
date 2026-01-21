@@ -7,7 +7,7 @@ use iocraft::prelude::*;
 use crate::tui::theme::theme;
 
 /// A single keyboard shortcut entry
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Shortcut {
     /// The key or key combination (e.g., "q", "Ctrl+S", "Tab")
     pub key: String,
