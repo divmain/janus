@@ -106,13 +106,17 @@ impl TicketCache {
             metadata.insert_into_cache(&tx, *mtime_ns).await?;
         }
 
-        let delete_sql = format!(
-            "DELETE FROM {} WHERE {} = ?1",
-            T::table_name(),
-            T::id_column()
-        );
-        for id in &removed {
-            tx.execute(&delete_sql, [id.as_str()]).await?;
+        if !removed.is_empty() {
+            let placeholders: Vec<String> = (1..=removed.len()).map(|i| format!("?{}", i)).collect();
+            let placeholders_str = placeholders.join(", ");
+            let delete_sql = format!(
+                "DELETE FROM {} WHERE {} IN ({})",
+                T::table_name(),
+                T::id_column(),
+                placeholders_str
+            );
+            let ids: Vec<&str> = removed.iter().map(|id| id.as_str()).collect();
+            tx.execute(&delete_sql, ids).await?;
         }
 
         tx.commit().await?;
