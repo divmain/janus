@@ -96,7 +96,7 @@ pub enum Commands {
         /// Ticket ID (can be partial)
         id: String,
 
-        /// Note text (reads from stdin if not provided)
+        /// Note text (provide as argument or pipe from stdin)
         #[arg(trailing_var_arg = true)]
         text: Vec<String>,
 
