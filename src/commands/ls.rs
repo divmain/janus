@@ -149,9 +149,8 @@ pub async fn cmd_ls(
     let mut display_tickets = filtered;
     sort_tickets_by(&mut display_tickets, sort_by);
 
-    // Apply limit: if --closed with no explicit --limit, default to 20
-    let limit = limit.unwrap_or(if filter_closed { 20 } else { usize::MAX });
-    if limit < display_tickets.len() {
+    // Apply limit (unlimited if not specified)
+    if let Some(limit) = limit && limit < display_tickets.len() {
         display_tickets.truncate(limit);
     }
 

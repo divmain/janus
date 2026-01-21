@@ -228,7 +228,7 @@ pub enum Commands {
         #[arg(long)]
         next_in_plan: Option<String>,
 
-        /// Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
+        /// Maximum tickets to show (unlimited if not specified)
         #[arg(long)]
         limit: Option<usize>,
 

@@ -355,10 +355,13 @@ fn test_ls_closed_default_limit() {
         janus.run_success(&["close", &id, "--no-summary"]);
     }
 
-    // --closed without explicit --limit should default to 20
+    // --closed without explicit --limit should show all tickets (no implicit limit)
     let output = janus.run_success(&["ls", "--closed"]);
     let line_count = output.lines().count();
-    assert_eq!(line_count, 20, "--closed should show 20 tickets by default");
+    assert_eq!(
+        line_count, 30,
+        "--closed should show all tickets when no limit is specified"
+    );
 }
 
 #[test]
