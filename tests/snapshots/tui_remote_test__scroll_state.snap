@@ -1,0 +1,9 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(vm.local_list.selected_index, vm.local_list.scroll_offset,\nvm.local_list.visible_count,)"
+---
+(
+    29,
+    20,
+    10,
+)

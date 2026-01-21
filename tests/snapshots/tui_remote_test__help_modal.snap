@@ -1,0 +1,8 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(vm.modal.show_help, vm.modal.show_filter)"
+---
+(
+    true,
+    false,
+)

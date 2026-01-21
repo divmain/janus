@@ -1,0 +1,9 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(&vm.search.query, vm.search.result_count, vm.local_list.tickets.len(),)"
+---
+(
+    "bug",
+    2,
+    2,
+)

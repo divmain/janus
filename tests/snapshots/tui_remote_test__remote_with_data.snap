@@ -1,0 +1,16 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(vm.header.local_count, vm.header.remote_count, vm.local_list.tickets.len(),\nvm.remote_list.issues.len(),\nvm.detail.local_ticket.as_ref().and_then(|t| t.id.clone()),\nvm.detail.remote_issue.as_ref().map(|i| i.id.clone()),)"
+---
+(
+    3,
+    3,
+    3,
+    3,
+    Some(
+        "j-1",
+    ),
+    Some(
+        "GH-1",
+    ),
+)

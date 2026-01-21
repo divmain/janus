@@ -1,0 +1,8 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(vm.modal.show_error, vm.modal.error.is_some())"
+---
+(
+    true,
+    true,
+)

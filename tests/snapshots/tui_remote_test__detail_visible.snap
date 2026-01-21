@@ -1,0 +1,8 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(vm.detail.is_visible, vm.detail.view_mode)"
+---
+(
+    true,
+    Local,
+)

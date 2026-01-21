@@ -1,0 +1,9 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(state.active_view, state.remote_selected_index, state.remote_scroll_offset)"
+---
+(
+    Remote,
+    3,
+    0,
+)

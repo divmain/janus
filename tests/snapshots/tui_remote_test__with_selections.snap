@@ -1,0 +1,8 @@
+---
+source: tests/tui_remote_test.rs
+expression: "(vm.local_list.selected_ids.len(), vm.local_list.selected_index)"
+---
+(
+    2,
+    0,
+)
