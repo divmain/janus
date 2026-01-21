@@ -138,12 +138,18 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             let mut is_editing_setter = is_editing_setter;
 
             async move {
-                // Collect pending actions from the channel
+                const MAX_BATCH: usize = 10;
+
+                // Collect pending actions from the channel with bounded batch
                 let actions: Vec<TicketAction> = {
                     let mut guard = action_channel.lock().await;
                     let mut actions = Vec::new();
-                    while let Ok(action) = guard.try_recv() {
-                        actions.push(action);
+                    while actions.len() < MAX_BATCH {
+                        if let Ok(action) = guard.try_recv() {
+                            actions.push(action);
+                        } else {
+                            break;
+                        }
                     }
                     actions
                 };
