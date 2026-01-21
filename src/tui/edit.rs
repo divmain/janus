@@ -188,6 +188,10 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
         }
     }
 
+    // Calculate modal size (90% of screen)
+    let modal_width = width * 90 / 100;
+    let modal_height = height * 90 / 100;
+
     // Keyboard handling
     hooks.use_terminal_events({
         move |event| {
@@ -231,7 +235,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                 // Field-specific handling
                 match focused_field.get() {
                     EditField::Title => handle_text_input(&mut title, code),
-                    EditField::Body => handle_body_input(&mut body, &mut body_scroll_offset, code),
+                    EditField::Body => handle_body_input(&mut body, &mut body_scroll_offset, code, modal_height),
                     EditField::Status => handle_select_input(&mut status, code),
                     EditField::Type => handle_select_input(&mut ticket_type, code),
                     EditField::Priority => handle_select_input(&mut priority, code),
@@ -239,10 +243,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
             }
         }
     });
-
-    // Calculate modal size
-    let modal_width = width.saturating_sub(8).min(80);
-    let modal_height = height.saturating_sub(4).min(30);
 
     // Header title
     let header_title = if is_new {
@@ -486,7 +486,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                     let body_text = body.to_string();
                                     let lines: Vec<&str> = body_text.lines().collect();
                                     let total_lines = lines.len();
-                                    let visible_lines: usize = 8;
+                                    let visible_lines: usize = ((modal_height as f32 * 0.4) as usize).max(10);
                                     let scroll_offset_val = body_scroll_offset.get().min(total_lines.saturating_sub(1));
 
                                     if body_text.is_empty() {
@@ -562,11 +562,11 @@ fn handle_text_input(state: &mut State<String>, code: KeyCode) {
 }
 
 /// Handle text input for body field with scrolling support
-fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>, code: KeyCode) {
+fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>, code: KeyCode, modal_height: u16) {
     let body_text = state.to_string();
     let lines: Vec<&str> = body_text.lines().collect();
     let total_lines = lines.len();
-    let visible_lines: usize = 8;
+    let visible_lines: usize = ((modal_height as f32 * 0.4) as usize).max(10);
 
     match code {
         KeyCode::Char(c) if c != 'j' && c != 'k' => {
