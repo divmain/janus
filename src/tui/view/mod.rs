@@ -407,10 +407,13 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                     flex_direction: FlexDirection::Row,
                                     width: 100pct,
                                 ) {
-                                    // Left pane: Ticket list
+                                    // Left pane: Ticket list (fixed width)
                                     View(
                                         width: 35pct,
+                                        min_width: 35pct,
+                                        max_width: 35pct,
                                         height: 100pct,
+                                        flex_shrink: 0.0,
                                     ) {
                                         TicketList(
                                             tickets: filtered.clone(),
@@ -421,10 +424,13 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                         )
                                     }
 
-                                    // Right pane: Ticket detail
+                                    // Right pane: Ticket detail (takes remaining space)
                                     View(
-                                        flex_grow: 1.0,
+                                        width: 65pct,
+                                        min_width: 65pct,
+                                        max_width: 65pct,
                                         height: 100pct,
+                                        flex_shrink: 0.0,
                                     ) {
                                         TicketDetail(
                                             ticket: selected_ticket.clone(),
