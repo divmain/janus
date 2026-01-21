@@ -265,11 +265,108 @@ impl TicketCache {
             && let Ok(stored_version) = row.get::<String>(0)
             && stored_version != CACHE_VERSION
         {
-            return Err(CacheError::CacheVersionMismatch {
-                expected: CACHE_VERSION.to_string(),
-                found: stored_version,
-            });
+            eprintln!("Cache version outdated (v{} -> v{}), rebuilding automatically...", stored_version, CACHE_VERSION);
+            self.rebuild_schema(conn).await?;
+            eprintln!("Cache rebuild complete.");
         }
+
+        Ok(())
+    }
+
+    async fn rebuild_schema(&self, conn: &Connection) -> Result<()> {
+        conn.execute("DROP TABLE IF EXISTS tickets", ()).await?;
+        conn.execute("DROP TABLE IF EXISTS plans", ()).await?;
+        conn.execute("DROP TABLE IF EXISTS meta", ()).await?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tickets (
+                ticket_id TEXT PRIMARY KEY,
+                uuid TEXT,
+                mtime_ns INTEGER NOT NULL,
+                status TEXT,
+                title TEXT,
+                priority INTEGER,
+                ticket_type TEXT,
+                deps TEXT,
+                links TEXT,
+                parent TEXT,
+                created TEXT,
+                external_ref TEXT,
+                remote TEXT,
+                completion_summary TEXT,
+                spawned_from TEXT,
+                spawn_context TEXT,
+                depth INTEGER
+            )",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_priority ON tickets(priority)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(ticket_type)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_status_priority ON tickets(status, priority)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_spawned_from ON tickets(spawned_from)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_depth ON tickets(depth)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS plans (
+                plan_id TEXT PRIMARY KEY,
+                uuid TEXT,
+                mtime_ns INTEGER NOT NULL,
+                title TEXT,
+                created TEXT,
+                structure_type TEXT,
+                tickets_json TEXT,
+                phases_json TEXT
+            )",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_plans_structure_type ON plans(structure_type)",
+            (),
+        )
+        .await?;
 
         Ok(())
     }
