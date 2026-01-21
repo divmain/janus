@@ -29,11 +29,7 @@ pub trait Findable {
     fn find_files() -> Vec<String> {
         let dir = Self::directory();
         DirScanner::find_markdown_files_from_path(&dir).unwrap_or_else(|e| {
-            eprintln!(
-                "Warning: failed to read {} directory: {}",
-                dir.display(),
-                e
-            );
+            eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);
             Vec::new()
         })
     }

@@ -43,11 +43,7 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
         .file_stem()
         .and_then(|s| {
             let id = s.to_string_lossy().into_owned();
-            if id.is_empty() {
-                None
-            } else {
-                Some(id)
-            }
+            if id.is_empty() { None } else { Some(id) }
         })
         .ok_or_else(|| {
             JanusError::InvalidFormat(format!(
