@@ -80,13 +80,13 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Open ticket in $EDITOR
+    /// Open ticket in $EDITOR (requires interactive terminal unless --json is set)
     #[command(visible_alias = "e")]
     Edit {
         /// Ticket ID (can be partial)
         id: String,
 
-        /// Output as JSON (prints file path as JSON instead of opening editor)
+        /// Output as JSON (prints file path without opening editor)
         #[arg(long)]
         json: bool,
     },

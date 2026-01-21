@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, open_in_editor};
 
@@ -9,14 +9,7 @@ use crate::utils::{is_stdin_tty, open_in_editor};
 pub async fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id).await?;
 
-    if is_stdin_tty() {
-        open_in_editor(&ticket.file_path)?;
-    } else {
-        // Non-interactive mode: just print the file path
-        println!("Edit ticket file: {}", ticket.file_path.display());
-    }
-
-    // Output in JSON format if requested
+    // Output in JSON format if requested (skip editor)
     if output_json {
         return CommandOutput::new(json!({
             "id": ticket.id,
@@ -24,6 +17,14 @@ pub async fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
             "action": "edit",
         }))
         .print(output_json);
+    }
+
+    if is_stdin_tty() {
+        open_in_editor(&ticket.file_path)?;
+    } else {
+        eprintln!("Error: Cannot open editor in non-interactive mode.");
+        eprintln!("File location: {}", ticket.file_path.display());
+        return Err(JanusError::InteractiveTerminalRequired);
     }
 
     Ok(())
