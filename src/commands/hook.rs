@@ -201,7 +201,11 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
             fs::create_dir_all(parent).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
                     e.kind(),
-                    format!("Failed to create directory for hook at {}: {}", parent.display(), e),
+                    format!(
+                        "Failed to create directory for hook at {}: {}",
+                        parent.display(),
+                        e
+                    ),
                 ))
             })?;
         }
@@ -214,17 +218,27 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
 
         // Set executable bit on hook scripts
         if *is_executable {
-            let mut perms = fs::metadata(path).map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!("Failed to get metadata for hook at {}: {}", path.display(), e),
-                ))
-            })?.permissions();
+            let mut perms = fs::metadata(path)
+                .map_err(|e| {
+                    JanusError::Io(std::io::Error::new(
+                        e.kind(),
+                        format!(
+                            "Failed to get metadata for hook at {}: {}",
+                            path.display(),
+                            e
+                        ),
+                    ))
+                })?
+                .permissions();
             perms.set_mode(0o755);
             fs::set_permissions(path, perms).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
                     e.kind(),
-                    format!("Failed to set permissions for hook at {}: {}", path.display(), e),
+                    format!(
+                        "Failed to set permissions for hook at {}: {}",
+                        path.display(),
+                        e
+                    ),
                 ))
             })?;
         }

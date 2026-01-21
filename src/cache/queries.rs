@@ -192,17 +192,22 @@ impl TicketCache {
                     error: e.to_string(),
                 })?;
 
-        let status: Option<crate::types::TicketStatus> =
-            if let Some(s) = row.get::<Option<String>>(2).map_err(|e| CacheError::CacheColumnExtraction {
+        let status: Option<crate::types::TicketStatus> = if let Some(s) = row
+            .get::<Option<String>>(2)
+            .map_err(|e| CacheError::CacheColumnExtraction {
                 column: 2,
                 error: e.to_string(),
             })? {
-                Some(s.parse().map_err(|e| CacheError::CacheDataIntegrity(format!(
-                    "failed to parse status for ticket '{:?}': {}", id.as_deref().unwrap_or("unknown"), e
-                )))?)
-            } else {
-                None
-            };
+            Some(s.parse().map_err(|e| {
+                CacheError::CacheDataIntegrity(format!(
+                    "failed to parse status for ticket '{:?}': {}",
+                    id.as_deref().unwrap_or("unknown"),
+                    e
+                ))
+            })?)
+        } else {
+            None
+        };
 
         let title: Option<String> =
             row.get::<Option<String>>(3)
@@ -297,10 +302,14 @@ impl TicketCache {
 
         // Parse ticket_type (optional domain field)
         let ticket_type: Option<crate::types::TicketType> = if let Some(s) = type_str {
-            Some(s.parse().map_err(|e| CacheError::CacheDataIntegrity(format!(
-                "failed to parse ticket_type '{}' for ticket '{:?}': {}",
-                s, id.as_deref().unwrap_or("unknown"), e
-            )))?)
+            Some(s.parse().map_err(|e| {
+                CacheError::CacheDataIntegrity(format!(
+                    "failed to parse ticket_type '{}' for ticket '{:?}': {}",
+                    s,
+                    id.as_deref().unwrap_or("unknown"),
+                    e
+                ))
+            })?)
         } else {
             None
         };
@@ -316,8 +325,9 @@ impl TicketCache {
                 _ => {
                     return Err(CacheError::CacheDataIntegrity(format!(
                         "invalid priority value {} for ticket '{:?}': must be 0-4",
-                        n, id.as_deref().unwrap_or("unknown")
-                    )))
+                        n,
+                        id.as_deref().unwrap_or("unknown")
+                    )));
                 }
             })
         } else {
@@ -326,10 +336,13 @@ impl TicketCache {
 
         // Convert depth from i64 to u32
         let depth: Option<u32> = if let Some(n) = depth_num {
-            Some(u32::try_from(n).map_err(|_| CacheError::CacheDataIntegrity(format!(
-                "depth value {} does not fit in u32 for ticket '{:?}'",
-                n, id.as_deref().unwrap_or("unknown")
-            )))?)
+            Some(u32::try_from(n).map_err(|_| {
+                CacheError::CacheDataIntegrity(format!(
+                    "depth value {} does not fit in u32 for ticket '{:?}'",
+                    n,
+                    id.as_deref().unwrap_or("unknown")
+                ))
+            })?)
         } else {
             None
         };
@@ -426,20 +439,26 @@ impl TicketCache {
 
         // Deserialize tickets for simple plans
         let tickets: Vec<String> = if let Some(json_str) = tickets_json.as_deref() {
-            serde_json::from_str(json_str).map_err(|e| CacheError::CacheDataIntegrity(format!(
-                "failed to deserialize plan tickets JSON for plan '{:?}': {}",
-                id.as_deref().unwrap_or("unknown"), e
-            )))?
+            serde_json::from_str(json_str).map_err(|e| {
+                CacheError::CacheDataIntegrity(format!(
+                    "failed to deserialize plan tickets JSON for plan '{:?}': {}",
+                    id.as_deref().unwrap_or("unknown"),
+                    e
+                ))
+            })?
         } else {
             vec![]
         };
 
         // Deserialize phases for phased plans
         let phases: Vec<CachedPhase> = if let Some(json_str) = phases_json.as_deref() {
-            serde_json::from_str(json_str).map_err(|e| CacheError::CacheDataIntegrity(format!(
-                "failed to deserialize plan phases JSON for plan '{:?}': {}",
-                id.as_deref().unwrap_or("unknown"), e
-            )))?
+            serde_json::from_str(json_str).map_err(|e| {
+                CacheError::CacheDataIntegrity(format!(
+                    "failed to deserialize plan phases JSON for plan '{:?}': {}",
+                    id.as_deref().unwrap_or("unknown"),
+                    e
+                ))
+            })?
         } else {
             vec![]
         };

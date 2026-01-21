@@ -229,7 +229,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let mut search_focused = hooks.use_state(|| false);
 
     // Reload tickets if needed - use async handler instead of sync
-    if needs_reload.get() {
+    if needs_reload.get() && !is_loading.get() {
         needs_reload.set(false);
         is_loading.set(true);
         load_handler.clone()(());

@@ -2752,10 +2752,12 @@ fn test_cache_path_command() {
 
     assert!(cache_path.is_absolute());
     assert!(cache_path.to_string_lossy().contains("janus"));
-    assert!(cache_path
-        .extension()
-        .map(|ext| ext == "db")
-        .unwrap_or(false));
+    assert!(
+        cache_path
+            .extension()
+            .map(|ext| ext == "db")
+            .unwrap_or(false)
+    );
 }
 
 #[test]

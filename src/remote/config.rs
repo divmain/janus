@@ -175,7 +175,11 @@ impl Config {
             fs::create_dir_all(parent).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
                     e.kind(),
-                    format!("Failed to create directory for config at {}: {}", parent.display(), e),
+                    format!(
+                        "Failed to create directory for config at {}: {}",
+                        parent.display(),
+                        e
+                    ),
                 ))
             })?;
         }

@@ -123,17 +123,24 @@ pub(crate) fn edit_in_editor(content: &str) -> Result<String> {
 
     // Read the edited content
     let mut edited = String::new();
-    std::fs::File::open(&temp_path).map_err(|e| {
-        JanusError::Io(std::io::Error::new(
-            e.kind(),
-            format!("Failed to open temp file for editing at {}: {}", temp_path.display(), e),
-        ))
-    })?.read_to_string(&mut edited).map_err(|e| {
-        JanusError::Io(std::io::Error::new(
-            e.kind(),
-            format!("Failed to read temp file at {}: {}", temp_path.display(), e),
-        ))
-    })?;
+    std::fs::File::open(&temp_path)
+        .map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to open temp file for editing at {}: {}",
+                    temp_path.display(),
+                    e
+                ),
+            ))
+        })?
+        .read_to_string(&mut edited)
+        .map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to read temp file at {}: {}", temp_path.display(), e),
+            ))
+        })?;
 
     Ok(edited)
 }

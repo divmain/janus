@@ -29,7 +29,11 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
     let mut content = fs::read_to_string(&ticket.file_path).map_err(|e| {
         JanusError::Io(std::io::Error::new(
             e.kind(),
-            format!("Failed to read ticket at {}: {}", ticket.file_path.display(), e),
+            format!(
+                "Failed to read ticket at {}: {}",
+                ticket.file_path.display(),
+                e
+            ),
         ))
     })?;
 
@@ -45,7 +49,11 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
     fs::write(&ticket.file_path, content).map_err(|e| {
         JanusError::Io(std::io::Error::new(
             e.kind(),
-            format!("Failed to write ticket at {}: {}", ticket.file_path.display(), e),
+            format!(
+                "Failed to write ticket at {}: {}",
+                ticket.file_path.display(),
+                e
+            ),
         ))
     })?;
 
