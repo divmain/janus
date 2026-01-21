@@ -1,0 +1,10 @@
+---
+source: tests/tui_board_test.rs
+expression: "(&vm.empty_state, vm.total_all_tickets)"
+---
+(
+    Some(
+        NoJanusDir,
+    ),
+    0,
+)

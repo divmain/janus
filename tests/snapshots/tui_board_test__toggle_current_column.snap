@@ -1,0 +1,14 @@
+---
+source: tests/tui_board_test.rs
+expression: "(state.visible_columns, state.current_column)"
+---
+(
+    [
+        true,
+        false,
+        true,
+        true,
+        true,
+    ],
+    0,
+)

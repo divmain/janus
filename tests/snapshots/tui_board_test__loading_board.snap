@@ -1,0 +1,11 @@
+---
+source: tests/tui_board_test.rs
+expression: "(&vm.empty_state, vm.is_editing, vm.total_all_tickets)"
+---
+(
+    Some(
+        Loading,
+    ),
+    false,
+    0,
+)

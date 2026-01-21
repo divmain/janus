@@ -1,0 +1,7 @@
+---
+source: tests/tui_board_test.rs
+expression: selected_id
+---
+Some(
+    "j-2",
+)

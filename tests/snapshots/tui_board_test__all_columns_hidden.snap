@@ -1,0 +1,8 @@
+---
+source: tests/tui_board_test.rs
+expression: "(vm.columns.len(), &vm.column_toggles)"
+---
+(
+    0,
+    "[ ][ ][ ][ ][ ]",
+)

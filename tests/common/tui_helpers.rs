@@ -3,6 +3,8 @@
 //! This module provides utilities for testing TUI components including
 //! event simulation helpers.
 
+#![allow(dead_code)]
+
 use iocraft::prelude::*;
 
 /// Build a key press event

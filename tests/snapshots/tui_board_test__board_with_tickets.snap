@@ -1,0 +1,31 @@
+---
+source: tests/tui_board_test.rs
+expression: column_info
+---
+[
+    (
+        "NEW",
+        1,
+        true,
+    ),
+    (
+        "NEXT",
+        1,
+        false,
+    ),
+    (
+        "IN PROGRESS",
+        1,
+        false,
+    ),
+    (
+        "COMPLETE",
+        1,
+        false,
+    ),
+    (
+        "CANCELLED",
+        1,
+        false,
+    ),
+]

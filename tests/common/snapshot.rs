@@ -19,6 +19,8 @@
 //! }
 //! ```
 
+#![allow(dead_code)]
+
 /// Returns insta filter settings for normalizing dynamic values in TUI output.
 ///
 /// Use this with `insta::with_settings!` for custom snapshot assertions:

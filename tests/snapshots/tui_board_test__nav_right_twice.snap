@@ -1,0 +1,8 @@
+---
+source: tests/tui_board_test.rs
+expression: "(state.current_column, state.current_row)"
+---
+(
+    2,
+    0,
+)

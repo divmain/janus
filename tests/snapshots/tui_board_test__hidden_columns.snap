@@ -1,0 +1,11 @@
+---
+source: tests/tui_board_test.rs
+expression: "(visible_columns, &vm.column_toggles)"
+---
+(
+    [
+        "NEW",
+        "COMPLETE",
+    ],
+    "[N][ ][ ][C][ ]",
+)

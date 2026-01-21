@@ -1,0 +1,8 @@
+---
+source: tests/tui_board_test.rs
+expression: "(&state.search_query, state.search_focused)"
+---
+(
+    "test",
+    false,
+)
