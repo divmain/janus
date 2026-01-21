@@ -191,6 +191,24 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     // Calculate modal size (90% of screen)
     let modal_width = width * 90 / 100;
     let modal_height = height * 90 / 100;
+    
+    // Calculate available height for body text area content
+    // This accounts for all fixed elements in the modal layout:
+    // - Modal border: 2 (top + bottom)
+    // - Header: 2 (content + bottom border)  
+    // - Footer: 1
+    // - Form padding: 2 (top + bottom)
+    // - Form gaps: 4 (gap:1 between ~5 elements)
+    // - Title field: 4 (label + bordered input with border)
+    // - Status/Type row: 3 (bordered)
+    // - Priority row: 3 (bordered)
+    // - Separator: 2 (border + margin)
+    // - Description label: 1
+    // - Body border: 2 (top + bottom)
+    // - Body padding: 2 (top + bottom)
+    // Total: ~28 lines of fixed overhead
+    let fixed_overhead: u16 = 28;
+    let body_content_height = (modal_height.saturating_sub(fixed_overhead) as usize).max(3);
 
     // Keyboard handling
     hooks.use_terminal_events({
@@ -321,6 +339,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                         padding: 1,
                         flex_direction: FlexDirection::Column,
                         gap: 1,
+                        overflow: Overflow::Hidden,
                     ) {
                         // Title field
                         View(flex_direction: FlexDirection::Column) {
@@ -481,13 +500,13 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                             padding: 1,
                             overflow: Overflow::Hidden,
                         ) {
-                            View(flex_direction: FlexDirection::Column) {
+                            View(flex_direction: FlexDirection::Column, height: 100pct) {
                                 #({
                                     let body_text = body.to_string();
                                     let lines: Vec<&str> = body_text.lines().collect();
                                     let total_lines = lines.len();
-                                    let visible_lines: usize = ((modal_height as f32 * 0.4) as usize).max(10);
                                     let scroll_offset_val = body_scroll_offset.get().min(total_lines.saturating_sub(1));
+                                    let is_body_focused = focused_field.get() == EditField::Body;
 
                                     if body_text.is_empty() {
                                         vec![
@@ -500,15 +519,21 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
 
                                         let body_scroll = scroll_offset_val;
 
-                                        if body_scroll > 0 {
+                                        // Calculate overhead for scroll indicators AND cursor
+                                        // The cursor takes 1 line when body field is focused
+                                        let cursor_overhead = if is_body_focused { 1 } else { 0 };
+                                        let has_more_above = body_scroll > 0;
+                                        let has_more_below = body_scroll + body_content_height < total_lines + cursor_overhead;
+                                        let indicator_overhead = if has_more_above { 1 } else { 0 }
+                                            + if has_more_below { 1 } else { 0 };
+                                        let total_overhead = indicator_overhead + cursor_overhead;
+                                        let visible_count = body_content_height.saturating_sub(total_overhead).max(1);
+
+                                        if has_more_above {
                                             elements.push(element! {
                                                 Text(content: "↑", color: theme.text_dimmed)
                                             }.into());
                                         }
-
-                                        let indicator_overhead = if body_scroll > 0 { 1 } else { 0 }
-                                            + if body_scroll + visible_lines < total_lines { 1 } else { 0 };
-                                        let visible_count = visible_lines.saturating_sub(indicator_overhead).max(1);
 
                                         for line in lines.iter().skip(body_scroll).take(visible_count) {
                                             let line_owned = line.to_string();
@@ -524,7 +549,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                             }.into());
                                         }
 
-                                        if focused_field.get() == EditField::Body {
+                                        if is_body_focused {
                                             elements.push(element! {
                                                 Text(content: "_", color: theme.highlight)
                                             }.into());
@@ -566,7 +591,16 @@ fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>
     let body_text = state.to_string();
     let lines: Vec<&str> = body_text.lines().collect();
     let total_lines = lines.len();
-    let visible_lines: usize = ((modal_height as f32 * 0.4) as usize).max(10);
+    
+    // Use the same calculation as rendering for consistency
+    // Fixed overhead of ~28 lines for modal chrome, form fields, borders, etc.
+    let fixed_overhead: u16 = 28;
+    let body_content_height = (modal_height.saturating_sub(fixed_overhead) as usize).max(3);
+    
+    // Account for cursor (always present since we're in body input) and worst-case indicators
+    // Worst case: both up and down indicators (2) + cursor (1) = 3 lines of overhead
+    let max_overhead = 3;
+    let effective_visible = body_content_height.saturating_sub(max_overhead).max(1);
 
     match code {
         KeyCode::Char(c) if c != 'j' && c != 'k' => {
@@ -586,8 +620,8 @@ fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>
         }
         KeyCode::Down | KeyCode::Char('j') => {
             let current = scroll_offset.get();
-
-            if current.saturating_add(1) + visible_lines < total_lines {
+            let max_scroll = total_lines.saturating_sub(effective_visible);
+            if current < max_scroll {
                 scroll_offset.set(current.saturating_add(1));
             }
         }
@@ -599,27 +633,22 @@ fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>
         }
         KeyCode::PageDown => {
             let current = scroll_offset.get();
-            let page_size = visible_lines.saturating_sub(1);
-            let new_offset = current.saturating_add(page_size);
-
-            if new_offset.saturating_add(visible_lines) < total_lines {
-                scroll_offset.set(new_offset);
-            } else if total_lines > visible_lines {
-                scroll_offset.set(total_lines.saturating_sub(visible_lines));
-            }
+            let page_size = effective_visible.saturating_sub(1).max(1);
+            let max_scroll = total_lines.saturating_sub(effective_visible);
+            let new_offset = current.saturating_add(page_size).min(max_scroll);
+            scroll_offset.set(new_offset);
         }
         KeyCode::PageUp => {
             let current = scroll_offset.get();
-            let page_size = visible_lines.saturating_sub(1);
+            let page_size = effective_visible.saturating_sub(1).max(1);
             scroll_offset.set(current.saturating_sub(page_size));
         }
         KeyCode::Home => {
             scroll_offset.set(0);
         }
         KeyCode::End => {
-            if total_lines > visible_lines {
-                scroll_offset.set(total_lines.saturating_sub(visible_lines));
-            }
+            let max_scroll = total_lines.saturating_sub(effective_visible);
+            scroll_offset.set(max_scroll);
         }
         _ => {}
     }
