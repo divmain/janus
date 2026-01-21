@@ -35,14 +35,34 @@ pub fn TicketList(props: &TicketListProps) -> impl Into<AnyElement<'static>> {
         theme.border
     };
 
-    // Calculate which tickets to show
+    // Calculate which tickets to show, accounting for scroll indicator lines
     let start = props.scroll_offset;
-    let end = (start + props.visible_height).min(props.tickets.len());
+    let total = props.tickets.len();
+
+    // Check if we need the "more above" indicator
+    let has_more_above = start > 0;
+
+    // Calculate how many ticket rows we can fit
+    // Start with visible_height and subtract space for indicators
+    let above_indicator_lines = if has_more_above { 1 } else { 0 };
+
+    // Tentatively calculate how many tickets we can show
+    let tentative_rows = props.visible_height.saturating_sub(above_indicator_lines);
+    let tentative_end = (start + tentative_rows).min(total);
+
+    // Check if we'll need the "more below" indicator
+    let has_more_below = tentative_end < total;
+    let below_indicator_lines = if has_more_below { 1 } else { 0 };
+
+    // Final calculation: subtract both indicators from available space
+    let available_rows = props
+        .visible_height
+        .saturating_sub(above_indicator_lines + below_indicator_lines);
+    let end = (start + available_rows).min(total);
     let visible_tickets: Vec<_> = props.tickets[start..end].to_vec();
 
-    // Track if we need scroll indicators
-    let has_more_above = start > 0;
-    let has_more_below = end < props.tickets.len();
+    // Recalculate has_more_below with final end (may have changed)
+    let has_more_below = end < total;
 
     element! {
         View(
@@ -78,9 +98,6 @@ pub fn TicketList(props: &TicketListProps) -> impl Into<AnyElement<'static>> {
                     )
                 }
             }))
-
-            // Fill remaining space
-            View(flex_grow: 1.0)
 
             // "More below" indicator
             #(if has_more_below {

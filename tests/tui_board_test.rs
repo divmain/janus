@@ -10,13 +10,16 @@
 
 mod common;
 
-use common::mock_data::{mock_ticket, mock_tickets, TicketBuilder};
+use common::mock_data::{TicketBuilder, mock_ticket, mock_tickets};
 use janus::tui::board::handlers::key_to_action;
 use janus::tui::board::model::*;
 use janus::tui::repository::InitResult;
 use janus::types::{TicketPriority, TicketStatus, TicketType};
 
 use iocraft::prelude::{KeyCode, KeyModifiers};
+
+// Default column height for tests
+const TEST_COLUMN_HEIGHT: usize = 10;
 
 // ============================================================================
 // View Model Snapshot Tests
@@ -30,7 +33,7 @@ fn test_board_view_model_empty_state() {
         visible_columns: [true; 5],
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     // Snapshot the key properties of empty state
     insta::assert_debug_snapshot!(
@@ -53,7 +56,7 @@ fn test_board_view_model_loading() {
         visible_columns: [true; 5],
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!(
         "loading_board",
@@ -69,7 +72,7 @@ fn test_board_view_model_no_janus_dir() {
         visible_columns: [true; 5],
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!("no_janus_dir", (&vm.empty_state, vm.total_all_tickets));
 }
@@ -88,7 +91,7 @@ fn test_board_view_model_with_tickets_in_each_column() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     // Snapshot column info: (name, ticket_count, is_active)
     let column_info: Vec<_> = vm
@@ -114,7 +117,7 @@ fn test_board_view_model_with_multiple_tickets_per_column() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     let column_counts: Vec<_> = vm
         .columns
@@ -138,7 +141,7 @@ fn test_board_view_model_with_search() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!(
         "board_search",
@@ -165,7 +168,7 @@ fn test_board_view_model_search_no_results() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!(
         "board_search_no_results",
@@ -188,7 +191,7 @@ fn test_board_view_model_hidden_columns() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     let visible_columns: Vec<_> = vm.columns.iter().map(|c| c.name).collect();
     insta::assert_debug_snapshot!("hidden_columns", (visible_columns, &vm.column_toggles));
@@ -202,7 +205,7 @@ fn test_board_view_model_all_columns_hidden() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!("all_columns_hidden", (vm.columns.len(), &vm.column_toggles));
 }
@@ -222,7 +225,7 @@ fn test_board_view_model_column_toggles_string() {
             init_result: InitResult::Ok,
             ..Default::default()
         };
-        let vm = compute_board_view_model(&state);
+        let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
         assert_eq!(
             vm.column_toggles, expected,
             "Failed for visible_columns: {:?}",
@@ -245,7 +248,7 @@ fn test_board_view_model_selected_ticket() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     // Check selected ticket is j-2
     let selected_id = vm.selected_ticket.as_ref().and_then(|t| t.id.clone());
@@ -261,7 +264,7 @@ fn test_board_view_model_editing_mode() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!(
         "editing_mode",
@@ -286,7 +289,7 @@ fn test_board_view_model_editing_existing() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     assert!(vm.is_editing);
 }
@@ -305,7 +308,7 @@ fn test_board_view_model_active_column_selection() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     let active_columns: Vec<_> = vm
         .columns
@@ -327,7 +330,7 @@ fn test_board_view_model_search_focused_no_active_column() {
         init_result: InitResult::Ok,
         ..Default::default()
     };
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     let active_columns: Vec<_> = vm
         .columns
@@ -359,8 +362,8 @@ fn test_navigation_action_sequence() {
     };
 
     // Navigate right twice
-    let state = reduce_board_state(state, BoardAction::MoveRight);
-    let state = reduce_board_state(state, BoardAction::MoveRight);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!("nav_right_twice", (state.current_column, state.current_row));
 }
@@ -382,7 +385,7 @@ fn test_navigation_sequence_with_row_adjustment() {
     };
 
     // Navigate right to column 1 (Next), which has no tickets
-    let state = reduce_board_state(state, BoardAction::MoveRight);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
 
     // Row should be adjusted to 0 (max for empty column)
     insta::assert_debug_snapshot!(
@@ -401,7 +404,7 @@ fn test_column_toggle_sequence() {
     };
 
     // Hide current column
-    let state = reduce_board_state(state, BoardAction::ToggleColumn(1));
+    let state = reduce_board_state(state, BoardAction::ToggleColumn(1), TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!(
         "toggle_current_column",
@@ -418,9 +421,9 @@ fn test_toggle_multiple_columns() {
     };
 
     // Toggle off columns 1, 2, 3
-    let state = reduce_board_state(state, BoardAction::ToggleColumn(1));
-    let state = reduce_board_state(state, BoardAction::ToggleColumn(2));
-    let state = reduce_board_state(state, BoardAction::ToggleColumn(3));
+    let state = reduce_board_state(state, BoardAction::ToggleColumn(1), TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(state, BoardAction::ToggleColumn(2), TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(state, BoardAction::ToggleColumn(3), TEST_COLUMN_HEIGHT);
 
     insta::assert_debug_snapshot!("toggle_multiple_columns", state.visible_columns);
 }
@@ -434,7 +437,7 @@ fn test_toggle_column_back_on() {
     };
 
     // Toggle column 1 back on
-    let state = reduce_board_state(state, BoardAction::ToggleColumn(1));
+    let state = reduce_board_state(state, BoardAction::ToggleColumn(1), TEST_COLUMN_HEIGHT);
 
     assert!(
         state.visible_columns[1],
@@ -450,13 +453,17 @@ fn test_search_flow() {
     };
 
     // Enter search mode
-    let state = reduce_board_state(state, BoardAction::FocusSearch);
-    let state = reduce_board_state(state, BoardAction::UpdateSearch("test".to_string()));
+    let state = reduce_board_state(state, BoardAction::FocusSearch, TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(
+        state,
+        BoardAction::UpdateSearch("test".to_string()),
+        TEST_COLUMN_HEIGHT,
+    );
 
     insta::assert_debug_snapshot!("search_active", (&state.search_query, state.search_focused));
 
     // Exit search
-    let state = reduce_board_state(state, BoardAction::ExitSearch);
+    let state = reduce_board_state(state, BoardAction::ExitSearch, TEST_COLUMN_HEIGHT);
     insta::assert_debug_snapshot!("search_exited", (&state.search_query, state.search_focused));
 }
 
@@ -470,7 +477,7 @@ fn test_search_clear_and_exit() {
     };
 
     // Clear and exit
-    let state = reduce_board_state(state, BoardAction::ClearSearchAndExit);
+    let state = reduce_board_state(state, BoardAction::ClearSearchAndExit, TEST_COLUMN_HEIGHT);
 
     assert!(
         state.search_query.is_empty(),
@@ -487,11 +494,11 @@ fn test_edit_mode_flow() {
     };
 
     // Enter create mode
-    let state = reduce_board_state(state, BoardAction::CreateNew);
+    let state = reduce_board_state(state, BoardAction::CreateNew, TEST_COLUMN_HEIGHT);
     assert_eq!(state.edit_mode, Some(EditMode::Creating));
 
     // Cancel edit
-    let state = reduce_board_state(state, BoardAction::CancelEdit);
+    let state = reduce_board_state(state, BoardAction::CancelEdit, TEST_COLUMN_HEIGHT);
     assert_eq!(state.edit_mode, None);
 }
 
@@ -507,16 +514,16 @@ fn test_vertical_navigation_bounds() {
     };
 
     // Move up at top - should stay at 0
-    let state = reduce_board_state(state, BoardAction::MoveUp);
+    let state = reduce_board_state(state, BoardAction::MoveUp, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_row, 0);
 
     // Move down twice - should stop at 1 (max)
-    let state = reduce_board_state(state, BoardAction::MoveDown);
-    let state = reduce_board_state(state, BoardAction::MoveDown);
+    let state = reduce_board_state(state, BoardAction::MoveDown, TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(state, BoardAction::MoveDown, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_row, 1);
 
     // Move down again - should stay at 1
-    let state = reduce_board_state(state, BoardAction::MoveDown);
+    let state = reduce_board_state(state, BoardAction::MoveDown, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_row, 1);
 }
 
@@ -530,18 +537,18 @@ fn test_horizontal_navigation_bounds() {
     };
 
     // Move left at leftmost - should stay at 0
-    let state = reduce_board_state(state, BoardAction::MoveLeft);
+    let state = reduce_board_state(state, BoardAction::MoveLeft, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 0);
 
     // Move to rightmost
-    let state = reduce_board_state(state, BoardAction::MoveRight);
-    let state = reduce_board_state(state, BoardAction::MoveRight);
-    let state = reduce_board_state(state, BoardAction::MoveRight);
-    let state = reduce_board_state(state, BoardAction::MoveRight);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 4);
 
     // Move right at rightmost - should stay at 4
-    let state = reduce_board_state(state, BoardAction::MoveRight);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 4);
 }
 
@@ -555,15 +562,15 @@ fn test_navigation_skips_hidden_columns() {
     };
 
     // Move right should skip to column 3
-    let state = reduce_board_state(state, BoardAction::MoveRight);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 3);
 
     // Move right again should stay at 3 (rightmost visible)
-    let state = reduce_board_state(state, BoardAction::MoveRight);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 3);
 
     // Move left should go back to 0
-    let state = reduce_board_state(state, BoardAction::MoveLeft);
+    let state = reduce_board_state(state, BoardAction::MoveLeft, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 0);
 }
 
@@ -739,6 +746,26 @@ fn test_key_to_action_unknown_keys() {
     );
 }
 
+#[test]
+fn test_key_to_action_scroll_navigation() {
+    assert_eq!(
+        key_to_action(KeyCode::Char('g'), KeyModifiers::NONE, false),
+        Some(BoardAction::GoToTop)
+    );
+    assert_eq!(
+        key_to_action(KeyCode::Char('G'), KeyModifiers::NONE, false),
+        Some(BoardAction::GoToBottom)
+    );
+    assert_eq!(
+        key_to_action(KeyCode::PageDown, KeyModifiers::NONE, false),
+        Some(BoardAction::PageDown)
+    );
+    assert_eq!(
+        key_to_action(KeyCode::PageUp, KeyModifiers::NONE, false),
+        Some(BoardAction::PageUp)
+    );
+}
+
 // ============================================================================
 // Edge Case Tests
 // ============================================================================
@@ -763,7 +790,7 @@ fn test_board_with_rich_ticket_data() {
         ..Default::default()
     };
 
-    let vm = compute_board_view_model(&state);
+    let vm = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
     // Verify the ticket is in the right column and selected
     let wip_column = vm
@@ -865,7 +892,7 @@ fn test_toggle_out_of_bounds_column() {
     };
 
     // Toggle column 10 (out of bounds) - should do nothing
-    let state = reduce_board_state(state, BoardAction::ToggleColumn(10));
+    let state = reduce_board_state(state, BoardAction::ToggleColumn(10), TEST_COLUMN_HEIGHT);
     assert_eq!(state.visible_columns, [true; 5]);
 }
 
@@ -886,20 +913,20 @@ fn test_complex_navigation_scenario() {
     };
 
     // User navigates: down, right, down, search, exit search, left
-    let state = reduce_board_state(state, BoardAction::MoveDown);
+    let state = reduce_board_state(state, BoardAction::MoveDown, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_row, 1);
 
-    let state = reduce_board_state(state, BoardAction::MoveRight);
+    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 1);
     // Row should be adjusted since column 1 has only 1 ticket
     assert_eq!(state.current_row, 0);
 
-    let state = reduce_board_state(state, BoardAction::FocusSearch);
+    let state = reduce_board_state(state, BoardAction::FocusSearch, TEST_COLUMN_HEIGHT);
     assert!(state.search_focused);
 
-    let state = reduce_board_state(state, BoardAction::ExitSearch);
+    let state = reduce_board_state(state, BoardAction::ExitSearch, TEST_COLUMN_HEIGHT);
     assert!(!state.search_focused);
 
-    let state = reduce_board_state(state, BoardAction::MoveLeft);
+    let state = reduce_board_state(state, BoardAction::MoveLeft, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 0);
 }

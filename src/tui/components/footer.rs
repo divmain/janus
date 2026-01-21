@@ -87,6 +87,7 @@ pub fn board_shortcuts() -> Vec<Shortcut> {
     vec![
         Shortcut::new("h/l", "Column"),
         Shortcut::new("j/k", "Card"),
+        Shortcut::new("g/G", "Top/Bot"),
         Shortcut::new("/", "Search"),
         Shortcut::new("e", "Edit"),
         Shortcut::new("s/S", "Move Right/Left"),

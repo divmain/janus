@@ -13,7 +13,7 @@ mod common;
 
 use common::fixtures::FixtureGuard;
 use common::mock_data::{
-    mock_linked_ticket, mock_remote_issue, mock_ticket, RemoteIssueBuilder, TicketBuilder,
+    RemoteIssueBuilder, TicketBuilder, mock_linked_ticket, mock_remote_issue, mock_ticket,
 };
 use janus::remote::RemoteStatus;
 use janus::tui::remote::model::*;
@@ -938,13 +938,17 @@ fn test_linked_tickets_fixture_loads() {
     let _guard = FixtureGuard::new("linked_tickets");
 
     // Load tickets from the fixture using the async runtime
-    let tickets: Vec<janus::types::TicketMetadata> =
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            janus::ticket::get_all_tickets().await
-        }).expect("Failed to load tickets from linked_tickets fixture");
+    let tickets: Vec<janus::types::TicketMetadata> = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { janus::ticket::get_all_tickets().await })
+        .expect("Failed to load tickets from linked_tickets fixture");
 
     // Verify we have 3 tickets
-    assert_eq!(tickets.len(), 3, "Expected 3 tickets in linked_tickets fixture");
+    assert_eq!(
+        tickets.len(),
+        3,
+        "Expected 3 tickets in linked_tickets fixture"
+    );
 
     // Find each ticket by ID
     let linear_ticket = tickets.iter().find(|t| t.id.as_deref() == Some("j-lin1"));
@@ -952,9 +956,18 @@ fn test_linked_tickets_fixture_loads() {
     let unlinked_ticket = tickets.iter().find(|t| t.id.as_deref() == Some("j-unlk"));
 
     // Verify all tickets exist
-    assert!(linear_ticket.is_some(), "Linear-linked ticket j-lin1 should exist");
-    assert!(github_ticket.is_some(), "GitHub-linked ticket j-gh01 should exist");
-    assert!(unlinked_ticket.is_some(), "Unlinked ticket j-unlk should exist");
+    assert!(
+        linear_ticket.is_some(),
+        "Linear-linked ticket j-lin1 should exist"
+    );
+    assert!(
+        github_ticket.is_some(),
+        "GitHub-linked ticket j-gh01 should exist"
+    );
+    assert!(
+        unlinked_ticket.is_some(),
+        "Unlinked ticket j-unlk should exist"
+    );
 
     // Verify remote references
     let linear_ticket = linear_ticket.unwrap();
@@ -983,19 +996,28 @@ fn test_linked_tickets_fixture_loads() {
 fn test_linked_tickets_fixture_statuses() {
     let _guard = FixtureGuard::new("linked_tickets");
 
-    let tickets: Vec<janus::types::TicketMetadata> =
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            janus::ticket::get_all_tickets().await
-        }).expect("Failed to load tickets from linked_tickets fixture");
+    let tickets: Vec<janus::types::TicketMetadata> = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { janus::ticket::get_all_tickets().await })
+        .expect("Failed to load tickets from linked_tickets fixture");
 
     // Verify statuses
-    let linear_ticket = tickets.iter().find(|t| t.id.as_deref() == Some("j-lin1")).unwrap();
+    let linear_ticket = tickets
+        .iter()
+        .find(|t| t.id.as_deref() == Some("j-lin1"))
+        .unwrap();
     assert_eq!(linear_ticket.status, Some(TicketStatus::InProgress));
 
-    let github_ticket = tickets.iter().find(|t| t.id.as_deref() == Some("j-gh01")).unwrap();
+    let github_ticket = tickets
+        .iter()
+        .find(|t| t.id.as_deref() == Some("j-gh01"))
+        .unwrap();
     assert_eq!(github_ticket.status, Some(TicketStatus::New));
 
-    let unlinked_ticket = tickets.iter().find(|t| t.id.as_deref() == Some("j-unlk")).unwrap();
+    let unlinked_ticket = tickets
+        .iter()
+        .find(|t| t.id.as_deref() == Some("j-unlk"))
+        .unwrap();
     assert_eq!(unlinked_ticket.status, Some(TicketStatus::Next));
 }
 
@@ -1012,7 +1034,11 @@ fn test_mock_linked_ticket_helper() {
 #[test]
 fn test_view_model_with_linked_tickets() {
     // Test that linked tickets work correctly in the view model
-    let linked_ticket = mock_linked_ticket("j-linked", "github:owner/repo/123", TicketStatus::InProgress);
+    let linked_ticket = mock_linked_ticket(
+        "j-linked",
+        "github:owner/repo/123",
+        TicketStatus::InProgress,
+    );
     let unlinked_ticket = mock_ticket("j-unlinked", TicketStatus::New);
 
     let remote_issue = mock_remote_issue("123", RemoteStatus::Open);

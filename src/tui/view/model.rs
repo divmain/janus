@@ -10,7 +10,7 @@ use crate::tui::components::{
     browser_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts, search_shortcuts,
 };
 use crate::tui::repository::InitResult;
-use crate::tui::search::{filter_tickets, FilteredTicket};
+use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 
@@ -988,5 +988,122 @@ mod tests {
                 ticket_id: "j-123".to_string()
             }
         );
+    }
+
+    // ========================================================================
+    // Scroll Adjustment Tests
+    // ========================================================================
+
+    #[test]
+    fn test_view_scroll_down_adjusts_offset() {
+        let mut state = ViewState {
+            tickets: (0..30)
+                .map(|i| {
+                    make_ticket(
+                        &format!("j-{}", i),
+                        &format!("Task {}", i),
+                        TicketStatus::New,
+                    )
+                })
+                .collect(),
+            selected_index: 9, // At the boundary of visible area
+            scroll_offset: 0,
+            ..default_state()
+        };
+
+        // Move down with list_height=10 should scroll when going past visible
+        state = reduce_view_state(state, ViewAction::MoveDown, 10);
+        assert_eq!(state.selected_index, 10);
+        assert_eq!(state.scroll_offset, 1, "Should scroll down");
+    }
+
+    #[test]
+    fn test_view_scroll_up_adjusts_offset() {
+        let mut state = ViewState {
+            tickets: (0..30)
+                .map(|i| {
+                    make_ticket(
+                        &format!("j-{}", i),
+                        &format!("Task {}", i),
+                        TicketStatus::New,
+                    )
+                })
+                .collect(),
+            selected_index: 10,
+            scroll_offset: 10, // Scrolled down
+            ..default_state()
+        };
+
+        // Move up should scroll up
+        state = reduce_view_state(state, ViewAction::MoveUp, 10);
+        assert_eq!(state.selected_index, 9);
+        assert_eq!(state.scroll_offset, 9, "Should scroll up");
+    }
+
+    #[test]
+    fn test_view_go_to_bottom_large_list() {
+        let mut state = ViewState {
+            tickets: (0..100)
+                .map(|i| {
+                    make_ticket(
+                        &format!("j-{}", i),
+                        &format!("Task {}", i),
+                        TicketStatus::New,
+                    )
+                })
+                .collect(),
+            selected_index: 0,
+            scroll_offset: 0,
+            ..default_state()
+        };
+
+        state = reduce_view_state(state, ViewAction::GoToBottom, 20);
+        assert_eq!(state.selected_index, 99);
+        // scroll_offset should position so last item is visible
+        assert!(state.scroll_offset >= 80, "Should scroll to show bottom");
+    }
+
+    #[test]
+    fn test_view_page_down_large_list() {
+        let mut state = ViewState {
+            tickets: (0..100)
+                .map(|i| {
+                    make_ticket(
+                        &format!("j-{}", i),
+                        &format!("Task {}", i),
+                        TicketStatus::New,
+                    )
+                })
+                .collect(),
+            selected_index: 0,
+            scroll_offset: 0,
+            ..default_state()
+        };
+
+        // Page down with height 20 should move 10 (half page)
+        state = reduce_view_state(state, ViewAction::PageDown, 20);
+        assert_eq!(state.selected_index, 10);
+    }
+
+    #[test]
+    fn test_view_model_scroll_info() {
+        let state = ViewState {
+            tickets: (0..50)
+                .map(|i| {
+                    make_ticket(
+                        &format!("j-{}", i),
+                        &format!("Task {}", i),
+                        TicketStatus::New,
+                    )
+                })
+                .collect(),
+            selected_index: 25,
+            scroll_offset: 20,
+            ..default_state()
+        };
+
+        let vm = compute_view_model(&state, 10);
+        assert_eq!(vm.list.scroll_offset, 20);
+        assert_eq!(vm.list.selected_index, 25);
     }
 }

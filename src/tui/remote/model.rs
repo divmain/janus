@@ -13,7 +13,7 @@ use crate::tui::components::toast::Toast;
 use crate::types::TicketMetadata;
 
 use super::filter::{
-    filter_local_tickets, filter_remote_issues, FilteredLocalTicket, FilteredRemoteIssue,
+    FilteredLocalTicket, FilteredRemoteIssue, filter_local_tickets, filter_remote_issues,
 };
 use super::filter_modal::FilterState;
 use super::link_mode::LinkModeState;

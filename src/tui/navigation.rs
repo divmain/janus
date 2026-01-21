@@ -172,3 +172,114 @@ pub fn apply_page_up(
     selected_index.set(selected);
     scroll_offset.set(scroll);
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scroll_down_at_bottom() {
+        let mut selected = 9;
+        let mut scroll = 0;
+        scroll_down(&mut selected, &mut scroll, 10, 10); // Already at end
+        assert_eq!(selected, 9, "Should stay at bottom");
+    }
+
+    #[test]
+    fn test_scroll_up_at_top() {
+        let mut selected = 0;
+        let mut scroll = 0;
+        scroll_up(&mut selected, &mut scroll);
+        assert_eq!(selected, 0, "Should stay at top");
+        assert_eq!(scroll, 0, "Scroll should stay at 0");
+    }
+
+    #[test]
+    fn test_scroll_down_triggers_scroll() {
+        let mut selected = 4;
+        let mut scroll = 0;
+        scroll_down(&mut selected, &mut scroll, 10, 5);
+        assert_eq!(selected, 5);
+        assert_eq!(scroll, 1, "Should scroll to keep visible");
+    }
+
+    #[test]
+    fn test_scroll_up_triggers_scroll() {
+        let mut selected = 5;
+        let mut scroll = 5;
+        scroll_up(&mut selected, &mut scroll);
+        assert_eq!(selected, 4);
+        assert_eq!(scroll, 4, "Should scroll up to keep visible");
+    }
+
+    #[test]
+    fn test_page_down_empty_list() {
+        let mut selected = 0;
+        let mut scroll = 0;
+        page_down(&mut selected, &mut scroll, 0, 10);
+        assert_eq!(selected, 0, "Should stay at 0 for empty list");
+    }
+
+    #[test]
+    fn test_page_up_at_top() {
+        let mut selected = 2;
+        let mut scroll = 0;
+        page_up(&mut selected, &mut scroll, 10);
+        assert_eq!(selected, 0, "Should go to top");
+    }
+
+    #[test]
+    fn test_scroll_to_bottom_small_list() {
+        let mut selected = 0;
+        let mut scroll = 0;
+        scroll_to_bottom(&mut selected, &mut scroll, 3, 10);
+        assert_eq!(selected, 2);
+        assert_eq!(scroll, 0, "No scroll needed for small list");
+    }
+
+    #[test]
+    fn test_scroll_to_bottom_large_list() {
+        let mut selected = 0;
+        let mut scroll = 0;
+        scroll_to_bottom(&mut selected, &mut scroll, 50, 10);
+        assert_eq!(selected, 49);
+        assert_eq!(scroll, 40, "Should scroll to show bottom");
+    }
+
+    #[test]
+    fn test_scroll_down_increments_correctly() {
+        let mut selected = 0;
+        let mut scroll = 0;
+        // Scroll through first few items (all visible)
+        for i in 0..4 {
+            scroll_down(&mut selected, &mut scroll, 10, 5);
+            assert_eq!(selected, i + 1);
+            assert_eq!(scroll, 0, "Should not scroll yet, still in visible area");
+        }
+        // Now scroll past visible area
+        scroll_down(&mut selected, &mut scroll, 10, 5);
+        assert_eq!(selected, 5);
+        assert_eq!(scroll, 1, "Should start scrolling");
+    }
+
+    #[test]
+    fn test_page_down_clamps_to_max() {
+        let mut selected = 95;
+        let mut scroll = 90;
+        page_down(&mut selected, &mut scroll, 100, 10);
+        assert_eq!(selected, 99, "Should clamp to last item");
+    }
+
+    #[test]
+    fn test_scroll_to_top() {
+        let mut selected = 50;
+        let mut scroll = 45;
+        scroll_to_top(&mut selected, &mut scroll);
+        assert_eq!(selected, 0);
+        assert_eq!(scroll, 0);
+    }
+}

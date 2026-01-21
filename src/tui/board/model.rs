@@ -44,6 +44,8 @@ pub struct BoardState {
     pub current_row: usize,
     /// Visibility state for each column
     pub visible_columns: [bool; 5],
+    /// Scroll offset for each column (index of first visible card)
+    pub column_scroll_offsets: [usize; 5],
     /// Whether tickets are currently being loaded
     pub is_loading: bool,
     /// Result of repository initialization
@@ -78,6 +80,14 @@ pub enum BoardAction {
     MoveUp,
     /// Move selection down within the column
     MoveDown,
+    /// Jump to top of column
+    GoToTop,
+    /// Jump to bottom of column
+    GoToBottom,
+    /// Page down within column
+    PageDown,
+    /// Page up within column
+    PageUp,
 
     // Column visibility
     /// Toggle visibility of a column by index (0-4)
@@ -156,6 +166,14 @@ pub struct ColumnViewModel {
     pub ticket_count: usize,
     /// Cards to display in this column
     pub cards: Vec<CardViewModel>,
+    /// Scroll offset for this column (first visible row index)
+    pub scroll_offset: usize,
+    /// Number of rows actually visible (after scrolling/truncation)
+    pub visible_row_count: usize,
+    /// Number of tickets above the visible area
+    pub hidden_above: usize,
+    /// Number of tickets below the visible area
+    pub hidden_below: usize,
 }
 
 /// View model for a single ticket card
@@ -187,7 +205,10 @@ pub struct SearchViewModel {
 /// This function takes the raw board state and produces a fully computed
 /// view model that can be directly used for rendering. All the logic for
 /// filtering, grouping, and computing derived state lives here.
-pub fn compute_board_view_model(state: &BoardState) -> BoardViewModel {
+///
+/// The `column_height` parameter specifies the number of visible cards per column,
+/// used to compute scroll-related view model fields.
+pub fn compute_board_view_model(state: &BoardState, column_height: usize) -> BoardViewModel {
     // Filter tickets by search query
     let filtered: Vec<FilteredTicket> = filter_tickets(&state.tickets, &state.search_query);
     let total_filtered = filtered.len();
@@ -252,14 +273,25 @@ pub fn compute_board_view_model(state: &BoardState) -> BoardViewModel {
             let column_tickets = &tickets_by_status[col_idx];
             let is_active = state.current_column == col_idx && !state.search_focused;
 
+            let scroll_offset = state.column_scroll_offsets[col_idx];
+            let total_count = column_tickets.len();
+
+            // Calculate what's visible
+            let start = scroll_offset.min(total_count);
+            let end = (scroll_offset + column_height).min(total_count);
+
             let cards: Vec<CardViewModel> = column_tickets
                 .iter()
                 .enumerate()
+                .skip(start)
+                .take(end - start)
                 .map(|(row_idx, ft)| CardViewModel {
                     ticket: ft.clone(),
                     is_selected: is_active && row_idx == state.current_row,
                 })
                 .collect();
+
+            let visible_row_count = cards.len();
 
             ColumnViewModel {
                 status,
@@ -267,8 +299,12 @@ pub fn compute_board_view_model(state: &BoardState) -> BoardViewModel {
                 toggle_key: COLUMN_KEYS[col_idx],
                 is_visible: true,
                 is_active,
-                ticket_count: column_tickets.len(),
+                ticket_count: total_count,
                 cards,
+                scroll_offset,
+                visible_row_count,
+                hidden_above: start,
+                hidden_below: total_count.saturating_sub(end),
             }
         })
         .collect();
@@ -297,6 +333,26 @@ pub fn compute_board_view_model(state: &BoardState) -> BoardViewModel {
     }
 }
 
+/// Adjust scroll offset to keep selected row visible within column height
+fn adjust_column_scroll(scroll_offset: usize, selected_row: usize, column_height: usize) -> usize {
+    if column_height == 0 {
+        return 0;
+    }
+
+    // If selected is above the visible area, scroll up
+    if selected_row < scroll_offset {
+        return selected_row;
+    }
+
+    // If selected is below the visible area, scroll down
+    if selected_row >= scroll_offset + column_height {
+        return selected_row.saturating_sub(column_height - 1);
+    }
+
+    // Selected is within visible area, keep scroll as is
+    scroll_offset
+}
+
 /// Pure function: apply action to state (reducer pattern)
 ///
 /// This function takes the current state and an action, returning the new state.
@@ -305,7 +361,14 @@ pub fn compute_board_view_model(state: &BoardState) -> BoardViewModel {
 /// Note: Some actions (like EditSelected, MoveTicketStatusRight) require async
 /// I/O and are handled separately by the component. This function only handles
 /// the synchronous state updates.
-pub fn reduce_board_state(mut state: BoardState, action: BoardAction) -> BoardState {
+///
+/// The `column_height` parameter specifies the number of visible cards per column,
+/// used to adjust scroll offsets when navigating.
+pub fn reduce_board_state(
+    mut state: BoardState,
+    action: BoardAction,
+    column_height: usize,
+) -> BoardState {
     match action {
         // Navigation
         BoardAction::MoveLeft => {
@@ -316,6 +379,12 @@ pub fn reduce_board_state(mut state: BoardState, action: BoardAction) -> BoardSt
             if state.current_row > max_row {
                 state.current_row = max_row;
             }
+            // Adjust scroll for new column
+            state.column_scroll_offsets[new_col] = adjust_column_scroll(
+                state.column_scroll_offsets[new_col],
+                state.current_row,
+                column_height,
+            );
         }
         BoardAction::MoveRight => {
             let new_col = find_next_visible_column(&state.visible_columns, state.current_column);
@@ -325,13 +394,31 @@ pub fn reduce_board_state(mut state: BoardState, action: BoardAction) -> BoardSt
             if state.current_row > max_row {
                 state.current_row = max_row;
             }
+            // Adjust scroll for new column
+            state.column_scroll_offsets[new_col] = adjust_column_scroll(
+                state.column_scroll_offsets[new_col],
+                state.current_row,
+                column_height,
+            );
         }
         BoardAction::MoveUp => {
             state.current_row = state.current_row.saturating_sub(1);
+            let col = state.current_column;
+            state.column_scroll_offsets[col] = adjust_column_scroll(
+                state.column_scroll_offsets[col],
+                state.current_row,
+                column_height,
+            );
         }
         BoardAction::MoveDown => {
             let max_row = get_column_ticket_count(&state, state.current_column).saturating_sub(1);
             state.current_row = (state.current_row + 1).min(max_row);
+            let col = state.current_column;
+            state.column_scroll_offsets[col] = adjust_column_scroll(
+                state.column_scroll_offsets[col],
+                state.current_row,
+                column_height,
+            );
         }
 
         // Column visibility
@@ -378,6 +465,44 @@ pub fn reduce_board_state(mut state: BoardState, action: BoardAction) -> BoardSt
         | BoardAction::Quit
         | BoardAction::Reload => {
             // These require async I/O or system context, handled externally
+        }
+
+        // Scroll navigation
+        BoardAction::GoToTop => {
+            state.current_row = 0;
+            let col = state.current_column;
+            state.column_scroll_offsets[col] = 0;
+        }
+        BoardAction::GoToBottom => {
+            let col = state.current_column;
+            let max_row = get_column_ticket_count(&state, col).saturating_sub(1);
+            state.current_row = max_row;
+            state.column_scroll_offsets[col] = adjust_column_scroll(
+                state.column_scroll_offsets[col],
+                state.current_row,
+                column_height,
+            );
+        }
+        BoardAction::PageDown => {
+            let col = state.current_column;
+            let max_row = get_column_ticket_count(&state, col).saturating_sub(1);
+            let jump = column_height / 2;
+            state.current_row = (state.current_row + jump).min(max_row);
+            state.column_scroll_offsets[col] = adjust_column_scroll(
+                state.column_scroll_offsets[col],
+                state.current_row,
+                column_height,
+            );
+        }
+        BoardAction::PageUp => {
+            let col = state.current_column;
+            let jump = column_height / 2;
+            state.current_row = state.current_row.saturating_sub(jump);
+            state.column_scroll_offsets[col] = adjust_column_scroll(
+                state.column_scroll_offsets[col],
+                state.current_row,
+                column_height,
+            );
         }
     }
     state
@@ -515,6 +640,7 @@ mod tests {
             current_column: 0,
             current_row: 0,
             visible_columns: [true; 5],
+            column_scroll_offsets: [0; 5],
             is_loading: false,
             init_result: InitResult::Ok,
             toast: None,
@@ -573,6 +699,9 @@ mod tests {
     // Reducer Tests
     // ========================================================================
 
+    // Default column height for tests
+    const TEST_COLUMN_HEIGHT: usize = 10;
+
     #[test]
     fn test_reduce_move_right() {
         let state = BoardState {
@@ -580,7 +709,7 @@ mod tests {
             visible_columns: [true; 5],
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::MoveRight);
+        let new_state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
         assert_eq!(new_state.current_column, 1);
     }
 
@@ -591,7 +720,7 @@ mod tests {
             visible_columns: [true; 5],
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::MoveLeft);
+        let new_state = reduce_board_state(state, BoardAction::MoveLeft, TEST_COLUMN_HEIGHT);
         assert_eq!(new_state.current_column, 1);
     }
 
@@ -601,7 +730,7 @@ mod tests {
             current_row: 3,
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::MoveUp);
+        let new_state = reduce_board_state(state, BoardAction::MoveUp, TEST_COLUMN_HEIGHT);
         assert_eq!(new_state.current_row, 2);
     }
 
@@ -611,7 +740,7 @@ mod tests {
             current_row: 0,
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::MoveUp);
+        let new_state = reduce_board_state(state, BoardAction::MoveUp, TEST_COLUMN_HEIGHT);
         assert_eq!(new_state.current_row, 0);
     }
 
@@ -627,7 +756,7 @@ mod tests {
             ],
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::MoveDown);
+        let new_state = reduce_board_state(state, BoardAction::MoveDown, TEST_COLUMN_HEIGHT);
         assert_eq!(new_state.current_row, 1);
     }
 
@@ -637,7 +766,7 @@ mod tests {
             visible_columns: [true; 5],
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::ToggleColumn(1));
+        let new_state = reduce_board_state(state, BoardAction::ToggleColumn(1), TEST_COLUMN_HEIGHT);
         assert!(!new_state.visible_columns[1]);
         assert!(new_state.visible_columns[0]);
         assert!(new_state.visible_columns[2]);
@@ -651,7 +780,7 @@ mod tests {
             ..default_state()
         };
         // Toggle off column 1 (where we are)
-        let new_state = reduce_board_state(state, BoardAction::ToggleColumn(1));
+        let new_state = reduce_board_state(state, BoardAction::ToggleColumn(1), TEST_COLUMN_HEIGHT);
         assert!(!new_state.visible_columns[1]);
         // Should have moved to first visible column (0)
         assert_eq!(new_state.current_column, 0);
@@ -663,14 +792,18 @@ mod tests {
             search_focused: false,
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::FocusSearch);
+        let new_state = reduce_board_state(state, BoardAction::FocusSearch, TEST_COLUMN_HEIGHT);
         assert!(new_state.search_focused);
     }
 
     #[test]
     fn test_reduce_update_search() {
         let state = default_state();
-        let new_state = reduce_board_state(state, BoardAction::UpdateSearch("bug".to_string()));
+        let new_state = reduce_board_state(
+            state,
+            BoardAction::UpdateSearch("bug".to_string()),
+            TEST_COLUMN_HEIGHT,
+        );
         assert_eq!(new_state.search_query, "bug");
     }
 
@@ -681,7 +814,7 @@ mod tests {
             search_query: "test".to_string(),
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::ExitSearch);
+        let new_state = reduce_board_state(state, BoardAction::ExitSearch, TEST_COLUMN_HEIGHT);
         assert!(!new_state.search_focused);
         assert_eq!(new_state.search_query, "test"); // Query preserved
     }
@@ -693,7 +826,8 @@ mod tests {
             search_query: "test".to_string(),
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::ClearSearchAndExit);
+        let new_state =
+            reduce_board_state(state, BoardAction::ClearSearchAndExit, TEST_COLUMN_HEIGHT);
         assert!(!new_state.search_focused);
         assert_eq!(new_state.search_query, ""); // Query cleared
     }
@@ -701,7 +835,7 @@ mod tests {
     #[test]
     fn test_reduce_create_new() {
         let state = default_state();
-        let new_state = reduce_board_state(state, BoardAction::CreateNew);
+        let new_state = reduce_board_state(state, BoardAction::CreateNew, TEST_COLUMN_HEIGHT);
         assert_eq!(new_state.edit_mode, Some(EditMode::Creating));
     }
 
@@ -711,7 +845,7 @@ mod tests {
             edit_mode: Some(EditMode::Creating),
             ..default_state()
         };
-        let new_state = reduce_board_state(state, BoardAction::CancelEdit);
+        let new_state = reduce_board_state(state, BoardAction::CancelEdit, TEST_COLUMN_HEIGHT);
         assert_eq!(new_state.edit_mode, None);
     }
 
@@ -722,7 +856,7 @@ mod tests {
     #[test]
     fn test_compute_view_model_empty() {
         let state = default_state();
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         assert_eq!(view_model.columns.len(), 5); // All visible
         assert_eq!(view_model.total_all_tickets, 0);
@@ -741,7 +875,7 @@ mod tests {
             ],
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         assert_eq!(view_model.total_all_tickets, 3);
         assert_eq!(view_model.total_filtered_tickets, 3);
@@ -774,7 +908,7 @@ mod tests {
             search_query: "bug".to_string(),
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         assert_eq!(view_model.total_all_tickets, 3);
         assert_eq!(view_model.total_filtered_tickets, 2); // Only "bug" tickets
@@ -788,7 +922,7 @@ mod tests {
             tickets: vec![make_ticket("j-1", "Task", TicketStatus::New)],
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         // Only 2 columns should be visible
         assert_eq!(view_model.columns.len(), 2);
@@ -807,7 +941,7 @@ mod tests {
             current_row: 1, // Second ticket
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         let selected = view_model.selected_ticket.unwrap();
         assert_eq!(selected.id, Some("j-2".to_string()));
@@ -819,7 +953,7 @@ mod tests {
             visible_columns: [true, true, false, true, false],
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         assert_eq!(view_model.column_toggles, "[N][X][ ][C][ ]");
     }
@@ -830,7 +964,7 @@ mod tests {
             is_loading: true,
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         assert_eq!(view_model.empty_state, Some(EmptyStateKind::Loading));
     }
@@ -841,7 +975,7 @@ mod tests {
             init_result: InitResult::NoJanusDir,
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         assert_eq!(view_model.empty_state, Some(EmptyStateKind::NoJanusDir));
     }
@@ -853,7 +987,7 @@ mod tests {
             tickets: vec![make_ticket("j-1", "Task", TicketStatus::New)],
             ..default_state()
         };
-        let view_model = compute_board_view_model(&state);
+        let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         assert!(view_model.is_editing);
         // Shortcuts should be edit shortcuts when editing
@@ -945,6 +1079,193 @@ mod tests {
             EditMode::Editing {
                 ticket_id: "j-123".to_string()
             }
+        );
+    }
+
+    // ========================================================================
+    // Scroll Adjustment Tests
+    // ========================================================================
+
+    #[test]
+    fn test_scroll_down_keeps_selection_visible() {
+        // Start at top of a 15-ticket column, column height = 5
+        let mut state = BoardState {
+            tickets: (0..15)
+                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .collect(),
+            current_column: 0,
+            current_row: 4, // Last visible row (0-4)
+            column_scroll_offsets: [0; 5],
+            ..default_state()
+        };
+
+        // Move down should scroll
+        state = reduce_board_state(state, BoardAction::MoveDown, 5);
+        assert_eq!(state.current_row, 5);
+        assert_eq!(state.column_scroll_offsets[0], 1, "Should scroll down by 1");
+
+        // Move down again
+        state = reduce_board_state(state, BoardAction::MoveDown, 5);
+        assert_eq!(state.current_row, 6);
+        assert_eq!(
+            state.column_scroll_offsets[0], 2,
+            "Should scroll down by 1 more"
+        );
+    }
+
+    #[test]
+    fn test_scroll_up_keeps_selection_visible() {
+        let mut state = BoardState {
+            tickets: (0..15)
+                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .collect(),
+            current_column: 0,
+            current_row: 5,
+            column_scroll_offsets: [5, 0, 0, 0, 0], // Scrolled down
+            ..default_state()
+        };
+
+        // Move up should scroll
+        state = reduce_board_state(state, BoardAction::MoveUp, 5);
+        assert_eq!(state.current_row, 4);
+        assert_eq!(state.column_scroll_offsets[0], 4, "Should scroll up by 1");
+    }
+
+    #[test]
+    fn test_go_to_top_resets_scroll() {
+        let mut state = BoardState {
+            tickets: (0..15)
+                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .collect(),
+            current_column: 0,
+            current_row: 10,
+            column_scroll_offsets: [5, 0, 0, 0, 0],
+            ..default_state()
+        };
+
+        state = reduce_board_state(state, BoardAction::GoToTop, 5);
+        assert_eq!(state.current_row, 0);
+        assert_eq!(
+            state.column_scroll_offsets[0], 0,
+            "Scroll should reset to 0"
+        );
+    }
+
+    #[test]
+    fn test_go_to_bottom_adjusts_scroll() {
+        let mut state = BoardState {
+            tickets: (0..15)
+                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .collect(),
+            current_column: 0,
+            current_row: 0,
+            column_scroll_offsets: [0; 5],
+            ..default_state()
+        };
+
+        state = reduce_board_state(state, BoardAction::GoToBottom, 5);
+        assert_eq!(state.current_row, 14, "Should be at last ticket");
+        assert_eq!(
+            state.column_scroll_offsets[0], 10,
+            "Should scroll to show bottom (14-5+1=10)"
+        );
+    }
+
+    #[test]
+    fn test_page_down_navigation() {
+        let mut state = BoardState {
+            tickets: (0..20)
+                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .collect(),
+            current_column: 0,
+            current_row: 0,
+            column_scroll_offsets: [0; 5],
+            ..default_state()
+        };
+
+        // Page down with height 10 should move 5 (half page)
+        state = reduce_board_state(state, BoardAction::PageDown, 10);
+        assert_eq!(state.current_row, 5);
+    }
+
+    #[test]
+    fn test_page_up_navigation() {
+        let mut state = BoardState {
+            tickets: (0..20)
+                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .collect(),
+            current_column: 0,
+            current_row: 15,
+            column_scroll_offsets: [10, 0, 0, 0, 0],
+            ..default_state()
+        };
+
+        // Page up with height 10 should move back 5
+        state = reduce_board_state(state, BoardAction::PageUp, 10);
+        assert_eq!(state.current_row, 10);
+    }
+
+    #[test]
+    fn test_column_change_preserves_scroll_in_target() {
+        // Have scrolled state in column 0, move to column 2
+        let mut state = BoardState {
+            tickets: {
+                let mut tickets: Vec<_> = (0..10)
+                    .map(|i| make_ticket(&format!("j-new-{}", i), "Task", TicketStatus::New))
+                    .collect();
+                tickets.extend((0..10).map(|i| {
+                    make_ticket(&format!("j-wip-{}", i), "Task", TicketStatus::InProgress)
+                }));
+                tickets
+            },
+            current_column: 0,
+            current_row: 8,
+            column_scroll_offsets: [4, 0, 0, 0, 0],
+            visible_columns: [true; 5],
+            ..default_state()
+        };
+
+        // Move right to Next column (empty), then right to InProgress
+        state = reduce_board_state(state, BoardAction::MoveRight, 5);
+        state = reduce_board_state(state, BoardAction::MoveRight, 5);
+
+        // Should be in InProgress column now
+        assert_eq!(state.current_column, 2);
+        // Row should be adjusted since we can't exceed column's max
+        assert!(state.current_row <= 9);
+    }
+
+    #[test]
+    fn test_view_model_shows_hidden_counts() {
+        let state = BoardState {
+            tickets: (0..15)
+                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .collect(),
+            current_column: 0,
+            current_row: 7,
+            column_scroll_offsets: [5, 0, 0, 0, 0], // Scrolled down 5
+            visible_columns: [true; 5],
+            ..default_state()
+        };
+
+        let vm = compute_board_view_model(&state, 5);
+
+        let new_column = vm
+            .columns
+            .iter()
+            .find(|c| c.status == TicketStatus::New)
+            .unwrap();
+        assert_eq!(
+            new_column.hidden_above, 5,
+            "Should have 5 tickets hidden above"
+        );
+        assert_eq!(
+            new_column.hidden_below, 5,
+            "Should have 5 tickets hidden below (15-5-5=5)"
+        );
+        assert_eq!(
+            new_column.visible_row_count, 5,
+            "Should show 5 visible cards"
         );
     }
 }

@@ -80,6 +80,10 @@ pub fn key_to_action(
         KeyCode::Char('l') | KeyCode::Right => Some(BoardAction::MoveRight),
         KeyCode::Char('j') | KeyCode::Down => Some(BoardAction::MoveDown),
         KeyCode::Char('k') | KeyCode::Up => Some(BoardAction::MoveUp),
+        KeyCode::Char('g') => Some(BoardAction::GoToTop),
+        KeyCode::Char('G') => Some(BoardAction::GoToBottom),
+        KeyCode::PageDown => Some(BoardAction::PageDown),
+        KeyCode::PageUp => Some(BoardAction::PageUp),
 
         // Column toggles
         KeyCode::Char('1') => Some(BoardAction::ToggleColumn(0)),
@@ -285,6 +289,26 @@ mod tests {
         assert_eq!(
             key_to_action(KeyCode::Char('j'), KeyModifiers::NONE, true),
             None
+        );
+    }
+
+    #[test]
+    fn test_key_to_action_scroll_navigation() {
+        assert_eq!(
+            key_to_action(KeyCode::Char('g'), KeyModifiers::NONE, false),
+            Some(BoardAction::GoToTop)
+        );
+        assert_eq!(
+            key_to_action(KeyCode::Char('G'), KeyModifiers::NONE, false),
+            Some(BoardAction::GoToBottom)
+        );
+        assert_eq!(
+            key_to_action(KeyCode::PageDown, KeyModifiers::NONE, false),
+            Some(BoardAction::PageDown)
+        );
+        assert_eq!(
+            key_to_action(KeyCode::PageUp, KeyModifiers::NONE, false),
+            Some(BoardAction::PageUp)
         );
     }
 }

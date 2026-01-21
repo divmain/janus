@@ -225,6 +225,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Navigation state
     let mut current_column = hooks.use_state(|| 0usize);
     let mut current_row = hooks.use_state(|| 0usize);
+    let mut column_scroll_offsets = hooks.use_state(|| [0usize; 5]);
     let mut search_focused = hooks.use_state(|| false);
 
     // Reload tickets if needed - use async handler instead of sync
@@ -272,6 +273,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Calculate column heights
     let available_height = height.saturating_sub(6); // header + search + column headers + footer
+    let cards_per_column = (available_height.saturating_sub(2) / 4).max(1) as usize; // Each card is ~3-4 lines, reserve 2 for indicators
 
     // Keyboard event handling
     hooks.use_terminal_events({
@@ -298,6 +300,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         visible_columns: &mut visible_columns,
                         current_column: &mut current_column,
                         current_row: &mut current_row,
+                        column_scroll_offsets: &mut column_scroll_offsets,
+                        column_height: cards_per_column,
                         edit_result: &mut edit_result,
                         is_editing_existing: &mut is_editing_existing,
                         is_creating_new: &mut is_creating_new,
@@ -533,27 +537,76 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                             let is_active_column = current_column.get() == col_idx && !search_focused.get();
                                             let current_row_val = current_row.get();
 
+                                            // Get scroll offset for this column
+                                            let scroll_offsets = column_scroll_offsets.get();
+                                            let scroll_offset = scroll_offsets[col_idx];
+                                            let total_count = column_tickets.len();
+
+                                            // Calculate visible range
+                                            let start = scroll_offset.min(total_count);
+                                            let end = (scroll_offset + cards_per_column).min(total_count);
+
+                                            // Calculate scroll indicators
+                                            let hidden_above = start;
+                                            let hidden_below = total_count.saturating_sub(end);
+
                                             element! {
                                                 View(
                                                     width: column_width,
                                                     height: 100pct,
                                                     flex_direction: FlexDirection::Column,
-                                                    padding: 1,
-                                                    gap: 1,
+                                                    padding_left: 1,
+                                                    padding_right: 1,
+                                                    padding_top: 0,
+                                                    padding_bottom: 0,
                                                     border_edges: Edges::Right,
                                                     border_style: BorderStyle::Single,
                                                     border_color: theme.border,
                                                     overflow: Overflow::Hidden,
                                                 ) {
-                                                    #(column_tickets.iter().enumerate().take(available_height as usize / 4).map(|(row_idx, ft)| {
+                                                    // "More above" indicator
+                                                    #(if hidden_above > 0 {
+                                                        Some(element! {
+                                                            View(height: 1, padding_left: 1) {
+                                                                Text(
+                                                                    content: format!("  {} more above", hidden_above),
+                                                                    color: theme.text_dimmed,
+                                                                )
+                                                            }
+                                                        })
+                                                    } else {
+                                                        None
+                                                    })
+
+                                                    // Visible cards
+                                                    #(column_tickets.iter().enumerate().skip(start).take(end - start).map(|(row_idx, ft)| {
                                                         let is_selected = is_active_column && row_idx == current_row_val;
                                                         element! {
-                                                            TicketCard(
-                                                                ticket: ft.ticket.clone(),
-                                                                is_selected: is_selected,
-                                                            )
+                                                            View(margin_top: 1) {
+                                                                TicketCard(
+                                                                    ticket: ft.ticket.clone(),
+                                                                    is_selected: is_selected,
+                                                                )
+                                                            }
                                                         }
                                                     }))
+
+                                                    // Spacer to push "more below" to bottom
+                                                    View(flex_grow: 1.0)
+
+                                                    // "More below" indicator
+                                                    #(if hidden_below > 0 {
+                                                        Some(element! {
+                                                            View(height: 1, padding_left: 1) {
+                                                                Text(
+                                                                    content: format!("  {} more below", hidden_below),
+                                                                    color: theme.text_dimmed,
+                                                                )
+                                                            }
+                                                        })
+                                                    } else {
+                                                        None
+                                                    })
                                                 }
                                             }
                                         }))

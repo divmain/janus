@@ -28,6 +28,10 @@ pub struct BoardHandlerContext<'a> {
     // Navigation state
     pub current_column: &'a mut State<usize>,
     pub current_row: &'a mut State<usize>,
+    pub column_scroll_offsets: &'a mut State<[usize; 5]>,
+
+    // Layout info
+    pub column_height: usize, // Number of cards that fit in one column
 
     // Edit form state
     pub edit_result: &'a mut State<EditResult>,
