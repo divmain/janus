@@ -1476,6 +1476,87 @@ remote: github
         fs::remove_dir_all(&repo_path).ok();
     }
 
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_removes_stale_cache_on_parse_failure() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("stale_cache_test");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        // Create a valid ticket
+        let ticket_path = tickets_dir.join("j-test.md");
+        let valid_content = r#"---
+id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Test Ticket
+This is a valid ticket.
+"#;
+        fs::write(&ticket_path, valid_content).unwrap();
+
+        // Sync to populate cache
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Verify ticket is in cache
+        let mut rows = cache
+            .create_connection()
+            .await
+            .unwrap()
+            .query(
+                "SELECT title, status FROM tickets WHERE ticket_id = ?1",
+                ["j-test"],
+            )
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let title: String = row.get(0).unwrap();
+        let status: String = row.get(1).unwrap();
+        assert_eq!(title, "Test Ticket");
+        assert_eq!(status, "new");
+
+        // Sleep to ensure mtime changes
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Corrupt the ticket file (remove frontmatter)
+        let invalid_content = "# Corrupted Ticket\nThis file has no frontmatter\n";
+        fs::write(&ticket_path, invalid_content).unwrap();
+
+        // Sync again - should detect modification and remove stale cache entry
+        let changed = cache.sync().await.unwrap();
+        assert!(changed);
+
+        // Verify the ticket was removed from cache
+        let mut rows = cache
+            .create_connection()
+            .await
+            .unwrap()
+            .query(
+                "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
+                ["j-test"],
+            )
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let count: i64 = row.get(0).unwrap();
+        assert_eq!(count, 0, "Corrupted ticket should be removed from cache");
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
     fn create_test_ticket_with_spawned_from(
         dir: &std::path::Path,
         ticket_id: &str,

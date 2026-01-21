@@ -82,7 +82,7 @@ impl TicketCache {
 
         // Read and parse items before starting the transaction
         let mut items_to_upsert = Vec::new();
-        for id in added.iter().chain(modified.iter()) {
+        for id in &added {
             match T::parse_from_file(id) {
                 Ok((metadata, mtime_ns)) => {
                     items_to_upsert.push((metadata, mtime_ns));
@@ -94,6 +94,22 @@ impl TicketCache {
                         id,
                         e
                     );
+                }
+            }
+        }
+        for id in &modified {
+            match T::parse_from_file(id) {
+                Ok((metadata, mtime_ns)) => {
+                    items_to_upsert.push((metadata, mtime_ns));
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: removed cache entry for {} '{}' due to parse failure: {}",
+                        T::item_name(),
+                        id,
+                        e
+                    );
+                    removed.push(id.clone());
                 }
             }
         }
