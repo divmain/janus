@@ -150,7 +150,9 @@ pub async fn cmd_ls(
     sort_tickets_by(&mut display_tickets, sort_by);
 
     // Apply limit (unlimited if not specified)
-    if let Some(limit) = limit && limit < display_tickets.len() {
+    if let Some(limit) = limit
+        && limit < display_tickets.len()
+    {
         display_tickets.truncate(limit);
     }
 

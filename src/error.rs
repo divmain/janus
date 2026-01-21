@@ -294,7 +294,9 @@ pub enum JanusError {
     #[error("operation requires an interactive terminal")]
     InteractiveTerminalRequired,
 
-    #[error("Note text cannot be empty. Provide text as an argument or pipe from stdin: echo 'note text' | janus add-note <id>")]
+    #[error(
+        "Note text cannot be empty. Provide text as an argument or pipe from stdin: echo 'note text' | janus add-note <id>"
+    )]
     EmptyNote,
 
     #[error("closing a ticket requires either --summary <TEXT> or --no-summary")]

@@ -123,7 +123,8 @@ impl TicketCache {
         }
 
         if !removed.is_empty() {
-            let placeholders: Vec<String> = (1..=removed.len()).map(|i| format!("?{}", i)).collect();
+            let placeholders: Vec<String> =
+                (1..=removed.len()).map(|i| format!("?{}", i)).collect();
             let placeholders_str = placeholders.join(", ");
             let delete_sql = format!(
                 "DELETE FROM {} WHERE {} IN ({})",

@@ -24,26 +24,26 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 pub(crate) const CACHE_VERSION: &str = "6";
 
 /// Maximum number of retry attempts when creating database connections.
-/// 
+///
 /// This retry logic handles transient errors during connection creation, such as:
 /// - Database file lock contention from concurrent processes
 /// - Temporary I/O errors
 /// - Filesystem issues during WAL file access
-/// 
+///
 /// **Limitations:**
 /// - Uses fixed delay (no exponential backoff)
 /// - Short total timeout (~150ms) may be insufficient for genuine database contention
 /// - Does not distinguish between retryable and non-retryable errors
-/// 
+///
 /// For operations requiring stronger concurrency guarantees, consider using
 /// SQLite's built-in BUSY_TIMEOUT mechanism instead.
 const MAX_RETRIES: u32 = 3;
 
 /// Base delay between retry attempts in milliseconds.
-/// 
+///
 /// Each retry waits this duration before attempting to reconnect. The total
 /// maximum timeout is approximately `BASE_RETRY_DELAY_MS * MAX_RETRIES`.
-/// 
+///
 /// **Note:** This value is intentionally conservative (~50ms) to provide
 /// a reasonable balance between responsiveness and recovery time. For
 /// production environments with higher contention, this may need adjustment.
@@ -265,7 +265,10 @@ impl TicketCache {
             && let Ok(stored_version) = row.get::<String>(0)
             && stored_version != CACHE_VERSION
         {
-            eprintln!("Cache version outdated (v{} -> v{}), rebuilding automatically...", stored_version, CACHE_VERSION);
+            eprintln!(
+                "Cache version outdated (v{} -> v{}), rebuilding automatically...",
+                stored_version, CACHE_VERSION
+            );
             self.rebuild_schema(conn).await?;
             eprintln!("Cache rebuild complete.");
         }
