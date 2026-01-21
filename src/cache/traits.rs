@@ -69,8 +69,11 @@ impl CacheableItem for TicketMetadata {
 
         let content = fs::read_to_string(&path).map_err(JanusError::Io)?;
 
-        let metadata = parse_ticket(&content)
+        let mut metadata = parse_ticket(&content)
             .map_err(|e| JanusError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+
+        // Set the file_path so it gets cached
+        metadata.file_path = Some(path.clone());
 
         let file_mtime = fs::metadata(&path)
             .map_err(JanusError::Io)?
@@ -120,6 +123,10 @@ impl CacheableItem for TicketMetadata {
         let spawned_from = self.spawned_from.clone();
         let spawn_context = self.spawn_context.clone();
         let depth = self.depth.map(|d| d as i64);
+        let file_path = self
+            .file_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
 
         async move {
             let ticket_id = ticket_id?;
@@ -127,8 +134,8 @@ impl CacheableItem for TicketMetadata {
                 "INSERT OR REPLACE INTO tickets (
                     ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
                     deps, links, parent, created, external_ref, remote, completion_summary,
-                    spawned_from, spawn_context, depth
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                    spawned_from, spawn_context, depth, file_path
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
                 params![
                     ticket_id,
                     uuid,
@@ -147,6 +154,7 @@ impl CacheableItem for TicketMetadata {
                     spawned_from,
                     spawn_context,
                     depth,
+                    file_path,
                 ],
             )
             .await?;

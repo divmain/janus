@@ -59,6 +59,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut search_query = hooks.use_state(String::new);
     let mut selected_index = hooks.use_state(|| 0usize);
     let mut scroll_offset = hooks.use_state(|| 0usize);
+    let mut detail_scroll_offset = hooks.use_state(|| 0usize);
     let mut active_pane = hooks.use_state(|| Pane::List); // Start on list, not search
     let mut should_exit = hooks.use_state(|| false);
     let mut needs_reload = hooks.use_state(|| false);
@@ -251,6 +252,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         search_query: &mut search_query,
                         selected_index: &mut selected_index,
                         scroll_offset: &mut scroll_offset,
+                        detail_scroll_offset: &mut detail_scroll_offset,
                         active_pane: &mut active_pane,
                         should_exit: &mut should_exit,
                         needs_reload: &mut needs_reload,
@@ -427,6 +429,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                         TicketDetail(
                                             ticket: selected_ticket.clone(),
                                             has_focus: active_pane.get() == Pane::Detail && !is_editing,
+                                            scroll_offset: detail_scroll_offset.get(),
+                                            visible_height: list_height,
                                         )
                                     }
                                 }

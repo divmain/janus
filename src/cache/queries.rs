@@ -7,6 +7,7 @@
 //! - Row-to-object conversion helpers
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use serde_json;
 
@@ -28,7 +29,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth
+                spawned_from, spawn_context, depth, file_path
          FROM tickets",
                 (),
             )
@@ -49,7 +50,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth
+                spawned_from, spawn_context, depth, file_path
          FROM tickets WHERE ticket_id = ?1",
                 [id],
             )
@@ -300,6 +301,13 @@ impl TicketCache {
                     error: e.to_string(),
                 })?;
 
+        let file_path_str: Option<String> =
+            row.get::<Option<String>>(16)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 16,
+                    error: e.to_string(),
+                })?;
+
         // Parse ticket_type (optional domain field)
         let ticket_type: Option<crate::types::TicketType> = if let Some(s) = type_str {
             Some(s.parse().map_err(|e| {
@@ -349,6 +357,7 @@ impl TicketCache {
 
         let deps = Self::deserialize_array(deps_json.as_deref())?;
         let links = Self::deserialize_array(links_json.as_deref())?;
+        let file_path = file_path_str.map(PathBuf::from);
 
         let metadata = TicketMetadata {
             id,
@@ -363,7 +372,7 @@ impl TicketCache {
             created,
             external_ref,
             remote,
-            file_path: None,
+            file_path,
             completion_summary,
             spawned_from,
             spawn_context,

@@ -17,6 +17,10 @@ pub struct TicketDetailProps {
     pub ticket: Option<TicketMetadata>,
     /// Whether the detail pane has focus
     pub has_focus: bool,
+    /// Scroll offset for the body content
+    pub scroll_offset: usize,
+    /// Visible height of the detail pane
+    pub visible_height: usize,
 }
 
 /// Ticket detail view showing metadata and body
@@ -97,13 +101,15 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
 
     // Try to read the body content
     let body = if let Some(file_path) = &ticket.file_path {
-        Ticket::new(file_path.clone())
-            .ok()
-            .and_then(|ticket_handle| ticket_handle.read_content().ok())
-            .and_then(|content| extract_ticket_body(&content))
-            .unwrap_or_default()
+        match Ticket::new(file_path.clone()) {
+            Ok(ticket_handle) => match ticket_handle.read_content() {
+                Ok(content) => extract_ticket_body(&content).unwrap_or_default(),
+                Err(_) => "(error: could not read file)".to_string(),
+            },
+            Err(_) => "(error: invalid ticket path)".to_string(),
+        }
     } else {
-        String::new()
+        "(file_path is None)".to_string()
     };
 
     element! {
@@ -210,12 +216,61 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                 overflow: Overflow::Hidden,
                 flex_direction: FlexDirection::Column,
             ) {
-                #(body.lines().take(20).map(|line| {
-                    let line_owned = line.to_string();
-                    element! {
-                        Text(content: line_owned, color: theme.text)
+                #({
+                    // Debug: show body length if empty
+                    if body.is_empty() {
+                        vec![element! {
+                            Text(
+                                content: "(no body content)",
+                                color: theme.text_dimmed,
+                            )
+                        }.into()]
+                    } else {
+                        let lines: Vec<&str> = body.lines().collect();
+                        let total_lines = lines.len();
+                        // Metadata section takes ~10 lines (header + 5 metadata rows + separator + padding)
+                        let body_visible_height = props.visible_height.saturating_sub(10).max(5);
+                        let scroll = props.scroll_offset.min(total_lines.saturating_sub(1));
+
+                        // Show scroll indicator if scrolled down
+                        let mut elements: Vec<AnyElement<'static>> = Vec::new();
+
+                        if scroll > 0 {
+                            elements.push(element! {
+                                Text(
+                                    content: format!("... {} more lines above ...", scroll),
+                                    color: theme.text_dimmed,
+                                )
+                            }.into());
+                        }
+
+                        // Calculate visible range
+                        let indicator_overhead = if scroll > 0 { 1 } else { 0 }
+                            + if scroll + body_visible_height < total_lines { 1 } else { 0 };
+                        let visible_lines = body_visible_height.saturating_sub(indicator_overhead).max(1);
+
+                        // Display visible lines
+                        for line in lines.iter().skip(scroll).take(visible_lines) {
+                            let line_owned = line.to_string();
+                            elements.push(element! {
+                                Text(content: line_owned, color: theme.text)
+                            }.into());
+                        }
+
+                        // Show scroll indicator if more below
+                        let remaining = total_lines.saturating_sub(scroll + visible_lines);
+                        if remaining > 0 {
+                            elements.push(element! {
+                                Text(
+                                    content: format!("... {} more lines below ...", remaining),
+                                    color: theme.text_dimmed,
+                                )
+                            }.into());
+                        }
+
+                        elements
                     }
-                }))
+                })
             }
         }
     }

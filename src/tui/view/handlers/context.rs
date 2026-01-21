@@ -22,6 +22,7 @@ pub struct ViewHandlerContext<'a> {
     // Navigation state
     pub selected_index: &'a mut State<usize>,
     pub scroll_offset: &'a mut State<usize>,
+    pub detail_scroll_offset: &'a mut State<usize>,
 
     // Pane state
     pub active_pane: &'a mut State<Pane>,
