@@ -101,6 +101,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
 
     // UI state
     let mut focused_field = hooks.use_state(EditField::default);
+    let mut body_scroll_offset = hooks.use_state(|| 0usize);
     let mut should_save = hooks.use_state(|| false);
     let mut should_cancel = hooks.use_state(|| false);
     let mut has_error = hooks.use_state(|| false);
@@ -230,7 +231,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                 // Field-specific handling
                 match focused_field.get() {
                     EditField::Title => handle_text_input(&mut title, code),
-                    EditField::Body => handle_multiline_input(&mut body, code),
+                    EditField::Body => handle_body_input(&mut body, &mut body_scroll_offset, code),
                     EditField::Status => handle_select_input(&mut status, code),
                     EditField::Type => handle_select_input(&mut ticket_type, code),
                     EditField::Priority => handle_select_input(&mut priority, code),
@@ -242,8 +243,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     // Calculate modal size
     let modal_width = width.saturating_sub(8).min(80);
     let modal_height = height.saturating_sub(4).min(30);
-    let left_padding = (width.saturating_sub(modal_width)) / 2;
-    let top_padding = (height.saturating_sub(modal_height)) / 2;
 
     // Header title
     let header_title = if is_new {
@@ -260,28 +259,25 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     element! {
         // Modal backdrop
         View(
-            width,
-            height,
+            width: 100pct,
+            height: 100pct,
+            position: Position::Absolute,
+            top: 0,
+            left: 0,
             flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Start,
-            align_items: AlignItems::Start,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            background_color: Color::Rgb { r: 80, g: 80, b: 80 },
         ) {
-            // Top padding
-            View(height: top_padding)
-
-            View(flex_direction: FlexDirection::Row) {
-                // Left padding
-                View(width: left_padding)
-
-                // Modal content
-                View(
-                    width: modal_width,
-                    height: modal_height,
-                    flex_direction: FlexDirection::Column,
-                    border_style: BorderStyle::Round,
-                    border_color: theme.border_focused,
-                    background_color: theme.background,
-                ) {
+            // Modal content
+            View(
+                width: modal_width,
+                height: modal_height,
+                flex_direction: FlexDirection::Column,
+                border_style: BorderStyle::Round,
+                border_color: theme.border_focused,
+                background_color: theme.background,
+            ) {
                     // Header
                     View(
                         width: 100pct,
@@ -486,18 +482,56 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                             overflow: Overflow::Hidden,
                         ) {
                             View(flex_direction: FlexDirection::Column) {
-                                #(body.to_string().lines().take(10).map(|line| {
-                                    let line_owned = line.to_string();
-                                    element! {
-                                        Text(content: line_owned, color: theme.text)
+                                #({
+                                    let body_text = body.to_string();
+                                    let lines: Vec<&str> = body_text.lines().collect();
+                                    let total_lines = lines.len();
+                                    let visible_lines: usize = 8;
+                                    let scroll_offset_val = body_scroll_offset.get().min(total_lines.saturating_sub(1));
+
+                                    if body_text.is_empty() {
+                                        vec![
+                                            element! {
+                                                Text(content: "_", color: theme.text)
+                                            }.into()
+                                        ]
+                                    } else {
+                                        let mut elements: Vec<AnyElement<'static>> = Vec::new();
+
+                                        let body_scroll = scroll_offset_val;
+
+                                        if body_scroll > 0 {
+                                            elements.push(element! {
+                                                Text(content: "↑", color: theme.text_dimmed)
+                                            }.into());
+                                        }
+
+                                        let indicator_overhead = if body_scroll > 0 { 1 } else { 0 }
+                                            + if body_scroll + visible_lines < total_lines { 1 } else { 0 };
+                                        let visible_count = visible_lines.saturating_sub(indicator_overhead).max(1);
+
+                                        for line in lines.iter().skip(body_scroll).take(visible_count) {
+                                            let line_owned = line.to_string();
+                                            elements.push(element! {
+                                                Text(content: line_owned, color: theme.text)
+                                            }.into());
+                                        }
+
+                                        let remaining = total_lines.saturating_sub(body_scroll + visible_count);
+                                        if remaining > 0 {
+                                            elements.push(element! {
+                                                Text(content: "↓", color: theme.text_dimmed)
+                                            }.into());
+                                        }
+
+                                        if focused_field.get() == EditField::Body {
+                                            elements.push(element! {
+                                                Text(content: "_", color: theme.highlight)
+                                            }.into());
+                                        }
+
+                                        elements
                                     }
-                                }))
-                                #(if focused_field.get() == EditField::Body {
-                                    Some(element! {
-                                        Text(content: "_", color: theme.highlight)
-                                    })
-                                } else {
-                                    None
                                 })
                             }
                         }
@@ -506,7 +540,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                     // Footer
                     Footer(shortcuts: edit_shortcuts())
                 }
-            }
         }
     }
 }
@@ -528,23 +561,65 @@ fn handle_text_input(state: &mut State<String>, code: KeyCode) {
     }
 }
 
-/// Handle text input for multiline fields
-fn handle_multiline_input(state: &mut State<String>, code: KeyCode) {
+/// Handle text input for body field with scrolling support
+fn handle_body_input(state: &mut State<String>, scroll_offset: &mut State<usize>, code: KeyCode) {
+    let body_text = state.to_string();
+    let lines: Vec<&str> = body_text.lines().collect();
+    let total_lines = lines.len();
+    let visible_lines: usize = 8;
+
     match code {
-        KeyCode::Char(c) => {
-            let mut val = state.to_string();
+        KeyCode::Char(c) if c != 'j' && c != 'k' => {
+            let mut val = body_text;
             val.push(c);
             state.set(val);
         }
         KeyCode::Backspace => {
-            let mut val = state.to_string();
+            let mut val = body_text;
             val.pop();
             state.set(val);
         }
         KeyCode::Enter => {
-            let mut val = state.to_string();
+            let mut val = body_text;
             val.push('\n');
             state.set(val);
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            let current = scroll_offset.get();
+
+            if current.saturating_add(1) + visible_lines < total_lines {
+                scroll_offset.set(current.saturating_add(1));
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            let current = scroll_offset.get();
+            if current > 0 {
+                scroll_offset.set(current.saturating_sub(1));
+            }
+        }
+        KeyCode::PageDown => {
+            let current = scroll_offset.get();
+            let page_size = visible_lines.saturating_sub(1);
+            let new_offset = current.saturating_add(page_size);
+
+            if new_offset.saturating_add(visible_lines) < total_lines {
+                scroll_offset.set(new_offset);
+            } else if total_lines > visible_lines {
+                scroll_offset.set(total_lines.saturating_sub(visible_lines));
+            }
+        }
+        KeyCode::PageUp => {
+            let current = scroll_offset.get();
+            let page_size = visible_lines.saturating_sub(1);
+            scroll_offset.set(current.saturating_sub(page_size));
+        }
+        KeyCode::Home => {
+            scroll_offset.set(0);
+        }
+        KeyCode::End => {
+            if total_lines > visible_lines {
+                scroll_offset.set(total_lines.saturating_sub(visible_lines));
+            }
         }
         _ => {}
     }

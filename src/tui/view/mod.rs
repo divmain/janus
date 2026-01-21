@@ -230,6 +230,9 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Total height - header (1) - search box (3) - footer (1) - borders (2)
     let list_height = height.saturating_sub(7) as usize;
 
+    // Calculate width for the left pane (35% of terminal width)
+    let list_width = (width as usize * 35) / 100;
+
     // Keyboard event handling
     hooks.use_terminal_events({
         let filtered_len = filtered_clone.len();
@@ -421,6 +424,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                             scroll_offset: scroll_offset.get(),
                                             has_focus: active_pane.get() == Pane::List && !is_editing,
                                             visible_height: list_height,
+                                            width: list_width,
                                         )
                                     }
 

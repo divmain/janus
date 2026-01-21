@@ -23,6 +23,8 @@ pub struct TicketListProps {
     pub has_focus: bool,
     /// Number of visible rows
     pub visible_height: usize,
+    /// Width of the list pane in characters
+    pub width: usize,
 }
 
 /// Scrollable ticket list with selection
@@ -90,11 +92,13 @@ pub fn TicketList(props: &TicketListProps) -> impl Into<AnyElement<'static>> {
             #(visible_tickets.iter().enumerate().map(|(i, ft)| {
                 let actual_index = start + i;
                 let is_selected = actual_index == props.selected_index;
+                let row_width = props.width;
                 element! {
                     TicketRow(
                         ticket: ft.clone(),
                         is_selected: is_selected,
                         has_focus: props.has_focus && is_selected,
+                        width: row_width,
                     )
                 }
             }))
@@ -125,6 +129,8 @@ pub struct TicketRowProps {
     pub is_selected: bool,
     /// Whether this row has focus
     pub has_focus: bool,
+    /// Width of the row in characters
+    pub width: usize,
 }
 
 /// Single ticket row in the list
@@ -163,8 +169,11 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
         TicketStatus::Cancelled => "can",
     };
 
-    // Truncate title if needed (using char-safe truncation)
-    let max_title_len = 20;
+    // Calculate available width for title
+    // Fixed elements: indicator(1) + space+id(9) + space+status(6) + space before title(1) + borders(2) + padding(2)
+    // Total fixed overhead: ~21 characters
+    let fixed_overhead = 21;
+    let max_title_len = props.width.saturating_sub(fixed_overhead).max(10);
     let truncated_title = truncate_string(title, max_title_len);
 
     element! {
