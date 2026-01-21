@@ -121,8 +121,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             async move {
                 // Collect pending actions from the channel
                 let actions: Vec<ViewAction> = {
-                    let Ok(mut guard) = action_channel.lock() else {
-                        return;
+                    let mut guard = match action_channel.lock() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            let inner = e.into_inner();
+                            eprintln!("CRITICAL: Action queue mutex poisoned in view. Recovering queue data. UI actions will continue but the application may be in an inconsistent state.");
+                            toast_setter.set(Some(Toast::error("Internal error detected. Please save your work and restart.")));
+                            inner
+                        }
                     };
                     let mut actions = Vec::new();
                     while let Ok(action) = guard.try_recv() {
