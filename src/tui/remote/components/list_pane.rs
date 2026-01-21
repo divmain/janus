@@ -124,7 +124,7 @@ fn render_remote_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
 
                     let status_color = match &issue.status {
                         RemoteStatus::Open => Color::Green,
-                        RemoteStatus::Closed => Color::DarkGrey,
+                        RemoteStatus::Closed => Color::Rgb { r: 120, g: 120, b: 120 },
                         RemoteStatus::Custom(_) => Color::White,
                     };
 

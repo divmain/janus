@@ -130,7 +130,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                 border_color: Color::Cyan,
                 padding: 1,
                 flex_direction: FlexDirection::Column,
-                background_color: Color::DarkGrey,
+                background_color: Color::Rgb { r: 120, g: 120, b: 120 },
             ) {
                 // Header
                 Text(
@@ -156,7 +156,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                     )
                     Text(
                         content: if state.focused_field == 0 { " (Enter to toggle)" } else { "" },
-                        color: Color::DarkGrey,
+                        color: Color::Rgb { r: 120, g: 120, b: 120 },
                     )
                 }
                 Text(content: "")
@@ -173,7 +173,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                     )
                     Text(
                         content: if state.assignee.is_empty() { "(any)" } else { &state.assignee },
-                        color: if state.assignee.is_empty() { Color::DarkGrey } else { Color::Cyan },
+                        color: if state.assignee.is_empty() { Color::Rgb { r: 120, g: 120, b: 120 } } else { Color::Cyan },
                     )
                 }
                 Text(content: "")
@@ -190,7 +190,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                     )
                     Text(
                         content: if state.labels.is_empty() { "(any)" } else { &state.labels },
-                        color: if state.labels.is_empty() { Color::DarkGrey } else { Color::Cyan },
+                        color: if state.labels.is_empty() { Color::Rgb { r: 120, g: 120, b: 120 } } else { Color::Cyan },
                     )
                 }
                 Text(content: "")
@@ -200,7 +200,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                     width: 100pct,
                     border_edges: Edges::Bottom,
                     border_style: BorderStyle::Single,
-                    border_color: Color::DarkGrey,
+                    border_color: Color::Rgb { r: 120, g: 120, b: 120 },
                 ) {
                     Text(content: "")
                 }
@@ -209,7 +209,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                 // Help text
                 Text(
                     content: "Tab/j/k: navigate | Enter: toggle/edit | x: clear | Esc: cancel | Enter: apply",
-                    color: Color::DarkGrey,
+                    color: Color::Rgb { r: 120, g: 120, b: 120 },
                 )
             }
         }

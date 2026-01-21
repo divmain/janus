@@ -47,7 +47,11 @@ impl Default for Theme {
             status_next: Color::Magenta,
             status_in_progress: Color::Cyan,
             status_complete: Color::Green,
-            status_cancelled: Color::DarkGrey,
+            status_cancelled: Color::Rgb {
+                r: 120,
+                g: 120,
+                b: 120,
+            },
 
             // Priority colors
             priority_p0: Color::Red,
@@ -59,14 +63,26 @@ impl Default for Theme {
             type_feature: Color::Green,
             type_task: Color::Blue,
             type_epic: Color::Magenta,
-            type_chore: Color::DarkGrey,
+            type_chore: Color::Rgb {
+                r: 120,
+                g: 120,
+                b: 120,
+            },
 
             // UI colors
-            border: Color::DarkGrey,
+            border: Color::Rgb {
+                r: 120,
+                g: 120,
+                b: 120,
+            },
             border_focused: Color::Blue,
             background: Color::Reset,
             text: Color::White,
-            text_dimmed: Color::DarkGrey,
+            text_dimmed: Color::Rgb {
+                r: 120,
+                g: 120,
+                b: 120,
+            },
             highlight: Color::Blue,
             search_match: Color::Yellow,
             id_color: Color::Cyan,

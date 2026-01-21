@@ -34,7 +34,7 @@ pub fn ConfirmDialog<'a>(props: &ConfirmDialogState, _hooks: Hooks) -> impl Into
                 border_color: Color::Yellow,
                 padding: 1,
                 flex_direction: FlexDirection::Column,
-                background_color: Color::DarkGrey,
+                background_color: Color::Rgb { r: 120, g: 120, b: 120 },
             ) {
                 Text(
                     content: "Confirm",

@@ -123,14 +123,14 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                 border_color: Color::Cyan,
                 padding: 1,
                 flex_direction: FlexDirection::Column,
-                background_color: Color::DarkGrey,
+                background_color: Color::Rgb { r: 120, g: 120, b: 120 },
             ) {
                 Text(
                     content: "Sync Preview",
                     color: Color::Cyan,
                     weight: Weight::Bold,
                 )
-                Text(content: format!("{}/{}", current_idx + 1, total), color: Color::DarkGrey)
+                Text(content: format!("{}/{}", current_idx + 1, total), color: Color::Rgb { r: 120, g: 120, b: 120 })
 
                 #(if let Some(change_ctx) = props.current_change() {
                     let change = &change_ctx.change;
@@ -146,18 +146,18 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                             )
                             Text(content: "")
 
-                            View(border_edges: Edges::Bottom, border_style: BorderStyle::Single, border_color: Color::DarkGrey) {
+                            View(border_edges: Edges::Bottom, border_style: BorderStyle::Single, border_color: Color::Rgb { r: 120, g: 120, b: 120 }) {
                                 Text(content: "")
                             }
 
                             Text(content: "")
 
                             Text(content: "Local:", color: Color::Green)
-                            Text(content: change.local_value.clone(), color: Color::DarkGrey)
+                            Text(content: change.local_value.clone(), color: Color::Rgb { r: 120, g: 120, b: 120 })
 
                             Text(content: "")
                             Text(content: "Remote:", color: Color::Red)
-                            Text(content: change.remote_value.clone(), color: Color::DarkGrey)
+                            Text(content: change.remote_value.clone(), color: Color::Rgb { r: 120, g: 120, b: 120 })
 
                             Text(content: "")
                             Text(content: "")

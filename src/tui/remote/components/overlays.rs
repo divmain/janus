@@ -38,7 +38,7 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
                         left: 0,
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
-                        background_color: Color::DarkGrey,
+                        background_color: Color::Rgb { r: 120, g: 120, b: 120 },
                     ) {
                         FilterModal(state: state_clone)
                     }
@@ -56,7 +56,7 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
                         left: 0,
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
-                        background_color: Color::DarkGrey,
+                        background_color: Color::Rgb { r: 120, g: 120, b: 120 },
                     ) {
                         HelpModal()
                     }
@@ -79,7 +79,7 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
                             left: 0,
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
-                            background_color: Color::DarkGrey,
+                            background_color: Color::Rgb { r: 120, g: 120, b: 120 },
                         ) {
                             ErrorDetailModal(error_type: error_type_clone.clone(), error_message: error_message_clone.clone())
                         }
@@ -107,15 +107,15 @@ pub fn render_link_mode_banner(
 ) -> Option<AnyElement<'static>> {
     link_mode.as_ref().map(|lm| {
         element! {
-            View(
-                width: 100pct,
-                padding_left: 1,
-                padding_right: 1,
-                border_edges: Edges::Bottom,
-                border_style: BorderStyle::Single,
-                border_color: Color::Yellow,
-                background_color: Color::DarkGrey,
-            ) {
+                View(
+                    width: 100pct,
+                    padding_left: 1,
+                    padding_right: 1,
+                    border_edges: Edges::Bottom,
+                    border_style: BorderStyle::Single,
+                    border_color: Color::Yellow,
+                    background_color: Color::Rgb { r: 120, g: 120, b: 120 },
+                ) {
                 Text(
                     content: format!(
                         "Link {} ({}) -> select target, [l] to confirm, [Esc] to cancel",
