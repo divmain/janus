@@ -114,3 +114,18 @@ fn test_link_remove_not_found() {
     let stderr = janus.run_failure(&["link", "remove", &id1, &id2]);
     assert!(stderr.contains("not found"));
 }
+
+#[test]
+#[serial]
+fn test_link_self_link_rejected() {
+    let janus = JanusTest::new();
+
+    let id1 = janus
+        .run_success(&["create", "Ticket 1"])
+        .trim()
+        .to_string();
+
+    let stderr = janus.run_failure(&["link", "add", &id1, &id1]);
+    assert!(stderr.contains("cannot link a ticket to itself"));
+    assert!(stderr.contains(&id1));
+}

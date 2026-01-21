@@ -257,6 +257,9 @@ pub enum JanusError {
     #[error("ticket cannot be its own parent")]
     SelfParentTicket,
 
+    #[error("cannot link a ticket to itself: {0}. Links must be between different tickets.")]
+    SelfLink(String),
+
     // Business logic errors
     #[error("dependency '{0}' not found in ticket")]
     DependencyNotFound(String),

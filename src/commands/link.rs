@@ -14,6 +14,15 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
         });
     }
 
+    // Check for duplicate IDs (self-links)
+    for i in 0..ids.len() {
+        for j in (i + 1)..ids.len() {
+            if ids[i] == ids[j] {
+                return Err(JanusError::SelfLink(ids[i].clone()));
+            }
+        }
+    }
+
     // Find all tickets first to validate they exist
     let mut tickets: Vec<Ticket> = Vec::new();
     for id in ids {
