@@ -585,6 +585,7 @@ Description of the plan.
         let ticket_path = tickets_dir.join("j-a1b2.md");
         let content = r#"---
 id: j-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440600
 status: new
 deps: ["j-dep1", "j-dep2"]
 links: ["j-link1"]
@@ -646,6 +647,7 @@ priority: 2
         let ticket_path = tickets_dir.join("j-full.md");
         let content = r#"---
 id: j-full
+uuid: 550e8400-e29b-41d4-a716-446655440500
 status: in_progress
 deps: []
 links: []

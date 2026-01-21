@@ -99,6 +99,18 @@ pub fn parse_plan_content(content: &str) -> Result<PlanMetadata> {
     let mut metadata = parse_yaml_frontmatter(&yaml)?;
     parse_body(&body, &mut metadata)?;
 
+    if metadata.id.is_none() {
+        return Err(JanusError::Other(
+            "plan metadata missing required field 'id'".to_string(),
+        ));
+    }
+
+    if metadata.uuid.is_none() {
+        return Err(JanusError::Other(
+            "plan metadata missing required field 'uuid'".to_string(),
+        ));
+    }
+
     Ok(metadata)
 }
 
@@ -504,6 +516,7 @@ This is the plan description.
     fn test_parse_phased_plan() {
         let content = r#"---
 id: plan-b2c3
+uuid: 550e8400-e29b-41d4-a716-446655440014
 created: 2024-01-01T00:00:00Z
 ---
 # Phased Plan
@@ -570,6 +583,7 @@ Implement the core logic.
     fn test_parse_plan_with_freeform_sections() {
         let content = r#"---
 id: plan-c3d4
+uuid: 550e8400-e29b-41d4-a716-446655440007
 created: 2024-01-01T00:00:00Z
 ---
 # Plan with Free-form Content
@@ -694,6 +708,7 @@ Initial setup.
     fn test_parse_plan_minimal() {
         let content = r#"---
 id: plan-min
+uuid: 550e8400-e29b-41d4-a716-446655440000
 ---
 # Minimal Plan
 "#;
@@ -710,6 +725,7 @@ id: plan-min
     fn test_parse_plan_no_title() {
         let content = r#"---
 id: plan-notitle
+uuid: 550e8400-e29b-41d4-a716-446655440001
 ---
 No H1 heading, just content.
 
@@ -736,6 +752,7 @@ No H1 heading, just content.
     fn test_parse_plan_empty_phase() {
         let content = r#"---
 id: plan-empty
+uuid: 550e8400-e29b-41d4-a716-446655440002
 ---
 # Plan with Empty Phase
 
@@ -761,6 +778,7 @@ This phase has no tickets.
         // Code blocks containing ## should not be treated as section headers
         let content = r#"---
 id: plan-code
+uuid: 550e8400-e29b-41d4-a716-446655440003
 ---
 # Code Test Plan
 
@@ -800,6 +818,7 @@ It's inside a code block.
         // First occurrence is used, subsequent treated as free-form
         let content = r#"---
 id: plan-dup
+uuid: 550e8400-e29b-41d4-a716-446655440004
 ---
 # Duplicate Test
 
@@ -826,6 +845,7 @@ id: plan-dup
     fn test_parse_plan_case_insensitive_sections() {
         let content = r#"---
 id: plan-case
+uuid: 550e8400-e29b-41d4-a716-446655440005
 ---
 # Case Test
 
@@ -856,6 +876,7 @@ id: plan-case
     fn test_parse_plan_section_ordering_preserved() {
         let content = r#"---
 id: plan-order
+uuid: 550e8400-e29b-41d4-a716-446655440006
 ---
 # Section Order Test
 
@@ -912,6 +933,7 @@ Last section.
         // "Phase Diagrams" should be treated as free-form (no number after "Phase")
         let content = r#"---
 id: plan-diagrams
+uuid: 550e8400-e29b-41d4-a716-446655440008
 ---
 # Diagrams Test
 
@@ -941,6 +963,7 @@ Some diagrams here.
         // "Tickets Discussion" should be free-form (not exact match for "Tickets")
         let content = r#"---
 id: plan-discussion
+uuid: 550e8400-e29b-41d4-a716-446655440009
 ---
 # Discussion Test
 
@@ -970,6 +993,7 @@ Discussion about tickets.
     fn test_parse_plan_multiline_description() {
         let content = r#"---
 id: plan-multi
+uuid: 550e8400-e29b-41d4-a716-446655440015
 ---
 # Multi-line Description Test
 
@@ -1001,6 +1025,7 @@ This is the second paragraph with **bold** text.
         // H4+ headers within free-form sections should be preserved
         let content = r#"---
 id: plan-h4
+uuid: 550e8400-e29b-41d4-a716-446655440011
 ---
 # Plan with Deep Nesting
 
@@ -1243,6 +1268,7 @@ Implement the core synchronization logic.
     fn test_parse_plan_with_crlf_line_endings() {
         let content = "---\r\n\
 id: plan-crlf\r\n\
+uuid: 550e8400-e29b-41d4-a716-446655440010\r\n\
 created: 2024-01-01T00:00:00Z\r\n\
 ---\r\n\
 # CRLF Plan\r\n\
@@ -1273,6 +1299,7 @@ A plan with Windows-style line endings.\r\n\
     fn test_parse_phased_plan_with_crlf() {
         let content = "---\r\n\
 id: plan-crlf-phased\r\n\
+uuid: 550e8400-e29b-41d4-a716-446655440013\r\n\
 created: 2024-01-01T00:00:00Z\r\n\
 ---\r\n\
 # CRLF Phased Plan\r\n\
@@ -1310,6 +1337,7 @@ First phase description.\r\n\
     fn test_parse_plan_with_mixed_line_endings() {
         let content = "---\n\
 id: plan-mixed\n\
+uuid: 550e8400-e29b-41d4-a716-446655440012\n\
 created: 2024-01-01T00:00:00Z\n\
 ---\n\
 # Mixed Line Endings\r\n\

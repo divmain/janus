@@ -2586,6 +2586,7 @@ fn test_cache_basic_workflow() {
     let ticket_path = janus_dir.join("items").join("j-a1b2.md");
     let content = r#"---
 id: j-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
@@ -2600,6 +2601,7 @@ priority: 2
     let ticket_path2 = janus_dir.join("items").join("j-c3d4.md");
     let content2 = r#"---
 id: j-c3d4
+uuid: 550e8400-e29b-41d4-a716-446655440001
 status: new
 deps: []
 links: []
@@ -2629,6 +2631,7 @@ priority: 2
     let ticket_path3 = janus_dir.join("items").join("j-e5f6.md");
     let content3 = r#"---
 id: j-e5f6
+uuid: 550e8400-e29b-41d4-a716-446655440002
 status: new
 deps: []
 links: []
@@ -2661,6 +2664,7 @@ fn test_cache_status_command() {
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: new
 deps: []
 links: []
@@ -2688,6 +2692,7 @@ fn test_cache_clear_command() {
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: new
 deps: []
 links: []
@@ -2718,6 +2723,7 @@ fn test_cache_rebuild_command() {
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: new
 deps: []
 links: []
@@ -2746,12 +2752,10 @@ fn test_cache_path_command() {
 
     assert!(cache_path.is_absolute());
     assert!(cache_path.to_string_lossy().contains("janus"));
-    assert!(
-        cache_path
-            .extension()
-            .map(|ext| ext == "db")
-            .unwrap_or(false)
-    );
+    assert!(cache_path
+        .extension()
+        .map(|ext| ext == "db")
+        .unwrap_or(false));
 }
 
 #[test]
@@ -2764,6 +2768,7 @@ fn test_cache_corrupted_database() {
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: new
 deps: []
 links: []
@@ -2810,6 +2815,7 @@ fn test_cache_rebuild_after_corruption() {
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: new
 deps: []
 links: []
@@ -2845,6 +2851,7 @@ fn test_cache_no_directory_works_without_cache() {
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: new
 deps: []
 links: []
@@ -2881,6 +2888,7 @@ fn test_cache_unavailable_degrades_gracefully() {
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: new
 deps: []
 links: []
@@ -2915,6 +2923,7 @@ fn test_show_displays_completion_summary() {
     // Create a ticket with a completion summary section
     let content = r#"---
 id: j-done
+uuid: 550e8400-e29b-41d4-a716-446655440004
 status: complete
 deps: []
 links: []
@@ -2950,6 +2959,7 @@ fn test_completion_summary_in_cache() {
     // Create a ticket with a completion summary
     let content = r#"---
 id: j-cached
+uuid: 550e8400-e29b-41d4-a716-446655440005
 status: complete
 deps: []
 links: []
@@ -3106,6 +3116,7 @@ fn test_plan_show_with_tickets() {
     // Create tickets with known IDs
     let ticket1_content = r#"---
 id: j-task1
+uuid: 550e8400-e29b-41d4-a716-446655440006
 status: new
 deps: []
 links: []
@@ -3121,6 +3132,7 @@ First task.
 
     let ticket2_content = r#"---
 id: j-task2
+uuid: 550e8400-e29b-41d4-a716-446655440007
 status: new
 deps: []
 links: []
@@ -3167,6 +3179,7 @@ fn test_plan_show_phased_with_status() {
     // Create tickets with different statuses
     let ticket1_content = r#"---
 id: j-done1
+uuid: 550e8400-e29b-41d4-a716-446655440008
 status: complete
 deps: []
 links: []
@@ -3182,6 +3195,7 @@ Done!
 
     let ticket2_content = r#"---
 id: j-prog1
+uuid: 550e8400-e29b-41d4-a716-446655440009
 status: in_progress
 deps: []
 links: []
@@ -3197,6 +3211,7 @@ Working on it.
 
     let ticket3_content = r#"---
 id: j-new1
+uuid: 550e8400-e29b-41d4-a716-44665544000a
 status: new
 deps: []
 links: []
@@ -3301,6 +3316,7 @@ fn test_plan_ls_status_filter() {
     // Create a plan with completed tickets
     let ticket_content = r#"---
 id: j-done2
+uuid: 550e8400-e29b-41d4-a716-44665544000b
 status: complete
 deps: []
 links: []
@@ -3413,6 +3429,7 @@ CREATE TABLE example (id TEXT);
     // Create the referenced ticket
     let ticket_content = r#"---
 id: j-test1
+uuid: 550e8400-e29b-41d4-a716-44665544000c
 status: new
 deps: []
 links: []
@@ -4534,6 +4551,7 @@ fn test_plan_status_all_cancelled() {
     // Create a plan with cancelled tickets
     let ticket1_content = r#"---
 id: j-canc1
+uuid: 550e8400-e29b-41d4-a716-44665544000d
 status: cancelled
 deps: []
 links: []
@@ -4549,6 +4567,7 @@ Cancelled.
 
     let ticket2_content = r#"---
 id: j-canc2
+uuid: 550e8400-e29b-41d4-a716-44665544000e
 status: cancelled
 deps: []
 links: []
@@ -4590,6 +4609,7 @@ fn test_plan_status_mixed_complete_cancelled() {
     // Create tickets with mixed complete/cancelled statuses
     let ticket1_content = r#"---
 id: j-comp1
+uuid: 550e8400-e29b-41d4-a716-44665544000f
 status: complete
 deps: []
 links: []
@@ -4605,6 +4625,7 @@ Done!
 
     let ticket2_content = r#"---
 id: j-canc3
+uuid: 550e8400-e29b-41d4-a716-446655440010
 status: cancelled
 deps: []
 links: []
@@ -4647,6 +4668,7 @@ fn test_plan_status_all_next() {
     // Create tickets with 'next' status
     let ticket1_content = r#"---
 id: j-next1
+uuid: 550e8400-e29b-41d4-a716-446655440011
 status: next
 deps: []
 links: []
@@ -4662,6 +4684,7 @@ Ready to start.
 
     let ticket2_content = r#"---
 id: j-next2
+uuid: 550e8400-e29b-41d4-a716-446655440012
 status: next
 deps: []
 links: []
@@ -4739,6 +4762,7 @@ fn test_plan_large_many_tickets() {
         let ticket_content = format!(
             r#"---
 id: j-bulk{:02}
+uuid: 550e8400-e29b-41d4-a716-44665544{:04x}
 status: new
 deps: []
 links: []
@@ -4750,7 +4774,7 @@ priority: 2
 
 Description for task {}.
 "#,
-            i, i, i
+            i, i, i, i
         );
         janus.write_ticket(&format!("j-bulk{:02}", i), &ticket_content);
         ticket_ids.push(format!("j-bulk{:02}", i));
@@ -4858,6 +4882,7 @@ fn test_plan_phased_with_empty_phase() {
     // Create a ticket
     let ticket_content = r#"---
 id: j-inphase
+uuid: 550e8400-e29b-41d4-a716-446655440014
 status: new
 deps: []
 links: []
@@ -5157,6 +5182,7 @@ fn test_plan_status_with_in_progress_tickets() {
     // Create tickets with in_progress status
     let ticket1_content = r#"---
 id: j-inprog1
+uuid: 550e8400-e29b-41d4-a716-446655440015
 status: in_progress
 deps: []
 links: []
@@ -5172,6 +5198,7 @@ Working on it.
 
     let ticket2_content = r#"---
 id: j-newt
+uuid: 550e8400-e29b-41d4-a716-446655440016
 status: new
 deps: []
 links: []
@@ -5213,6 +5240,7 @@ fn test_plan_phased_status_first_complete_second_new() {
     // Phase 1 complete, Phase 2 not started - should be in_progress overall
     let ticket1_content = r#"---
 id: j-ph1done
+uuid: 550e8400-e29b-41d4-a716-446655440017
 status: complete
 deps: []
 links: []
@@ -5228,6 +5256,7 @@ Done.
 
     let ticket2_content = r#"---
 id: j-ph2new
+uuid: 550e8400-e29b-41d4-a716-446655440018
 status: new
 deps: []
 links: []
@@ -5458,6 +5487,7 @@ fn test_plan_show_verbose_phase_shows_full_summary() {
     // Create a ticket with a multi-line completion summary
     let ticket_content = r#"---
 id: j-verbose
+uuid: 550e8400-e29b-41d4-a716-446655440019
 status: complete
 deps: []
 links: []
@@ -5524,6 +5554,7 @@ fn test_plan_show_verbose_phase_multiple_phases() {
     // Create tickets with completion summaries
     let ticket1_content = r#"---
 id: j-phase1
+uuid: 550e8400-e29b-41d4-a716-44665544001a
 status: complete
 deps: []
 links: []
@@ -5543,6 +5574,7 @@ Phase 1 line 3.
 
     let ticket2_content = r#"---
 id: j-phase2
+uuid: 550e8400-e29b-41d4-a716-44665544001b
 status: complete
 deps: []
 links: []
@@ -5639,6 +5671,7 @@ fn test_plan_show_verbose_phase_nonexistent_phase() {
     // Create a ticket
     let ticket_content = r#"---
 id: j-test
+uuid: 550e8400-e29b-41d4-a716-44665544001c
 status: complete
 deps: []
 links: []

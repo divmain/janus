@@ -1,5 +1,5 @@
-use crate::error::Result;
-use crate::parser::{ParsedDocument, parse_document};
+use crate::error::{JanusError, Result};
+use crate::parser::{parse_document, ParsedDocument};
 use crate::types::TicketMetadata;
 
 /// Parse a ticket file's content into TicketMetadata.
@@ -24,6 +24,18 @@ fn ticket_metadata_from_document(doc: ParsedDocument) -> Result<TicketMetadata> 
     metadata.title = doc.extract_title();
     metadata.completion_summary = doc.extract_section("completion summary");
 
+    if metadata.id.is_none() {
+        return Err(JanusError::Other(
+            "ticket metadata missing required field 'id'".to_string(),
+        ));
+    }
+
+    if metadata.uuid.is_none() {
+        return Err(JanusError::Other(
+            "ticket metadata missing required field 'uuid'".to_string(),
+        ));
+    }
+
     Ok(metadata)
 }
 
@@ -36,6 +48,7 @@ mod tests {
     fn test_parse_basic_ticket() {
         let content = r#"---
 id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
@@ -61,6 +74,7 @@ This is the description.
     fn test_parse_with_deps() {
         let content = r#"---
 id: test-5678
+uuid: 550e8400-e29b-41d4-a716-446655440001
 status: new
 deps: ["dep-1", "dep-2"]
 links: ["link-1"]
@@ -84,6 +98,7 @@ links: ["link-1"]
     fn test_parse_with_completion_summary() {
         let content = r#"---
 id: j-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440002
 status: complete
 deps: []
 links: []
@@ -118,6 +133,7 @@ Performance results: Cold start ~22ms, subsequent lookups <5ms.
     fn test_parse_completion_summary_with_following_section() {
         let content = r#"---
 id: j-c3d4
+uuid: 550e8400-e29b-41d4-a716-446655440003
 status: complete
 deps: []
 links: []
@@ -146,6 +162,7 @@ Some additional notes here.
     fn test_parse_no_completion_summary() {
         let content = r#"---
 id: j-e5f6
+uuid: 550e8400-e29b-41d4-a716-446655440004
 status: new
 deps: []
 links: []
@@ -163,6 +180,7 @@ Just a description, no completion summary section.
     fn test_parse_completion_summary_case_insensitive() {
         let content = r#"---
 id: j-g7h8
+uuid: 550e8400-e29b-41d4-a716-446655440005
 status: complete
 deps: []
 links: []
@@ -183,6 +201,7 @@ All caps header should work.
     fn test_parse_yaml_with_multiline_string() {
         let content = r#"---
 id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440006
 status: new
 deps: []
 links: []
@@ -212,6 +231,7 @@ Description.
         let content = r#"---
 # This is a YAML comment that should be ignored
 id: test-5678  # Inline comment
+uuid: 550e8400-e29b-41d4-a716-446655440007
 status: next   # Another inline comment
 deps: []
 links: []
@@ -234,6 +254,7 @@ YAML comments should be handled properly.
     fn test_parse_yaml_with_empty_arrays() {
         let content = r#"---
 id: test-9012
+uuid: 550e8400-e29b-41d4-a716-446655440008
 status: new
 deps:
 links:
@@ -256,6 +277,7 @@ Both deps and links should be empty vectors.
     fn test_parse_with_crlf_line_endings() {
         let content = "---\r\n\
 id: test-crlf\r\n\
+uuid: 550e8400-e29b-41d4-a716-446655440009\r\n\
 status: new\r\n\
 deps: []\r\n\
 links: []\r\n\
@@ -280,6 +302,7 @@ This ticket uses Windows-style line endings.\r\n\
     fn test_parse_with_crlf_completion_summary() {
         let content = "---\r\n\
 id: j-a1b2\r\n\
+uuid: 550e8400-e29b-41d4-a716-446655440010\r\n\
 status: complete\r\n\
 deps: []\r\n\
 links: []\r\n\
@@ -306,6 +329,7 @@ Task completed with CRLF line endings.\r\n\
     fn test_parse_with_mixed_line_endings() {
         let content = "---\n\
 id: test-mixed\n\
+uuid: 550e8400-e29b-41d4-a716-446655440011\n\
 status: new\n\
 deps: []\r\n\
 links: []\r\n\

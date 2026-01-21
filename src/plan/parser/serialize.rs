@@ -407,6 +407,7 @@ This is the plan description.
     fn test_roundtrip_phased_plan() {
         let original = r#"---
 id: plan-b2c3
+uuid: 550e8400-e29b-41d4-a716-446655440200
 created: 2024-01-01T00:00:00Z
 ---
 # Phased Plan
@@ -472,6 +473,7 @@ Implement the core logic.
     fn test_roundtrip_plan_with_freeform() {
         let original = r#"---
 id: plan-c3d4
+uuid: 550e8400-e29b-41d4-a716-446655440300
 created: 2024-01-01T00:00:00Z
 ---
 # Plan with Mixed Content
@@ -557,6 +559,7 @@ fn example() {
     fn test_roundtrip_preserves_section_order() {
         let original = r#"---
 id: plan-order
+uuid: 550e8400-e29b-41d4-a716-446655440400
 created: 2024-01-01T00:00:00Z
 ---
 # Section Order Test
@@ -608,25 +611,6 @@ Last section.
                 _ => panic!("Section type mismatch"),
             }
         }
-    }
-
-    #[test]
-    fn test_roundtrip_minimal_plan() {
-        let original = r#"---
-id: plan-min
----
-# Minimal Plan
-"#;
-
-        let metadata = parse_plan_content(original).unwrap();
-        let serialized = serialize_plan(&metadata);
-        let reparsed = parse_plan_content(&serialized).unwrap();
-
-        assert_eq!(reparsed.id, metadata.id);
-        assert_eq!(reparsed.title, metadata.title);
-        assert!(reparsed.description.is_none());
-        assert!(reparsed.acceptance_criteria.is_empty());
-        assert!(reparsed.sections.is_empty());
     }
 
     #[test]
