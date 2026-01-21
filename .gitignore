@@ -4,3 +4,6 @@ node_modules/
 target/
 .janus/
 .opencode/
+
+# Allow test fixtures
+!tests/fixtures/**/.janus/

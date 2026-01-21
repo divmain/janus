@@ -1,3 +1,8 @@
+pub mod fixtures;
+pub mod mock_data;
+pub mod snapshot;
+pub mod tui_helpers;
+
 use std::fs;
 use std::process::{Command, Output};
 use tempfile::TempDir;
