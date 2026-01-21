@@ -16,7 +16,7 @@ use crate::tui::components::{
     ToastNotification, browser_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
     search_shortcuts,
 };
-use crate::tui::edit::{EditForm, EditResult};
+use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::EditFormState;
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
@@ -384,6 +384,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             height,
             flex_direction: FlexDirection::Column,
             background_color: theme.background,
+            position: Position::Relative,
         ) {
             // Header
             Header(
@@ -494,7 +495,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             // Edit form overlay
             #(if is_editing {
                 Some(element! {
-                    EditForm(
+                    EditFormOverlay(
                         ticket: edit_ticket.clone(),
                         initial_body: edit_body.clone(),
                         on_close: Some(edit_result),

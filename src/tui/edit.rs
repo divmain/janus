@@ -6,7 +6,7 @@
 use iocraft::prelude::*;
 
 use crate::formatting::extract_ticket_body;
-use crate::tui::components::{Footer, Selectable, edit_shortcuts, options_for};
+use crate::tui::components::{Selectable, options_for};
 use crate::tui::services::{TicketEditService, TicketFormValidator};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
@@ -255,27 +255,15 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     let priority_options = options_for::<TicketPriority>();
 
     element! {
-        // Modal backdrop
+        // Modal content
         View(
-            width: 100pct,
-            height: 100pct,
-            position: Position::Absolute,
-            top: 0,
-            left: 0,
+            width: 90pct,
+            height: 90pct,
             flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            background_color: Color::Rgb { r: 80, g: 80, b: 80 },
+            border_style: BorderStyle::Round,
+            border_color: theme.border_focused,
+            background_color: theme.background,
         ) {
-            // Modal content
-            View(
-                width: 90pct,
-                height: 90pct,
-                flex_direction: FlexDirection::Column,
-                border_style: BorderStyle::Round,
-                border_color: theme.border_focused,
-                background_color: theme.background,
-            ) {
                     // Header
                     View(
                         width: 100pct,
@@ -526,11 +514,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                             }
                         }
                     }
-
-                    // Footer
-                    Footer(shortcuts: edit_shortcuts())
                 }
-        }
     }
 }
 
@@ -628,6 +612,34 @@ fn handle_select_input<T: Selectable + Send + Sync + 'static>(state: &mut State<
             state.set(state.get().next());
         }
         _ => {}
+    }
+}
+
+/// Edit form overlay with backdrop
+///
+/// Renders the EditForm component as an overlay on top of existing content.
+/// The backdrop is transparent (no background_color) so underlying content
+/// remains visible around the modal.
+#[component]
+pub fn EditFormOverlay<'a>(props: &EditFormProps, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
+    element! {
+        // Modal container - no background color so underlying content shows through
+        View(
+            width: 100pct,
+            height: 100pct,
+            position: Position::Absolute,
+            top: 0,
+            left: 0,
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+        ) {
+            EditForm(
+                ticket: props.ticket.clone(),
+                initial_body: props.initial_body.clone(),
+                on_close: props.on_close.clone(),
+            )
+        }
     }
 }
 

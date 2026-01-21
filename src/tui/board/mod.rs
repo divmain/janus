@@ -14,7 +14,7 @@ use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, InlineSearchBox, TicketCard, Toast, ToastNotification,
     board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
-use crate::tui::edit::{EditForm, EditResult, extract_body_for_edit};
+use crate::tui::edit::{EditFormOverlay, EditResult, extract_body_for_edit};
 use crate::tui::edit_state::EditFormState;
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
@@ -399,6 +399,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             height,
             flex_direction: FlexDirection::Column,
             background_color: theme.background,
+            position: Position::Relative,
         ) {
             // Header with column toggles
             View(
@@ -636,7 +637,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             // Edit form overlay
             #(if is_editing {
                 Some(element! {
-                    EditForm(
+                    EditFormOverlay(
                         ticket: edit_ticket.clone(),
                         initial_body: edit_body.clone(),
                         on_close: Some(edit_result),
