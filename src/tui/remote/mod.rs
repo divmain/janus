@@ -12,6 +12,7 @@ mod filter_modal;
 mod handlers;
 mod help_modal;
 mod link_mode;
+pub mod model;
 mod operations;
 mod state;
 mod sync_preview;
