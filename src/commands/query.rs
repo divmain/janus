@@ -9,7 +9,7 @@ use crate::ticket::{get_all_tickets, get_children_count};
 
 /// Output tickets as JSON, optionally filtered with jq syntax
 pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
-    let tickets = get_all_tickets().await;
+    let tickets = get_all_tickets().await?;
 
     // Build JSON lines output with children_count for each ticket
     let mut json_lines = Vec::new();
@@ -17,7 +17,10 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
         let mut json_val = ticket_to_json(t);
         // Add children_count (computed on demand)
         if let Some(id) = &t.id {
-            let children_count = get_children_count(id).await;
+            let children_count = get_children_count(id).await.unwrap_or_else(|e| {
+                eprintln!("Warning: failed to count children for {}: {}", id, e);
+                0
+            });
             if let serde_json::Value::Object(ref mut map) = json_val {
                 map.insert("children_count".to_string(), json!(children_count));
             }

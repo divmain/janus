@@ -48,7 +48,7 @@ pub async fn cmd_plan_show(
         return Err(JanusError::VerbosePhaseRequiresPhasedPlan);
     }
 
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
 
     // Handle JSON output format
     if output_json {

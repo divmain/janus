@@ -457,7 +457,9 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<ListTicketsRequest>,
     ) -> Result<String, String> {
-        let (tickets, ticket_map) = get_all_tickets_with_map().await;
+        let (tickets, ticket_map) = get_all_tickets_with_map()
+            .await
+            .map_err(|e| format!("failed to load tickets: {}", e))?;
 
         // Resolve spawned_from partial ID if provided
         let resolved_spawned_from = if let Some(ref partial_id) = request.spawned_from {
@@ -583,7 +585,9 @@ impl JanusTools {
             .map_err(|e| format!("Ticket not found: {}", e))?;
         let content = ticket.read_content().map_err(|e| e.to_string())?;
         let metadata = ticket.read().map_err(|e| e.to_string())?;
-        let ticket_map = build_ticket_map().await;
+        let ticket_map = build_ticket_map()
+            .await
+            .map_err(|e| format!("failed to load tickets: {}", e))?;
 
         // Find blockers and blocking tickets
         let mut blockers: Vec<&TicketMetadata> = Vec::new();
@@ -637,7 +641,9 @@ impl JanusTools {
             .map_err(|e| format!("Dependency ticket not found: {}", e))?;
 
         // Check for circular dependencies
-        let ticket_map = build_ticket_map().await;
+        let ticket_map = build_ticket_map()
+            .await
+            .map_err(|e| format!("failed to load tickets: {}", e))?;
         check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)?;
 
         let added = ticket
@@ -805,7 +811,9 @@ impl JanusTools {
             .await
             .map_err(|e| format!("Plan not found: {}", e))?;
         let metadata = plan.read().map_err(|e| e.to_string())?;
-        let ticket_map = build_ticket_map().await;
+        let ticket_map = build_ticket_map()
+            .await
+            .map_err(|e| format!("failed to load tickets: {}", e))?;
 
         let plan_status = compute_plan_status(&metadata, &ticket_map);
 
@@ -831,7 +839,9 @@ impl JanusTools {
             .map_err(|e| format!("Ticket not found: {}", e))?;
         let parent_metadata = parent.read().map_err(|e| e.to_string())?;
 
-        let (tickets, _) = get_all_tickets_with_map().await;
+        let (tickets, _) = get_all_tickets_with_map()
+            .await
+            .map_err(|e| format!("failed to load tickets: {}", e))?;
 
         let children: Vec<&TicketMetadata> = tickets
             .iter()

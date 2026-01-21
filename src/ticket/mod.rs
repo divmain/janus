@@ -19,8 +19,8 @@ pub use repository::{
 
 use crate::error::Result;
 use crate::hooks::{HookContext, ItemType};
-use crate::types::TicketMetadata;
 use crate::ticket::parser::parse;
+use crate::types::TicketMetadata;
 use std::path::PathBuf;
 
 pub struct Ticket {

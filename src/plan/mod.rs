@@ -166,7 +166,11 @@ impl Plan {
         fs::write(&self.file_path, content).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to write plan at {}: {}", self.file_path.display(), e),
+                format!(
+                    "Failed to write plan at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
             ))
         })?;
 
@@ -197,7 +201,11 @@ impl Plan {
         fs::write(&self.file_path, content).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to write plan at {}: {}", self.file_path.display(), e),
+                format!(
+                    "Failed to write plan at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
             ))
         })?;
         Ok(())
@@ -222,7 +230,11 @@ impl Plan {
         fs::remove_file(&self.file_path).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to delete plan at {}: {}", self.file_path.display(), e),
+                format!(
+                    "Failed to delete plan at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
             ))
         })?;
 

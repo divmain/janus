@@ -87,7 +87,7 @@ pub async fn cmd_graph(
     let graph_format: GraphFormat = format.parse()?;
 
     // Get all tickets
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
 
     // Determine which tickets to include
     let ticket_ids: HashSet<String> = if let Some(root_id) = root {

@@ -17,7 +17,7 @@ use crate::ticket::build_ticket_map;
 pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
     let plan = Plan::find(id).await?;
     let metadata = plan.read()?;
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
 
     // Compute overall plan status
     let plan_status = compute_plan_status(&metadata, &ticket_map);

@@ -5,33 +5,30 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn find_tickets() -> Vec<String> {
+pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
     use crate::types::TICKETS_ITEMS_DIR;
 
-    DirScanner::find_markdown_files(TICKETS_ITEMS_DIR).unwrap_or_else(|e| {
-        eprintln!("Warning: failed to read tickets directory: {}", e);
-        Vec::new()
-    })
+    DirScanner::find_markdown_files(TICKETS_ITEMS_DIR)
 }
 
 pub struct TicketRepository;
 
 impl TicketRepository {
-    pub async fn get_all() -> Vec<TicketMetadata> {
+    pub async fn get_all() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
         if let Some(cache) = cache::get_or_init_cache().await {
             if let Ok(tickets) = cache.get_all_tickets().await {
-                return tickets;
+                return Ok(tickets);
             }
             eprintln!("Warning: cache read failed, falling back to file reads");
         }
 
-        Self::get_all_from_disk()
+        Self::get_all_from_disk().map_err(crate::error::JanusError::Io)
     }
 
-    fn get_all_from_disk() -> Vec<TicketMetadata> {
+    fn get_all_from_disk() -> Result<Vec<TicketMetadata>, std::io::Error> {
         use crate::types::TICKETS_ITEMS_DIR;
 
-        let files = find_tickets();
+        let files = find_tickets()?;
         let mut tickets = Vec::new();
 
         for file in files {
@@ -53,47 +50,51 @@ impl TicketRepository {
             }
         }
 
-        tickets
+        Ok(tickets)
     }
 
-    pub async fn build_map() -> HashMap<String, TicketMetadata> {
+    pub async fn build_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError> {
         if let Some(cache) = cache::get_or_init_cache().await {
             if let Ok(map) = cache.build_ticket_map().await {
-                return map;
+                return Ok(map);
             }
             eprintln!("Warning: cache read failed, falling back to file reads");
         }
 
-        Self::get_all()
-            .await
+        Ok(Self::get_all()
+            .await?
             .into_iter()
             .filter_map(|t| t.id.clone().map(|id| (id, t)))
-            .collect()
+            .collect())
     }
 
-    pub async fn get_all_with_map() -> (Vec<TicketMetadata>, HashMap<String, TicketMetadata>) {
-        let tickets = Self::get_all().await;
+    pub async fn get_all_with_map()
+    -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError>
+    {
+        let tickets = Self::get_all().await?;
         let map = tickets
             .iter()
             .filter_map(|t| t.id.clone().map(|id| (id, t.clone())))
-            .collect();
-        (tickets, map)
+            .collect::<HashMap<String, TicketMetadata>>();
+        Ok((tickets, map))
     }
 }
 
-pub async fn get_all_tickets() -> Vec<TicketMetadata> {
+pub async fn get_all_tickets() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
     TicketRepository::get_all().await
 }
 
-pub fn get_all_tickets_from_disk() -> Vec<TicketMetadata> {
+pub fn get_all_tickets_from_disk() -> Result<Vec<TicketMetadata>, std::io::Error> {
     TicketRepository::get_all_from_disk()
 }
 
-pub async fn build_ticket_map() -> HashMap<String, TicketMetadata> {
+pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError>
+{
     TicketRepository::build_map().await
 }
 
-pub async fn get_all_tickets_with_map() -> (Vec<TicketMetadata>, HashMap<String, TicketMetadata>) {
+pub async fn get_all_tickets_with_map()
+-> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError> {
     TicketRepository::get_all_with_map().await
 }
 
@@ -105,18 +106,18 @@ pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
 ///
 /// This function uses the cache when available, falling back to
 /// scanning all tickets and counting matches.
-pub async fn get_children_count(ticket_id: &str) -> usize {
+pub async fn get_children_count(ticket_id: &str) -> Result<usize, crate::error::JanusError> {
     if let Some(cache) = cache::get_or_init_cache().await {
         if let Ok(count) = cache.get_children_count(ticket_id).await {
-            return count;
+            return Ok(count);
         }
         eprintln!("Warning: cache read failed, falling back to file reads");
     }
 
     // Fallback: scan all tickets and count matches
-    let tickets = get_all_tickets().await;
-    tickets
+    let tickets = get_all_tickets().await?;
+    Ok(tickets
         .iter()
         .filter(|t| t.spawned_from.as_ref() == Some(&ticket_id.to_string()))
-        .count()
+        .count())
 }

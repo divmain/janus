@@ -53,7 +53,12 @@ fn handle_adopt(ctx: &mut HandlerContext<'_>) {
             ctx.modals
                 .toast
                 .set(Some(Toast::info(format!("Adopted {} issues", ids.len()))));
-            ctx.view_data.local_tickets.set(get_all_tickets_from_disk());
+            ctx.view_data
+                .local_tickets
+                .set(get_all_tickets_from_disk().unwrap_or_else(|e| {
+                    eprintln!("Error: failed to load tickets: {}", e);
+                    vec![]
+                }));
             ctx.view_data.remote_nav.selected_ids.set(HashSet::new());
         }
         Err(e) => {

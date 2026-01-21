@@ -9,9 +9,9 @@ use turso::transaction::Transaction;
 use crate::error::{JanusError, Result};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
-use crate::utils::generate_uuid;
 use crate::ticket::parse_ticket;
 use crate::types::{PLANS_DIR, TICKETS_ITEMS_DIR, TicketMetadata};
+use crate::utils::generate_uuid;
 
 /// Trait for items that can be cached in the SQLite database.
 ///

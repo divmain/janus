@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::parser::{parse_document, ParsedDocument};
+use crate::parser::{ParsedDocument, parse_document};
 use crate::types::TicketMetadata;
 
 /// Parse a ticket file's content into TicketMetadata.

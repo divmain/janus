@@ -2078,12 +2078,12 @@ fn test_ls_sort_by_created() {
 
     let t1_id = janus.run_success(&["create", "First"]).trim().to_string();
 
-    // Small delay to ensure different timestamps
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    // Delay to ensure different timestamps (timestamps have second precision)
+    std::thread::sleep(std::time::Duration::from_secs(1));
 
     let t2_id = janus.run_success(&["create", "Second"]).trim().to_string();
 
-    std::thread::sleep(std::time::Duration::from_millis(10));
+    std::thread::sleep(std::time::Duration::from_secs(1));
 
     let t3_id = janus.run_success(&["create", "Third"]).trim().to_string();
 
@@ -2742,10 +2742,12 @@ fn test_cache_path_command() {
 
     assert!(cache_path.is_absolute());
     assert!(cache_path.to_string_lossy().contains("janus"));
-    assert!(cache_path
-        .extension()
-        .map(|ext| ext == "db")
-        .unwrap_or(false));
+    assert!(
+        cache_path
+            .extension()
+            .map(|ext| ext == "db")
+            .unwrap_or(false)
+    );
 }
 
 #[test]

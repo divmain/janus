@@ -12,7 +12,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id).await?;
     let content = ticket.read_content()?;
     let metadata = ticket.read()?;
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
 
     let mut blockers: Vec<&TicketMetadata> = Vec::new();
     let mut blocking: Vec<&TicketMetadata> = Vec::new();
@@ -44,7 +44,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
     }
 
     // Get count of tickets spawned from this ticket
-    let spawned_count = get_children_count(&ticket.id).await;
+    let spawned_count = get_children_count(&ticket.id).await?;
 
     // Build JSON data (needed for both output formats)
     let blockers_json: Vec<_> = blockers

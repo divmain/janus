@@ -30,7 +30,7 @@ pub async fn cmd_plan_next(
 ) -> Result<()> {
     let plan = Plan::find(id).await?;
     let metadata = plan.read()?;
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
 
     // Collect next items based on options
     let next_items = if metadata.is_phased() {

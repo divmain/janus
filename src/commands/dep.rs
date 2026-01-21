@@ -87,7 +87,7 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()
     let dep_ticket = Ticket::find(dep_id).await?;
 
     // Check for circular dependencies before adding
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
     check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)?;
 
     let added = ticket.add_to_array_field("deps", &dep_ticket.id)?;
@@ -139,7 +139,7 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result
 
 /// Display the dependency tree for a ticket
 pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Result<()> {
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
 
     // Find the matching ticket ID
     let matching_ids: Vec<_> = ticket_map.keys().filter(|k| k.contains(id)).collect();

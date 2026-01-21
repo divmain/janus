@@ -176,119 +176,120 @@ impl TicketCache {
     // =========================================================================
 
     async fn row_to_ticket_metadata(row: &turso::Row) -> Result<TicketMetadata> {
-        let id: Option<String> = Some(row.get::<String>(0).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 0,
-                error: e.to_string(),
-            }
-        })?);
+        let id: Option<String> =
+            Some(
+                row.get::<String>(0)
+                    .map_err(|e| CacheError::CacheColumnExtraction {
+                        column: 0,
+                        error: e.to_string(),
+                    })?,
+            );
 
-        let uuid: Option<String> = row.get::<Option<String>>(1).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 1,
-                error: e.to_string(),
-            }
-        })?;
+        let uuid: Option<String> =
+            row.get::<Option<String>>(1)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 1,
+                    error: e.to_string(),
+                })?;
 
         let status: Option<crate::types::TicketStatus> = row
             .get::<Option<String>>(2)
-            .map_err(|e| {
-                CacheError::CacheColumnExtraction {
-                    column: 2,
-                    error: e.to_string(),
-                }
+            .map_err(|e| CacheError::CacheColumnExtraction {
+                column: 2,
+                error: e.to_string(),
             })?
             .and_then(|s| s.parse().ok());
 
-        let title: Option<String> = row.get::<Option<String>>(3).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 3,
-                error: e.to_string(),
-            }
-        })?;
+        let title: Option<String> =
+            row.get::<Option<String>>(3)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 3,
+                    error: e.to_string(),
+                })?;
 
-        let priority_num: Option<i64> = row.get::<Option<i64>>(4).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 4,
-                error: e.to_string(),
-            }
-        })?;
+        let priority_num: Option<i64> =
+            row.get::<Option<i64>>(4)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 4,
+                    error: e.to_string(),
+                })?;
 
-        let type_str: Option<String> = row.get::<Option<String>>(5).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 5,
-                error: e.to_string(),
-            }
-        })?;
+        let type_str: Option<String> =
+            row.get::<Option<String>>(5)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 5,
+                    error: e.to_string(),
+                })?;
 
-        let deps_json: Option<String> = row.get::<Option<String>>(6).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 6,
-                error: e.to_string(),
-            }
-        })?;
+        let deps_json: Option<String> =
+            row.get::<Option<String>>(6)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 6,
+                    error: e.to_string(),
+                })?;
 
-        let links_json: Option<String> = row.get::<Option<String>>(7).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 7,
-                error: e.to_string(),
-            }
-        })?;
+        let links_json: Option<String> =
+            row.get::<Option<String>>(7)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 7,
+                    error: e.to_string(),
+                })?;
 
-        let parent: Option<String> = row.get::<Option<String>>(8).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 8,
-                error: e.to_string(),
-            }
-        })?;
+        let parent: Option<String> =
+            row.get::<Option<String>>(8)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 8,
+                    error: e.to_string(),
+                })?;
 
-        let created: Option<String> = row.get::<Option<String>>(9).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 9,
-                error: e.to_string(),
-            }
-        })?;
+        let created: Option<String> =
+            row.get::<Option<String>>(9)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 9,
+                    error: e.to_string(),
+                })?;
 
-        let external_ref: Option<String> = row.get::<Option<String>>(10).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 10,
-                error: e.to_string(),
-            }
-        })?;
+        let external_ref: Option<String> =
+            row.get::<Option<String>>(10)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 10,
+                    error: e.to_string(),
+                })?;
 
-        let remote: Option<String> = row.get::<Option<String>>(11).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 11,
-                error: e.to_string(),
-            }
-        })?;
+        let remote: Option<String> =
+            row.get::<Option<String>>(11)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 11,
+                    error: e.to_string(),
+                })?;
 
         let completion_summary: Option<String> =
-            row.get::<Option<String>>(12).map_err(|e| CacheError::CacheColumnExtraction {
-                column: 12,
-                error: e.to_string(),
-            })?;
+            row.get::<Option<String>>(12)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 12,
+                    error: e.to_string(),
+                })?;
 
-        let spawned_from: Option<String> = row.get::<Option<String>>(13).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 13,
-                error: e.to_string(),
-            }
-        })?;
+        let spawned_from: Option<String> =
+            row.get::<Option<String>>(13)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 13,
+                    error: e.to_string(),
+                })?;
 
-        let spawn_context: Option<String> = row.get::<Option<String>>(14).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 14,
-                error: e.to_string(),
-            }
-        })?;
+        let spawn_context: Option<String> =
+            row.get::<Option<String>>(14)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 14,
+                    error: e.to_string(),
+                })?;
 
-        let depth_num: Option<i64> = row.get::<Option<i64>>(15).map_err(|e| {
-            CacheError::CacheColumnExtraction {
-                column: 15,
-                error: e.to_string(),
-            }
-        })?;
+        let depth_num: Option<i64> =
+            row.get::<Option<i64>>(15)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 15,
+                    error: e.to_string(),
+                })?;
 
         // Parse ticket_type (optional domain field)
         let ticket_type: Option<crate::types::TicketType> = type_str.and_then(|s| {
@@ -305,20 +306,18 @@ impl TicketCache {
         });
 
         // Parse priority (optional domain field)
-        let priority: Option<crate::types::TicketPriority> = priority_num.and_then(|n| {
-            match n {
-                0 => Some(crate::types::TicketPriority::P0),
-                1 => Some(crate::types::TicketPriority::P1),
-                2 => Some(crate::types::TicketPriority::P2),
-                3 => Some(crate::types::TicketPriority::P3),
-                4 => Some(crate::types::TicketPriority::P4),
-                _ => {
-                    eprintln!(
-                        "Warning: Invalid priority value {} for ticket '{:?}'. Priority will be None.",
-                        n, id
-                    );
-                    None
-                }
+        let priority: Option<crate::types::TicketPriority> = priority_num.and_then(|n| match n {
+            0 => Some(crate::types::TicketPriority::P0),
+            1 => Some(crate::types::TicketPriority::P1),
+            2 => Some(crate::types::TicketPriority::P2),
+            3 => Some(crate::types::TicketPriority::P3),
+            4 => Some(crate::types::TicketPriority::P4),
+            _ => {
+                eprintln!(
+                    "Warning: Invalid priority value {} for ticket '{:?}'. Priority will be None.",
+                    n, id
+                );
+                None
             }
         });
 
@@ -365,52 +364,55 @@ impl TicketCache {
 
     async fn row_to_plan_metadata(row: &turso::Row) -> Result<CachedPlanMetadata> {
         let id: Option<String> =
-            Some(row.get::<String>(0).map_err(|e| CacheError::CacheColumnExtraction {
-                column: 0,
-                error: e.to_string(),
-            })?);
+            Some(
+                row.get::<String>(0)
+                    .map_err(|e| CacheError::CacheColumnExtraction {
+                        column: 0,
+                        error: e.to_string(),
+                    })?,
+            );
 
-        let uuid: Option<String> = row
-            .get::<Option<String>>(1)
-            .map_err(|e| CacheError::CacheColumnExtraction {
-                column: 1,
-                error: e.to_string(),
-            })?;
+        let uuid: Option<String> =
+            row.get::<Option<String>>(1)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 1,
+                    error: e.to_string(),
+                })?;
 
-        let title: Option<String> = row
-            .get::<Option<String>>(2)
-            .map_err(|e| CacheError::CacheColumnExtraction {
-                column: 2,
-                error: e.to_string(),
-            })?;
+        let title: Option<String> =
+            row.get::<Option<String>>(2)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 2,
+                    error: e.to_string(),
+                })?;
 
-        let created: Option<String> = row
-            .get::<Option<String>>(3)
-            .map_err(|e| CacheError::CacheColumnExtraction {
-                column: 3,
-                error: e.to_string(),
-            })?;
+        let created: Option<String> =
+            row.get::<Option<String>>(3)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 3,
+                    error: e.to_string(),
+                })?;
 
-        let structure_type: Option<String> = row
-            .get::<Option<String>>(4)
-            .map_err(|e| CacheError::CacheColumnExtraction {
-                column: 4,
-                error: e.to_string(),
-            })?;
+        let structure_type: Option<String> =
+            row.get::<Option<String>>(4)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 4,
+                    error: e.to_string(),
+                })?;
 
-        let tickets_json: Option<String> = row
-            .get::<Option<String>>(5)
-            .map_err(|e| CacheError::CacheColumnExtraction {
-                column: 5,
-                error: e.to_string(),
-            })?;
+        let tickets_json: Option<String> =
+            row.get::<Option<String>>(5)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 5,
+                    error: e.to_string(),
+                })?;
 
-        let phases_json: Option<String> = row
-            .get::<Option<String>>(6)
-            .map_err(|e| CacheError::CacheColumnExtraction {
-                column: 6,
-                error: e.to_string(),
-            })?;
+        let phases_json: Option<String> =
+            row.get::<Option<String>>(6)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 6,
+                    error: e.to_string(),
+                })?;
 
         // Deserialize tickets for simple plans with explicit error handling
         let tickets: Vec<String> = if let Some(json_str) = tickets_json.as_deref() {

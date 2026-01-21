@@ -41,7 +41,7 @@ pub async fn cmd_ls(
         return cmd_ls_next_in_plan(plan_id, limit, sort_by, output_json).await;
     }
 
-    let (tickets, ticket_map) = get_all_tickets_with_map().await;
+    let (tickets, ticket_map) = get_all_tickets_with_map().await?;
 
     // Resolve spawned_from partial ID to full ID if provided
     let resolved_spawned_from = if let Some(partial_id) = spawned_from {
@@ -211,10 +211,15 @@ fn matches_spawning_filters(ticket: &TicketMetadata, filters: &SpawningFilters) 
 }
 
 /// Handle --next-in-plan filter using plan next logic
-async fn cmd_ls_next_in_plan(plan_id: &str, limit: Option<usize>, sort_by: &str, output_json: bool) -> Result<()> {
+async fn cmd_ls_next_in_plan(
+    plan_id: &str,
+    limit: Option<usize>,
+    sort_by: &str,
+    output_json: bool,
+) -> Result<()> {
     let plan = Plan::find(plan_id).await?;
     let metadata = plan.read()?;
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map().await?;
 
     // Use a large count to get all next items, then apply limit
     let count = limit.unwrap_or(usize::MAX);

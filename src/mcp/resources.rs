@@ -263,7 +263,9 @@ async fn read_ticket(id: &str) -> Result<ReadResourceResult, ResourceError> {
 
 /// Read list of ready tickets (new/next with all deps complete)
 async fn read_ready_tickets() -> Result<ReadResourceResult, ResourceError> {
-    let (tickets, ticket_map) = get_all_tickets_with_map().await;
+    let (tickets, ticket_map) = get_all_tickets_with_map()
+        .await
+        .map_err(|e| ResourceError::Internal(e.to_string()))?;
 
     let ready: Vec<serde_json::Value> = tickets
         .iter()
@@ -299,7 +301,9 @@ async fn read_ready_tickets() -> Result<ReadResourceResult, ResourceError> {
 
 /// Read list of blocked tickets (has incomplete deps)
 async fn read_blocked_tickets() -> Result<ReadResourceResult, ResourceError> {
-    let (tickets, ticket_map) = get_all_tickets_with_map().await;
+    let (tickets, ticket_map) = get_all_tickets_with_map()
+        .await
+        .map_err(|e| ResourceError::Internal(e.to_string()))?;
 
     let blocked: Vec<serde_json::Value> = tickets
         .iter()
@@ -361,7 +365,9 @@ async fn read_blocked_tickets() -> Result<ReadResourceResult, ResourceError> {
 
 /// Read list of in-progress tickets
 async fn read_in_progress_tickets() -> Result<ReadResourceResult, ResourceError> {
-    let (tickets, _) = get_all_tickets_with_map().await;
+    let (tickets, _) = get_all_tickets_with_map()
+        .await
+        .map_err(|e| ResourceError::Internal(e.to_string()))?;
 
     let in_progress: Vec<serde_json::Value> = tickets
         .iter()
@@ -394,7 +400,9 @@ async fn read_plan(id: &str) -> Result<ReadResourceResult, ResourceError> {
         .read()
         .map_err(|e| ResourceError::Internal(format!("Failed to read plan: {}", e)))?;
 
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
     let plan_status = compute_plan_status(&metadata, &ticket_map);
 
     let phases_json: Vec<serde_json::Value> = if metadata.is_phased() {
@@ -462,7 +470,9 @@ async fn read_plan_next(id: &str) -> Result<ReadResourceResult, ResourceError> {
         .read()
         .map_err(|e| ResourceError::Internal(format!("Failed to read plan: {}", e)))?;
 
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
 
     // Get next items (using a reasonable default count)
     let next_items = if metadata.is_phased() {
@@ -518,7 +528,9 @@ async fn read_spawned_from(id: &str) -> Result<ReadResourceResult, ResourceError
         .await
         .map_err(|e| ResourceError::NotFound(format!("Ticket '{}' not found: {}", id, e)))?;
 
-    let (tickets, _) = get_all_tickets_with_map().await;
+    let (tickets, _) = get_all_tickets_with_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
 
     let children: Vec<serde_json::Value> = tickets
         .iter()
@@ -544,7 +556,9 @@ async fn read_spawned_from(id: &str) -> Result<ReadResourceResult, ResourceError
 
 /// Read dependency graph in DOT format
 async fn read_graph_deps() -> Result<ReadResourceResult, ResourceError> {
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
     let dot = generate_graph_dot(&ticket_map, GraphType::Deps);
 
     Ok(ReadResourceResult {
@@ -559,7 +573,9 @@ async fn read_graph_deps() -> Result<ReadResourceResult, ResourceError> {
 
 /// Read spawning graph in DOT format
 async fn read_graph_spawning() -> Result<ReadResourceResult, ResourceError> {
-    let ticket_map = build_ticket_map().await;
+    let ticket_map = build_ticket_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
     let dot = generate_graph_dot(&ticket_map, GraphType::Spawn);
 
     Ok(ReadResourceResult {
