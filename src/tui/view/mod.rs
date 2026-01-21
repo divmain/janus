@@ -6,7 +6,7 @@
 pub mod handlers;
 
 use iocraft::prelude::*;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, Header, SearchBox, TicketDetail, TicketList, Toast,
@@ -86,13 +86,13 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Note: We store the channel parts in a shared struct to ensure they're from the same channel
     struct ActionChannel {
         tx: mpsc::UnboundedSender<ViewAction>,
-        rx: std::sync::Arc<std::sync::Mutex<mpsc::UnboundedReceiver<ViewAction>>>,
+        rx: std::sync::Arc<Mutex<mpsc::UnboundedReceiver<ViewAction>>>,
     }
     let channel: State<ActionChannel> = hooks.use_state(|| {
         let (tx, rx) = mpsc::unbounded_channel::<ViewAction>();
         ActionChannel {
             tx,
-            rx: std::sync::Arc::new(std::sync::Mutex::new(rx)),
+            rx: std::sync::Arc::new(Mutex::new(rx)),
         }
     });
     let action_sender = channel.read().tx.clone();
@@ -121,15 +121,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             async move {
                 // Collect pending actions from the channel
                 let actions: Vec<ViewAction> = {
-                    let mut guard = match action_channel.lock() {
-                        Ok(guard) => guard,
-                        Err(e) => {
-                            let inner = e.into_inner();
-                            eprintln!("CRITICAL: Action queue mutex poisoned in view. Recovering queue data. UI actions will continue but the application may be in an inconsistent state.");
-                            toast_setter.set(Some(Toast::error("Internal error detected. Please save your work and restart.")));
-                            inner
-                        }
-                    };
+                    let mut guard = action_channel.lock().await;
                     let mut actions = Vec::new();
                     while let Ok(action) = guard.try_recv() {
                         actions.push(action);

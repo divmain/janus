@@ -6,7 +6,7 @@
 pub mod handlers;
 
 use iocraft::prelude::*;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::ticket::Ticket;
 use crate::tui::components::{
@@ -96,13 +96,13 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Note: We store the channel parts in a shared struct to ensure they're from the same channel
     struct ActionChannel {
         tx: mpsc::UnboundedSender<TicketAction>,
-        rx: std::sync::Arc<std::sync::Mutex<mpsc::UnboundedReceiver<TicketAction>>>,
+        rx: std::sync::Arc<Mutex<mpsc::UnboundedReceiver<TicketAction>>>,
     }
     let channel: State<ActionChannel> = hooks.use_state(|| {
         let (tx, rx) = mpsc::unbounded_channel::<TicketAction>();
         ActionChannel {
             tx,
-            rx: std::sync::Arc::new(std::sync::Mutex::new(rx)),
+            rx: std::sync::Arc::new(Mutex::new(rx)),
         }
     });
     let action_sender = channel.read().tx.clone();
@@ -140,15 +140,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             async move {
                 // Collect pending actions from the channel
                 let actions: Vec<TicketAction> = {
-                    let mut guard = match action_channel.lock() {
-                        Ok(guard) => guard,
-                        Err(e) => {
-                            let inner = e.into_inner();
-                            eprintln!("CRITICAL: Action queue mutex poisoned in board. Recovering queue data. UI actions will continue but the application may be in an inconsistent state.");
-                            toast_setter.set(Some(Toast::error("Internal error detected. Please save your work and restart.")));
-                            inner
-                        }
-                    };
+                    let mut guard = action_channel.lock().await;
                     let mut actions = Vec::new();
                     while let Ok(action) = guard.try_recv() {
                         actions.push(action);
