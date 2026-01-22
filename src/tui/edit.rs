@@ -201,14 +201,14 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                     return;
                 }
 
-                // When Body field is focused, let TextInput handle all keys except
+                // When Title or Body field is focused, let TextInput handle all keys except
                 // navigation (Tab/Esc) and global shortcuts (Ctrl+S).
                 // This prevents double-handling of key events that causes cursor issues.
-                let is_body_focused = focused_field.get() == EditField::Body;
+                let is_text_input_focused = matches!(focused_field.get(), EditField::Title | EditField::Body);
                 let is_navigation_key = matches!(code, KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab);
                 let is_global_shortcut = modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s');
                 
-                if is_body_focused && !is_navigation_key && !is_global_shortcut {
+                if is_text_input_focused && !is_navigation_key && !is_global_shortcut {
                     // Let TextInput handle this key exclusively
                     return;
                 }
@@ -241,8 +241,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
 
                 // Field-specific handling
                 match focused_field.get() {
-                    EditField::Title => handle_text_input(&mut title, code),
-                    EditField::Body => {}
+                    EditField::Title | EditField::Body => {} // TextInput handles these
                     EditField::Status => handle_select_input(&mut status, code),
                     EditField::Type => handle_select_input(&mut ticket_type, code),
                     EditField::Priority => handle_select_input(&mut priority, code),
@@ -339,9 +338,12 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                 padding_right: 1,
                                 width: 100pct,
                             ) {
-                                Text(
-                                    content: format!("{}_", title.to_string()),
+                                TextInput(
+                                    value: title.to_string(),
+                                    has_focus: focused_field.get() == EditField::Title,
+                                    on_change: move |new_value: String| title.set(new_value),
                                     color: theme.text,
+                                    cursor_color: Some(theme.highlight),
                                 )
                             }
                         }
@@ -403,23 +405,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                         }
                     }
                 }
-    }
-}
-
-/// Handle text input for single-line fields
-fn handle_text_input(state: &mut State<String>, code: KeyCode) {
-    match code {
-        KeyCode::Char(c) => {
-            let mut val = state.to_string();
-            val.push(c);
-            state.set(val);
-        }
-        KeyCode::Backspace => {
-            let mut val = state.to_string();
-            val.pop();
-            state.set(val);
-        }
-        _ => {}
     }
 }
 
