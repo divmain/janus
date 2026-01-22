@@ -374,7 +374,6 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                         // Separator
                         View(
                             width: 100pct,
-                            margin_top: 1,
                             border_edges: Edges::Bottom,
                             border_style: BorderStyle::Single,
                             border_color: theme.border,
