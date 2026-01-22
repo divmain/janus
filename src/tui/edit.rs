@@ -6,7 +6,7 @@
 use iocraft::prelude::*;
 
 use crate::formatting::extract_ticket_body;
-use crate::tui::components::{Selectable, options_for};
+use crate::tui::components::{Selectable, options_for, TextEditor};
 use crate::tui::services::{TicketEditService, TicketFormValidator};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
@@ -84,7 +84,7 @@ struct SaveRequest {
 #[component]
 pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyElement<'a>> {
     let theme = theme();
-    let (_width, height) = hooks.use_terminal_size();
+    let (_width, _height) = hooks.use_terminal_size();
 
     // Get initial values from props
     let initial_ticket = props.ticket.clone().unwrap_or_default();
@@ -96,12 +96,11 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     let mut status = hooks.use_state(|| initial_ticket.status.unwrap_or(TicketStatus::New));
     let mut ticket_type =
         hooks.use_state(|| initial_ticket.ticket_type.unwrap_or(TicketType::Task));
-    let mut priority = hooks.use_state(|| initial_ticket.priority.unwrap_or(TicketPriority::P2));
-    let mut body = hooks.use_state(|| props.initial_body.clone().unwrap_or_default());
+     let mut priority = hooks.use_state(|| initial_ticket.priority.unwrap_or(TicketPriority::P2));
+     let body = hooks.use_state(|| props.initial_body.clone().unwrap_or_default());
 
-    // UI state
+     // UI state
     let mut focused_field = hooks.use_state(EditField::default);
-    let mut body_scroll_offset = hooks.use_state(|| 0usize);
     let mut should_save = hooks.use_state(|| false);
     let mut should_cancel = hooks.use_state(|| false);
     let mut has_error = hooks.use_state(|| false);
@@ -202,6 +201,18 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                     return;
                 }
 
+                // When Body field is focused, let TextInput handle all keys except
+                // navigation (Tab/Esc) and global shortcuts (Ctrl+S).
+                // This prevents double-handling of key events that causes cursor issues.
+                let is_body_focused = focused_field.get() == EditField::Body;
+                let is_navigation_key = matches!(code, KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab);
+                let is_global_shortcut = modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s');
+                
+                if is_body_focused && !is_navigation_key && !is_global_shortcut {
+                    // Let TextInput handle this key exclusively
+                    return;
+                }
+
                 // Global shortcuts (work in any field)
                 if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s') {
                     should_save.set(true);
@@ -231,9 +242,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                 // Field-specific handling
                 match focused_field.get() {
                     EditField::Title => handle_text_input(&mut title, code),
-                    EditField::Body => {
-                        handle_body_input(&mut body, &mut body_scroll_offset, code, height)
-                    }
+                    EditField::Body => {}
                     EditField::Status => handle_select_input(&mut status, code),
                     EditField::Type => handle_select_input(&mut ticket_type, code),
                     EditField::Priority => handle_select_input(&mut priority, code),
@@ -251,10 +260,10 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
 
     // Get options for selects
     let status_options = options_for::<TicketStatus>();
-    let type_options = options_for::<TicketType>();
-    let priority_options = options_for::<TicketPriority>();
+     let type_options = options_for::<TicketType>();
+     let priority_options = options_for::<TicketPriority>();
 
-    element! {
+     element! {
         // Modal content
         View(
             width: 90pct,
@@ -457,61 +466,15 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
 
                         // Body text area
                         View(
-                            flex_grow: 1.0,
                             width: 100pct,
-                            border_style: BorderStyle::Round,
-                            border_color: if focused_field.get() == EditField::Body {
-                                theme.border_focused
-                            } else {
-                                theme.border
-                            },
-                            padding: 1,
+                            flex_grow: 1.0,
                             overflow: Overflow::Hidden,
                         ) {
-                            View(flex_direction: FlexDirection::Column, height: 100pct) {
-                                #({
-                                    let body_text = body.to_string();
-                                    let lines: Vec<&str> = body_text.lines().collect();
-                                    let total_lines = lines.len();
-                                    let scroll_offset_val = body_scroll_offset.get().min(total_lines.saturating_sub(1));
-                                    let is_body_focused = focused_field.get() == EditField::Body;
-
-                                    if body_text.is_empty() {
-                                        vec![
-                                            element! {
-                                                Text(content: "_", color: theme.text)
-                                            }.into()
-                                        ]
-                                    } else {
-                                        let mut elements: Vec<AnyElement<'static>> = Vec::new();
-
-                                        let body_scroll = scroll_offset_val;
-                                        let has_more_above = body_scroll > 0;
-
-                                        if has_more_above {
-                                            elements.push(element! {
-                                                Text(content: "↑", color: theme.text_dimmed)
-                                            }.into());
-                                        }
-
-                                        // Render all lines from scroll offset - flexbox overflow handles clipping
-                                        for line in lines.iter().skip(body_scroll) {
-                                            let line_owned = line.to_string();
-                                            elements.push(element! {
-                                                Text(content: line_owned, color: theme.text)
-                                            }.into());
-                                        }
-
-                                        if is_body_focused {
-                                            elements.push(element! {
-                                                Text(content: "_", color: theme.highlight)
-                                            }.into());
-                                        }
-
-                                        elements
-                                    }
-                                })
-                            }
+                            TextEditor(
+                                value: Some(body),
+                                has_focus: focused_field.get() == EditField::Body,
+                                cursor_color: None,
+                            )
                         }
                     }
                 }
@@ -530,73 +493,6 @@ fn handle_text_input(state: &mut State<String>, code: KeyCode) {
             let mut val = state.to_string();
             val.pop();
             state.set(val);
-        }
-        _ => {}
-    }
-}
-
-/// Handle text input for body field with scrolling support
-fn handle_body_input(
-    state: &mut State<String>,
-    scroll_offset: &mut State<usize>,
-    code: KeyCode,
-    terminal_height: u16,
-) {
-    let body_text = state.to_string();
-    let lines: Vec<&str> = body_text.lines().collect();
-    let total_lines = lines.len();
-
-    // Estimate visible lines in body area: ~30% of terminal height after modal chrome
-    // This is approximate since flexbox handles actual sizing
-    let effective_visible = ((terminal_height as usize) * 90 / 100 / 3).max(3);
-
-    match code {
-        KeyCode::Char(c) if c != 'j' && c != 'k' => {
-            let mut val = body_text;
-            val.push(c);
-            state.set(val);
-        }
-        KeyCode::Backspace => {
-            let mut val = body_text;
-            val.pop();
-            state.set(val);
-        }
-        KeyCode::Enter => {
-            let mut val = body_text;
-            val.push('\n');
-            state.set(val);
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-            let current = scroll_offset.get();
-            let max_scroll = total_lines.saturating_sub(effective_visible);
-            if current < max_scroll {
-                scroll_offset.set(current.saturating_add(1));
-            }
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-            let current = scroll_offset.get();
-            if current > 0 {
-                scroll_offset.set(current.saturating_sub(1));
-            }
-        }
-        KeyCode::PageDown => {
-            let current = scroll_offset.get();
-            let page_size = effective_visible.saturating_sub(1).max(1);
-            let max_scroll = total_lines.saturating_sub(effective_visible);
-            let new_offset = current.saturating_add(page_size).min(max_scroll);
-            scroll_offset.set(new_offset);
-        }
-        KeyCode::PageUp => {
-            let current = scroll_offset.get();
-            let page_size = effective_visible.saturating_sub(1).max(1);
-            scroll_offset.set(current.saturating_sub(page_size));
-        }
-        KeyCode::Home => {
-            scroll_offset.set(0);
-        }
-        KeyCode::End => {
-            let max_scroll = total_lines.saturating_sub(effective_visible);
-            scroll_offset.set(max_scroll);
         }
         _ => {}
     }

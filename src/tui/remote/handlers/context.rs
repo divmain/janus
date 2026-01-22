@@ -37,6 +37,10 @@ pub struct ViewData<'a> {
     pub remote_count: usize,
     /// Height of the list area for scroll calculations
     pub list_height: usize,
+    /// Scroll offset for local detail pane
+    pub local_detail_scroll_offset: &'a mut State<usize>,
+    /// Scroll offset for remote detail pane
+    pub remote_detail_scroll_offset: &'a mut State<usize>,
 }
 
 /// Global view state (which view is active, exit flag, etc.)
@@ -44,6 +48,7 @@ pub struct ViewState<'a> {
     pub active_view: &'a mut State<ViewMode>,
     pub show_detail: &'a mut State<bool>,
     pub should_exit: &'a mut State<bool>,
+    pub detail_pane_focused: &'a mut State<bool>,
 }
 
 /// Search functionality state

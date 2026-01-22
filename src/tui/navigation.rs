@@ -173,6 +173,35 @@ pub fn apply_page_up(
     scroll_offset.set(scroll);
 }
 
+/// Simple scroll down for detail content (no selection).
+pub fn detail_scroll_down(scroll_offset: &mut usize, max_lines: usize, visible_lines: usize) {
+    let max_scroll = max_lines.saturating_sub(visible_lines);
+    *scroll_offset = (*scroll_offset + 1).min(max_scroll);
+}
+
+/// Simple scroll up for detail content (no selection).
+pub fn detail_scroll_up(scroll_offset: &mut usize) {
+    *scroll_offset = scroll_offset.saturating_sub(1);
+}
+
+/// Apply detail scroll down to a State-based scroll offset.
+pub fn apply_detail_scroll_down(
+    scroll_offset: &mut State<usize>,
+    max_lines: usize,
+    visible_lines: usize,
+) {
+    let mut scroll = scroll_offset.get();
+    detail_scroll_down(&mut scroll, max_lines, visible_lines);
+    scroll_offset.set(scroll);
+}
+
+/// Apply detail scroll up to a State-based scroll offset.
+pub fn apply_detail_scroll_up(scroll_offset: &mut State<usize>) {
+    let mut scroll = scroll_offset.get();
+    detail_scroll_up(&mut scroll);
+    scroll_offset.set(scroll);
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

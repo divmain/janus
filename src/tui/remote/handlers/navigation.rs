@@ -32,7 +32,9 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode, shift_held: bool) -> 
 }
 
 fn handle_down(ctx: &mut HandlerContext<'_>, shift_held: bool) {
-    if ctx.view_state.active_view.get() == ViewMode::Local {
+    if ctx.view_state.detail_pane_focused.get() {
+        handle_detail_down(ctx);
+    } else if ctx.view_state.active_view.get() == ViewMode::Local {
         handle_local_down(ctx, shift_held);
     } else {
         handle_remote_down(ctx, shift_held);
@@ -40,10 +42,58 @@ fn handle_down(ctx: &mut HandlerContext<'_>, shift_held: bool) {
 }
 
 fn handle_up(ctx: &mut HandlerContext<'_>, shift_held: bool) {
-    if ctx.view_state.active_view.get() == ViewMode::Local {
+    if ctx.view_state.detail_pane_focused.get() {
+        handle_detail_up(ctx);
+    } else if ctx.view_state.active_view.get() == ViewMode::Local {
         handle_local_up(ctx, shift_held);
     } else {
         handle_remote_up(ctx, shift_held);
+    }
+}
+
+fn handle_detail_down(ctx: &mut HandlerContext<'_>) {
+    use crate::tui::navigation::apply_detail_scroll_down;
+    let detail_visible = ctx.view_state.show_detail.get();
+    if !detail_visible {
+        return;
+    }
+
+    if ctx.view_state.active_view.get() == ViewMode::Local {
+        let ticket = ctx.view_data.local_tickets.read();
+        let selected_idx = ctx.view_data.local_nav.selected_index.get();
+        if let Some(metadata) = ticket.get(selected_idx)
+            && let Some(file_path) = &metadata.file_path
+            && let Ok(ticket_handle) = crate::ticket::Ticket::new(file_path.clone())
+            && let Ok(content) = ticket_handle.read_content()
+        {
+            let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
+            let body_lines = body.lines().count();
+            let visible_lines = 10;
+            apply_detail_scroll_down(ctx.view_data.local_detail_scroll_offset, body_lines, visible_lines);
+        }
+    } else {
+        let issues = ctx.view_data.remote_issues.read();
+        let selected_idx = ctx.view_data.remote_nav.selected_index.get();
+        if let Some(issue) = issues.get(selected_idx) {
+            let body = &issue.body;
+            let body_lines = body.lines().count();
+            let visible_lines = 10;
+            apply_detail_scroll_down(ctx.view_data.remote_detail_scroll_offset, body_lines, visible_lines);
+        }
+    }
+}
+
+fn handle_detail_up(ctx: &mut HandlerContext<'_>) {
+    use crate::tui::navigation::apply_detail_scroll_up;
+    let detail_visible = ctx.view_state.show_detail.get();
+    if !detail_visible {
+        return;
+    }
+
+    if ctx.view_state.active_view.get() == ViewMode::Local {
+        apply_detail_scroll_up(ctx.view_data.local_detail_scroll_offset);
+    } else {
+        apply_detail_scroll_up(ctx.view_data.remote_detail_scroll_offset);
     }
 }
 
@@ -142,7 +192,10 @@ fn handle_remote_up(ctx: &mut HandlerContext<'_>, shift_held: bool) {
 }
 
 fn handle_go_top(ctx: &mut HandlerContext<'_>) {
-    if ctx.view_state.active_view.get() == ViewMode::Local {
+    if ctx.view_state.detail_pane_focused.get() {
+        ctx.view_data.local_detail_scroll_offset.set(0);
+        ctx.view_data.remote_detail_scroll_offset.set(0);
+    } else if ctx.view_state.active_view.get() == ViewMode::Local {
         navigation::apply_scroll_to_top(
             ctx.view_data.local_nav.selected_index,
             ctx.view_data.local_nav.scroll_offset,
@@ -156,7 +209,34 @@ fn handle_go_top(ctx: &mut HandlerContext<'_>) {
 }
 
 fn handle_go_bottom(ctx: &mut HandlerContext<'_>) {
-    if ctx.view_state.active_view.get() == ViewMode::Local {
+    if ctx.view_state.detail_pane_focused.get() {
+        let detail_visible = ctx.view_state.show_detail.get();
+        if detail_visible {
+            if ctx.view_state.active_view.get() == ViewMode::Local {
+                let ticket = ctx.view_data.local_tickets.read();
+                let selected_idx = ctx.view_data.local_nav.selected_index.get();
+                if let Some(metadata) = ticket.get(selected_idx)
+                    && let Some(file_path) = &metadata.file_path
+                    && let Ok(ticket_handle) = crate::ticket::Ticket::new(file_path.clone())
+                    && let Ok(content) = ticket_handle.read_content()
+                {
+                    let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
+                    let body_lines = body.lines().count();
+                    let visible_lines = 10;
+                    ctx.view_data.local_detail_scroll_offset.set(body_lines.saturating_sub(visible_lines));
+                }
+            } else {
+                let issues = ctx.view_data.remote_issues.read();
+                let selected_idx = ctx.view_data.remote_nav.selected_index.get();
+                if let Some(issue) = issues.get(selected_idx) {
+                    let body = &issue.body;
+                    let body_lines = body.lines().count();
+                    let visible_lines = 10;
+                    ctx.view_data.remote_detail_scroll_offset.set(body_lines.saturating_sub(visible_lines));
+                }
+            }
+        }
+    } else if ctx.view_state.active_view.get() == ViewMode::Local {
         navigation::apply_scroll_to_bottom(
             ctx.view_data.local_nav.selected_index,
             ctx.view_data.local_nav.scroll_offset,

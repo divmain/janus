@@ -77,7 +77,7 @@ impl EditFormState<'_> {
     /// Get the body for the edit form
     pub fn get_edit_body(&self) -> Option<String> {
         if self.is_editing() {
-            Some(self.editing_body.to_string())
+            Some(self.editing_body.read().clone())
         } else {
             None
         }

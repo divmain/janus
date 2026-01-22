@@ -350,3 +350,50 @@ use crate::plan::{parse_importable_plan, ImportablePlan};
 let plan = parse_importable_plan(&content)?;
 println!("Tasks: {}", plan.task_count());
 ```
+
+## TUI Component Organization
+
+### Shared Components
+
+The TUI uses a set of reusable components in `src/tui/components/`:
+
+- **SearchBox / InlineSearchBox** - Single-line text input using iocraft's `TextInput`
+- **Select** - Cycle through enum values (status, type, priority)
+- **TicketCard** - Compact ticket display
+- **TicketDetail** - Full ticket info with scrollable body (read-only)
+- **TicketList** - Left pane list view
+- **Toast** - Error/success notifications
+- **TextViewer** - Read-only multiline text viewer with scroll indicators
+- **TextEditor** - Editable multiline text input with full cursor support
+
+### Component Patterns
+
+#### Multi-line Text Display
+
+For showing read-only multiline text with scroll indicators:
+
+```rust
+TextViewer(
+    text: content,
+    scroll_offset: scroll_state,
+    has_focus: false,
+    placeholder: None,      // Optional
+)
+```
+
+#### Multi-line Text Editing
+
+For editing multiline text with full cursor support:
+
+```rust
+TextEditor(
+    value: text_state,
+    has_focus: focused_field.get() == EditField::Body,
+)
+```
+
+**Note**: TextEditor uses iocraft's `TextInput(multiline: true)` which provides:
+- Full cursor positioning (insert/delete anywhere)
+- Arrow key navigation
+- Automatic scrolling
+- No vim-style j/k support (use arrows)

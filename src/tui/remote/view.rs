@@ -101,6 +101,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let mut show_detail = hooks.use_state(|| true);
     let mut should_exit = hooks.use_state(|| false);
 
+    let mut detail_pane_focused = hooks.use_state(|| false);
+    let mut local_detail_scroll_offset = hooks.use_state(|| 0usize);
+    let mut remote_detail_scroll_offset = hooks.use_state(|| 0usize);
+
     // Operation state
     let mut toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut link_mode: State<Option<LinkModeState>> = hooks.use_state(|| None);
@@ -571,6 +575,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         active_view: &mut active_view,
                         show_detail: &mut show_detail,
                         should_exit: &mut should_exit,
+                        detail_pane_focused: &mut detail_pane_focused,
                     },
                     view_data: ViewData {
                         local_tickets: &mut local_tickets,
@@ -588,6 +593,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         local_count,
                         remote_count,
                         list_height,
+                        local_detail_scroll_offset: &mut local_detail_scroll_offset,
+                        remote_detail_scroll_offset: &mut remote_detail_scroll_offset,
                     },
                     search: SearchState {
                         query: &mut search_query,
@@ -741,6 +748,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     selected_remote: selected_remote.clone(),
                     selected_local: selected_local.clone(),
                     visible: detail_visible,
+                    remote_scroll_offset: remote_detail_scroll_offset.get(),
+                    local_scroll_offset: local_detail_scroll_offset.get(),
                 )
             }
 

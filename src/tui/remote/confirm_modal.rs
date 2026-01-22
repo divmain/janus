@@ -2,6 +2,8 @@
 
 use iocraft::prelude::*;
 
+use crate::tui::components::TextViewer;
+
 #[derive(Debug, Clone, Props)]
 pub struct ConfirmDialogState {
     pub message: String,
@@ -43,11 +45,12 @@ pub fn ConfirmDialog<'a>(props: &ConfirmDialogState, _hooks: Hooks) -> impl Into
                 )
                 Text(content: "")
 
-                #(props.message.lines().map(|line| {
-                    element! {
-                        Text(content: line.to_string(), color: Color::White)
-                    }
-                }))
+                TextViewer(
+                    text: props.message.clone(),
+                    scroll_offset: 0usize,
+                    has_focus: false,
+                    placeholder: Some("No message".to_string()),
+                )
 
                 Text(content: "")
                 Text(

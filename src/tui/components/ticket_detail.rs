@@ -7,6 +7,7 @@ use iocraft::prelude::*;
 
 use crate::formatting::{extract_ticket_body, format_date_for_display};
 use crate::ticket::Ticket;
+use crate::tui::components::TextViewer;
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
 
@@ -19,11 +20,6 @@ pub struct TicketDetailProps {
     pub has_focus: bool,
     /// Scroll offset for the body content
     pub scroll_offset: usize,
-    /// Visible height of the detail pane (required for body scroll calculations)
-    /// NOTE: This is needed to calculate how many body lines to show and for
-    /// scroll indicator logic. The component uses `height: 100pct` for layout,
-    /// but scroll state management needs the actual row count.
-    pub visible_height: usize,
 }
 
 /// Ticket detail view showing metadata and body
@@ -220,78 +216,13 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                 width: 100pct,
                 padding: 1,
                 overflow: Overflow::Hidden,
-                flex_direction: FlexDirection::Column,
             ) {
-                #({
-                    if body.is_empty() {
-                        vec![element! {
-                            Text(
-                                content: "(no body content)",
-                                color: theme.text_dimmed,
-                            )
-                        }.into()]
-                    } else {
-                        let lines: Vec<&str> = body.lines().collect();
-                        let total_lines = lines.len();
-                        let scroll = props.scroll_offset.min(total_lines.saturating_sub(1));
-
-                        let has_content_above = scroll > 0;
-                        let has_content_below = scroll + 1 < total_lines; // At least some content below scroll position
-
-                        let mut elements: Vec<AnyElement<'static>> = Vec::new();
-
-                        // Up indicator (fixed height)
-                        if has_content_above {
-                            elements.push(element! {
-                                View(height: 1, flex_shrink: 0.0) {
-                                    Text(
-                                        content: format!("↑ {} more above", scroll),
-                                        color: theme.text_dimmed,
-                                    )
-                                }
-                            }.into());
-                        }
-
-                        // Body lines container (fills remaining space)
-                        let visible_lines: Vec<AnyElement<'static>> = lines
-                            .iter()
-                            .skip(scroll)
-                            .map(|line| {
-                                let line_owned = line.to_string();
-                                element! {
-                                    View(height: 1, flex_shrink: 0.0) {
-                                        Text(content: line_owned, color: theme.text)
-                                    }
-                                }.into()
-                            })
-                            .collect();
-
-                        elements.push(element! {
-                            View(
-                                flex_grow: 1.0,
-                                flex_direction: FlexDirection::Column,
-                                overflow: Overflow::Hidden,
-                            ) {
-                                #(visible_lines)
-                            }
-                        }.into());
-
-                        // Down indicator (fixed height)
-                        if has_content_below {
-                            let remaining = total_lines.saturating_sub(scroll + 1);
-                            elements.push(element! {
-                                View(height: 1, flex_shrink: 0.0) {
-                                    Text(
-                                        content: format!("↓ {} more below", remaining),
-                                        color: theme.text_dimmed,
-                                    )
-                                }
-                            }.into());
-                        }
-
-                        elements
-                    }
-                })
+                TextViewer(
+                    text: body,
+                    scroll_offset: props.scroll_offset,
+                    has_focus: props.has_focus,
+                    placeholder: None,
+                )
             }
         }
     }

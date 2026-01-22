@@ -7,9 +7,9 @@ use iocraft::prelude::KeyCode;
 use super::super::error_toast::Toast;
 use super::super::filter_modal::FilterState;
 use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
 use super::sync;
+use super::HandleResult;
 
 /// Handle global keys that work in most contexts
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -52,11 +52,24 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
             HandleResult::Handled
         }
         KeyCode::Enter => {
-            // Toggle detail pane (only when no modal is open)
+            // Toggle detail pane focus or visibility (only when no modal is open)
             if ctx.filters.filter_modal.read().is_none() {
-                ctx.view_state
-                    .show_detail
-                    .set(!ctx.view_state.show_detail.get());
+                let detail_focused = ctx.view_state.detail_pane_focused.get();
+                if detail_focused {
+                    // When detail is focused, press Enter to focus back on list
+                    ctx.view_state.detail_pane_focused.set(false);
+                } else {
+                    // Toggle detail pane visibility
+                    let detail_visible = ctx.view_state.show_detail.get();
+                    if detail_visible {
+                        // Detail visible but not focused - focus it
+                        ctx.view_state.detail_pane_focused.set(true);
+                    } else {
+                        // Show detail pane and focus it
+                        ctx.view_state.show_detail.set(true);
+                        ctx.view_state.detail_pane_focused.set(true);
+                    }
+                }
             }
             HandleResult::Handled
         }

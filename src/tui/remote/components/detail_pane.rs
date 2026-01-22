@@ -4,7 +4,10 @@
 
 use iocraft::prelude::*;
 
+use crate::formatting::extract_ticket_body;
 use crate::remote::{RemoteIssue, RemoteStatus};
+use crate::ticket::Ticket;
+use crate::tui::components::TextViewer;
 use crate::tui::remote::state::ViewMode;
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
@@ -20,6 +23,10 @@ pub struct DetailPaneProps {
     pub selected_local: Option<TicketMetadata>,
     /// Whether the detail pane should be visible
     pub visible: bool,
+    /// Scroll offset for remote detail body
+    pub remote_scroll_offset: usize,
+    /// Scroll offset for local detail body
+    pub local_scroll_offset: usize,
 }
 
 /// Detail pane showing issue/ticket details
@@ -42,16 +49,19 @@ pub fn DetailPane(props: &DetailPaneProps) -> impl Into<AnyElement<'static>> {
             border_color: theme.border,
         ) {
             #(if props.view_mode == ViewMode::Remote {
-                render_remote_detail(&props.selected_remote)
+                render_remote_detail(&props.selected_remote, props.remote_scroll_offset)
             } else {
-                render_local_detail(&props.selected_local)
+                render_local_detail(&props.selected_local, props.local_scroll_offset)
             })
         }
     }
 }
 
 /// Render remote issue detail
-fn render_remote_detail(selected_remote: &Option<RemoteIssue>) -> Option<AnyElement<'static>> {
+fn render_remote_detail(
+    selected_remote: &Option<RemoteIssue>,
+    remote_scroll_offset: usize,
+) -> Option<AnyElement<'static>> {
     let theme = theme();
 
     if let Some(issue) = selected_remote {
@@ -109,13 +119,13 @@ fn render_remote_detail(selected_remote: &Option<RemoteIssue>) -> Option<AnyElem
                         width: 100pct,
                         padding: 1,
                         overflow: Overflow::Hidden,
-                        flex_direction: FlexDirection::Column,
                     ) {
-                        #(issue_body.lines().take(15).map(|line| {
-                            element! {
-                                Text(content: line.to_string(), color: theme.text)
-                            }
-                        }))
+                        TextViewer(
+                            text: issue_body,
+                            scroll_offset: remote_scroll_offset,
+                            has_focus: false,
+                            placeholder: Some("No description".to_string()),
+                        )
                     }
                 }
             }
@@ -138,7 +148,10 @@ fn render_remote_detail(selected_remote: &Option<RemoteIssue>) -> Option<AnyElem
 }
 
 /// Render local ticket detail
-fn render_local_detail(selected_local: &Option<TicketMetadata>) -> Option<AnyElement<'static>> {
+fn render_local_detail(
+    selected_local: &Option<TicketMetadata>,
+    scroll_offset: usize,
+) -> Option<AnyElement<'static>> {
     let theme = theme();
 
     if let Some(ticket) = selected_local {
@@ -149,6 +162,19 @@ fn render_local_detail(selected_local: &Option<TicketMetadata>) -> Option<AnyEle
         let ticket_title = ticket.title.clone().unwrap_or_default();
         let ticket_type = ticket.ticket_type;
         let ticket_priority = ticket.priority;
+
+        // Try to read the body content
+        let body = if let Some(file_path) = &ticket.file_path {
+            match Ticket::new(file_path.clone()) {
+                Ok(ticket_handle) => match ticket_handle.read_content() {
+                    Ok(content) => extract_ticket_body(&content).unwrap_or_default(),
+                    Err(_) => "(error: could not read file)".to_string(),
+                },
+                Err(_) => "(error: invalid ticket path)".to_string(),
+            }
+        } else {
+            "(file_path is None)".to_string()
+        };
 
         Some(
             element! {
@@ -187,6 +213,21 @@ fn render_local_detail(selected_local: &Option<TicketMetadata>) -> Option<AnyEle
                         Text(content: format!("Status: {}", status), color: theme.status_color(status))
                         Text(content: format!("Type: {:?}", ticket_type), color: theme.text)
                         Text(content: format!("Priority: {:?}", ticket_priority), color: theme.text)
+                    }
+
+                    // Body
+                    View(
+                        flex_grow: 1.0,
+                        width: 100pct,
+                        padding: 1,
+                        overflow: Overflow::Hidden,
+                    ) {
+                        TextViewer(
+                            text: body,
+                            scroll_offset: scroll_offset,
+                            has_focus: false,
+                            placeholder: Some("No description".to_string()),
+                        )
                     }
                 }
             }

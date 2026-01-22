@@ -467,7 +467,6 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                             ticket: selected_ticket.clone(),
                                             has_focus: active_pane.get() == Pane::Detail && !is_editing,
                                             scroll_offset: detail_scroll_offset.get(),
-                                            visible_height: list_height,
                                         )
                                     }
                                 }
