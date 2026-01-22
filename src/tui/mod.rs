@@ -23,7 +23,9 @@ pub mod view;
 
 pub use analytics::{StatusCounts, TicketAnalytics};
 pub use board::{KanbanBoard, KanbanBoardProps};
-pub use edit::{EditField, EditForm, EditFormOverlay, EditFormProps, EditResult, extract_body_for_edit};
+pub use edit::{
+    EditField, EditForm, EditFormOverlay, EditFormProps, EditResult, extract_body_for_edit,
+};
 pub use remote::RemoteTui;
 pub use repository::{InitResult, TicketRepository};
 pub use search::{FilteredItem, FilteredTicket, filter_items, filter_tickets};

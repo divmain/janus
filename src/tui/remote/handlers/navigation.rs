@@ -69,7 +69,11 @@ fn handle_detail_down(ctx: &mut HandlerContext<'_>) {
             let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
             let body_lines = body.lines().count();
             let visible_lines = 10;
-            apply_detail_scroll_down(ctx.view_data.local_detail_scroll_offset, body_lines, visible_lines);
+            apply_detail_scroll_down(
+                ctx.view_data.local_detail_scroll_offset,
+                body_lines,
+                visible_lines,
+            );
         }
     } else {
         let issues = ctx.view_data.remote_issues.read();
@@ -78,7 +82,11 @@ fn handle_detail_down(ctx: &mut HandlerContext<'_>) {
             let body = &issue.body;
             let body_lines = body.lines().count();
             let visible_lines = 10;
-            apply_detail_scroll_down(ctx.view_data.remote_detail_scroll_offset, body_lines, visible_lines);
+            apply_detail_scroll_down(
+                ctx.view_data.remote_detail_scroll_offset,
+                body_lines,
+                visible_lines,
+            );
         }
     }
 }
@@ -223,7 +231,9 @@ fn handle_go_bottom(ctx: &mut HandlerContext<'_>) {
                     let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
                     let body_lines = body.lines().count();
                     let visible_lines = 10;
-                    ctx.view_data.local_detail_scroll_offset.set(body_lines.saturating_sub(visible_lines));
+                    ctx.view_data
+                        .local_detail_scroll_offset
+                        .set(body_lines.saturating_sub(visible_lines));
                 }
             } else {
                 let issues = ctx.view_data.remote_issues.read();
@@ -232,7 +242,9 @@ fn handle_go_bottom(ctx: &mut HandlerContext<'_>) {
                     let body = &issue.body;
                     let body_lines = body.lines().count();
                     let visible_lines = 10;
-                    ctx.view_data.remote_detail_scroll_offset.set(body_lines.saturating_sub(visible_lines));
+                    ctx.view_data
+                        .remote_detail_scroll_offset
+                        .set(body_lines.saturating_sub(visible_lines));
                 }
             }
         }

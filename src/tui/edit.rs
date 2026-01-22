@@ -6,7 +6,7 @@
 use iocraft::prelude::*;
 
 use crate::formatting::extract_ticket_body;
-use crate::tui::components::{Select, Selectable, options_for, TextEditor};
+use crate::tui::components::{Select, Selectable, TextEditor, options_for};
 use crate::tui::services::{TicketEditService, TicketFormValidator};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
@@ -96,10 +96,10 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     let mut status = hooks.use_state(|| initial_ticket.status.unwrap_or(TicketStatus::New));
     let mut ticket_type =
         hooks.use_state(|| initial_ticket.ticket_type.unwrap_or(TicketType::Task));
-     let mut priority = hooks.use_state(|| initial_ticket.priority.unwrap_or(TicketPriority::P2));
-     let body = hooks.use_state(|| props.initial_body.clone().unwrap_or_default());
+    let mut priority = hooks.use_state(|| initial_ticket.priority.unwrap_or(TicketPriority::P2));
+    let body = hooks.use_state(|| props.initial_body.clone().unwrap_or_default());
 
-     // UI state
+    // UI state
     let mut focused_field = hooks.use_state(EditField::default);
     let mut should_save = hooks.use_state(|| false);
     let mut should_cancel = hooks.use_state(|| false);
@@ -204,10 +204,13 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                 // When Title or Body field is focused, let TextInput handle all keys except
                 // navigation (Tab/Esc) and global shortcuts (Ctrl+S).
                 // This prevents double-handling of key events that causes cursor issues.
-                let is_text_input_focused = matches!(focused_field.get(), EditField::Title | EditField::Body);
-                let is_navigation_key = matches!(code, KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab);
-                let is_global_shortcut = modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s');
-                
+                let is_text_input_focused =
+                    matches!(focused_field.get(), EditField::Title | EditField::Body);
+                let is_navigation_key =
+                    matches!(code, KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab);
+                let is_global_shortcut =
+                    modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s');
+
                 if is_text_input_focused && !is_navigation_key && !is_global_shortcut {
                     // Let TextInput handle this key exclusively
                     return;
@@ -259,10 +262,10 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
 
     // Get options for selects
     let status_options = options_for::<TicketStatus>();
-     let type_options = options_for::<TicketType>();
-     let priority_options = options_for::<TicketPriority>();
+    let type_options = options_for::<TicketType>();
+    let priority_options = options_for::<TicketPriority>();
 
-     element! {
+    element! {
         // Modal content
         View(
             width: 90pct,

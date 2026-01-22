@@ -7,9 +7,9 @@ use iocraft::prelude::KeyCode;
 use super::super::error_toast::Toast;
 use super::super::filter_modal::FilterState;
 use super::super::state::ViewMode;
+use super::HandleResult;
 use super::context::HandlerContext;
 use super::sync;
-use super::HandleResult;
 
 /// Handle global keys that work in most contexts
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
