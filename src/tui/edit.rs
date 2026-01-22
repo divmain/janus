@@ -6,7 +6,7 @@
 use iocraft::prelude::*;
 
 use crate::formatting::extract_ticket_body;
-use crate::tui::components::{Selectable, options_for, TextEditor};
+use crate::tui::components::{Select, Selectable, options_for, TextEditor};
 use crate::tui::services::{TicketEditService, TicketFormValidator};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
@@ -346,103 +346,29 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                             }
                         }
 
-                        // Row: Status and Type
-                        View(flex_direction: FlexDirection::Row, gap: 2) {
-                            // Status selector
-                            View(flex_direction: FlexDirection::Row, gap: 1) {
-                                Text(
-                                    content: "Status:",
-                                    color: if focused_field.get() == EditField::Status {
-                                        theme.border_focused
-                                    } else {
-                                        theme.text_dimmed
-                                    },
-                                )
-                                View(
-                                    border_style: BorderStyle::Round,
-                                    border_color: if focused_field.get() == EditField::Status {
-                                        theme.border_focused
-                                    } else {
-                                        theme.border
-                                    },
-                                    padding_left: 1,
-                                    padding_right: 1,
-                                    min_width: 14,
-                                ) {
-                                    View(flex_direction: FlexDirection::Row, gap: 1) {
-                                        Text(
-                                            content: status_options.get(status.get().index()).cloned().unwrap_or_default(),
-                                            color: theme.status_color(status.get()),
-                                        )
-                                        Text(content: "v", color: theme.text_dimmed)
-                                    }
-                                }
-                            }
-
-                            // Type selector
-                            View(flex_direction: FlexDirection::Row, gap: 1) {
-                                Text(
-                                    content: "Type:",
-                                    color: if focused_field.get() == EditField::Type {
-                                        theme.border_focused
-                                    } else {
-                                        theme.text_dimmed
-                                    },
-                                )
-                                View(
-                                    border_style: BorderStyle::Round,
-                                    border_color: if focused_field.get() == EditField::Type {
-                                        theme.border_focused
-                                    } else {
-                                        theme.border
-                                    },
-                                    padding_left: 1,
-                                    padding_right: 1,
-                                    min_width: 12,
-                                ) {
-                                    View(flex_direction: FlexDirection::Row, gap: 1) {
-                                        Text(
-                                            content: type_options.get(ticket_type.get().index()).cloned().unwrap_or_default(),
-                                            color: theme.type_color(ticket_type.get()),
-                                        )
-                                        Text(content: "v", color: theme.text_dimmed)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Row: Priority
-                        View(flex_direction: FlexDirection::Row, gap: 2) {
-                            // Priority selector
-                            View(flex_direction: FlexDirection::Row, gap: 1) {
-                                Text(
-                                    content: "Priority:",
-                                    color: if focused_field.get() == EditField::Priority {
-                                        theme.border_focused
-                                    } else {
-                                        theme.text_dimmed
-                                    },
-                                )
-                                View(
-                                    border_style: BorderStyle::Round,
-                                    border_color: if focused_field.get() == EditField::Priority {
-                                        theme.border_focused
-                                    } else {
-                                        theme.border
-                                    },
-                                    padding_left: 1,
-                                    padding_right: 1,
-                                    min_width: 6,
-                                ) {
-                                    View(flex_direction: FlexDirection::Row, gap: 1) {
-                                        Text(
-                                            content: priority_options.get(priority.get().index()).cloned().unwrap_or_default(),
-                                            color: theme.priority_color(priority.get()),
-                                        )
-                                        Text(content: "v", color: theme.text_dimmed)
-                                    }
-                                }
-                            }
+                        // Row: Status, Type, and Priority (compact inline selectors)
+                        View(flex_direction: FlexDirection::Row, gap: 3) {
+                            Select(
+                                label: Some("Status"),
+                                options: status_options.clone(),
+                                selected_index: status.get().index(),
+                                has_focus: focused_field.get() == EditField::Status,
+                                value_color: Some(theme.status_color(status.get())),
+                            )
+                            Select(
+                                label: Some("Type"),
+                                options: type_options.clone(),
+                                selected_index: ticket_type.get().index(),
+                                has_focus: focused_field.get() == EditField::Type,
+                                value_color: Some(theme.type_color(ticket_type.get())),
+                            )
+                            Select(
+                                label: Some("Priority"),
+                                options: priority_options.clone(),
+                                selected_index: priority.get().index(),
+                                has_focus: focused_field.get() == EditField::Priority,
+                                value_color: Some(theme.priority_color(priority.get())),
+                            )
                         }
 
                         // Separator

@@ -1,7 +1,7 @@
-//! Dropdown/cycle selector component for enum fields
+//! Compact inline selector component for enum fields
 //!
 //! A component that allows cycling through a list of options using
-//! left/right arrows or enter key.
+//! left/right arrows or enter key. Displays as: Label: ◀ value ▶
 
 use iocraft::prelude::*;
 
@@ -19,17 +19,31 @@ pub struct SelectProps<'a> {
     pub selected_index: usize,
     /// Whether the selector has focus
     pub has_focus: bool,
+    /// Optional color for the value (for semantic coloring like status/type/priority)
+    pub value_color: Option<Color>,
 }
 
-/// Enum selector component with dropdown indicator
+/// Compact inline selector component with arrow indicators
+///
+/// Renders as: Label: ◀ value ▶
+/// Arrows indicate the value can be cycled with left/right keys.
 #[component]
 pub fn Select<'a>(props: &SelectProps<'a>) -> impl Into<AnyElement<'a>> {
     let theme = theme();
-    let border_color = if props.has_focus {
+
+    let label_color = if props.has_focus {
         theme.border_focused
     } else {
-        theme.border
+        theme.text_dimmed
     };
+
+    let arrow_color = if props.has_focus {
+        theme.border_focused
+    } else {
+        theme.text_dimmed
+    };
+
+    let value_color = props.value_color.unwrap_or(theme.text);
 
     let current_value = props
         .options
@@ -42,27 +56,21 @@ pub fn Select<'a>(props: &SelectProps<'a>) -> impl Into<AnyElement<'a>> {
             #(props.label.map(|label| element! {
                 Text(
                     content: format!("{}:", label),
-                    color: theme.text_dimmed,
+                    color: label_color,
                 )
             }))
-            View(
-                border_style: BorderStyle::Round,
-                border_color: border_color,
-                padding_left: 1,
-                padding_right: 1,
-                min_width: 12,
-            ) {
-                View(flex_direction: FlexDirection::Row, gap: 1) {
-                    Text(
-                        content: current_value,
-                        color: theme.text,
-                    )
-                    Text(
-                        content: "v",
-                        color: theme.text_dimmed,
-                    )
-                }
-            }
+            Text(
+                content: "◀",
+                color: arrow_color,
+            )
+            Text(
+                content: current_value,
+                color: value_color,
+            )
+            Text(
+                content: "▶",
+                color: arrow_color,
+            )
         }
     }
 }
