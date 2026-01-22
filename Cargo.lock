@@ -1932,7 +1932,7 @@ dependencies = [
 [[package]]
 name = "iocraft"
 version = "0.7.16"
-source = "git+https://github.com/divmain/iocraft?branch=fix-cursor-boundary#e36a3e6dc945a45e109bffb8d4f5e98907ba585c"
+source = "git+https://github.com/divmain/iocraft?branch=fix-cursor-boundary#823aad4c0b50369f1c5ab2917426d0e6d3507dd1"
 dependencies = [
  "bitflags",
  "crossterm",
@@ -1946,7 +1946,7 @@ dependencies = [
 [[package]]
 name = "iocraft-macros"
 version = "0.2.3"
-source = "git+https://github.com/divmain/iocraft?branch=fix-cursor-boundary#e36a3e6dc945a45e109bffb8d4f5e98907ba585c"
+source = "git+https://github.com/divmain/iocraft?branch=fix-cursor-boundary#823aad4c0b50369f1c5ab2917426d0e6d3507dd1"
 dependencies = [
  "proc-macro2",
  "quote",
