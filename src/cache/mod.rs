@@ -1631,4 +1631,49 @@ spawned-from: {}
         fs::remove_file(&db_path).ok();
         fs::remove_dir_all(&repo_path).ok();
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_sync_with_triaged_field() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_sync_triaged");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let tickets_dir = repo_path.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        let ticket_path = tickets_dir.join("j-a1b2.md");
+        let content = r#"---
+id: j-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+triaged: true
+---
+# A Triaged Ticket
+"#;
+        fs::write(&ticket_path, content).unwrap();
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let ticket = cache.get_ticket("j-a1b2").await.unwrap();
+        assert!(ticket.is_some());
+        let ticket = ticket.unwrap();
+        assert_eq!(ticket.triaged, Some(true));
+
+        let tickets = cache.get_all_tickets().await.unwrap();
+        assert_eq!(tickets.len(), 1);
+        assert_eq!(tickets[0].triaged, Some(true));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
 }

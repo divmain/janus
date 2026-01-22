@@ -208,6 +208,7 @@ pub const VALID_TICKET_FIELDS: &[&str] = &[
     "spawned-from",
     "spawn-context",
     "depth",
+    "triaged",
 ];
 
 pub const IMMUTABLE_TICKET_FIELDS: &[&str] = &["id", "uuid"];
@@ -262,6 +263,10 @@ pub struct TicketMetadata {
     /// Auto-computed decomposition depth (0 = root ticket, parent.depth + 1 otherwise)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+
+    /// Whether the ticket has been triaged (reviewed and assessed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub triaged: Option<bool>,
 
     #[serde(skip)]
     pub file_path: Option<PathBuf>,

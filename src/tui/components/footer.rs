@@ -79,6 +79,7 @@ pub fn browser_shortcuts() -> Vec<Shortcut> {
         Shortcut::new("s", "Cycle Status"),
         Shortcut::new("n", "New Ticket"),
         Shortcut::new("Tab", "Switch Pane"),
+        Shortcut::new("C-t", "Triage"),
         Shortcut::new("q", "Quit"),
     ]
 }
@@ -121,4 +122,18 @@ pub fn search_shortcuts() -> Vec<Shortcut> {
 /// Shortcuts shown when empty state is displayed
 pub fn empty_shortcuts() -> Vec<Shortcut> {
     vec![Shortcut::new("n", "New Ticket"), Shortcut::new("q", "Quit")]
+}
+
+/// Shortcuts for triage mode
+pub fn triage_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("j/k", "Up/Down"),
+        Shortcut::new("g/G", "Top/Bottom"),
+        Shortcut::new("/", "Search"),
+        Shortcut::new("t", "Mark Triaged"),
+        Shortcut::new("n", "Add Note"),
+        Shortcut::new("c", "Cancel"),
+        Shortcut::new("C-t", "Exit Triage"),
+        Shortcut::new("q", "Quit"),
+    ]
 }

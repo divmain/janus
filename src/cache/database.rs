@@ -21,7 +21,7 @@ use super::paths::{cache_db_path, cache_dir, repo_hash};
 const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Current cache schema version. Increment when schema changes.
-pub(crate) const CACHE_VERSION: &str = "7";
+pub(crate) const CACHE_VERSION: &str = "8";
 
 /// Maximum number of retry attempts when creating database connections.
 ///
@@ -158,7 +158,8 @@ impl TicketCache {
                 spawned_from TEXT,
                 spawn_context TEXT,
                 depth INTEGER,
-                file_path TEXT
+                file_path TEXT,
+                triaged INTEGER
             )",
             (),
         )
@@ -310,7 +311,8 @@ impl TicketCache {
                 spawned_from TEXT,
                 spawn_context TEXT,
                 depth INTEGER,
-                file_path TEXT
+                file_path TEXT,
+                triaged INTEGER
             )",
             (),
         )

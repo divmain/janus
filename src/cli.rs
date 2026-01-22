@@ -228,6 +228,10 @@ pub enum Commands {
         #[arg(long)]
         next_in_plan: Option<String>,
 
+        /// Filter by triaged status (true or false)
+        #[arg(long)]
+        triaged: Option<String>,
+
         /// Maximum tickets to show (unlimited if not specified)
         #[arg(long)]
         limit: Option<usize>,

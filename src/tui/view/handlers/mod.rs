@@ -34,6 +34,13 @@ impl HandleResult {
 
 /// Main event dispatcher that routes events to the appropriate handler
 pub fn handle_key_event(ctx: &mut ViewHandlerContext<'_>, code: KeyCode, modifiers: KeyModifiers) {
+    // 0. Global hotkeys (work in any mode)
+    if code == KeyCode::Char('T') && modifiers == KeyModifiers::CONTROL {
+        // Toggle triage mode - this is handled in the view component via state
+        // So we just return and let the component handle it
+        return;
+    }
+
     // 1. Search mode has highest priority - captures all input
     if ctx.active_pane.get() == Pane::Search && search::handle(ctx, code, modifiers).is_handled() {
         return;

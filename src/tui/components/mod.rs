@@ -18,7 +18,7 @@ pub mod toast;
 pub use empty_state::{EmptyState, EmptyStateKind, EmptyStateProps, compute_empty_state};
 pub use footer::{
     Footer, FooterProps, Shortcut, board_shortcuts, browser_shortcuts, edit_shortcuts,
-    empty_shortcuts, search_shortcuts,
+    empty_shortcuts, search_shortcuts, triage_shortcuts,
 };
 pub use header::{Header, HeaderProps};
 pub use search_box::{InlineSearchBox, InlineSearchBoxProps, SearchBox, SearchBoxProps};

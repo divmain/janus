@@ -29,7 +29,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth, file_path
+                spawned_from, spawn_context, depth, file_path, triaged
          FROM tickets",
                 (),
             )
@@ -50,7 +50,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth, file_path
+                spawned_from, spawn_context, depth, file_path, triaged
          FROM tickets WHERE ticket_id = ?1",
                 [id],
             )
@@ -308,6 +308,13 @@ impl TicketCache {
                     error: e.to_string(),
                 })?;
 
+        let triaged_num: Option<i64> =
+            row.get::<Option<i64>>(17)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 17,
+                    error: e.to_string(),
+                })?;
+
         // Parse ticket_type (optional domain field)
         let ticket_type: Option<crate::types::TicketType> = if let Some(s) = type_str {
             Some(s.parse().map_err(|e| {
@@ -359,6 +366,8 @@ impl TicketCache {
         let links = Self::deserialize_array(links_json.as_deref())?;
         let file_path = file_path_str.map(PathBuf::from);
 
+        let triaged = triaged_num.map(|n| n != 0);
+
         let metadata = TicketMetadata {
             id,
             uuid,
@@ -377,6 +386,7 @@ impl TicketCache {
             spawned_from,
             spawn_context,
             depth,
+            triaged,
         };
 
         if metadata.id.is_none() {

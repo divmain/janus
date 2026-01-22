@@ -25,6 +25,7 @@ pub struct TicketBuilder {
     spawned_from: Option<String>,
     spawn_context: Option<String>,
     depth: Option<u32>,
+    triaged: Option<bool>,
 }
 
 impl TicketBuilder {
@@ -48,6 +49,7 @@ impl TicketBuilder {
             spawned_from: None,
             spawn_context: None,
             depth: None,
+            triaged: None,
         }
     }
 
@@ -136,6 +138,11 @@ impl TicketBuilder {
         self
     }
 
+    pub fn triaged(mut self, triaged: bool) -> Self {
+        self.triaged = Some(triaged);
+        self
+    }
+
     pub fn build(self) -> Result<(String, PathBuf)> {
         utils::ensure_dir()?;
 
@@ -188,6 +195,11 @@ impl TicketBuilder {
         }
         if let Some(depth) = self.depth {
             frontmatter_lines.push(format!("depth: {}", depth));
+        }
+        if let Some(triaged) = self.triaged {
+            frontmatter_lines.push(format!("triaged: {}", triaged));
+        } else {
+            frontmatter_lines.push("triaged: false".to_string());
         }
 
         frontmatter_lines.push("---".to_string());

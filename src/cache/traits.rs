@@ -123,6 +123,7 @@ impl CacheableItem for TicketMetadata {
         let spawned_from = self.spawned_from.clone();
         let spawn_context = self.spawn_context.clone();
         let depth = self.depth.map(|d| d as i64);
+        let triaged = self.triaged.map(|t| if t { 1 } else { 0 });
         let file_path = self
             .file_path
             .as_ref()
@@ -134,8 +135,8 @@ impl CacheableItem for TicketMetadata {
                 "INSERT OR REPLACE INTO tickets (
                     ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
                     deps, links, parent, created, external_ref, remote, completion_summary,
-                    spawned_from, spawn_context, depth, file_path
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                    spawned_from, spawn_context, depth, file_path, triaged
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     ticket_id,
                     uuid,
@@ -155,6 +156,7 @@ impl CacheableItem for TicketMetadata {
                     spawn_context,
                     depth,
                     file_path,
+                    triaged,
                 ],
             )
             .await?;

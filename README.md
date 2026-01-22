@@ -587,6 +587,7 @@ Options:
       --closed         Show recently closed/cancelled tickets
       --all            Include closed/cancelled tickets in output
       --status <STATUS> Filter by specific status
+      --triaged <BOOL> Filter by triage status (true|false)
       --limit <N>      Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
       --json           Output as JSON
 
@@ -597,6 +598,8 @@ janus ls --blocked                    # Tickets blocked by dependencies
 janus ls --closed                     # Recently closed tickets (limit 20)
 janus ls --closed --limit 50          # Recently closed tickets (limit 50)
 janus ls --status next                # Filter by specific status
+janus ls --triaged false              # Untriaged tickets (status=new|next, triaged=false)
+janus ls --triaged true               # Triaged tickets
 janus ls --ready --blocked            # Show union of ready AND blocked tickets
 janus ls --limit 10                   # Any tickets (limit 10)
 ```
@@ -622,7 +625,19 @@ janus query '.type == "feature"'          # filter by type
 
 Interactive issue browser with fuzzy search.
 
-**Keyboard shortcuts:** `j/k` navigate, `g/G` top/bottom, `/` search, `e` edit, `s` cycle status, `n` new ticket, `Tab` switch pane, `q` quit
+**Keyboard shortcuts:** `j/k` navigate, `g/G` top/bottom, `/` search, `e` edit, `s` cycle status, `n` new ticket, `Ctrl+T` triage mode, `Tab` switch pane, `q` quit
+
+**Triage Mode:** Press `Ctrl+T` to toggle triage mode, which filters to show only untriaged tickets (status `new` or `next`, `triaged: false`). In triage mode:
+
+| Key | Action |
+|-----|--------|
+| `t` | Mark ticket as triaged (sets `triaged: true`) |
+| `c` | Cancel ticket (press twice to confirm) |
+| `/` | Search/filter tickets |
+| `j/k` | Navigate tickets |
+| `q` | Quit triage mode (or press `Ctrl+T` again) |
+
+Search and filter functionality remain fully available in triage mode.
 
 #### `janus board`
 

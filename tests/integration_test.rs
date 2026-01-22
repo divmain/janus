@@ -204,6 +204,45 @@ fn test_create_all_types() {
 }
 
 #[test]
+fn test_create_default_triaged_false() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["create", "Test ticket"]);
+    let id = output.trim();
+
+    let content = janus.read_ticket(id);
+    assert!(
+        content.contains("triaged: false"),
+        "New tickets should have triaged: false"
+    );
+}
+
+#[test]
+fn test_old_ticket_without_triaged_field_parsed() {
+    let janus = JanusTest::new();
+
+    let yaml = r#"---
+id: j-test123
+uuid: abc123-def456
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Old Ticket
+"#;
+    janus.write_ticket("j-test123", yaml);
+
+    let output = janus.run_success(&["show", "j-test123"]);
+    assert!(
+        output.contains("Old Ticket"),
+        "Old ticket should be readable"
+    );
+}
+
+#[test]
 fn test_create_all_priorities() {
     let janus = JanusTest::new();
 

@@ -10,6 +10,10 @@ use super::types::ViewAction;
 
 /// Handle events when list pane is active
 pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+    if ctx.is_triage_mode {
+        return handle_list_triage(ctx, code);
+    }
+
     match code {
         KeyCode::Char('q') => {
             ctx.should_exit.set(true);
@@ -41,6 +45,10 @@ pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleRes
 
 /// Handle events when detail pane is active
 pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+    if ctx.is_triage_mode {
+        return handle_detail_triage(ctx, code);
+    }
+
     match code {
         KeyCode::Char('q') => {
             ctx.should_exit.set(true);
@@ -62,6 +70,62 @@ pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleR
             handle_create_new(ctx);
             HandleResult::Handled
         }
+        _ => HandleResult::NotHandled,
+    }
+}
+
+/// Handle list pane events in triage mode
+///
+/// Note: `n` (note) and `c` (cancel) keys are handled at the component level
+/// to show modals before executing actions.
+fn handle_list_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+    match code {
+        KeyCode::Char('q') | KeyCode::Esc => {
+            ctx.should_exit.set(true);
+            HandleResult::Handled
+        }
+        KeyCode::Char('/') => {
+            ctx.active_pane.set(Pane::Search);
+            HandleResult::Handled
+        }
+        KeyCode::Tab => {
+            ctx.active_pane.set(Pane::Detail);
+            HandleResult::Handled
+        }
+        KeyCode::Char('t') => {
+            handle_mark_triaged(ctx);
+            HandleResult::Handled
+        }
+        // Note: 'c' key is handled at component level to show confirmation modal
+        // Note: 'n' key is handled at component level to show note input modal
+        _ => HandleResult::NotHandled,
+    }
+}
+
+/// Handle detail pane events in triage mode
+///
+/// Note: `n` (note) and `c` (cancel) keys are handled at the component level
+/// to show modals before executing actions.
+fn handle_detail_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+    match code {
+        KeyCode::Char('q') | KeyCode::Esc => {
+            ctx.should_exit.set(true);
+            HandleResult::Handled
+        }
+        KeyCode::Tab => {
+            ctx.active_pane.set(Pane::List);
+            HandleResult::Handled
+        }
+        KeyCode::Char('/') => {
+            ctx.active_pane.set(Pane::Search);
+            HandleResult::Handled
+        }
+        KeyCode::Char('t') => {
+            handle_mark_triaged(ctx);
+            HandleResult::Handled
+        }
+        // Note: 'c' key is handled at component level to show confirmation modal
+        // Note: 'n' key is handled at component level to show note input modal
         _ => HandleResult::NotHandled,
     }
 }
@@ -94,4 +158,16 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
 fn handle_create_new(ctx: &mut ViewHandlerContext<'_>) {
     ctx.editing_ticket_id.set(String::new());
     ctx.edit_state().start_create();
+}
+
+/// Mark selected ticket as triaged
+fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
+    if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
+        && let Some(id) = &ft.ticket.id
+    {
+        let _ = ctx.action_tx.send(ViewAction::MarkTriaged {
+            id: id.clone(),
+            triaged: true,
+        });
+    }
 }

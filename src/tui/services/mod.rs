@@ -140,6 +140,40 @@ impl TicketService {
             content.to_string()
         }
     }
+
+    /// Mark a ticket as triaged
+    pub async fn mark_triaged(ticket_id: &str, triaged: bool) -> Result<()> {
+        let ticket = Ticket::find(ticket_id).await?;
+        let value = if triaged { "true" } else { "false" };
+        ticket.update_field("triaged", value)?;
+        Ok(())
+    }
+
+    /// Add a note to a ticket
+    ///
+    /// Adds a timestamped note to the ticket's Notes section.
+    /// Creates the Notes section if it doesn't exist.
+    pub async fn add_note(ticket_id: &str, note: &str) -> Result<()> {
+        use crate::utils::iso_date;
+        use std::fs;
+
+        let ticket = Ticket::find(ticket_id).await?;
+
+        let mut content = fs::read_to_string(&ticket.file_path)?;
+
+        // Add Notes section if it doesn't exist
+        if !content.contains("## Notes") {
+            content.push_str("\n## Notes");
+        }
+
+        // Add the note with timestamp
+        let timestamp = iso_date();
+        content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
+
+        fs::write(&ticket.file_path, content)?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

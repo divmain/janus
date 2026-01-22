@@ -27,6 +27,9 @@ pub struct ViewHandlerContext<'a> {
     // Pane state
     pub active_pane: &'a mut State<Pane>,
 
+    // Triage mode state
+    pub is_triage_mode: bool,
+
     // App state
     pub should_exit: &'a mut State<bool>,
     pub needs_reload: &'a mut State<bool>,

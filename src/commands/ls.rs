@@ -32,6 +32,7 @@ pub async fn cmd_ls(
     depth: Option<u32>,
     max_depth: Option<u32>,
     next_in_plan: Option<&str>,
+    triaged: Option<&str>,
     limit: Option<usize>,
     sort_by: &str,
     output_json: bool,
@@ -70,6 +71,16 @@ pub async fn cmd_ls(
             // Apply spawning filters first (these are AND conditions)
             if !matches_spawning_filters(t, &spawning_filters) {
                 return false;
+            }
+
+            // Filter by triaged status if specified
+            // Treat triaged: None as false for backward compatibility
+            if let Some(filter_triaged) = triaged {
+                let ticket_triaged = t.triaged.unwrap_or(false);
+                let filter_value = filter_triaged == "true";
+                if ticket_triaged != filter_value {
+                    return false;
+                }
             }
 
             // Check if we should include closed/cancelled tickets
