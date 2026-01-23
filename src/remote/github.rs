@@ -178,11 +178,54 @@ impl GitHubProvider {
             };
         }
 
-        if let Some((status, _)) = error.as_http_error() {
-            return JanusError::Api(format!("GitHub API error ({}): {}", status.as_u16(), error));
-        }
+        match &error.inner {
+            octocrab::Error::GitHub { source, .. } => {
+                let status = source.status_code;
+                let status_text = status.canonical_reason().unwrap_or("Unknown");
+                let mut message = format!("GitHub API error ({} {}): {}", status.as_u16(), status_text, source.message);
 
-        JanusError::Api(format!("GitHub API error: {}", error))
+                if let Some(errors) = &source.errors
+                    && !errors.is_empty()
+                {
+                    message.push_str("\n\nErrors:");
+                    for error in errors {
+                        message.push_str(&format!("\n- {}", error));
+                    }
+                }
+
+                if let Some(doc_url) = &source.documentation_url {
+                    message.push_str(&format!("\n\nDocumentation URL: {}", doc_url));
+                }
+
+                if let Some((_, _)) = error.as_http_error() {
+                    JanusError::Api(message)
+                } else {
+                    JanusError::Api(message)
+                }
+            }
+            octocrab::Error::Http { source, .. } => {
+                JanusError::Api(format!("HTTP error: {}", source))
+            }
+            octocrab::Error::Service { source, .. } => {
+                JanusError::Api(format!("Service error: {}", source))
+            }
+            octocrab::Error::Serde { source, .. } => {
+                JanusError::Api(format!("Serialization error: {}", source))
+            }
+            octocrab::Error::Json { source, .. } => {
+                JanusError::Api(format!("JSON error in {}: {}", source.path(), source.inner()))
+            }
+            octocrab::Error::JWT { source, .. } => {
+                JanusError::Api(format!("JWT error: {}", source))
+            }
+            _ => {
+                if let Some((status, _)) = error.as_http_error() {
+                    JanusError::Api(format!("GitHub API error ({}): {}", status.as_u16(), error))
+                } else {
+                    JanusError::Api(format!("GitHub API error: {}", error))
+                }
+            }
+        }
     }
 }
 
