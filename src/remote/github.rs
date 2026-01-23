@@ -182,7 +182,12 @@ impl GitHubProvider {
             octocrab::Error::GitHub { source, .. } => {
                 let status = source.status_code;
                 let status_text = status.canonical_reason().unwrap_or("Unknown");
-                let mut message = format!("GitHub API error ({} {}): {}", status.as_u16(), status_text, source.message);
+                let mut message = format!(
+                    "GitHub API error ({} {}): {}",
+                    status.as_u16(),
+                    status_text,
+                    source.message
+                );
 
                 if let Some(errors) = &source.errors
                     && !errors.is_empty()
@@ -212,9 +217,11 @@ impl GitHubProvider {
             octocrab::Error::Serde { source, .. } => {
                 JanusError::Api(format!("Serialization error: {}", source))
             }
-            octocrab::Error::Json { source, .. } => {
-                JanusError::Api(format!("JSON error in {}: {}", source.path(), source.inner()))
-            }
+            octocrab::Error::Json { source, .. } => JanusError::Api(format!(
+                "JSON error in {}: {}",
+                source.path(),
+                source.inner()
+            )),
             octocrab::Error::JWT { source, .. } => {
                 JanusError::Api(format!("JWT error: {}", source))
             }
