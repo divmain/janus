@@ -148,6 +148,7 @@ pub fn help_modal_shortcuts() -> Vec<Shortcut> {
         Shortcut::new("j/k", "Scroll"),
         Shortcut::new("g/G", "Top/Bottom"),
         Shortcut::new("Esc", "Close"),
+        Shortcut::new("?", "Close"),
     ]
 }
 
@@ -189,7 +190,8 @@ pub fn confirm_dialog_shortcuts() -> Vec<Shortcut> {
 pub fn link_mode_shortcuts() -> Vec<Shortcut> {
     vec![
         Shortcut::new("j/k", "Navigate"),
-        Shortcut::new("l/Enter", "Confirm"),
+        Shortcut::new("l", "Confirm"),
+        Shortcut::new("Enter", "Confirm"),
         Shortcut::new("Esc", "Cancel"),
     ]
 }
