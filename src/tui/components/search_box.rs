@@ -98,14 +98,19 @@ pub fn InlineSearchBox(props: &InlineSearchBoxProps) -> impl Into<AnyElement<'st
     element! {
         View(
             flex_direction: FlexDirection::Row,
+            width: 100pct,
             height: 1,
         ) {
-            // Search icon
-            Text(
-                content: "/ ",
-                color: if has_focus { theme.border_focused } else { theme.text_dimmed },
-            )
-            // Text input
+            View(
+                margin_right: 1,
+                justify_content: JustifyContent::Center,
+            ) {
+                Text(
+                    content: "/",
+                    color: if has_focus { theme.border_focused } else { theme.text_dimmed },
+                )
+            }
+
             View(flex_grow: 1.0) {
                 TextInput(
                     value: value.to_string(),
