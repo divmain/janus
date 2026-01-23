@@ -34,6 +34,7 @@ pub fn SearchBox(props: &SearchBoxProps) -> impl Into<AnyElement<'static>> {
                 padding_left: 1,
                 padding_right: 1,
                 height: 3,
+                width: 100pct,
             ) {
                 Text(content: "No value state provided", color: theme.text_dimmed)
             }
@@ -48,6 +49,7 @@ pub fn SearchBox(props: &SearchBoxProps) -> impl Into<AnyElement<'static>> {
             padding_left: 1,
             padding_right: 1,
             height: 3,
+            width: 100pct,
         ) {
             // Search icon (magnifying glass represented as "/")
             View(
