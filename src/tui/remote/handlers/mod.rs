@@ -3,6 +3,7 @@
 //! This module breaks up the complex event handling logic into separate,
 //! focused handlers for each mode or operation type.
 
+mod confirm_mode;
 pub mod context;
 mod filter_mode;
 mod global;
@@ -58,22 +59,27 @@ pub fn handle_key_event(ctx: &mut HandlerContext<'_>, code: KeyCode, modifiers: 
         return;
     }
 
-    // 5. Link mode - when link mode is active
+    // 5. Confirm dialog mode - when confirm dialog is open
+    if ctx.modals.confirm_dialog.read().is_some() && confirm_mode::handle(ctx, code).is_handled() {
+        return;
+    }
+
+    // 6. Link mode - when link mode is active
     if ctx.modals.link_mode.read().is_some() && link::handle_link_mode(ctx, code).is_handled() {
         return;
     }
 
-    // 6. Navigation (j/k/g/G/Up/Down)
+    // 7. Navigation (j/k/g/G/Up/Down)
     if navigation::handle(ctx, code, shift_held).is_handled() {
         return;
     }
 
-    // 7. Selection (Space)
+    // 8. Selection (Space)
     if selection::handle(ctx, code).is_handled() {
         return;
     }
 
-    // 8. View-specific operations
+    // 9. View-specific operations
     if ctx.view_state.active_view.get() == ViewMode::Local {
         if local_ops::handle(ctx, code).is_handled() {
             return;
@@ -82,12 +88,12 @@ pub fn handle_key_event(ctx: &mut HandlerContext<'_>, code: KeyCode, modifiers: 
         return;
     }
 
-    // 9. Link initiation
+    // 10. Link initiation
     if link::handle_link_start(ctx, code).is_handled() {
         return;
     }
 
-    // 10. Global operations (q, /, P, r, f, s, ?, e, Enter, Tab)
+    // 11. Global operations (q, /, P, r, f, s, ?, e, Enter, Tab)
     global::handle(ctx, code);
 }
 

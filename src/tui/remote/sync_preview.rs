@@ -2,6 +2,11 @@
 
 use iocraft::prelude::*;
 
+use crate::tui::components::{
+    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
+};
+use crate::tui::theme::theme;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncChange {
     pub field_name: String,
@@ -33,7 +38,7 @@ pub struct SyncChangeWithContext {
     pub decision: Option<SyncDecision>,
 }
 
-#[derive(Debug, Clone, Props)]
+#[derive(Debug, Clone, Default, Props)]
 pub struct SyncPreviewState {
     pub changes: Vec<SyncChangeWithContext>,
     pub current_change_index: usize,
@@ -105,40 +110,45 @@ impl SyncPreviewState {
 /// Sync preview modal component
 #[component]
 pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
+    let theme = theme();
     let current_idx = props.current_change_index;
     let total = props.changes.len();
 
-    element! {
-        View(
-            width: 100pct,
-            height: 100pct,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            background_color: Color::Black,
-        ) {
-            View(
-                width: 80,
-                height: 20,
-                border_style: BorderStyle::Double,
-                border_color: Color::Cyan,
-                padding: 1,
-                flex_direction: FlexDirection::Column,
-                background_color: Color::Rgb { r: 120, g: 120, b: 120 },
-            ) {
-                Text(
-                    content: "Sync Preview",
-                    color: Color::Cyan,
-                    weight: Weight::Bold,
-                )
-                Text(content: format!("{}/{}", current_idx + 1, total), color: Color::Rgb { r: 120, g: 120, b: 120 })
+    // Build footer text based on current state
+    let footer_text = if props.current_change().is_some() {
+        match props.current_change().unwrap().change.direction {
+            SyncDirection::LocalToRemote => "[y] local->remote | [n] skip | [a] all | [c] cancel",
+            SyncDirection::RemoteToLocal => "[y] remote->local | [n] skip | [a] all | [c] cancel",
+        }
+    } else {
+        "[c] to close"
+    };
 
+    element! {
+        ModalOverlay() {
+            ModalContainer(
+                width: Some(ModalWidth::Fixed(80)),
+                height: Some(ModalHeight::Fixed(20)),
+                border_color: Some(ModalBorderColor::Info),
+                title: Some("Sync Preview".to_string()),
+                footer_text: Some(footer_text.to_string()),
+            ) {
+                // Progress counter
+                Text(
+                    content: format!("Change {}/{}", current_idx + 1, total),
+                    color: theme.text_dimmed,
+                )
+                Text(content: "")
+
+                // Content based on current change
                 #(if let Some(change_ctx) = props.current_change() {
                     let change = &change_ctx.change;
                     Some(element! {
                         View(
                             flex_direction: FlexDirection::Column,
+                            width: 100pct,
                         ) {
-                            Text(content: "")
+                            // Ticket and field info
                             Text(
                                 content: format!("Ticket: {} | Field: {}", change_ctx.ticket_id, change.field_name),
                                 color: Color::Yellow,
@@ -146,40 +156,38 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                             )
                             Text(content: "")
 
-                            View(border_edges: Edges::Bottom, border_style: BorderStyle::Single, border_color: Color::Rgb { r: 120, g: 120, b: 120 }) {
+                            // Separator
+                            View(
+                                width: 100pct,
+                                border_edges: Edges::Bottom,
+                                border_style: BorderStyle::Single,
+                                border_color: theme.border,
+                            ) {
                                 Text(content: "")
                             }
-
                             Text(content: "")
 
-                            Text(content: "Local:", color: Color::Green)
-                            Text(content: change.local_value.clone(), color: Color::Rgb { r: 120, g: 120, b: 120 })
-
-                            Text(content: "")
-                            Text(content: "Remote:", color: Color::Red)
-                            Text(content: change.remote_value.clone(), color: Color::Rgb { r: 120, g: 120, b: 120 })
-
-                            Text(content: "")
+                            // Local value
+                            Text(content: "Local:", color: Color::Green, weight: Weight::Bold)
+                            Text(content: change.local_value.clone(), color: theme.text_dimmed)
                             Text(content: "")
 
-                            Text(
-                                content: match change.direction {
-                                    SyncDirection::LocalToRemote => "[y] local->remote / [n] skip / [a] all / [c] cancel",
-                                    SyncDirection::RemoteToLocal => "[y] remote->local / [n] skip / [a] all / [c] cancel",
-                                },
-                                color: Color::Cyan,
-                            )
+                            // Remote value
+                            Text(content: "Remote:", color: Color::Red, weight: Weight::Bold)
+                            Text(content: change.remote_value.clone(), color: theme.text_dimmed)
                         }
                     })
                 } else {
                     Some(element! {
                         View(
                             flex_direction: FlexDirection::Column,
+                            width: 100pct,
+                            align_items: AlignItems::Center,
                         ) {
                             Text(content: "")
-                            Text(content: "No changes found", color: Color::Green)
+                            Text(content: "No changes found", color: Color::Green, weight: Weight::Bold)
                             Text(content: "")
-                            Text(content: "[c] to close", color: Color::Cyan)
+                            Text(content: "All items are in sync.", color: theme.text_dimmed)
                         }
                     })
                 })

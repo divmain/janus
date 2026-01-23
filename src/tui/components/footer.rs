@@ -137,3 +137,75 @@ pub fn triage_shortcuts() -> Vec<Shortcut> {
         Shortcut::new("q", "Quit"),
     ]
 }
+
+// =============================================================================
+// Modal-specific shortcuts
+// =============================================================================
+
+/// Shortcuts for the help modal
+pub fn help_modal_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("j/k", "Scroll"),
+        Shortcut::new("g/G", "Top/Bottom"),
+        Shortcut::new("Esc", "Close"),
+    ]
+}
+
+/// Shortcuts for the error detail modal
+pub fn error_modal_shortcuts() -> Vec<Shortcut> {
+    vec![Shortcut::new("Esc", "Close")]
+}
+
+/// Shortcuts for the filter modal
+pub fn filter_modal_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("Tab/j/k", "Navigate"),
+        Shortcut::new("Enter", "Toggle/Edit"),
+        Shortcut::new("x", "Clear"),
+        Shortcut::new("Esc", "Cancel"),
+    ]
+}
+
+/// Shortcuts for the sync preview modal
+pub fn sync_preview_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("y", "Accept"),
+        Shortcut::new("n", "Skip"),
+        Shortcut::new("a", "Accept All"),
+        Shortcut::new("c", "Cancel"),
+    ]
+}
+
+/// Shortcuts for the confirm dialog
+pub fn confirm_dialog_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("Y", "Yes"),
+        Shortcut::new("n", "No"),
+        Shortcut::new("c", "Cancel"),
+    ]
+}
+
+/// Shortcuts for the link mode (when selecting a target)
+pub fn link_mode_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("j/k", "Navigate"),
+        Shortcut::new("l/Enter", "Confirm"),
+        Shortcut::new("Esc", "Cancel"),
+    ]
+}
+
+/// Shortcuts for the note input modal (triage mode)
+pub fn note_input_modal_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("Enter", "Submit"),
+        Shortcut::new("Esc", "Cancel"),
+    ]
+}
+
+/// Shortcuts for the cancel confirm modal (triage mode)
+pub fn cancel_confirm_modal_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut::new("c", "Confirm"),
+        Shortcut::new("Esc", "Cancel"),
+    ]
+}

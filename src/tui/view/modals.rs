@@ -6,6 +6,9 @@
 
 use iocraft::prelude::*;
 
+use crate::tui::components::{
+    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
+};
 use crate::tui::theme::theme;
 
 // =============================================================================
@@ -50,45 +53,17 @@ pub fn NoteInputModal<'a>(
     let external_value = props.note_text;
 
     element! {
-        View(
-            width: 100pct,
-            height: 100pct,
-            position: Position::Absolute,
-            top: 0,
-            left: 0,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-        ) {
-            View(
-                width: 60,
-                height: 18,
-                border_style: BorderStyle::Double,
-                border_color: theme.border_focused,
-                padding: 1,
-                flex_direction: FlexDirection::Column,
-                background_color: theme.background,
+        ModalOverlay() {
+            ModalContainer(
+                width: Some(ModalWidth::Fixed(60)),
+                height: Some(ModalHeight::Fixed(18)),
+                title: Some(format!("Add Note to {}", props.ticket_id)),
+                footer_text: Some("[Enter] Submit  [Esc] Cancel".to_string()),
             ) {
-                // Header
-                View(
-                    width: 100pct,
-                    flex_direction: FlexDirection::Row,
-                    padding_bottom: 1,
-                    border_edges: Edges::Bottom,
-                    border_style: BorderStyle::Single,
-                    border_color: theme.border,
-                ) {
-                    Text(
-                        content: format!("Add Note to {}", props.ticket_id),
-                        color: theme.border_focused,
-                        weight: Weight::Bold,
-                    )
-                }
-
                 // Note input area
                 View(
                     width: 100pct,
                     height: 10,
-                    margin_top: 1,
                     border_style: BorderStyle::Round,
                     border_color: theme.border_focused,
                     padding_left: 1,
@@ -108,17 +83,6 @@ pub fn NoteInputModal<'a>(
                         cursor_color: Some(theme.highlight),
                         color: Some(theme.text),
                         handle,
-                    )
-                }
-
-                // Footer with instructions
-                View(
-                    width: 100pct,
-                    margin_top: 1,
-                ) {
-                    Text(
-                        content: "[Enter] Submit  [Esc] Cancel",
-                        color: theme.text_dimmed,
                     )
                 }
             }
@@ -159,43 +123,18 @@ pub fn CancelConfirmModal<'a>(
     };
 
     element! {
-        View(
-            width: 100pct,
-            height: 100pct,
-            position: Position::Absolute,
-            top: 0,
-            left: 0,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-        ) {
-            View(
-                width: 50,
-                border_style: BorderStyle::Double,
-                border_color: Color::Yellow,
-                padding: 1,
-                flex_direction: FlexDirection::Column,
-                background_color: theme.background,
+        ModalOverlay() {
+            ModalContainer(
+                width: Some(ModalWidth::Fixed(50)),
+                border_color: Some(ModalBorderColor::Warning),
+                title: Some("Confirm Cancellation".to_string()),
+                title_color: Some(Color::Yellow),
+                footer_text: Some("Press [c] again to confirm, [Esc] to cancel".to_string()),
             ) {
-                // Header
+                // Confirmation message
                 View(
-                    width: 100pct,
-                    padding_bottom: 1,
-                    border_edges: Edges::Bottom,
-                    border_style: BorderStyle::Single,
-                    border_color: theme.border,
-                ) {
-                    Text(
-                        content: "Confirm Cancellation",
-                        color: Color::Yellow,
-                        weight: Weight::Bold,
-                    )
-                }
-
-                // Message
-                View(
-                    width: 100pct,
-                    margin_top: 1,
                     flex_direction: FlexDirection::Column,
+                    margin_top: 1,
                 ) {
                     Text(
                         content: format!("Cancel ticket {}?", props.ticket_id),
@@ -203,17 +142,6 @@ pub fn CancelConfirmModal<'a>(
                     )
                     Text(
                         content: display_title,
-                        color: theme.text_dimmed,
-                    )
-                }
-
-                // Instructions
-                View(
-                    width: 100pct,
-                    margin_top: 2,
-                ) {
-                    Text(
-                        content: "Press [c] again to confirm, [Esc] to cancel",
                         color: theme.text_dimmed,
                     )
                 }

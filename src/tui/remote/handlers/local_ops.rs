@@ -2,6 +2,7 @@
 
 use iocraft::prelude::KeyCode;
 
+use super::super::confirm_modal::ConfirmDialogState;
 use super::super::error_toast::Toast;
 use super::HandleResult;
 use super::context::HandlerContext;
@@ -111,26 +112,42 @@ fn handle_unlink(ctx: &mut HandlerContext<'_>) {
         .iter()
         .cloned()
         .collect();
-    if !selected_ids.is_empty() {
-        // Queue the unlink operation to be executed asynchronously
-        ctx.modals.toast.set(Some(Toast::info(format!(
-            "Unlinking {} ticket(s)...",
-            selected_ids.len()
-        ))));
-        ctx.handlers.unlink_handler.clone()(selected_ids);
+
+    let tickets_to_unlink = if !selected_ids.is_empty() {
+        // Filter to only tickets that are actually linked
+        let tickets_ref = ctx.view_data.local_tickets.read();
+        let linked: Vec<String> = selected_ids
+            .into_iter()
+            .filter(|id| {
+                tickets_ref
+                    .iter()
+                    .any(|t| t.id.as_ref() == Some(id) && t.remote.is_some())
+            })
+            .collect();
+        drop(tickets_ref);
+        linked
     } else {
-        // Unlink current item
+        // Unlink current item if it's linked
         let tickets = ctx.view_data.local_tickets.read();
         if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get())
             && let Some(id) = &ticket.id
+            && ticket.remote.is_some()
         {
-            let id = id.clone();
-            drop(tickets);
-            // Queue the unlink operation to be executed asynchronously
-            ctx.modals
-                .toast
-                .set(Some(Toast::info(format!("Unlinking {}...", id))));
-            ctx.handlers.unlink_handler.clone()(vec![id]);
+            vec![id.clone()]
+        } else {
+            vec![]
         }
+    };
+
+    if tickets_to_unlink.is_empty() {
+        ctx.modals
+            .toast
+            .set(Some(Toast::warning("No linked tickets selected")));
+        return;
     }
+
+    // Show confirmation dialog instead of executing immediately
+    ctx.modals
+        .confirm_dialog
+        .set(Some(ConfirmDialogState::for_unlink(tickets_to_unlink)));
 }

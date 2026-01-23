@@ -2,60 +2,76 @@
 
 use iocraft::prelude::*;
 
-use crate::tui::components::TextViewer;
+use crate::tui::components::{
+    ModalBorderColor, ModalContainer, ModalOverlay, ModalWidth, TextViewer,
+};
 
-#[derive(Debug, Clone, Props)]
+/// The action to perform when confirmation is accepted
+#[derive(Debug, Clone)]
+pub enum ConfirmAction {
+    /// Unlink the specified ticket IDs
+    Unlink(Vec<String>),
+}
+
+/// State for the confirmation dialog
+#[derive(Debug, Clone)]
 pub struct ConfirmDialogState {
+    /// Message to display to the user
     pub message: String,
+    /// Whether "yes" is the default action
+    #[allow(dead_code)]
     pub default_yes: bool,
+    /// The action to perform if confirmed
+    pub action: ConfirmAction,
 }
 
 impl ConfirmDialogState {
-    pub fn new(message: String, default_yes: bool) -> Self {
+    /// Create a new confirmation dialog state
+    pub fn new(message: String, default_yes: bool, action: ConfirmAction) -> Self {
         Self {
             message,
             default_yes,
+            action,
         }
+    }
+
+    /// Create a confirmation for unlinking tickets
+    pub fn for_unlink(ticket_ids: Vec<String>) -> Self {
+        let message = if ticket_ids.len() == 1 {
+            format!("Unlink ticket '{}' from its remote issue?", ticket_ids[0])
+        } else {
+            format!(
+                "Unlink {} tickets from their remote issues?",
+                ticket_ids.len()
+            )
+        };
+        Self::new(message, false, ConfirmAction::Unlink(ticket_ids))
     }
 }
 
-/// Confirmation dialog component
-#[component]
-pub fn ConfirmDialog<'a>(props: &ConfirmDialogState, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
-    element! {
-        View(
-            width: 100pct,
-            height: 100pct,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            background_color: Color::Black,
-        ) {
-            View(
-                width: 60,
-                border_style: BorderStyle::Double,
-                border_color: Color::Yellow,
-                padding: 1,
-                flex_direction: FlexDirection::Column,
-                background_color: Color::Rgb { r: 120, g: 120, b: 120 },
-            ) {
-                Text(
-                    content: "Confirm",
-                    color: Color::Yellow,
-                    weight: Weight::Bold,
-                )
-                Text(content: "")
+/// Props for the ConfirmDialog component
+#[derive(Default, Props)]
+pub struct ConfirmDialogProps {
+    /// The message to display
+    pub message: String,
+}
 
+/// Confirmation dialog component using shared modal components
+#[component]
+pub fn ConfirmDialog(props: &ConfirmDialogProps) -> impl Into<AnyElement<'static>> {
+    element! {
+        ModalOverlay(show_backdrop: true) {
+            ModalContainer(
+                width: Some(ModalWidth::Fixed(60)),
+                border_color: Some(ModalBorderColor::Warning),
+                title: Some("Confirm".to_string()),
+                footer_text: Some("[Y]es / [n]o / [c]ancel".to_string()),
+            ) {
                 TextViewer(
                     text: props.message.clone(),
                     scroll_offset: 0usize,
                     has_focus: false,
                     placeholder: Some("No message".to_string()),
-                )
-
-                Text(content: "")
-                Text(
-                    content: "[Y]es / [n]o / [c]ancel",
-                    color: Color::Cyan,
                 )
             }
         }

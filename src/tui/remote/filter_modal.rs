@@ -5,6 +5,9 @@
 use iocraft::prelude::*;
 
 use crate::remote::{RemoteQuery, RemoteStatusFilter};
+use crate::tui::components::{
+    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
+};
 
 /// Filter modal state
 #[derive(Debug, Clone, Default)]
@@ -116,30 +119,14 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
     };
 
     element! {
-        View(
-            width: 100pct,
-            height: 100pct,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            background_color: Color::Black,
-        ) {
-            View(
-                width: 60,
-                height: 16,
-                border_style: BorderStyle::Double,
-                border_color: Color::Cyan,
-                padding: 1,
-                flex_direction: FlexDirection::Column,
-                background_color: Color::Rgb { r: 120, g: 120, b: 120 },
+        ModalOverlay() {
+            ModalContainer(
+                width: Some(ModalWidth::Fixed(60)),
+                height: Some(ModalHeight::Fixed(16)),
+                border_color: Some(ModalBorderColor::Info),
+                title: Some("Filter Remote Issues".to_string()),
+                footer_text: Some("Tab/j/k: navigate | Enter: toggle/edit | x: clear | Esc: cancel".to_string()),
             ) {
-                // Header
-                Text(
-                    content: "Filter Remote Issues",
-                    color: Color::Cyan,
-                    weight: Weight::Bold,
-                )
-                Text(content: "")
-
                 // Status field
                 View(
                     width: 100pct,
@@ -156,7 +143,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                     )
                     Text(
                         content: if state.focused_field == 0 { " (Enter to toggle)" } else { "" },
-                        color: Color::Rgb { r: 120, g: 120, b: 120 },
+                        color: Color::DarkGrey,
                     )
                 }
                 Text(content: "")
@@ -173,7 +160,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                     )
                     Text(
                         content: if state.assignee.is_empty() { "(any)" } else { &state.assignee },
-                        color: if state.assignee.is_empty() { Color::Rgb { r: 120, g: 120, b: 120 } } else { Color::Cyan },
+                        color: if state.assignee.is_empty() { Color::DarkGrey } else { Color::Cyan },
                     )
                 }
                 Text(content: "")
@@ -190,27 +177,9 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                     )
                     Text(
                         content: if state.labels.is_empty() { "(any)" } else { &state.labels },
-                        color: if state.labels.is_empty() { Color::Rgb { r: 120, g: 120, b: 120 } } else { Color::Cyan },
+                        color: if state.labels.is_empty() { Color::DarkGrey } else { Color::Cyan },
                     )
                 }
-                Text(content: "")
-
-                // Divider
-                View(
-                    width: 100pct,
-                    border_edges: Edges::Bottom,
-                    border_style: BorderStyle::Single,
-                    border_color: Color::Rgb { r: 120, g: 120, b: 120 },
-                ) {
-                    Text(content: "")
-                }
-                Text(content: "")
-
-                // Help text
-                Text(
-                    content: "Tab/j/k: navigate | Enter: toggle/edit | x: clear | Esc: cancel | Enter: apply",
-                    color: Color::Rgb { r: 120, g: 120, b: 120 },
-                )
             }
         }
     }

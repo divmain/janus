@@ -1,12 +1,14 @@
 //! Remote TUI modal overlay components
 //!
-//! Contains the modal overlay rendering for filter, help, and error modals.
+//! Contains the modal overlay rendering for filter, help, error, confirm, and sync preview modals.
 
 use iocraft::prelude::*;
 
+use crate::tui::remote::confirm_modal::{ConfirmDialog, ConfirmDialogState};
 use crate::tui::remote::error_modal::ErrorDetailModal;
 use crate::tui::remote::filter_modal::{FilterModal, FilterState};
 use crate::tui::remote::help_modal::HelpModal;
+use crate::tui::remote::sync_preview::{SyncPreview, SyncPreviewState};
 
 /// Props for the ModalOverlays component
 #[derive(Default, Props)]
@@ -15,79 +17,69 @@ pub struct ModalOverlaysProps {
     pub filter_state: Option<FilterState>,
     /// Whether to show the help modal
     pub show_help_modal: bool,
+    /// Help modal scroll offset
+    pub help_modal_scroll: usize,
     /// Whether to show the error modal
     pub show_error_modal: bool,
     /// Last error information (type, message)
     pub last_error: Option<(String, String)>,
+    /// Sync preview state (Some if modal should be shown)
+    pub sync_preview_state: Option<SyncPreviewState>,
+    /// Confirm dialog state (Some if modal should be shown)
+    pub confirm_dialog_state: Option<ConfirmDialogState>,
 }
 
 /// Modal overlays container for filter, help, and error modals
 #[component]
 pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static>> {
+    // Wrapper View with proper positioning so children (ModalOverlay) can use absolute positioning
+    // This wrapper has no visual presence - just provides positioning context
     element! {
-        View() {
-            // Filter modal overlay
+        View(
+            width: 100pct,
+            height: 100pct,
+            position: Position::Absolute,
+            top: 0,
+            left: 0,
+        ) {
+            // Filter modal - rendered directly since FilterModal handles its own positioning via ModalOverlay
             #(props.filter_state.as_ref().map(|state| {
                 let state_clone = state.clone();
-                element! {
-                    View(
-                        width: 100pct,
-                        height: 100pct,
-                        position: Position::Absolute,
-                        top: 0,
-                        left: 0,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        background_color: Color::Rgb { r: 120, g: 120, b: 120 },
-                    ) {
-                        FilterModal(state: state_clone)
-                    }
-                }
+                element! { FilterModal(state: state_clone) }
             }))
 
-            // Help modal overlay
+            // Help modal - rendered directly since HelpModal handles its own positioning via ModalOverlay
             #(if props.show_help_modal {
-                Some(element! {
-                    View(
-                        width: 100pct,
-                        height: 100pct,
-                        position: Position::Absolute,
-                        top: 0,
-                        left: 0,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        background_color: Color::Rgb { r: 120, g: 120, b: 120 },
-                    ) {
-                        HelpModal()
-                    }
-                })
+                let scroll = props.help_modal_scroll;
+                Some(element! { HelpModal(scroll_offset: Some(scroll)) })
             } else {
                 None
             })
 
-            // Error detail modal overlay
+            // Error detail modal - rendered directly since ErrorDetailModal handles its own positioning via ModalOverlay
             #(if props.show_error_modal {
                 props.last_error.as_ref().map(|(error_type, error_message)| {
                     let error_type_clone = error_type.clone();
                     let error_message_clone = error_message.clone();
                     element! {
-                        View(
-                            width: 100pct,
-                            height: 100pct,
-                            position: Position::Absolute,
-                            top: 0,
-                            left: 0,
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            background_color: Color::Rgb { r: 120, g: 120, b: 120 },
-                        ) {
-                            ErrorDetailModal(error_type: error_type_clone.clone(), error_message: error_message_clone.clone())
-                        }
+                        ErrorDetailModal(error_type: error_type_clone.clone(), error_message: error_message_clone.clone())
                     }
                 })
             } else {
                 None
             })
+
+            // Sync preview modal - rendered directly since SyncPreview handles its own positioning via ModalOverlay
+            #(props.sync_preview_state.as_ref().map(|state| {
+                let state_clone = state.clone();
+                element! { SyncPreview(changes: state_clone.changes, current_change_index: state_clone.current_change_index) }
+            }))
+
+            // Confirm dialog modal - rendered directly since ConfirmDialog handles its own positioning via ModalOverlay
+            #(props.confirm_dialog_state.as_ref().map(|state| {
+                let message = state.message.clone();
+                element! { ConfirmDialog(message: message) }
+            }))
         }
     }
 }

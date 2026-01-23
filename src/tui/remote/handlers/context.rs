@@ -12,6 +12,7 @@ use crate::remote::{RemoteIssue, RemoteQuery};
 use crate::tui::remote::link_mode::LinkSource;
 use crate::types::TicketMetadata;
 
+use super::super::confirm_modal::ConfirmDialogState;
 use super::super::error_toast::Toast;
 use super::super::filter_modal::FilterState;
 use super::super::link_mode::LinkModeState;
@@ -62,7 +63,9 @@ pub struct ModalState<'a> {
     pub toast: &'a mut State<Option<Toast>>,
     pub link_mode: &'a mut State<Option<LinkModeState>>,
     pub sync_preview: &'a mut State<Option<SyncPreviewState>>,
+    pub confirm_dialog: &'a mut State<Option<ConfirmDialogState>>,
     pub show_help_modal: &'a mut State<bool>,
+    pub help_modal_scroll: &'a mut State<usize>,
     pub show_error_modal: &'a mut State<bool>,
     pub last_error: &'a State<Option<(String, String)>>,
 }

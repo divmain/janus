@@ -14,7 +14,11 @@ use iocraft::prelude::*;
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
-use crate::tui::components::{Footer, InlineSearchBox, Shortcut};
+use crate::tui::components::{
+    Footer, InlineSearchBox, Shortcut, confirm_dialog_shortcuts, error_modal_shortcuts,
+    filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts, search_shortcuts,
+    sync_preview_shortcuts,
+};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
 
@@ -36,6 +40,78 @@ use super::sync_preview::SyncPreviewState;
 enum FetchResult {
     Success(Vec<RemoteIssue>),
     Error(String, String), // (error_type, error_message)
+}
+
+/// Modal visibility state for computing shortcuts
+struct ModalVisibility {
+    help: bool,
+    error: bool,
+    sync_preview: bool,
+    confirm_dialog: bool,
+    link_mode: bool,
+    filter: bool,
+    search_focused: bool,
+}
+
+/// Compute keyboard shortcuts based on current modal/view state
+///
+/// Checks modals in priority order (most specific first) and returns
+/// the appropriate shortcuts. Falls back to normal mode shortcuts if
+/// no modal is active.
+fn compute_view_shortcuts(modals: ModalVisibility, current_view: ViewMode) -> Vec<Shortcut> {
+    // Check modal states in priority order
+    if modals.help {
+        return help_modal_shortcuts();
+    }
+
+    if modals.error {
+        return error_modal_shortcuts();
+    }
+
+    if modals.sync_preview {
+        return sync_preview_shortcuts();
+    }
+
+    if modals.confirm_dialog {
+        return confirm_dialog_shortcuts();
+    }
+
+    if modals.link_mode {
+        return link_mode_shortcuts();
+    }
+
+    if modals.filter {
+        return filter_modal_shortcuts();
+    }
+
+    if modals.search_focused {
+        return search_shortcuts();
+    }
+
+    // Normal mode shortcuts - vary by current view
+    let mut shortcuts = vec![
+        Shortcut::new("q", "Quit"),
+        Shortcut::new("Tab", "Switch View"),
+        Shortcut::new("j/k", "Navigate"),
+        Shortcut::new("Space", "Select"),
+        Shortcut::new("/", "Search"),
+        Shortcut::new("P", "Provider"),
+        Shortcut::new("r", "Refresh"),
+        Shortcut::new("f", "Filter"),
+    ];
+
+    if current_view == ViewMode::Remote {
+        shortcuts.push(Shortcut::new("a", "Adopt"));
+    } else {
+        shortcuts.push(Shortcut::new("p", "Push"));
+        shortcuts.push(Shortcut::new("u", "Unlink"));
+    }
+
+    shortcuts.push(Shortcut::new("l", "Link"));
+    shortcuts.push(Shortcut::new("s", "Sync"));
+    shortcuts.push(Shortcut::new("?", "Help"));
+
+    shortcuts
 }
 
 /// Fetch remote issues from the given provider with optional query filters
@@ -108,9 +184,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Operation state
     let mut toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut link_mode: State<Option<LinkModeState>> = hooks.use_state(|| None);
-    let _confirm_dialog: State<Option<ConfirmDialogState>> = hooks.use_state(|| None);
+    let mut confirm_dialog: State<Option<ConfirmDialogState>> = hooks.use_state(|| None);
     let mut sync_preview: State<Option<SyncPreviewState>> = hooks.use_state(|| None);
     let mut show_help_modal = hooks.use_state(|| false);
+    let mut help_modal_scroll = hooks.use_state(|| 0usize);
     let mut show_error_modal = hooks.use_state(|| false);
 
     // Last error info (for error detail modal) - stores (type, message)
@@ -604,7 +681,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         toast: &mut toast,
                         link_mode: &mut link_mode,
                         sync_preview: &mut sync_preview,
+                        confirm_dialog: &mut confirm_dialog,
                         show_help_modal: &mut show_help_modal,
+                        help_modal_scroll: &mut help_modal_scroll,
                         show_error_modal: &mut show_error_modal,
                         last_error: &last_error,
                     },
@@ -649,34 +728,19 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         .get(remote_selected_index.get())
         .map(|f| f.issue.clone());
 
-    // Shortcuts for footer
-    let mut shortcuts = vec![
-        Shortcut::new("q", "quit"),
-        Shortcut::new("Tab", "switch view"),
-        Shortcut::new("j/k", "nav"),
-        Shortcut::new("Space", "select"),
-        Shortcut::new("/", "search"),
-        Shortcut::new("P", "switch provider"),
-        Shortcut::new("r", "refresh"),
-        Shortcut::new("f", "filter"),
-    ];
-
-    if current_view == ViewMode::Remote {
-        shortcuts.push(Shortcut::new("a", "adopt"));
-    } else {
-        shortcuts.push(Shortcut::new("p", "push"));
-        shortcuts.push(Shortcut::new("u", "unlink"));
-    }
-
-    if link_mode.read().is_some() {
-        shortcuts.push(Shortcut::new("l", "confirm link"));
-        shortcuts.push(Shortcut::new("Esc", "cancel"));
-    } else {
-        shortcuts.push(Shortcut::new("l", "link"));
-    }
-
-    shortcuts.push(Shortcut::new("s", "sync"));
-    shortcuts.push(Shortcut::new("Enter", "toggle detail"));
+    // Shortcuts for footer - check modals first, then normal mode
+    let shortcuts = compute_view_shortcuts(
+        ModalVisibility {
+            help: show_help_modal.get(),
+            error: show_error_modal.get(),
+            sync_preview: sync_preview.read().is_some(),
+            confirm_dialog: confirm_dialog.read().is_some(),
+            link_mode: link_mode.read().is_some(),
+            filter: filter_state.read().is_some(),
+            search_focused: search_focused.get(),
+        },
+        current_view,
+    );
 
     // Prepare data for components
     let all_local_tickets = local_tickets.read().clone();
@@ -684,6 +748,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let toast_state = toast.read().clone();
     let filter_state_clone = filter_state.read().clone();
     let last_error_clone = last_error.read().clone();
+    let sync_preview_state_clone = sync_preview.read().clone();
+    let confirm_dialog_state_clone = confirm_dialog.read().clone();
 
     // Render the UI using sub-components
     element! {
@@ -692,6 +758,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             height,
             flex_direction: FlexDirection::Column,
             background_color: theme.background,
+            position: Position::Relative,
         ) {
             // Header row
             RemoteHeader(provider: Some(provider.get()))
@@ -770,8 +837,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             ModalOverlays(
                 filter_state: filter_state_clone,
                 show_help_modal: show_help_modal.get(),
+                help_modal_scroll: help_modal_scroll.get(),
                 show_error_modal: show_error_modal.get(),
                 last_error: last_error_clone,
+                sync_preview_state: sync_preview_state_clone,
+                confirm_dialog_state: confirm_dialog_state_clone,
             )
         }
     }

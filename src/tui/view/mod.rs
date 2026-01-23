@@ -14,8 +14,9 @@ use crate::formatting::extract_ticket_body;
 use crate::ticket::Ticket;
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, Header, SearchBox, TicketDetail, TicketList, Toast,
-    ToastNotification, browser_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
-    search_shortcuts, triage_shortcuts,
+    ToastNotification, browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
+    edit_shortcuts, empty_shortcuts, note_input_modal_shortcuts, search_shortcuts,
+    triage_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::EditFormState;
@@ -528,8 +529,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             | Some(EmptyStateKind::Loading)
     );
 
-    // Determine shortcuts to show
-    let shortcuts = if is_editing {
+    // Determine shortcuts to show - check modals first, then normal modes
+    let shortcuts = if show_note_modal.get() {
+        // Triage mode: note input modal is open
+        note_input_modal_shortcuts()
+    } else if show_cancel_confirm.get() {
+        // Triage mode: cancel confirmation modal is open
+        cancel_confirm_modal_shortcuts()
+    } else if is_editing {
         edit_shortcuts()
     } else if show_full_empty_state {
         empty_shortcuts()

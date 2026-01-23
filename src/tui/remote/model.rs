@@ -1007,48 +1007,42 @@ fn normal_key_to_action(code: KeyCode, modifiers: KeyModifiers) -> Option<Remote
 }
 
 /// Compute keyboard shortcuts for the current state
+///
+/// Note: This function is used by the model for testability. The actual view
+/// uses `compute_view_shortcuts` in view.rs which handles additional state
+/// like confirm_dialog that isn't tracked in RemoteState.
 pub fn compute_shortcuts(state: &RemoteState) -> Vec<Shortcut> {
-    // Check modal states first
+    use crate::tui::components::{
+        error_modal_shortcuts, filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts,
+        search_shortcuts, sync_preview_shortcuts,
+    };
+
+    // Check modal states first (in order of priority)
     if state.show_help_modal {
-        return vec![Shortcut::new("Esc", "Close"), Shortcut::new("?", "Close")];
+        return help_modal_shortcuts();
     }
 
     if state.show_error_modal {
-        return vec![Shortcut::new("Esc", "Close")];
+        return error_modal_shortcuts();
     }
 
     if state.sync_preview.is_some() {
-        return vec![
-            Shortcut::new("y", "Accept"),
-            Shortcut::new("n", "Skip"),
-            Shortcut::new("a", "Accept All"),
-            Shortcut::new("c", "Cancel"),
-        ];
+        return sync_preview_shortcuts();
     }
 
+    // Note: confirm_dialog is tracked in the view but not in RemoteState,
+    // so it's handled by compute_view_shortcuts in view.rs
+
     if state.link_mode.is_some() {
-        return vec![
-            Shortcut::new("j/k", "Navigate"),
-            Shortcut::new("Enter", "Confirm"),
-            Shortcut::new("Esc", "Cancel"),
-        ];
+        return link_mode_shortcuts();
     }
 
     if state.filter_modal.is_some() {
-        return vec![
-            Shortcut::new("Tab", "Next Field"),
-            Shortcut::new("Enter", "Toggle/Apply"),
-            Shortcut::new("x", "Clear"),
-            Shortcut::new("Esc", "Cancel"),
-        ];
+        return filter_modal_shortcuts();
     }
 
     if state.search_focused {
-        return vec![
-            Shortcut::new("Enter", "Apply"),
-            Shortcut::new("Esc", "Clear"),
-            Shortcut::new("C-q", "Quit"),
-        ];
+        return search_shortcuts();
     }
 
     // Normal mode shortcuts

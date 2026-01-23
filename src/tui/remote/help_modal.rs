@@ -5,19 +5,58 @@
 
 use iocraft::prelude::*;
 
-use crate::tui::theme::theme;
+use crate::tui::components::{
+    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth, TextViewer,
+};
 
 /// Props for the HelpModal component
 #[derive(Default, Props)]
-pub struct HelpModalProps;
+pub struct HelpModalProps {
+    /// Current scroll offset (controlled by parent)
+    pub scroll_offset: Option<usize>,
+}
 
 /// Help modal component
 ///
 /// Displays a list of keyboard shortcuts organized by category.
+/// Supports scrolling for long content via scroll_offset prop.
 #[component]
-pub fn HelpModal<'a>(_props: &HelpModalProps, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
-    let theme = theme();
+pub fn HelpModal<'a>(props: &HelpModalProps, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
+    let scroll_offset = props.scroll_offset.unwrap_or(0);
 
+    // Build help text content
+    let help_text = build_help_text();
+
+    element! {
+        ModalOverlay() {
+            ModalContainer(
+                width: Some(ModalWidth::Percent(60)),
+                height: Some(ModalHeight::Percent(80)),
+                border_color: Some(ModalBorderColor::Info),
+                title: Some("Keyboard Shortcuts".to_string()),
+                show_close_hint: Some(true),
+                footer_text: Some("j/k or ↑/↓ to scroll".to_string()),
+            ) {
+                // Scrollable content using TextViewer
+                View(
+                    flex_grow: 1.0,
+                    width: 100pct,
+                    overflow: Overflow::Hidden,
+                ) {
+                    TextViewer(
+                        text: help_text,
+                        scroll_offset: scroll_offset,
+                        has_focus: true,
+                        placeholder: None,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/// Build the help text content as a single string
+fn build_help_text() -> String {
     let shortcuts = [
         (
             "Navigation",
@@ -63,81 +102,26 @@ pub fn HelpModal<'a>(_props: &HelpModalProps, _hooks: Hooks) -> impl Into<AnyEle
         ),
     ];
 
-    element! {
-        View(
-            width: 80pct,
-            height: 40pct,
-            background_color: theme.background,
-            border_style: BorderStyle::Double,
-            border_color: theme.border_focused,
-            padding: 2,
-            flex_direction: FlexDirection::Column,
-        ) {
-            // Header
-            View(
-                width: 100pct,
-                padding_bottom: 1,
-                border_edges: Edges::Bottom,
-                border_style: BorderStyle::Single,
-                border_color: theme.border,
-            ) {
-                Text(
-                    content: "Keyboard Shortcuts",
-                    color: Color::Cyan,
-                    weight: Weight::Bold,
-                )
-                View(flex_grow: 1.0)
-                Text(content: "Press Esc to close", color: theme.text_dimmed)
-            }
+    let mut lines = Vec::new();
 
-            // Shortcuts list
-            View(
-                flex_grow: 1.0,
-                width: 100pct,
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-            ) {
-                #(shortcuts.iter().flat_map(|(category, items)| {
-                    let mut elements = vec![
-                        element! {
-                            View(
-                                width: 100pct,
-                                margin_top: 1,
-                            ) {
-                                Text(
-                                    content: format!("{}:", category),
-                                    color: Color::Yellow,
-                                    weight: Weight::Bold,
-                                )
-                            }
-                        }
-                    ];
+    for (category, items) in shortcuts {
+        lines.push(String::new()); // Blank line before category
+        lines.push(format!("{}:", category));
 
-                    for (key, description) in items {
-                        let key_str = key.to_string();
-                        let desc_str = description.to_string();
-                        elements.push(element! {
-                            View(
-                                width: 100pct,
-                                flex_direction: FlexDirection::Row,
-                                padding_left: 2,
-                            ) {
-                                Text(
-                                    content: format!("{:<20}", key_str),
-                                    color: theme.text,
-                                    weight: Weight::Bold,
-                                )
-                                Text(
-                                    content: desc_str,
-                                    color: theme.text_dimmed,
-                                )
-                            }
-                        });
-                    }
-
-                    elements
-                }))
-            }
+        for (key, description) in items {
+            lines.push(format!("  {:<18} {}", key, description));
         }
     }
+
+    // Remove leading blank line
+    if !lines.is_empty() && lines[0].is_empty() {
+        lines.remove(0);
+    }
+
+    lines.join("\n")
+}
+
+/// Get the total number of lines in the help content (for scroll bounds)
+pub fn help_content_line_count() -> usize {
+    build_help_text().lines().count()
 }
