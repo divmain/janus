@@ -171,16 +171,69 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
 }
 
 /// Parse a priority filter from the query (e.g., "p0", "p1", "P2")
-fn parse_priority_filter(query: &str) -> Option<u8> {
+pub fn parse_priority_filter(query: &str) -> Option<u8> {
     let re = Regex::new(r"(?i)\bp([0-4])\b").expect("priority filter regex should be valid");
     re.captures(query)
         .and_then(|c| c.get(1)?.as_str().parse().ok())
 }
 
 /// Strip priority shorthand from the query for fuzzy matching
-fn strip_priority_shorthand(query: &str) -> String {
+pub fn strip_priority_shorthand(query: &str) -> String {
     let re = Regex::new(r"(?i)\bp[0-4]\b").expect("priority shorthand regex should be valid");
     re.replace_all(query, "").trim().to_string()
+}
+
+/// Calculate search debounce delay based on ticket count.
+///
+/// Larger repositories get longer debounce to avoid excessive queries
+/// while typing. Smaller repos get near-instant search.
+pub fn calculate_debounce_ms(ticket_count: usize) -> u64 {
+    match ticket_count {
+        0..=100 => 10,
+        101..=500 => 50,
+        501..=1000 => 100,
+        _ => 150,
+    }
+}
+
+/// Compute title highlight indices for tickets returned from SQL search.
+///
+/// Runs lightweight fuzzy matching on title only (not body) to determine
+/// which characters to highlight in the UI.
+pub fn compute_title_highlights(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTicket> {
+    let text_query = strip_priority_shorthand(query);
+    let text_query = text_query.trim();
+
+    if text_query.is_empty() {
+        // No text query, no highlighting needed
+        return tickets
+            .iter()
+            .map(|t| FilteredTicket {
+                ticket: t.clone(),
+                score: 0,
+                title_indices: vec![],
+            })
+            .collect();
+    }
+
+    let matcher = SkimMatcherV2::default().smart_case();
+
+    tickets
+        .iter()
+        .map(|ticket| {
+            let title = ticket.title.as_deref().unwrap_or("");
+            let title_indices = matcher
+                .fuzzy_indices(title, text_query)
+                .map(|(_, indices)| indices)
+                .unwrap_or_default();
+
+            FilteredTicket {
+                ticket: ticket.clone(),
+                score: 0, // Score not relevant for SQL-based search
+                title_indices,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -281,5 +334,71 @@ mod tests {
         assert_eq!(strip_priority_shorthand("p0 fix bug"), "fix bug");
         assert_eq!(strip_priority_shorthand("fix p1 bug"), "fix  bug");
         assert_eq!(strip_priority_shorthand("no priority"), "no priority");
+    }
+
+    #[test]
+    fn test_calculate_debounce_ms() {
+        assert_eq!(calculate_debounce_ms(0), 10);
+        assert_eq!(calculate_debounce_ms(50), 10);
+        assert_eq!(calculate_debounce_ms(100), 10);
+        assert_eq!(calculate_debounce_ms(101), 50);
+        assert_eq!(calculate_debounce_ms(500), 50);
+        assert_eq!(calculate_debounce_ms(501), 100);
+        assert_eq!(calculate_debounce_ms(1000), 100);
+        assert_eq!(calculate_debounce_ms(1001), 150);
+        assert_eq!(calculate_debounce_ms(10000), 150);
+    }
+
+    #[test]
+    fn test_compute_title_highlights_empty_query() {
+        let tickets = vec![
+            make_ticket("j-a1b2", "Fix authentication bug", 0),
+            make_ticket("j-c3d4", "Add new feature", 2),
+        ];
+
+        let results = compute_title_highlights(&tickets, "");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].title_indices, Vec::<usize>::new());
+        assert_eq!(results[1].title_indices, Vec::<usize>::new());
+    }
+
+    #[test]
+    fn test_compute_title_highlights_with_match() {
+        let tickets = vec![
+            make_ticket("j-a1b2", "Fix authentication", 0),
+            make_ticket("j-c3d4", "Add new feature", 2),
+            make_ticket("j-e5f6", "Update authentication module", 0),
+        ];
+
+        let results = compute_title_highlights(&tickets, "auth");
+        assert_eq!(results.len(), 3);
+        // First ticket: "Fix authentication" - should highlight positions 4-8
+        assert!(!results[0].title_indices.is_empty());
+        // Second ticket: no match - should have empty indices
+        assert!(results[1].title_indices.is_empty());
+        // Third ticket: should have highlights
+        assert!(!results[2].title_indices.is_empty());
+    }
+
+    #[test]
+    fn test_compute_title_highlights_priority_shorthand() {
+        let tickets = vec![
+            make_ticket("j-a1b2", "Fix critical bug", 0),
+            make_ticket("j-c3d4", "Add feature", 2),
+        ];
+
+        // Priority-only query, no text matching
+        let results = compute_title_highlights(&tickets, "p0");
+        assert_eq!(results.len(), 2);
+        assert!(results[0].title_indices.is_empty());
+        assert!(results[1].title_indices.is_empty());
+
+        // Priority with text - should strip priority and match on text
+        let results = compute_title_highlights(&tickets, "p0 bug");
+        assert_eq!(results.len(), 2);
+        // First ticket should match "bug"
+        assert!(!results[0].title_indices.is_empty());
+        // Second ticket has no "bug"
+        assert!(results[1].title_indices.is_empty());
     }
 }

@@ -111,12 +111,23 @@ mod tests {
         ticket_id: &str,
         title: &str,
     ) -> std::path::PathBuf {
+        create_test_ticket_with_body(dir, ticket_id, title, 2, "")
+    }
+
+    fn create_test_ticket_with_body(
+        dir: &std::path::Path,
+        ticket_id: &str,
+        title: &str,
+        priority: u8,
+        body: &str,
+    ) -> std::path::PathBuf {
         let tickets_dir = dir.join(".janus/items");
         fs::create_dir_all(&tickets_dir).unwrap();
 
         let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
-        let content = format!(
-            r#"---
+        let content = if body.is_empty() {
+            format!(
+                r#"---
 id: {}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
@@ -124,12 +135,31 @@ deps: []
 links: []
 created: 2024-01-01T00:00:00Z
 type: task
-priority: 2
+priority: {}
 ---
 # {}
 "#,
-            ticket_id, title
-        );
+                ticket_id, priority, title
+            )
+        } else {
+            format!(
+                r#"---
+id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: {}
+---
+# {}
+
+{}
+"#,
+                ticket_id, priority, title, body
+            )
+        };
         fs::write(&ticket_path, content).unwrap();
         ticket_path
     }
@@ -1675,5 +1705,437 @@ triaged: true
         drop(cache);
         fs::remove_file(&db_path).ok();
         fs::remove_dir_all(&repo_path).ok();
+    }
+
+    // =========================================================================
+    // Search tickets tests
+    // =========================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_tickets_empty_query() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_search_empty");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
+        create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
+        create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let results = cache.search_tickets("").await.unwrap();
+        assert_eq!(results.len(), 3, "Empty query should return all tickets");
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_tickets_priority_only() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_search_priority");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_body(&repo_path, "j-p0", "P0 Ticket", 0, "");
+        create_test_ticket_with_body(&repo_path, "j-p1", "P1 Ticket", 1, "");
+        create_test_ticket_with_body(&repo_path, "j-p2", "P2 Ticket", 2, "");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Search for P0 tickets only
+        let results = cache.search_tickets("p0").await.unwrap();
+        assert_eq!(results.len(), 1, "Should return only P0 ticket");
+        assert_eq!(
+            results[0].id,
+            Some("j-p0".to_string()),
+            "Should return the P0 ticket"
+        );
+        assert_eq!(
+            results[0].priority,
+            Some(crate::types::TicketPriority::P0),
+            "Priority should be P0"
+        );
+
+        // Search for P1 tickets only
+        let results = cache.search_tickets("p1").await.unwrap();
+        assert_eq!(results.len(), 1, "Should return only P1 ticket");
+        assert_eq!(
+            results[0].id,
+            Some("j-p1".to_string()),
+            "Should return the P1 ticket"
+        );
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_tickets_text_in_title() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_search_title");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_body(&repo_path, "j-a1b2", "Fix the bug", 2, "Some other content");
+        create_test_ticket_with_body(&repo_path, "j-c3d4", "Add new feature", 2, "No issues here");
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let results = cache.search_tickets("bug").await.unwrap();
+        assert_eq!(results.len(), 1, "Should return one ticket matching 'bug'");
+        assert_eq!(
+            results[0].id,
+            Some("j-a1b2".to_string()),
+            "Should return the ticket with 'bug' in title"
+        );
+        assert_eq!(
+            results[0].title,
+            Some("Fix the bug".to_string()),
+            "Title should contain 'bug'"
+        );
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_tickets_text_in_body() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_search_body");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-a1b2",
+            "Auth Issue",
+            2,
+            "Users are experiencing authentication error when logging in.",
+        );
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-c3d4",
+            "Other Task",
+            2,
+            "Just some random content without the keyword.",
+        );
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        let results = cache.search_tickets("authentication").await.unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "Should return one ticket matching 'authentication'"
+        );
+        assert_eq!(
+            results[0].id,
+            Some("j-a1b2".to_string()),
+            "Should return the ticket with 'authentication' in body"
+        );
+        assert!(
+            results[0]
+                .body
+                .as_ref()
+                .map(|b| b.contains("authentication"))
+                .unwrap_or(false),
+            "Body should contain 'authentication'"
+        );
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_tickets_combined_priority_and_text() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_search_combined");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-p0-ticket",
+            "P0 Critical Issue",
+            0,
+            "We need to fix this critical issue.",
+        );
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-p1-ticket",
+            "P1 Normal Issue",
+            1,
+            "This also needs to be addressed but less urgent.",
+        );
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-p0-other",
+            "P0 Other",
+            0,
+            "Different task without the keyword.",
+        );
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // First, verify that priority-only search works
+        let p0_results = cache.search_tickets("p0").await.unwrap();
+        assert_eq!(
+            p0_results.len(),
+            2,
+            "Priority-only p0 search should return 2 P0 tickets"
+        );
+
+        // Verify text-only search works
+        let fix_results = cache.search_tickets("fix").await.unwrap();
+        assert_eq!(
+            fix_results.len(),
+            1,
+            "Text-only 'fix' search should return 1 ticket"
+        );
+        assert_eq!(
+            fix_results[0].id,
+            Some("j-p0-ticket".to_string()),
+            "Should be the P0 ticket with 'fix' in body"
+        );
+
+        // Now search for P0 tickets containing "fix"
+        let results = cache.search_tickets("p0 fix").await.unwrap();
+        assert_eq!(results.len(), 1, "Should return only P0 ticket with 'fix'");
+        assert_eq!(
+            results[0].id,
+            Some("j-p0-ticket".to_string()),
+            "Should return the P0 ticket with 'fix' in body"
+        );
+        assert_eq!(
+            results[0].priority,
+            Some(crate::types::TicketPriority::P0),
+            "Priority should be P0"
+        );
+        assert!(
+            results[0]
+                .body
+                .as_ref()
+                .map(|b| b.contains("fix"))
+                .unwrap_or(false),
+            "Body should contain 'fix'"
+        );
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_tickets_special_characters() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_search_special");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Test % character (LIKE wildcard)
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-percent",
+            "Progress Ticket",
+            2,
+            "The task is 100% complete.",
+        );
+
+        // Test _ character (LIKE single char wildcard)
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-underscore",
+            "Underscore Ticket",
+            2,
+            "Use variable_name for clarity.",
+        );
+
+        // Test \ character (like escape character)
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-backslash",
+            "Path Ticket",
+            2,
+            "Use C:\\Users\\name\\path for Windows.",
+        );
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Search for % character
+        let results = cache.search_tickets("100%").await.unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "% should be escaped and matched literally"
+        );
+        assert_eq!(
+            results[0].id,
+            Some("j-percent".to_string()),
+            "Should find ticket with '%' in body"
+        );
+
+        // Search for _ character
+        let results = cache.search_tickets("variable_name").await.unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "_ should be escaped and matched literally"
+        );
+        assert_eq!(
+            results[0].id,
+            Some("j-underscore".to_string()),
+            "Should find ticket with '_' in body"
+        );
+
+        // Search for \ character
+        let results = cache.search_tickets("C:\\Users").await.unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "\\ should be escaped and matched literally"
+        );
+        assert_eq!(
+            results[0].id,
+            Some("j-backslash".to_string()),
+            "Should find ticket with '\\' in body"
+        );
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_search_tickets_case_insensitive() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_search_case");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_body(
+            &repo_path,
+            "j-case",
+            "Fix Bug in Authentication",
+            2,
+            "The authentication module has issues.",
+        );
+
+        let mut cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Search with lowercase
+        let results = cache.search_tickets("fix bug").await.unwrap();
+        assert_eq!(
+            results.len(),
+            1,
+            "Lowercase search should find ticket with uppercase title"
+        );
+        assert_eq!(
+            results[0].id,
+            Some("j-case".to_string()),
+            "Should find ticket with case-insensitive match"
+        );
+
+        // Search with mixed case
+        let results = cache.search_tickets("AuThEnTiCaTiOn").await.unwrap();
+        assert_eq!(results.len(), 1, "Mixed case search should find ticket");
+        assert_eq!(
+            results[0].id,
+            Some("j-case".to_string()),
+            "Should find ticket with case-insensitive match"
+        );
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    // =========================================================================
+    // Escape LIKE pattern tests
+    // =========================================================================
+
+    #[test]
+    fn test_escape_like_pattern_special_characters() {
+        use crate::cache::queries::escape_like_pattern;
+
+        // Test % escaping
+        assert_eq!(
+            escape_like_pattern("100%"),
+            "100\\%",
+            "Percent sign should be escaped"
+        );
+
+        // Test _ escaping
+        assert_eq!(
+            escape_like_pattern("variable_name"),
+            "variable\\_name",
+            "Underscore should be escaped"
+        );
+
+        // Test \ escaping (backslash itself)
+        assert_eq!(
+            escape_like_pattern("C:\\Users"),
+            "C:\\\\Users",
+            "Backslash should be escaped"
+        );
+
+        // Test multiple special characters in one string
+        assert_eq!(
+            escape_like_pattern("100%_done\\"),
+            "100\\%\\_done\\\\",
+            "All special characters should be escaped"
+        );
+    }
+
+    #[test]
+    fn test_escape_like_pattern_regular_characters() {
+        use crate::cache::queries::escape_like_pattern;
+
+        // Test regular characters remain unchanged
+        assert_eq!(
+            escape_like_pattern("hello world"),
+            "hello world",
+            "Regular characters should not be escaped"
+        );
+
+        // Test numbers
+        assert_eq!(
+            escape_like_pattern("12345"),
+            "12345",
+            "Numbers should not be escaped"
+        );
+
+        // Test empty string
+        assert_eq!(
+            escape_like_pattern(""),
+            "",
+            "Empty string should remain empty"
+        );
     }
 }

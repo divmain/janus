@@ -7,6 +7,7 @@ use turso::params;
 use turso::transaction::Transaction;
 
 use crate::error::{JanusError, Result};
+use crate::formatting::extract_ticket_body;
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
 use crate::ticket::parse_ticket;
@@ -72,6 +73,9 @@ impl CacheableItem for TicketMetadata {
         let mut metadata = parse_ticket(&content)
             .map_err(|e| JanusError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
 
+        // Extract body for caching
+        metadata.body = extract_ticket_body(&content);
+
         // Set the file_path so it gets cached
         metadata.file_path = Some(path.clone());
 
@@ -128,6 +132,7 @@ impl CacheableItem for TicketMetadata {
             .file_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string());
+        let body = self.body.clone();
 
         async move {
             let ticket_id = ticket_id?;
@@ -135,8 +140,8 @@ impl CacheableItem for TicketMetadata {
                 "INSERT OR REPLACE INTO tickets (
                     ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
                     deps, links, parent, created, external_ref, remote, completion_summary,
-                    spawned_from, spawn_context, depth, file_path, triaged
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                    spawned_from, spawn_context, depth, file_path, triaged, body
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                 params![
                     ticket_id,
                     uuid,
@@ -157,6 +162,7 @@ impl CacheableItem for TicketMetadata {
                     depth,
                     file_path,
                     triaged,
+                    body,
                 ],
             )
             .await?;

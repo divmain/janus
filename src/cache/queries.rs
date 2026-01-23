@@ -12,10 +12,27 @@ use std::path::PathBuf;
 use serde_json;
 
 use crate::error::{JanusError as CacheError, Result};
+use crate::tui::search::{parse_priority_filter, strip_priority_shorthand};
 use crate::types::TicketMetadata;
 
 use super::database::TicketCache;
 use super::types::{CachedPhase, CachedPlanMetadata};
+
+/// Escape special characters for SQL LIKE pattern matching.
+/// Escapes: % _ \
+#[cfg(test)]
+pub(crate) fn escape_like_pattern(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+#[cfg(not(test))]
+fn escape_like_pattern(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
 
 impl TicketCache {
     // =========================================================================
@@ -29,7 +46,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth, file_path, triaged
+                spawned_from, spawn_context, depth, file_path, triaged, body
          FROM tickets",
                 (),
             )
@@ -50,7 +67,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth, file_path, triaged
+                spawned_from, spawn_context, depth, file_path, triaged, body
          FROM tickets WHERE ticket_id = ?1",
                 [id],
             )
@@ -170,6 +187,103 @@ impl TicketCache {
         } else {
             Ok(0)
         }
+    }
+
+    /// Search tickets using SQL LIKE with optional priority filter.
+    ///
+    /// Parses priority shorthand (p0-p4) from query and applies as exact filter.
+    /// Performs substring matching on: ticket_id, title, body, ticket_type.
+    ///
+    /// # Arguments
+    /// * `query` - Search query, may include priority shorthand (e.g., "p0 fix")
+    ///
+    /// # Returns
+    /// Vector of matching tickets. Returns all tickets if query is empty.
+    pub async fn search_tickets(&self, query: &str) -> Result<Vec<TicketMetadata>> {
+        // Parse priority filter (e.g., "p0" -> Some(0))
+        let priority_filter = parse_priority_filter(query);
+
+        // Strip priority shorthand from query for text search
+        let text_query = strip_priority_shorthand(query);
+        let text_query = text_query.trim();
+
+        let conn = self.create_connection().await?;
+
+        if text_query.is_empty() && priority_filter.is_none() {
+            // Empty query - return all tickets
+            return self.get_all_tickets().await;
+        }
+
+        let escaped_query = escape_like_pattern(text_query);
+        let like_pattern = format!("%{}%", escaped_query);
+
+        // Build query based on what filters are active
+        let results = if text_query.is_empty() {
+            // Priority-only filter
+            let mut rows = conn
+                .query(
+                    "SELECT ticket_id, uuid, status, title, priority, ticket_type,
+                     deps, links, parent, created, external_ref, remote, completion_summary,
+                     spawned_from, spawn_context, depth, file_path, triaged, body
+                     FROM tickets WHERE priority = ?1",
+                    [priority_filter.unwrap() as i64],
+                )
+                .await?;
+
+            let mut tickets = Vec::new();
+            while let Some(row) = rows.next().await? {
+                let metadata = Self::row_to_ticket_metadata(&row).await?;
+                tickets.push(metadata);
+            }
+            tickets
+        } else if let Some(priority) = priority_filter {
+            // Both priority and text filter
+            let mut rows = conn
+                .query(
+                    "SELECT ticket_id, uuid, status, title, priority, ticket_type,
+                     deps, links, parent, created, external_ref, remote, completion_summary,
+                     spawned_from, spawn_context, depth, file_path, triaged, body
+                     FROM tickets
+                     WHERE priority = ?1
+                       AND (ticket_id LIKE ?2 ESCAPE '\\'
+                            OR title LIKE ?2 ESCAPE '\\'
+                            OR body LIKE ?2 ESCAPE '\\'
+                            OR ticket_type LIKE ?2 ESCAPE '\\')",
+                    (priority as i64, like_pattern),
+                )
+                .await?;
+
+            let mut tickets = Vec::new();
+            while let Some(row) = rows.next().await? {
+                let metadata = Self::row_to_ticket_metadata(&row).await?;
+                tickets.push(metadata);
+            }
+            tickets
+        } else {
+            // Text-only filter
+            let mut rows = conn
+                .query(
+                    "SELECT ticket_id, uuid, status, title, priority, ticket_type,
+                     deps, links, parent, created, external_ref, remote, completion_summary,
+                     spawned_from, spawn_context, depth, file_path, triaged, body
+                     FROM tickets
+                     WHERE ticket_id LIKE ?1 ESCAPE '\\'
+                        OR title LIKE ?1 ESCAPE '\\'
+                        OR body LIKE ?1 ESCAPE '\\'
+                        OR ticket_type LIKE ?1 ESCAPE '\\'",
+                    [like_pattern],
+                )
+                .await?;
+
+            let mut tickets = Vec::new();
+            while let Some(row) = rows.next().await? {
+                let metadata = Self::row_to_ticket_metadata(&row).await?;
+                tickets.push(metadata);
+            }
+            tickets
+        };
+
+        Ok(results)
     }
 
     // =========================================================================
@@ -315,6 +429,13 @@ impl TicketCache {
                     error: e.to_string(),
                 })?;
 
+        let body: Option<String> =
+            row.get::<Option<String>>(18)
+                .map_err(|e| CacheError::CacheColumnExtraction {
+                    column: 18,
+                    error: e.to_string(),
+                })?;
+
         // Parse ticket_type (optional domain field)
         let ticket_type: Option<crate::types::TicketType> = if let Some(s) = type_str {
             Some(s.parse().map_err(|e| {
@@ -387,6 +508,7 @@ impl TicketCache {
             spawn_context,
             depth,
             triaged,
+            body,
         };
 
         if metadata.id.is_none() {

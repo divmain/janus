@@ -18,6 +18,7 @@ use super::types::ViewAction;
 pub struct ViewHandlerContext<'a> {
     // Search/filter state
     pub search_query: &'a mut State<String>,
+    pub pending_search: &'a mut State<bool>,
 
     // Navigation state
     pub selected_index: &'a mut State<usize>,

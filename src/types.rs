@@ -275,6 +275,10 @@ pub struct TicketMetadata {
     /// Only meaningful for tickets with status: complete
     #[serde(skip)]
     pub completion_summary: Option<String>,
+
+    /// Ticket body content (only populated during cache sync, not persisted to YAML)
+    #[serde(skip)]
+    pub body: Option<String>,
 }
 
 impl TicketMetadata {

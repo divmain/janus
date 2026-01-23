@@ -26,6 +26,8 @@ pub struct TicketListProps {
     /// The component uses `height: 100pct` for declarative layout, but scroll
     /// state management needs the actual row count.
     pub visible_height: usize,
+    /// Whether a search is currently in progress
+    pub searching: bool,
 }
 
 /// Scrollable ticket list with selection
@@ -37,6 +39,26 @@ pub fn TicketList(props: &TicketListProps) -> impl Into<AnyElement<'static>> {
     } else {
         theme.border
     };
+
+    // If searching, show a loading indicator instead of tickets
+    if props.searching {
+        return element! {
+            View(
+                width: 100pct,
+                height: 100pct,
+                flex_direction: FlexDirection::Column,
+                border_style: BorderStyle::Round,
+                border_color: border_color,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+            ) {
+                Text(
+                    content: "Searching...",
+                    color: theme.text_dimmed,
+                )
+            }
+        };
+    }
 
     // Calculate which tickets to show, accounting for scroll indicator lines
     let start = props.scroll_offset;

@@ -54,6 +54,12 @@ pub struct BoardState {
     pub toast: Option<Toast>,
     /// Current edit mode state
     pub edit_mode: Option<EditMode>,
+    /// Debounce delay in milliseconds, calculated at startup
+    pub debounce_ms: u64,
+    /// Timestamp of last search query change
+    pub last_search_change: Option<std::time::Instant>,
+    /// Whether an async search is currently in flight
+    pub search_in_flight: bool,
 }
 
 /// Edit mode variants
@@ -645,6 +651,9 @@ mod tests {
             init_result: InitResult::Ok,
             toast: None,
             edit_mode: None,
+            debounce_ms: 10,
+            last_search_change: None,
+            search_in_flight: false,
         }
     }
 

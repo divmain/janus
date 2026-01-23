@@ -21,6 +21,8 @@ pub fn handle(
             HandleResult::Handled
         }
         SearchAction::Exit => {
+            // User pressed Enter - trigger search execution
+            ctx.pending_search.set(true);
             ctx.active_pane.set(Pane::List);
             HandleResult::Handled
         }

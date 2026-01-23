@@ -22,7 +22,7 @@ use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::EditFormState;
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
-use crate::tui::search::{FilteredTicket, filter_tickets};
+use crate::tui::search::{FilteredTicket, compute_title_highlights};
 use crate::tui::services::TicketService;
 use crate::tui::state::Pane;
 use crate::tui::theme::theme;
@@ -73,6 +73,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Triage mode state
     let is_triage_mode = hooks.use_state(|| false);
 
+    // Search state - search is executed on Enter, not while typing
+    // Store filtered tickets from search (Vec<FilteredTicket> with highlights)
+    let mut search_filtered_tickets: State<Option<Vec<FilteredTicket>>> = hooks.use_state(|| None);
+    // Track if search is currently running (for loading indicator)
+    let mut search_in_flight = hooks.use_state(|| false);
+
     // Modal state for triage mode
     let show_note_modal = hooks.use_state(|| false);
     let show_cancel_confirm = hooks.use_state(|| false);
@@ -91,6 +97,42 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         load_started.set(true);
         load_handler.clone()(());
     }
+
+    // Async search handler - executes SQL search via cache
+    // Called when user presses Enter in search box
+    let search_handler: Handler<String> = hooks.use_async_handler({
+        let search_filtered_setter = search_filtered_tickets;
+        let search_in_flight_setter = search_in_flight;
+
+        move |query: String| {
+            let mut search_filtered_setter = search_filtered_setter;
+            let mut search_in_flight_setter = search_in_flight_setter;
+
+            Box::pin(async move {
+                if query.is_empty() {
+                    // Empty query - clear results
+                    search_filtered_setter.set(None);
+                    search_in_flight_setter.set(false);
+                    return;
+                }
+
+                // Execute SQL search via cache
+                let results = if let Some(cache) = crate::cache::get_or_init_cache().await {
+                    cache.search_tickets(&query).await.unwrap_or_default()
+                } else {
+                    vec![]
+                };
+
+                // Convert to FilteredTicket with title highlights
+                let highlighted = compute_title_highlights(&results, &query);
+                search_filtered_setter.set(Some(highlighted));
+                search_in_flight_setter.set(false);
+            })
+        }
+    });
+
+    // Track if search needs to be triggered (set by Enter key handler)
+    let mut pending_search = hooks.use_state(|| false);
 
     // Edit form state - use bool flags and separate storage for non-Copy data
     let mut edit_result: State<EditResult> = hooks.use_state(EditResult::default);
@@ -281,9 +323,53 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
     // Compute filtered tickets
     let query_str = search_query.to_string();
-    let tickets_ref = all_tickets.read();
-    let mut filtered: Vec<FilteredTicket> = filter_tickets(&tickets_ref, &query_str);
-    drop(tickets_ref); // Release the read lock
+
+    // Trigger search if pending (set by Enter key in search mode)
+    if pending_search.get() {
+        pending_search.set(false);
+        search_in_flight.set(true);
+        search_handler.clone()(query_str.clone());
+    }
+
+    // Clear search results if search box is empty
+    if query_str.is_empty() && search_filtered_tickets.read().is_some() {
+        search_filtered_tickets.set(None);
+    }
+
+    // Determine which tickets to display
+    // - Empty query: show all tickets
+    // - Have search results: show them (regardless of what's currently in search box)
+    // - No search results and non-empty query: show all tickets (waiting for first search)
+    let mut filtered: Vec<FilteredTicket> = if query_str.is_empty() {
+        // Empty query - show all tickets
+        let tickets_ref = all_tickets.read();
+        let result = tickets_ref
+            .iter()
+            .map(|t| FilteredTicket {
+                ticket: t.clone(),
+                score: 0,
+                title_indices: vec![],
+            })
+            .collect();
+        drop(tickets_ref);
+        result
+    } else if let Some(results) = search_filtered_tickets.read().as_ref() {
+        // Have search results - keep showing them until a new search is executed
+        results.clone()
+    } else {
+        // No search results yet and query is non-empty - show all tickets
+        let tickets_ref = all_tickets.read();
+        let result = tickets_ref
+            .iter()
+            .map(|t| FilteredTicket {
+                ticket: t.clone(),
+                score: 0,
+                title_indices: vec![],
+            })
+            .collect();
+        drop(tickets_ref);
+        result
+    };
 
     // Apply triage mode filter
     if is_triage_mode.get() {
@@ -444,6 +530,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
                     let mut ctx = handlers::ViewHandlerContext {
                         search_query: &mut search_query,
+                        pending_search: &mut pending_search,
                         selected_index: &mut selected_index,
                         scroll_offset: &mut scroll_offset,
                         detail_scroll_offset: &mut detail_scroll_offset,
@@ -626,6 +713,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                             scroll_offset: scroll_offset.get(),
                                             has_focus: active_pane.get() == Pane::List && !is_editing,
                                             visible_height: list_height,
+                                            searching: search_in_flight.get(),
                                         )
                                     }
 
