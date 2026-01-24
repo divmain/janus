@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::error::JanusError;
+use crate::hooks::HookContext;
 
 // Legacy constants - kept for backward compatibility
 pub const TICKETS_DIR: &str = ".janus";
@@ -273,6 +274,61 @@ impl TicketMetadata {
 impl crate::repository::HasId for TicketMetadata {
     fn get_id(&self) -> Option<String> {
         self.id.clone()
+    }
+}
+
+impl ItemMetadata for TicketMetadata {
+    fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    fn uuid(&self) -> Option<&str> {
+        self.uuid.as_deref()
+    }
+
+    fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    fn file_path(&self) -> Option<&PathBuf> {
+        self.file_path.as_ref()
+    }
+
+    fn item_type(&self) -> EntityType {
+        EntityType::Ticket
+    }
+}
+
+/// Common metadata fields for item types (tickets and plans)
+pub trait ItemMetadata {
+    /// Get the item ID
+    fn id(&self) -> Option<&str>;
+
+    /// Get the item UUID
+    fn uuid(&self) -> Option<&str>;
+
+    /// Get the item title
+    fn title(&self) -> Option<&str>;
+
+    /// Get the file path
+    fn file_path(&self) -> Option<&PathBuf>;
+
+    /// Get the item type
+    fn item_type(&self) -> EntityType;
+
+    /// Build a hook context from this metadata
+    fn hook_context(&self) -> HookContext {
+        let mut ctx = HookContext::new().with_item_type(self.item_type());
+
+        if let Some(id) = self.id() {
+            ctx = ctx.with_item_id(id);
+        }
+
+        if let Some(fp) = self.file_path() {
+            ctx = ctx.with_file_path(fp);
+        }
+
+        ctx
     }
 }
 

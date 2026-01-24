@@ -209,6 +209,28 @@ impl crate::repository::HasId for PlanMetadata {
     }
 }
 
+impl crate::types::ItemMetadata for PlanMetadata {
+    fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    fn uuid(&self) -> Option<&str> {
+        self.uuid.as_deref()
+    }
+
+    fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    fn file_path(&self) -> Option<&PathBuf> {
+        self.file_path.as_ref()
+    }
+
+    fn item_type(&self) -> crate::types::EntityType {
+        crate::types::EntityType::Plan
+    }
+}
+
 /// A section in a plan - either structured (phase/tickets) or free-form
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlanSection {
