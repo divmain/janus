@@ -2,6 +2,7 @@ mod add_note;
 mod board;
 mod cache;
 mod config;
+mod io_helpers;
 pub mod create;
 mod dep;
 mod edit;
@@ -128,6 +129,9 @@ pub use crate::display::{
     FormatOptions, format_deps, format_ticket_bullet, format_ticket_line, sort_by_priority,
     sort_tickets_by,
 };
+
+/// Re-export I/O helpers for commands
+pub use io_helpers::TicketFileOps;
 
 /// Print a JSON value as pretty-printed output
 ///
