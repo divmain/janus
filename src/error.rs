@@ -34,6 +34,26 @@ pub fn is_permission_error(error: &JanusError) -> bool {
     }
 }
 
+/// Generic helper to format error messages with a prefix, a key, and a list of items
+fn format_error_with_list(prefix: &str, key: &str, label: &str, items: &[String]) -> String {
+    format!("{prefix} '{key}': {label} {}", items.join(", "))
+}
+
+/// Format with two keys before the list (e.g., "invalid value 'X' for field 'Y'")
+fn format_error_double_key(
+    prefix1: &str,
+    key1: &str,
+    prefix2: &str,
+    key2: &str,
+    label: &str,
+    items: &[String],
+) -> String {
+    format!(
+        "{prefix1} '{key1}' {prefix2} '{key2}': {label} {}",
+        items.join(", ")
+    )
+}
+
 /// Format the ImportFailed error message with issues
 fn format_import_failed(message: &str, issues: &[String]) -> String {
     if issues.is_empty() {
@@ -48,39 +68,29 @@ fn format_import_failed(message: &str, issues: &[String]) -> String {
 
 /// Format the InvalidField error message
 fn format_invalid_field(field: &str, valid_fields: &[String]) -> String {
-    format!(
-        "invalid field '{}': must be one of: {}",
-        field,
-        valid_fields.join(", ")
-    )
+    format_error_with_list("invalid field", field, "must be one of:", valid_fields)
 }
 
 /// Format the InvalidFieldValue error message
 fn format_invalid_field_value(field: &str, value: &str, valid_values: &[String]) -> String {
-    format!(
-        "invalid value '{}' for field '{}': must be one of: {}",
+    format_error_double_key(
+        "invalid value",
         value,
+        "for field",
         field,
-        valid_values.join(", ")
+        "must be one of:",
+        valid_values,
     )
 }
 
 /// Format the AmbiguousId error message
 fn format_ambiguous_id(id: &str, matches: &[String]) -> String {
-    format!(
-        "ambiguous ID '{}' matches multiple tickets: {}",
-        id,
-        matches.join(", ")
-    )
+    format_error_with_list("ambiguous ID", id, "matches multiple tickets:", matches)
 }
 
 /// Format the AmbiguousPlanId error message
 fn format_ambiguous_plan_id(id: &str, matches: &[String]) -> String {
-    format!(
-        "ambiguous plan ID '{}' matches multiple plans: {}",
-        id,
-        matches.join(", ")
-    )
+    format_error_with_list("ambiguous plan ID", id, "matches multiple plans:", matches)
 }
 
 #[derive(Error, Debug)]
