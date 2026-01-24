@@ -17,6 +17,7 @@ mod import;
 mod sections;
 mod serialize;
 
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
@@ -129,45 +130,6 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
     Ok(metadata)
 }
 
-/// Tracks which structured sections have been encountered during parsing.
-///
-/// This state machine ensures:
-/// - First "Acceptance Criteria" section is parsed as structured data
-/// - First "Tickets" section (in simple plans) is parsed as structured data
-/// - Subsequent duplicates are treated as free-form sections
-/// - Phase sections can appear multiple times (tracked separately)
-#[derive(Debug, Default)]
-struct ParsedSections {
-    acceptance_criteria: bool,
-    tickets: bool,
-}
-
-impl ParsedSections {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    /// Returns true if Acceptance Criteria hasn't been parsed yet, and marks it as parsed.
-    fn try_claim_acceptance_criteria(&mut self) -> bool {
-        if self.acceptance_criteria {
-            false
-        } else {
-            self.acceptance_criteria = true;
-            true
-        }
-    }
-
-    /// Returns true if Tickets section hasn't been parsed yet, and marks it as parsed.
-    fn try_claim_tickets(&mut self) -> bool {
-        if self.tickets {
-            false
-        } else {
-            self.tickets = true;
-            true
-        }
-    }
-}
-
 /// Parse the markdown body to extract title, description, and sections
 fn parse_body(body: &str, metadata: &mut PlanMetadata) -> Result<()> {
     let arena = Arena::new();
@@ -186,11 +148,11 @@ fn parse_body(body: &str, metadata: &mut PlanMetadata) -> Result<()> {
         }
     }
 
-    // Process H2 sections with explicit state tracking
-    let mut parsed = ParsedSections::new();
+    // Track which structured sections have been seen (first occurrence only)
+    let mut seen_sections: HashSet<&'static str> = HashSet::new();
 
     for section in h2_sections {
-        classify_and_add_section(section, metadata, &mut parsed);
+        classify_and_add_section(section, metadata, &mut seen_sections);
     }
 
     Ok(())
@@ -323,20 +285,20 @@ impl SectionCollector {
 fn classify_and_add_section(
     section: H2Section,
     metadata: &mut PlanMetadata,
-    parsed: &mut ParsedSections,
+    seen_sections: &mut HashSet<&'static str>,
 ) {
     let heading_lower = section.heading.to_lowercase();
 
     // Check for Acceptance Criteria (case-insensitive, exact match)
     // Only the first occurrence is parsed as structured data
-    if heading_lower == "acceptance criteria" && parsed.try_claim_acceptance_criteria() {
+    if heading_lower == "acceptance criteria" && seen_sections.insert("acceptance_criteria") {
         metadata.acceptance_criteria = sections::parse_list_items(&section.content);
         return;
     }
 
     // Check for Tickets section (simple plans, case-insensitive, exact match)
     // Only the first occurrence is parsed as structured data
-    if heading_lower == "tickets" && parsed.try_claim_tickets() {
+    if heading_lower == "tickets" && seen_sections.insert("tickets") {
         let tickets = sections::parse_ticket_list(&section.content);
         metadata.sections.push(PlanSection::Tickets(tickets));
         return;
