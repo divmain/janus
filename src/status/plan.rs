@@ -10,6 +10,9 @@ use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::status::{is_not_started, is_terminal};
 use crate::types::{TicketMetadata, TicketStatus};
 
+#[cfg(test)]
+use crate::plan::types::ProgressTracking;
+
 // ============================================================================
 // Missing Ticket Policy
 // ============================================================================

@@ -33,7 +33,7 @@ use std::str::FromStr;
 
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
 use crate::plan::parser::serialize_plan;
-use crate::plan::types::{PlanMetadata, PlanStatus};
+use crate::plan::types::{PlanMetadata, PlanStatus, ProgressTracking};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketStatus, TicketType};

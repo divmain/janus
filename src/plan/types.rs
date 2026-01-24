@@ -3,6 +3,31 @@ use std::path::PathBuf;
 
 use crate::types::TicketStatus;
 
+/// Trait for tracking and calculating progress
+pub trait ProgressTracking {
+    fn completed_count(&self) -> usize;
+    fn total_count(&self) -> usize;
+
+    fn progress(&self) -> Progress {
+        Progress {
+            completed: self.completed_count(),
+            total: self.total_count(),
+        }
+    }
+
+    fn progress_percent(&self) -> f64 {
+        self.progress().percent()
+    }
+
+    fn is_complete(&self) -> bool {
+        self.total_count() > 0 && self.completed_count() == self.total_count()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.total_count() == 0
+    }
+}
+
 pub struct Progress {
     pub completed: usize,
     pub total: usize,
@@ -299,20 +324,17 @@ pub struct PlanStatus {
     pub total_count: usize,
 }
 
+impl ProgressTracking for PlanStatus {
+    fn completed_count(&self) -> usize {
+        self.completed_count
+    }
+
+    fn total_count(&self) -> usize {
+        self.total_count
+    }
+}
+
 impl PlanStatus {
-    /// Get the progress for this plan
-    fn progress(&self) -> Progress {
-        Progress {
-            completed: self.completed_count,
-            total: self.total_count,
-        }
-    }
-
-    /// Calculate progress as a percentage (0-100)
-    pub fn progress_percent(&self) -> f64 {
-        self.progress().percent()
-    }
-
     /// Format progress as a string (e.g., "5/12 (41%)")
     pub fn progress_string(&self) -> String {
         self.progress().format()
@@ -348,20 +370,17 @@ pub struct PhaseStatus {
     pub total_count: usize,
 }
 
+impl ProgressTracking for PhaseStatus {
+    fn completed_count(&self) -> usize {
+        self.completed_count
+    }
+
+    fn total_count(&self) -> usize {
+        self.total_count
+    }
+}
+
 impl PhaseStatus {
-    /// Get the progress for this phase
-    fn progress(&self) -> Progress {
-        Progress {
-            completed: self.completed_count,
-            total: self.total_count,
-        }
-    }
-
-    /// Calculate progress as a percentage (0-100)
-    pub fn progress_percent(&self) -> f64 {
-        self.progress().percent()
-    }
-
     /// Format progress as a string (e.g., "2/4")
     ///
     /// Note: Unlike PlanStatus, this does not include the percentage in the output.
