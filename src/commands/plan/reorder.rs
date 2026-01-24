@@ -11,6 +11,30 @@ use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::PlanSection;
 
+fn parse_and_validate_ticket_order(
+    new_order: &str,
+    original_tickets: &[String],
+) -> Result<Vec<String>> {
+    let new_ticket_order: Vec<String> = new_order
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| {
+            l.split('.')
+                .nth(1)
+                .map(|s| s.split_whitespace().next().unwrap_or("").to_string())
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let original_set: HashSet<_> = original_tickets.iter().collect();
+    let new_set: HashSet<_> = new_ticket_order.iter().collect();
+    if original_set != new_set {
+        return Err(JanusError::ReorderTicketMismatch);
+    }
+
+    Ok(new_ticket_order)
+}
+
 /// Reorder tickets or phases interactively
 ///
 /// # Arguments
@@ -149,27 +173,7 @@ pub async fn cmd_plan_reorder(
             return Ok(());
         }
 
-        // Parse new order - extract ticket IDs
-        let new_ticket_order: Vec<String> = new_order
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .filter_map(|l| {
-                // Extract ticket ID (after the number and dot)
-                l.split('.')
-                    .nth(1)
-                    .map(|s| s.split_whitespace().next().unwrap_or("").to_string())
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        // Validate all tickets are present
-        let original_set: HashSet<_> = phase_obj.tickets.iter().collect();
-        let new_set: HashSet<_> = new_ticket_order.iter().collect();
-        if original_set != new_set {
-            return Err(JanusError::ReorderTicketMismatch);
-        }
-
-        phase_obj.tickets = new_ticket_order;
+        phase_obj.tickets = parse_and_validate_ticket_order(&new_order, &phase_obj.tickets)?;
     } else if metadata.is_simple() {
         // Reorder tickets in simple plan
         let tickets = metadata
@@ -195,26 +199,7 @@ pub async fn cmd_plan_reorder(
             return Ok(());
         }
 
-        // Parse new order
-        let new_ticket_order: Vec<String> = new_order
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .filter_map(|l| {
-                l.split('.')
-                    .nth(1)
-                    .map(|s| s.split_whitespace().next().unwrap_or("").to_string())
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        // Validate all tickets are present
-        let original_set: HashSet<_> = tickets.iter().collect();
-        let new_set: HashSet<_> = new_ticket_order.iter().collect();
-        if original_set != new_set {
-            return Err(JanusError::ReorderTicketMismatch);
-        }
-
-        *tickets = new_ticket_order;
+        *tickets = parse_and_validate_ticket_order(&new_order, tickets)?;
     } else {
         println!(
             "Use --phase to specify which phase to reorder, or --reorder-phases to reorder phases"
