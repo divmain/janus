@@ -7,14 +7,16 @@ pub mod handlers;
 pub mod model;
 
 use iocraft::prelude::*;
-use tokio::sync::{Mutex, mpsc};
+use std::pin::Pin;
+use std::future::Future;
 
 use crate::ticket::Ticket;
+use crate::tui::action_queue::{Action, ActionResult, ActionQueueBuilder};
 use crate::tui::components::{
     EmptyState, EmptyStateKind, Footer, Header, InlineSearchBox, TicketCard, Toast, ToastNotification,
     board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
-use crate::tui::edit::{EditFormOverlay, EditResult, extract_body_for_edit};
+use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::EditFormState;
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
@@ -22,7 +24,7 @@ use crate::tui::search::{FilteredTicket, compute_title_highlights};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
-use handlers::{BoardHandlerContext, TicketAction};
+use handlers::BoardHandlerContext;
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -39,9 +41,81 @@ const COLUMN_NAMES: [&str; 5] = ["NEW", "NEXT", "IN PROGRESS", "COMPLETE", "CANC
 /// Column toggle keys for header display
 const COLUMN_KEYS: [char; 5] = ['N', 'X', 'I', 'C', '_'];
 
+/// Actions for the kanban board
+#[derive(Debug, Clone)]
+pub enum BoardAction {
+    UpdateStatus { id: String, status: TicketStatus },
+    LoadForEdit { id: String },
+}
+
+impl Action for BoardAction {
+    fn execute(self) -> Pin<Box<dyn Future<Output = ActionResult> + Send>> {
+        Box::pin(async move {
+            match self {
+                BoardAction::UpdateStatus { id, status } => {
+                    match Ticket::find(&id).await {
+                        Ok(ticket) => {
+                            match ticket.update_field("status", &status.to_string()) {
+                                Ok(_) => ActionResult {
+                                    success: true,
+                                    message: Some(format!("Updated {} to {}", id, status)),
+                                },
+                                Err(e) => ActionResult {
+                                    success: false,
+                                    message: Some(format!("Failed to update: {}", e)),
+                                },
+                            }
+                        }
+                        Err(e) => ActionResult {
+                            success: false,
+                            message: Some(format!("Ticket not found: {}", e)),
+                        },
+                    }
+                }
+                BoardAction::LoadForEdit { id: _ } => {
+                    ActionResult {
+                        success: true,
+                        message: Some(format!("Loaded for editing")),
+                    }
+                }
+            }
+        })
+    }
+}
+
 /// Props for the KanbanBoard component
 #[derive(Default, Props)]
 pub struct KanbanBoardProps {}
+
+/// Process board actions from the action queue
+async fn process_board_actions(
+    actions: Vec<BoardAction>,
+    mut needs_reload: State<bool>,
+    mut toast: State<Option<Toast>>,
+) {
+    let mut success_count = 0;
+    let mut errors = Vec::new();
+
+    for action in actions {
+        let result = action.execute().await;
+        if result.success {
+            success_count += 1;
+            if let Some(msg) = result.message {
+                toast.set(Some(Toast::success(msg)));
+            }
+        } else if let Some(msg) = result.message {
+            errors.push(msg);
+        }
+    }
+
+    if success_count > 0 {
+        needs_reload.set(true);
+    }
+
+    if !errors.is_empty() {
+        toast.set(Some(Toast::error(format!("{} error(s): {}", errors.len(), errors.join("; ")))))
+    }
+}
 
 /// Get tickets for a specific column from the filtered list
 fn get_column_tickets(filtered: &[FilteredTicket], status: TicketStatus) -> Vec<FilteredTicket> {
@@ -98,22 +172,13 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let mut editing_ticket: State<TicketMetadata> = hooks.use_state(TicketMetadata::default);
     let mut editing_body = hooks.use_state(String::new);
 
-    // Action queue for async ticket operations
-    // Channel is created once via use_state initializer - the tuple is split across two state slots
-    // Note: We store the channel parts in a shared struct to ensure they're from the same channel
-    struct ActionChannel {
-        tx: mpsc::UnboundedSender<TicketAction>,
-        rx: std::sync::Arc<Mutex<mpsc::UnboundedReceiver<TicketAction>>>,
-    }
-    let channel: State<ActionChannel> = hooks.use_state(|| {
-        let (tx, rx) = mpsc::unbounded_channel::<TicketAction>();
-        ActionChannel {
-            tx,
-            rx: std::sync::Arc::new(Mutex::new(rx)),
-        }
-    });
-    let action_sender = channel.read().tx.clone();
-    let action_channel = channel.read().rx.clone();
+    // Action queue for async ticket operations using ActionQueueBuilder
+    let (_queue_state, _action_handler, action_channel) = ActionQueueBuilder::use_state(
+        &mut hooks,
+        |actions, needs_reload, toast| Box::pin(process_board_actions(actions, needs_reload, toast)),
+        needs_reload.clone(),
+        toast.clone(),
+    );
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
     let load_handler: Handler<()> =
@@ -161,105 +226,6 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Track if search needs to be triggered (set by Enter key handler)
     let mut pending_search = hooks.use_state(|| false);
-
-    // Async action queue processor
-    // This handler processes pending actions from the queue
-    let action_processor: Handler<()> = hooks.use_async_handler({
-        let action_channel = action_channel.clone();
-        let needs_reload_setter = needs_reload;
-        let toast_setter = toast;
-        let editing_ticket_setter = editing_ticket;
-        let editing_body_setter = editing_body;
-        let is_editing_setter = is_editing_existing;
-
-        move |()| {
-            let action_channel = action_channel.clone();
-            let mut needs_reload_setter = needs_reload_setter;
-            let mut toast_setter = toast_setter;
-            let mut editing_ticket_setter = editing_ticket_setter;
-            let mut editing_body_setter = editing_body_setter;
-            let mut is_editing_setter = is_editing_setter;
-
-            async move {
-                const MAX_BATCH: usize = 10;
-
-                // Collect pending actions from the channel with bounded batch
-                let actions: Vec<TicketAction> = {
-                    let mut guard = action_channel.lock().await;
-                    let mut actions = Vec::new();
-                    while actions.len() < MAX_BATCH {
-                        if let Ok(action) = guard.try_recv() {
-                            actions.push(action);
-                        } else {
-                            break;
-                        }
-                    }
-                    actions
-                };
-
-                if actions.is_empty() {
-                    return;
-                }
-
-                let mut should_reload = false;
-
-                // Process all pending actions sequentially
-                for action in actions {
-                    match action {
-                        TicketAction::UpdateStatus { id, status } => {
-                            match Ticket::find(&id).await {
-                                Ok(ticket) => {
-                                    if let Err(e) =
-                                        ticket.update_field("status", &status.to_string())
-                                    {
-                                        toast_setter.set(Some(Toast::error(format!(
-                                            "Failed to update {}: {}",
-                                            id, e
-                                        ))));
-                                    } else {
-                                        should_reload = true;
-                                    }
-                                }
-                                Err(e) => {
-                                    toast_setter.set(Some(Toast::error(format!(
-                                        "Ticket not found: {}",
-                                        e
-                                    ))));
-                                }
-                            }
-                        }
-                        TicketAction::LoadForEdit { id } => match Ticket::find(&id).await {
-                            Ok(ticket) => {
-                                let metadata = ticket.read().unwrap_or_default();
-                                let body = ticket
-                                    .read_content()
-                                    .ok()
-                                    .map(|c| extract_body_for_edit(&c))
-                                    .unwrap_or_default();
-                                editing_ticket_setter.set(metadata);
-                                editing_body_setter.set(body);
-                                is_editing_setter.set(true);
-                            }
-                            Err(e) => {
-                                toast_setter.set(Some(Toast::error(format!(
-                                    "Failed to load ticket: {}",
-                                    e
-                                ))));
-                            }
-                        },
-                    }
-                }
-
-                // Trigger reload if any status updates were made
-                if should_reload {
-                    needs_reload_setter.set(true);
-                }
-            }
-        }
-    });
-
-    // Track if actions are pending (set when handlers send actions)
-    let mut actions_pending = hooks.use_state(|| false);
 
     // Column visibility state (all visible by default)
     let mut visible_columns = hooks.use_state(|| [true; 5]);
@@ -363,9 +329,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Keyboard event handling
     hooks.use_terminal_events({
-        let action_sender_for_events = action_sender.clone();
+        let action_channel_for_events = action_channel.clone();
         move |event| {
-            // Skip if edit form is open
             if is_editing {
                 return;
             }
@@ -377,7 +342,6 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                     modifiers,
                     ..
                 }) if kind != KeyEventKind::Release => {
-                    // Create handler context
                     let mut ctx = BoardHandlerContext {
                         search_query: &mut search_query,
                         search_focused: &mut search_focused,
@@ -395,25 +359,15 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         editing_ticket: &mut editing_ticket,
                         editing_body: &mut editing_body,
                         all_tickets: &all_tickets,
-                        action_tx: &action_sender_for_events,
+                        action_tx: &action_channel_for_events,
                     };
 
                     handlers::handle_key_event(&mut ctx, code, modifiers);
-
-                    // Trigger action processor if actions were queued
-                    // The processor will handle any pending actions asynchronously
-                    actions_pending.set(true);
                 }
                 _ => {}
             }
         }
     });
-
-    // Process any pending actions from the queue
-    if actions_pending.get() {
-        actions_pending.set(false);
-        action_processor(());
-    }
 
     // Exit if requested
     if should_exit.get() {

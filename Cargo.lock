@@ -2030,6 +2030,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 name = "janus"
 version = "1.7.0"
 dependencies = [
+ "async-trait",
  "base64",
  "clap",
  "clap_complete",

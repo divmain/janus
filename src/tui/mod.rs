@@ -5,6 +5,7 @@
 //! - `board` - Kanban board with column-based ticket organization
 //! - `remote` - Remote TUI for managing local tickets and remote issues
 
+pub mod action_queue;
 pub mod analytics;
 pub mod board;
 pub mod components;

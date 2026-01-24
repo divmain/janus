@@ -8,6 +8,7 @@ pub mod modals;
 pub mod model;
 
 use iocraft::prelude::*;
+use std::pin::Pin;
 use tokio::sync::{Mutex, mpsc};
 
 use crate::formatting::extract_ticket_body;
@@ -26,14 +27,117 @@ use crate::tui::search::{FilteredTicket, compute_title_highlights};
 use crate::tui::services::TicketService;
 use crate::tui::state::Pane;
 use crate::tui::theme::theme;
+use crate::tui::action_queue::{Action, ActionResult, ActionQueueBuilder};
 use crate::types::{TicketMetadata, TicketStatus};
 
 use handlers::ViewAction;
 use modals::{CancelConfirmModal, NoteInputModal};
 
+/// Actions for the issue browser
+#[derive(Debug, Clone)]
+pub enum BrowserAction {
+    CycleStatus { id: String },
+    LoadForEdit { id: String },
+    MarkTriaged { id: String, triaged: bool },
+    CancelTicket { id: String },
+    AddNote { id: String, note: String },
+}
+
+impl Action for BrowserAction {
+    fn execute(self) -> Pin<Box<dyn Future<Output = ActionResult> + Send>> {
+        Box::pin(async move {
+            match self {
+                BrowserAction::CycleStatus { id } => {
+                    match TicketService::cycle_status(&id).await {
+                        Ok(_) => ActionResult {
+                            success: true,
+                            message: Some(format!("Status cycled for {}", id)),
+                        },
+                        Err(e) => ActionResult {
+                            success: false,
+                            message: Some(format!("Failed to cycle status: {}", e)),
+                        },
+                    }
+                }
+                BrowserAction::LoadForEdit { id: _ } => {
+                    ActionResult {
+                        success: true,
+                        message: Some(format!("Loaded for editing")),
+                    }
+                }
+                BrowserAction::MarkTriaged { id, triaged } => {
+                    match TicketService::mark_triaged(&id, triaged).await {
+                        Ok(_) => ActionResult {
+                            success: true,
+                            message: Some(format!("Marked {} as triaged: {}", id, triaged)),
+                        },
+                        Err(e) => ActionResult {
+                            success: false,
+                            message: Some(format!("Failed to mark as triaged: {}", e)),
+                        },
+                    }
+                }
+                BrowserAction::CancelTicket { id } => {
+                    match TicketService::set_status(&id, TicketStatus::Cancelled).await {
+                        Ok(_) => ActionResult {
+                            success: true,
+                            message: Some(format!("Cancelled {}", id)),
+                        },
+                        Err(e) => ActionResult {
+                            success: false,
+                            message: Some(format!("Failed to cancel ticket: {}", e)),
+                        },
+                    }
+                }
+                BrowserAction::AddNote { id, note } => {
+                    match TicketService::add_note(&id, &note).await {
+                        Ok(_) => ActionResult {
+                            success: true,
+                            message: Some(format!("Note added to {}", id)),
+                        },
+                        Err(e) => ActionResult {
+                            success: false,
+                            message: Some(format!("Failed to add note: {}", e)),
+                        },
+                    }
+                }
+            }
+        })
+    }
+}
+
 /// Props for the IssueBrowser component
 #[derive(Default, Props)]
-pub struct IssueBrowserProps {}
+
+/// Process browser actions from the action queue
+async fn process_browser_actions(
+    actions: Vec<BrowserAction>,
+    mut needs_reload: State<bool>,
+    mut toast: State<Option<Toast>>,
+) {
+    let mut success_count = 0;
+    let mut errors = Vec::new();
+
+    for action in actions {
+        let result = action.execute().await;
+        if result.success {
+            success_count += 1;
+            if let Some(msg) = result.message {
+                toast.set(Some(Toast::success(msg)));
+            }
+        } else if let Some(msg) = result.message {
+            errors.push(msg);
+        }
+    }
+
+    if success_count > 0 {
+        needs_reload.set(true);
+    }
+
+    if !errors.is_empty() {
+        toast.set(Some(Toast::error(format!("{} error(s): {}", errors.len(), errors.join("; ")))))
+    }
+}
 
 /// Main issue browser component
 ///

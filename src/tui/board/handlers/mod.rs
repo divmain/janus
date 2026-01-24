@@ -11,7 +11,6 @@ mod search;
 mod types;
 
 pub use context::BoardHandlerContext;
-pub use types::TicketAction;
 
 use super::model::BoardAction;
 use crate::tui::handlers::{SearchAction, handle_search_input};

@@ -7,7 +7,7 @@ use crate::types::{TicketMetadata, TicketStatus};
 
 use super::HandleResult;
 use super::context::BoardHandlerContext;
-use super::types::TicketAction;
+use super::super::BoardAction;
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -68,8 +68,7 @@ fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let next_status = COLUMNS[col + 1];
-        // Send action to queue for async processing
-        let _ = ctx.action_tx.send(TicketAction::UpdateStatus {
+        let _ = ctx.action_tx.tx.send(BoardAction::UpdateStatus {
             id: id.clone(),
             status: next_status,
         });
@@ -89,8 +88,7 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let prev_status = COLUMNS[col - 1];
-        // Send action to queue for async processing
-        let _ = ctx.action_tx.send(TicketAction::UpdateStatus {
+        let _ = ctx.action_tx.tx.send(BoardAction::UpdateStatus {
             id: id.clone(),
             status: prev_status,
         });
@@ -101,7 +99,6 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
 pub fn adjust_column_after_toggle(current_column: &mut State<usize>, visible: &[bool; 5]) {
     let current = current_column.get();
     if !visible[current] {
-        // Find first visible column
         if let Some(first_visible) = visible.iter().position(|&v| v) {
             current_column.set(first_visible);
         }
