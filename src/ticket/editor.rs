@@ -1,6 +1,6 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
-use crate::storage::FileStorage;
+use crate::hooks::HookEvent;
+use crate::storage::{FileStorage, with_write_hooks};
 use crate::ticket::content::validate_field_name;
 use crate::ticket::file::TicketFile;
 use crate::ticket::manipulator::{
@@ -19,27 +19,6 @@ impl TicketEditor {
         TicketEditor { file }
     }
 
-    fn with_write_hooks<F>(
-        &self,
-        context: HookContext,
-        operation: F,
-        post_hook_event: Option<HookEvent>,
-    ) -> Result<()>
-    where
-        F: FnOnce() -> Result<()>,
-    {
-        run_pre_hooks(HookEvent::PreWrite, &context)?;
-
-        operation()?;
-
-        run_post_hooks(HookEvent::PostWrite, &context);
-        if let Some(event) = post_hook_event {
-            run_post_hooks(event, &context);
-        }
-
-        Ok(())
-    }
-
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
         validate_field_name(field, "update")?;
 
@@ -56,7 +35,7 @@ impl TicketEditor {
             context = context.with_old_value(old_val);
         }
 
-        self.with_write_hooks(
+        with_write_hooks(
             context,
             || {
                 let new_content = update_field_in_content(&raw_content, field, value)?;
@@ -78,7 +57,7 @@ impl TicketEditor {
             context = context.with_old_value(old_val);
         }
 
-        self.with_write_hooks(
+        with_write_hooks(
             context,
             || {
                 let new_content = remove_field_from_content(&raw_content, field)?;
@@ -118,7 +97,7 @@ impl TicketEditor {
             .with_field_name(field)
             .with_new_value(value);
 
-        self.with_write_hooks(
+        with_write_hooks(
             context,
             || {
                 let new_content = update_field_in_content(&raw_content, field, &json_value)?;
@@ -155,7 +134,7 @@ impl TicketEditor {
             .with_field_name(field)
             .with_old_value(value);
 
-        self.with_write_hooks(
+        with_write_hooks(
             context,
             || {
                 let new_content = update_field_in_content(&raw_content, field, &json_value)?;
@@ -173,10 +152,8 @@ impl TicketEditor {
     }
 
     pub fn write(&self, content: &str) -> Result<()> {
-        let context = self.file.hook_context();
-
-        self.with_write_hooks(
-            context,
+        with_write_hooks(
+            self.file.hook_context(),
             || self.file.write_raw(content),
             Some(HookEvent::TicketUpdated),
         )

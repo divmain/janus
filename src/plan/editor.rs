@@ -4,10 +4,10 @@
 //! properly orchestrating pre/post hooks and plan-specific events.
 
 use crate::error::Result;
-use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::HookEvent;
 use crate::plan::file::PlanFile;
 use crate::plan::parser::parse_plan_content;
-use crate::storage::FileStorage;
+use crate::storage::{FileStorage, with_write_hooks};
 
 /// Handles plan editing operations with proper hook orchestration.
 ///
@@ -25,26 +25,6 @@ impl PlanEditor {
     /// Create a new editor for the given plan file.
     pub fn new(file: PlanFile) -> Self {
         PlanEditor { file }
-    }
-
-    /// Execute an operation with standard write hooks.
-    ///
-    /// Runs PreWrite hook before the operation and PostWrite + PlanUpdated
-    /// hooks after successful completion.
-    fn with_write_hooks<F>(&self, operation: F) -> Result<()>
-    where
-        F: FnOnce() -> Result<()>,
-    {
-        let context = self.file.hook_context();
-
-        run_pre_hooks(HookEvent::PreWrite, &context)?;
-
-        operation()?;
-
-        run_post_hooks(HookEvent::PostWrite, &context);
-        run_post_hooks(HookEvent::PlanUpdated, &context);
-
-        Ok(())
     }
 
     /// Write content to the plan file with validation and hooks.
@@ -71,7 +51,11 @@ impl PlanEditor {
     /// # Arguments
     /// * `content` - The full plan content to write
     pub fn write(&self, content: &str) -> Result<()> {
-        self.with_write_hooks(|| self.file.write_raw(content))
+        with_write_hooks(
+            self.file.hook_context(),
+            || self.file.write_raw(content),
+            Some(HookEvent::PlanUpdated),
+        )
     }
 
     /// Write content without triggering hooks.

@@ -104,3 +104,24 @@ pub trait FileStorage: StorageHandle {
             .with_file_path(self.file_path())
     }
 }
+
+/// Execute an operation with standard write hooks.
+///
+/// Runs PreWrite hook before the operation, then PostWrite hook,
+/// and optionally an additional post-hook event after successful completion.
+pub fn with_write_hooks<F>(
+    context: HookContext,
+    operation: F,
+    post_hook_event: Option<HookEvent>,
+) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    run_pre_hooks(HookEvent::PreWrite, &context)?;
+    operation()?;
+    run_post_hooks(HookEvent::PostWrite, &context);
+    if let Some(event) = post_hook_event {
+        run_post_hooks(event, &context);
+    }
+    Ok(())
+}
