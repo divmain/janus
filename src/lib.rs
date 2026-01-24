@@ -12,6 +12,7 @@ pub mod parser;
 pub mod plan;
 pub mod remote;
 pub mod status;
+pub mod storage;
 pub mod ticket;
 pub mod tui;
 pub mod types;
