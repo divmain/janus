@@ -167,13 +167,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut search_in_flight = hooks.use_state(|| false);
 
     // Modal state for triage mode using generic ModalState
-    // Marker types for type-level modal distinction
-    struct NoteModalMarker;
-    struct CancelConfirmModalMarker;
-
-    let note_modal = ModalState::<NoteModalMarker, NoteModalData>::use_state(&mut hooks);
-    let cancel_confirm_modal =
-        ModalState::<CancelConfirmModalMarker, TicketModalData>::use_state(&mut hooks);
+    let note_modal = ModalState::<NoteModalData>::use_state(&mut hooks);
+    let cancel_confirm_modal = ModalState::<TicketModalData>::use_state(&mut hooks);
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
     let load_handler: Handler<()> =

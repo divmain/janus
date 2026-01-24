@@ -5,33 +5,25 @@
 //!
 //! ## When to use
 //!
-//! - **Use `ModalState<M, D>`**: When a modal carries data that's set when opening
+//! - **Use `ModalState<D>`**: When a modal carries data that's set when opening
 //!   (e.g., note modal needs ticket_id and initial text)
 //! - **Use `State<Option<T>>`**: When the data IS the visibility (e.g., `Option<SyncPreviewState>`)
 //! - **Use `State<bool>`**: For simple stateless modals (e.g., help modal)
 
 use iocraft::prelude::*;
-use std::marker::PhantomData;
 
 /// Generic state for managing a single modal with associated data
-///
-/// The type parameter `M` acts as a phantom marker to distinguish different modals
-/// at the type level, even if they share the same data type.
 ///
 /// # Example
 ///
 /// ```ignore
-/// // Define modal marker types
-/// struct NoteModal;
-/// struct ConfirmModal;
-///
 /// // Data types for each modal
 /// #[derive(Default, Clone)]
 /// struct NoteData { ticket_id: String, text: String }
 ///
 /// // Initialize in component
-/// let note_modal = ModalState::<NoteModal, NoteData>::use_state(&mut hooks);
-/// let confirm_modal = ModalState::<ConfirmModal, String>::use_state(&mut hooks);
+/// let note_modal = ModalState::<NoteData>::use_state(&mut hooks);
+/// let confirm_modal = ModalState::<String>::use_state(&mut hooks);
 ///
 /// // Open with data
 /// note_modal.open(NoteData { ticket_id: "j-1234".into(), text: String::new() });
@@ -48,22 +40,21 @@ use std::marker::PhantomData;
 /// The `Copy` impl requires `D: Send + Sync + 'static + Unpin` because `State<D>` is only `Copy`
 /// when `D` meets those bounds. This is fine since all our modal data types are
 /// plain data structs.
-pub struct ModalState<M, D: Send + Sync + 'static + Unpin = ()> {
+pub struct ModalState<D: Send + Sync + 'static + Unpin = ()> {
     is_open: State<bool>,
     data: State<D>,
-    _marker: PhantomData<M>,
 }
 
 // Manual Clone/Copy impls to properly bound them
-impl<M, D: Send + Sync + 'static + Unpin> Clone for ModalState<M, D> {
+impl<D: Send + Sync + 'static + Unpin> Clone for ModalState<D> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<M, D: Send + Sync + 'static + Unpin> Copy for ModalState<M, D> {}
+impl<D: Send + Sync + 'static + Unpin> Copy for ModalState<D> {}
 
-impl<M, D> ModalState<M, D>
+impl<D> ModalState<D>
 where
     D: Default + Clone + Send + Sync + 'static + Unpin,
 {
@@ -74,7 +65,6 @@ where
         ModalState {
             is_open: hooks.use_state(|| false),
             data: hooks.use_state(D::default),
-            _marker: PhantomData,
         }
     }
 
