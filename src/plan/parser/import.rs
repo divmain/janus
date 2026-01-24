@@ -10,7 +10,10 @@ use comrak::{Arena, Options, parse_document};
 use regex::Regex;
 
 use crate::error::{JanusError, Result};
-use crate::plan::types::{ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask};
+use crate::plan::types::{
+    ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask,
+    display_import_validation_error,
+};
 
 use super::{extract_text_content, render_node_to_markdown};
 
@@ -148,10 +151,11 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
     let title = match extract_title(root) {
         Some(t) => t,
         None => {
-            errors.push(
-                ImportValidationError::new("Missing plan title (expected H1 heading)")
-                    .with_hint("Add \"# Your Plan Title\" at the start of the document"),
-            );
+            errors.push((
+                None,
+                "Missing plan title (expected H1 heading)".to_string(),
+                Some("Add \"# Your Plan Title\" at the start of the document".to_string()),
+            ));
             String::new()
         }
     };
@@ -162,11 +166,14 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
     // 3. Extract Design section (required)
     let design = extract_h2_section_content(root, DESIGN_SECTION_NAME, &options);
     if design.is_none() {
-        errors.push(
-            ImportValidationError::new("Missing required \"## Design\" section").with_hint(
-                "Add a \"## Design\" section with design details, architecture, and reasoning",
+        errors.push((
+            None,
+            "Missing required \"## Design\" section".to_string(),
+            Some(
+                "Add a \"## Design\" section with design details, architecture, and reasoning"
+                    .to_string(),
             ),
-        );
+        ));
     }
 
     // 4. Extract optional Acceptance Criteria section
@@ -175,11 +182,14 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
     // 5. Validate Implementation section exists
     let has_implementation = has_h2_section(root, IMPLEMENTATION_SECTION_NAME);
     if !has_implementation {
-        errors.push(
-            ImportValidationError::new("Missing required \"## Implementation\" section").with_hint(
-                "Add a \"## Implementation\" section containing \"### Phase N:\" subsections",
+        errors.push((
+            None,
+            "Missing required \"## Implementation\" section".to_string(),
+            Some(
+                "Add a \"## Implementation\" section containing \"### Phase N:\" subsections"
+                    .to_string(),
             ),
-        );
+        ));
     }
 
     // 6. Parse phases from within Implementation section (H3 headers)
@@ -191,15 +201,16 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
 
     // 7. Validate at least one phase exists
     if has_implementation && phases.is_empty() {
-        errors.push(
-            ImportValidationError::new("Implementation section has no phases")
-                .with_hint("Add \"### Phase 1: Name\" subsections under ## Implementation"),
-        );
+        errors.push((
+            None,
+            "Implementation section has no phases".to_string(),
+            Some("Add \"### Phase 1: Name\" subsections under ## Implementation".to_string()),
+        ));
     }
 
     // If there are errors, return them
     if !errors.is_empty() {
-        let issues: Vec<String> = errors.iter().map(|e| e.to_display_string()).collect();
+        let issues: Vec<String> = errors.iter().map(display_import_validation_error).collect();
         return Err(JanusError::ImportFailed {
             message: "Validation failed".to_string(),
             issues,

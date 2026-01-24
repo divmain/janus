@@ -554,67 +554,22 @@ pub struct ImportableTask {
 
 /// Detailed validation error for plan import.
 ///
-/// This provides structured error information including line numbers
-/// and hints to help users fix their documents.
-#[derive(Debug, Clone)]
-pub struct ImportValidationError {
-    /// Line number where the error occurred (1-indexed), if applicable
-    pub line: Option<usize>,
+pub type ImportValidationError = (Option<usize>, String, Option<String>);
 
-    /// Error message describing the issue
-    pub message: String,
+pub fn display_import_validation_error(error: &ImportValidationError) -> String {
+    let mut result = String::new();
 
-    /// Optional hint for how to fix the issue
-    pub hint: Option<String>,
-}
-
-impl ImportValidationError {
-    /// Create a new validation error with just a message
-    pub fn new(message: impl Into<String>) -> Self {
-        ImportValidationError {
-            line: None,
-            message: message.into(),
-            hint: None,
-        }
+    if let Some(line) = error.0 {
+        result.push_str(&format!("Line {}: ", line));
     }
 
-    /// Create a validation error with a line number
-    pub fn at_line(line: usize, message: impl Into<String>) -> Self {
-        ImportValidationError {
-            line: Some(line),
-            message: message.into(),
-            hint: None,
-        }
+    result.push_str(&error.1);
+
+    if let Some(hint) = &error.2 {
+        result.push_str(&format!("\n    Hint: {}", hint));
     }
 
-    /// Add a hint to this error
-    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
-        self.hint = Some(hint.into());
-        self
-    }
-
-    /// Format this error for display
-    pub fn to_display_string(&self) -> String {
-        let mut result = String::new();
-
-        if let Some(line) = self.line {
-            result.push_str(&format!("Line {}: ", line));
-        }
-
-        result.push_str(&self.message);
-
-        if let Some(hint) = &self.hint {
-            result.push_str(&format!("\n    Hint: {}", hint));
-        }
-
-        result
-    }
-}
-
-impl std::fmt::Display for ImportValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_display_string())
-    }
+    result
 }
 
 #[cfg(test)]
@@ -970,55 +925,64 @@ mod tests {
 
     #[test]
     fn test_import_validation_error_new() {
-        let err = ImportValidationError::new("Missing title");
-        assert!(err.line.is_none());
-        assert_eq!(err.message, "Missing title");
-        assert!(err.hint.is_none());
-        assert_eq!(err.to_display_string(), "Missing title");
+        let err = (None, "Missing title".to_string(), None);
+        assert!(err.0.is_none());
+        assert_eq!(err.1, "Missing title");
+        assert!(err.2.is_none());
+        assert_eq!(display_import_validation_error(&err), "Missing title");
     }
 
     #[test]
     fn test_import_validation_error_at_line() {
-        let err = ImportValidationError::at_line(42, "Invalid syntax");
-        assert_eq!(err.line, Some(42));
-        assert_eq!(err.message, "Invalid syntax");
-        assert!(err.hint.is_none());
-        assert_eq!(err.to_display_string(), "Line 42: Invalid syntax");
+        let err = (Some(42), "Invalid syntax".to_string(), None);
+        assert_eq!(err.0, Some(42));
+        assert_eq!(err.1, "Invalid syntax");
+        assert!(err.2.is_none());
+        assert_eq!(
+            display_import_validation_error(&err),
+            "Line 42: Invalid syntax"
+        );
     }
 
     #[test]
     fn test_import_validation_error_with_hint() {
-        let err =
-            ImportValidationError::new("Missing plan title").with_hint("Add a # Title heading");
-        assert!(err.line.is_none());
-        assert_eq!(err.message, "Missing plan title");
-        assert_eq!(err.hint, Some("Add a # Title heading".to_string()));
+        let err = (
+            None,
+            "Missing plan title".to_string(),
+            Some("Add a # Title heading".to_string()),
+        );
+        assert!(err.0.is_none());
+        assert_eq!(err.1, "Missing plan title");
+        assert_eq!(err.2, Some("Add a # Title heading".to_string()));
         assert_eq!(
-            err.to_display_string(),
+            display_import_validation_error(&err),
             "Missing plan title\n    Hint: Add a # Title heading"
         );
     }
 
     #[test]
     fn test_import_validation_error_full() {
-        let err = ImportValidationError::at_line(10, "Phase has no tasks")
-            .with_hint("Add ### Task headers under the phase");
-        assert_eq!(err.line, Some(10));
-        assert_eq!(err.message, "Phase has no tasks");
+        let err = (
+            Some(10),
+            "Phase has no tasks".to_string(),
+            Some("Add ### Task headers under the phase".to_string()),
+        );
+        assert_eq!(err.0, Some(10));
+        assert_eq!(err.1, "Phase has no tasks");
         assert_eq!(
-            err.hint,
+            err.2,
             Some("Add ### Task headers under the phase".to_string())
         );
         assert_eq!(
-            err.to_display_string(),
+            display_import_validation_error(&err),
             "Line 10: Phase has no tasks\n    Hint: Add ### Task headers under the phase"
         );
     }
 
     #[test]
-    fn test_import_validation_error_display() {
-        let err = ImportValidationError::at_line(5, "Test error");
-        assert_eq!(format!("{}", err), "Line 5: Test error");
+    fn test_import_validation_error_display_fn() {
+        let err = (Some(5), "Test error".to_string(), None);
+        assert_eq!(display_import_validation_error(&err), "Line 5: Test error");
     }
 
     #[test]
