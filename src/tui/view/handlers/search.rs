@@ -16,18 +16,18 @@ pub fn handle(
 ) -> HandleResult {
     match handle_search_input(code, modifiers, true) {
         SearchAction::ClearAndExit => {
-            ctx.search_query.set(String::new());
-            ctx.active_pane.set(Pane::List);
+            ctx.search.query.set(String::new());
+            ctx.app.active_pane.set(Pane::List);
             HandleResult::Handled
         }
         SearchAction::Exit => {
             // User pressed Enter - trigger search execution
-            ctx.pending_search.set(true);
-            ctx.active_pane.set(Pane::List);
+            ctx.search.pending.set(true);
+            ctx.app.active_pane.set(Pane::List);
             HandleResult::Handled
         }
         SearchAction::Quit => {
-            ctx.should_exit.set(true);
+            ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
         SearchAction::Continue => HandleResult::Handled,

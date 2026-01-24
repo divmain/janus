@@ -10,21 +10,21 @@ use super::types::ViewAction;
 
 /// Handle events when list pane is active
 pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
-    if ctx.is_triage_mode {
+    if ctx.app.is_triage_mode {
         return handle_list_triage(ctx, code);
     }
 
     match code {
         KeyCode::Char('q') => {
-            ctx.should_exit.set(true);
+            ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
         KeyCode::Char('/') => {
-            ctx.active_pane.set(Pane::Search);
+            ctx.app.active_pane.set(Pane::Search);
             HandleResult::Handled
         }
         KeyCode::Tab => {
-            ctx.active_pane.set(Pane::Detail);
+            ctx.app.active_pane.set(Pane::Detail);
             HandleResult::Handled
         }
         KeyCode::Char('s') => {
@@ -45,21 +45,21 @@ pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleRes
 
 /// Handle events when detail pane is active
 pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
-    if ctx.is_triage_mode {
+    if ctx.app.is_triage_mode {
         return handle_detail_triage(ctx, code);
     }
 
     match code {
         KeyCode::Char('q') => {
-            ctx.should_exit.set(true);
+            ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
         KeyCode::Tab | KeyCode::Esc => {
-            ctx.active_pane.set(Pane::List);
+            ctx.app.active_pane.set(Pane::List);
             HandleResult::Handled
         }
         KeyCode::Char('/') => {
-            ctx.active_pane.set(Pane::Search);
+            ctx.app.active_pane.set(Pane::Search);
             HandleResult::Handled
         }
         KeyCode::Char('e') | KeyCode::Enter => {
@@ -81,15 +81,15 @@ pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleR
 fn handle_list_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Char('q') | KeyCode::Esc => {
-            ctx.should_exit.set(true);
+            ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
         KeyCode::Char('/') => {
-            ctx.active_pane.set(Pane::Search);
+            ctx.app.active_pane.set(Pane::Search);
             HandleResult::Handled
         }
         KeyCode::Tab => {
-            ctx.active_pane.set(Pane::Detail);
+            ctx.app.active_pane.set(Pane::Detail);
             HandleResult::Handled
         }
         KeyCode::Char('t') => {
@@ -109,15 +109,15 @@ fn handle_list_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> Handle
 fn handle_detail_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Char('q') | KeyCode::Esc => {
-            ctx.should_exit.set(true);
+            ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
         KeyCode::Tab => {
-            ctx.active_pane.set(Pane::List);
+            ctx.app.active_pane.set(Pane::List);
             HandleResult::Handled
         }
         KeyCode::Char('/') => {
-            ctx.active_pane.set(Pane::Search);
+            ctx.app.active_pane.set(Pane::Search);
             HandleResult::Handled
         }
         KeyCode::Char('t') => {
@@ -132,11 +132,14 @@ fn handle_detail_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> Hand
 
 /// Cycle status for selected ticket
 fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
-    if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
+    if let Some(ft) = ctx
+        .data
+        .filtered_tickets
+        .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
         let _ = ctx
-            .action_tx
+            .actions
             .tx
             .send(ViewAction::CycleStatus { id: id.clone() });
     }
@@ -144,11 +147,14 @@ fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
 
 /// Edit the selected ticket
 fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
-    if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
+    if let Some(ft) = ctx
+        .data
+        .filtered_tickets
+        .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
         let _ = ctx
-            .action_tx
+            .actions
             .tx
             .send(ViewAction::LoadForEdit { id: id.clone() });
     }
@@ -156,16 +162,19 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
 
 /// Create a new ticket
 fn handle_create_new(ctx: &mut ViewHandlerContext<'_>) {
-    ctx.editing_ticket_id.set(String::new());
-    ctx.edit_state().start_create();
+    ctx.edit.editing_ticket_id.set(String::new());
+    ctx.edit_form_state().start_create();
 }
 
 /// Mark selected ticket as triaged
 fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
-    if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
+    if let Some(ft) = ctx
+        .data
+        .filtered_tickets
+        .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx.action_tx.tx.send(ViewAction::MarkTriaged {
+        let _ = ctx.actions.tx.send(ViewAction::MarkTriaged {
             id: id.clone(),
             triaged: true,
         });

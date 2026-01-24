@@ -11,7 +11,7 @@ use super::context::ViewHandlerContext;
 /// Handle navigation keys
 pub fn handle(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
     // Check if we're in the Detail pane - use dedicated detail scrolling
-    if ctx.active_pane.get() == Pane::Detail {
+    if ctx.app.active_pane.get() == Pane::Detail {
         return handle_detail_navigation(ctx, code);
     }
 
@@ -49,36 +49,48 @@ pub fn handle(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
 fn handle_detail_navigation(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Char('j') | KeyCode::Down => {
-            let current = ctx.detail_scroll_offset.get();
-            let new_scroll = current.saturating_add(1).min(ctx.max_detail_scroll);
-            ctx.detail_scroll_offset.set(new_scroll);
+            let current = ctx.data.detail_nav.scroll_offset.get();
+            let new_scroll = current
+                .saturating_add(1)
+                .min(ctx.data.detail_nav.max_scroll);
+            ctx.data.detail_nav.scroll_offset.set(new_scroll);
             HandleResult::Handled
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            let current = ctx.detail_scroll_offset.get();
-            ctx.detail_scroll_offset.set(current.saturating_sub(1));
+            let current = ctx.data.detail_nav.scroll_offset.get();
+            ctx.data
+                .detail_nav
+                .scroll_offset
+                .set(current.saturating_sub(1));
             HandleResult::Handled
         }
         KeyCode::Char('g') => {
-            ctx.detail_scroll_offset.set(0);
+            ctx.data.detail_nav.scroll_offset.set(0);
             HandleResult::Handled
         }
         KeyCode::Char('G') => {
             // Go to bottom - set to max scrollable value
-            ctx.detail_scroll_offset.set(ctx.max_detail_scroll);
+            ctx.data
+                .detail_nav
+                .scroll_offset
+                .set(ctx.data.detail_nav.max_scroll);
             HandleResult::Handled
         }
         KeyCode::PageDown => {
-            let current = ctx.detail_scroll_offset.get();
-            let page_size = ctx.list_height.saturating_sub(10).max(1);
-            let new_scroll = current.saturating_add(page_size).min(ctx.max_detail_scroll);
-            ctx.detail_scroll_offset.set(new_scroll);
+            let current = ctx.data.detail_nav.scroll_offset.get();
+            let page_size = ctx.data.list_height.saturating_sub(10).max(1);
+            let new_scroll = current
+                .saturating_add(page_size)
+                .min(ctx.data.detail_nav.max_scroll);
+            ctx.data.detail_nav.scroll_offset.set(new_scroll);
             HandleResult::Handled
         }
         KeyCode::PageUp => {
-            let current = ctx.detail_scroll_offset.get();
-            let page_size = ctx.list_height.saturating_sub(10).max(1);
-            ctx.detail_scroll_offset
+            let current = ctx.data.detail_nav.scroll_offset.get();
+            let page_size = ctx.data.list_height.saturating_sub(10).max(1);
+            ctx.data
+                .detail_nav
+                .scroll_offset
                 .set(current.saturating_sub(page_size));
             HandleResult::Handled
         }
@@ -115,78 +127,100 @@ fn effective_visible_height(scroll_offset: usize, list_height: usize, total_coun
 }
 
 fn handle_down(ctx: &mut ViewHandlerContext<'_>) {
-    let effective_height =
-        effective_visible_height(ctx.scroll_offset.get(), ctx.list_height, ctx.filtered_count);
-    let old_index = ctx.selected_index.get();
+    let effective_height = effective_visible_height(
+        ctx.data.list_nav.scroll_offset.get(),
+        ctx.data.list_height,
+        ctx.data.filtered_count,
+    );
+    let old_index = ctx.data.list_nav.selected_index.get();
     navigation::apply_scroll_down(
-        ctx.selected_index,
-        ctx.scroll_offset,
-        ctx.filtered_count,
+        ctx.data.list_nav.selected_index,
+        ctx.data.list_nav.scroll_offset,
+        ctx.data.filtered_count,
         effective_height,
     );
     // Reset detail scroll when ticket changes
-    if ctx.selected_index.get() != old_index {
-        ctx.detail_scroll_offset.set(0);
+    if ctx.data.list_nav.selected_index.get() != old_index {
+        ctx.data.detail_nav.scroll_offset.set(0);
     }
 }
 
 fn handle_up(ctx: &mut ViewHandlerContext<'_>) {
-    let old_index = ctx.selected_index.get();
-    navigation::apply_scroll_up(ctx.selected_index, ctx.scroll_offset);
+    let old_index = ctx.data.list_nav.selected_index.get();
+    navigation::apply_scroll_up(
+        ctx.data.list_nav.selected_index,
+        ctx.data.list_nav.scroll_offset,
+    );
     // Reset detail scroll when ticket changes
-    if ctx.selected_index.get() != old_index {
-        ctx.detail_scroll_offset.set(0);
+    if ctx.data.list_nav.selected_index.get() != old_index {
+        ctx.data.detail_nav.scroll_offset.set(0);
     }
 }
 
 fn handle_go_top(ctx: &mut ViewHandlerContext<'_>) {
-    let old_index = ctx.selected_index.get();
-    navigation::apply_scroll_to_top(ctx.selected_index, ctx.scroll_offset);
+    let old_index = ctx.data.list_nav.selected_index.get();
+    navigation::apply_scroll_to_top(
+        ctx.data.list_nav.selected_index,
+        ctx.data.list_nav.scroll_offset,
+    );
     // Reset detail scroll when ticket changes
-    if ctx.selected_index.get() != old_index {
-        ctx.detail_scroll_offset.set(0);
+    if ctx.data.list_nav.selected_index.get() != old_index {
+        ctx.data.detail_nav.scroll_offset.set(0);
     }
 }
 
 fn handle_go_bottom(ctx: &mut ViewHandlerContext<'_>) {
-    let effective_height =
-        effective_visible_height(ctx.scroll_offset.get(), ctx.list_height, ctx.filtered_count);
-    let old_index = ctx.selected_index.get();
+    let effective_height = effective_visible_height(
+        ctx.data.list_nav.scroll_offset.get(),
+        ctx.data.list_height,
+        ctx.data.filtered_count,
+    );
+    let old_index = ctx.data.list_nav.selected_index.get();
     navigation::apply_scroll_to_bottom(
-        ctx.selected_index,
-        ctx.scroll_offset,
-        ctx.filtered_count,
+        ctx.data.list_nav.selected_index,
+        ctx.data.list_nav.scroll_offset,
+        ctx.data.filtered_count,
         effective_height,
     );
     // Reset detail scroll when ticket changes
-    if ctx.selected_index.get() != old_index {
-        ctx.detail_scroll_offset.set(0);
+    if ctx.data.list_nav.selected_index.get() != old_index {
+        ctx.data.detail_nav.scroll_offset.set(0);
     }
 }
 
 fn handle_page_down(ctx: &mut ViewHandlerContext<'_>) {
-    let effective_height =
-        effective_visible_height(ctx.scroll_offset.get(), ctx.list_height, ctx.filtered_count);
-    let old_index = ctx.selected_index.get();
+    let effective_height = effective_visible_height(
+        ctx.data.list_nav.scroll_offset.get(),
+        ctx.data.list_height,
+        ctx.data.filtered_count,
+    );
+    let old_index = ctx.data.list_nav.selected_index.get();
     navigation::apply_page_down(
-        ctx.selected_index,
-        ctx.scroll_offset,
-        ctx.filtered_count,
+        ctx.data.list_nav.selected_index,
+        ctx.data.list_nav.scroll_offset,
+        ctx.data.filtered_count,
         effective_height,
     );
     // Reset detail scroll when ticket changes
-    if ctx.selected_index.get() != old_index {
-        ctx.detail_scroll_offset.set(0);
+    if ctx.data.list_nav.selected_index.get() != old_index {
+        ctx.data.detail_nav.scroll_offset.set(0);
     }
 }
 
 fn handle_page_up(ctx: &mut ViewHandlerContext<'_>) {
-    let effective_height =
-        effective_visible_height(ctx.scroll_offset.get(), ctx.list_height, ctx.filtered_count);
-    let old_index = ctx.selected_index.get();
-    navigation::apply_page_up(ctx.selected_index, ctx.scroll_offset, effective_height);
+    let effective_height = effective_visible_height(
+        ctx.data.list_nav.scroll_offset.get(),
+        ctx.data.list_height,
+        ctx.data.filtered_count,
+    );
+    let old_index = ctx.data.list_nav.selected_index.get();
+    navigation::apply_page_up(
+        ctx.data.list_nav.selected_index,
+        ctx.data.list_nav.scroll_offset,
+        effective_height,
+    );
     // Reset detail scroll when ticket changes
-    if ctx.selected_index.get() != old_index {
-        ctx.detail_scroll_offset.set(0);
+    if ctx.data.list_nav.selected_index.get() != old_index {
+        ctx.data.detail_nav.scroll_offset.set(0);
     }
 }

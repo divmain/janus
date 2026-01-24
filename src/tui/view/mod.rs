@@ -489,26 +489,38 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     }
 
                     let mut ctx = handlers::ViewHandlerContext {
-                        search_query: &mut search_query,
-                        pending_search: &mut pending_search,
-                        selected_index: &mut selected_index,
-                        scroll_offset: &mut scroll_offset,
-                        detail_scroll_offset: &mut detail_scroll_offset,
-                        active_pane: &mut active_pane,
-                        is_triage_mode: is_triage_mode_for_events,
-                        should_exit: &mut should_exit,
-                        needs_reload: &mut needs_reload,
-                        edit_result: &mut edit_result,
-                        is_editing_existing: &mut is_editing_existing,
-                        is_creating_new: &mut is_creating_new,
-                        editing_ticket_id: &mut editing_ticket_id,
-                        editing_ticket: &mut editing_ticket,
-                        editing_body: &mut editing_body,
-                        filtered_count: filtered_len,
-                        list_height,
-                        max_detail_scroll: max_detail_scroll.get(),
-                        filtered_tickets: &filtered_for_events,
-                        action_tx: &action_channel_for_events,
+                        search: handlers::SearchState {
+                            query: &mut search_query,
+                            pending: &mut pending_search,
+                        },
+                        app: handlers::AppState {
+                            should_exit: &mut should_exit,
+                            needs_reload: &mut needs_reload,
+                            active_pane: &mut active_pane,
+                            is_triage_mode: is_triage_mode_for_events,
+                        },
+                        data: handlers::ViewData {
+                            filtered_tickets: &filtered_for_events,
+                            filtered_count: filtered_len,
+                            list_height,
+                            list_nav: handlers::ListNavigationState {
+                                selected_index: &mut selected_index,
+                                scroll_offset: &mut scroll_offset,
+                            },
+                            detail_nav: handlers::DetailNavigationState {
+                                scroll_offset: &mut detail_scroll_offset,
+                                max_scroll: max_detail_scroll.get(),
+                            },
+                        },
+                        edit: handlers::EditState {
+                            result: &mut edit_result,
+                            is_editing_existing: &mut is_editing_existing,
+                            is_creating_new: &mut is_creating_new,
+                            editing_ticket_id: &mut editing_ticket_id,
+                            editing_ticket: &mut editing_ticket,
+                            editing_body: &mut editing_body,
+                        },
+                        actions: &action_channel_for_events,
                     };
                     handlers::handle_key_event(&mut ctx, code, modifiers);
 
