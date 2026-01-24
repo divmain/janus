@@ -252,8 +252,15 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         }
     };
 
-    let (_queue_state, _action_handler, action_channel) =
+    let (_queue_state, action_handler, action_channel) =
         ActionQueueBuilder::use_state(&mut hooks, process_fn, needs_reload, toast);
+
+    // Trigger action handler to start processing actions
+    let mut action_handler_started = hooks.use_state(|| false);
+    if !action_handler_started.get() {
+        action_handler_started.set(true);
+        action_handler(());
+    }
 
     // Track if actions are pending (set when handlers send actions)
     let mut actions_pending = hooks.use_state(|| false);

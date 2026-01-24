@@ -36,23 +36,19 @@ pub fn NoteInputModal<'a>(
 ) -> impl Into<AnyElement<'a>> {
     let theme = theme();
 
-    // Local state for TextInput - get initial value from the NoteModalData
-    let initial_value = props
-        .note_text
-        .map(|s| s.read().text.clone())
-        .unwrap_or_default();
-    let mut local_value = hooks.use_state(move || initial_value);
-
     // Handle for imperative cursor control
     let mut handle = hooks.use_ref_default::<TextInputHandle>();
 
-    // Set cursor to beginning on initial render
+    // Set cursor to beginning on initial render only
+    // Note: () as dependency means "run once after first render" per iocraft docs
     hooks.use_effect(move || handle.write().set_cursor_offset(0), ());
 
-    // Get current value for TextInput
-    let text_input_value = local_value.to_string();
+    // Get current value for TextInput from external state
+    let text_input_value = props
+        .note_text
+        .map(|s| s.read().text.clone())
+        .unwrap_or_default();
 
-    // Update external state when local changes
     let external_value = props.note_text;
 
     element! {
@@ -77,7 +73,6 @@ pub fn NoteInputModal<'a>(
                         has_focus: true,
                         value: text_input_value,
                         on_change: move |new_value: String| {
-                            local_value.set(new_value.clone());
                             if let Some(mut ext) = external_value {
                                 // Update the text field in NoteModalData
                                 let mut data = ext.read().clone();

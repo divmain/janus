@@ -190,7 +190,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let mut editing_body = hooks.use_state(String::new);
 
     // Action queue for async ticket operations using ActionQueueBuilder
-    let (_queue_state, _action_handler, action_channel) = ActionQueueBuilder::use_state(
+    let (_queue_state, action_handler, action_channel) = ActionQueueBuilder::use_state(
         &mut hooks,
         |actions, needs_reload, toast| {
             Box::pin(process_board_actions(actions, needs_reload, toast))
@@ -198,6 +198,13 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         needs_reload,
         toast,
     );
+
+    // Trigger action handler to start processing actions
+    let mut action_handler_started = hooks.use_state(|| false);
+    if !action_handler_started.get() {
+        action_handler_started.set(true);
+        action_handler(());
+    }
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
     let load_handler: Handler<()> =

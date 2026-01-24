@@ -23,10 +23,10 @@ pub struct TextEditorProps {
 
 /// Multi-line text editor with full cursor support
 ///
-/// Uses an uncontrolled pattern internally to avoid cursor position issues
-/// caused by the controlled input re-render cycle. The external state is
-/// updated on every change for saving purposes, but the TextInput maintains
-/// its own internal state and doesn't receive the value back as a prop.
+/// Wraps iocraft's TextInput with multiline mode enabled. The external state
+/// is passed directly to TextInput and updated on every change. TextInput's
+/// internal `new_cursor_offset` logic handles cursor positioning when the
+/// value changes. On initial render, the cursor is set to position 0.
 #[component]
 pub fn TextEditor(props: &TextEditorProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = theme();
@@ -43,18 +43,15 @@ pub fn TextEditor(props: &TextEditorProps, mut hooks: Hooks) -> impl Into<AnyEle
         };
     };
 
-    // Local state for TextInput - initialized from external value only once
-    let initial_value = external_value.to_string();
-    let mut local_value = hooks.use_state(move || initial_value);
-
     // Handle for imperative cursor control
     let mut handle = hooks.use_ref_default::<TextInputHandle>();
 
-    // Set cursor to beginning on initial render
+    // Set cursor to beginning on initial render only
+    // Note: () as dependency means "run once after first render" per iocraft docs
     hooks.use_effect(move || handle.write().set_cursor_offset(0), ());
 
-    // Get current local value for TextInput
-    let text_input_value = local_value.to_string();
+    // Get current value directly from external state
+    let text_input_value = external_value.to_string();
 
     element! {
         View(
@@ -66,9 +63,6 @@ pub fn TextEditor(props: &TextEditorProps, mut hooks: Hooks) -> impl Into<AnyEle
                 has_focus: props.has_focus,
                 value: text_input_value,
                 on_change: move |new_value: String| {
-                    // Update local state (this controls TextInput)
-                    local_value.set(new_value.clone());
-                    // Also update external state (for saving)
                     external_value.set(new_value);
                 },
                 multiline: true,
