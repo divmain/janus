@@ -11,9 +11,11 @@ use crate::finder::Findable;
 use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
+use crate::repository::ItemRepository;
 use crate::storage::{FileStorage, StorageHandle};
 use crate::types::{EntityType, TicketMetadata, plans_dir};
 use crate::utils::{DirScanner, extract_id_from_path};
+use async_trait::async_trait;
 
 // Re-export status computation functions
 pub use crate::status::plan::{
@@ -62,6 +64,35 @@ fn find_plans() -> Vec<String> {
         eprintln!("Warning: failed to read plans directory: {}", e);
         Vec::new()
     })
+}
+
+pub struct PlanRepository;
+
+#[async_trait]
+impl ItemRepository for PlanRepository {
+    type Item = Plan;
+    type Metadata = PlanMetadata;
+
+    async fn get_all_static() -> Result<Vec<PlanMetadata>> {
+        get_all_plans().await
+    }
+}
+
+impl PlanRepository {
+    /// Get all plans from the module-level function (compatibility method)
+    pub async fn get_all_plans_compat() -> Result<Vec<PlanMetadata>> {
+        get_all_plans().await
+    }
+
+    /// Build a HashMap by ID
+    pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
+        <Self as ItemRepository>::build_map_static().await
+    }
+
+    /// Get all plans and the map together (efficient single call)
+    pub async fn get_all_with_map() -> Result<(Vec<PlanMetadata>, HashMap<String, PlanMetadata>)> {
+        <Self as ItemRepository>::get_all_with_map_static().await
+    }
 }
 
 impl StorageHandle for Plan {
@@ -220,7 +251,7 @@ impl Plan {
 }
 
 /// Get all plans from the plans directory
-pub async fn get_all_plans() -> Vec<PlanMetadata> {
+pub async fn get_all_plans() -> Result<Vec<PlanMetadata>> {
     // Try cache first
     if let Some(cache) = cache::get_or_init_cache().await {
         if let Ok(cached_plans) = cache.get_all_plans().await {
@@ -247,15 +278,15 @@ pub async fn get_all_plans() -> Vec<PlanMetadata> {
             // Add plans that exist on disk but maybe not in cache (shouldn't happen after sync)
             if plans.is_empty() {
                 eprintln!("Warning: cache read failed, falling back to file reads");
-                return get_all_plans_from_disk();
+                return Ok(get_all_plans_from_disk());
             }
-            return plans;
+            return Ok(plans);
         }
         eprintln!("Warning: cache read failed, falling back to file reads");
     }
 
     // FALLBACK: Original implementation
-    get_all_plans_from_disk()
+    Ok(get_all_plans_from_disk())
 }
 
 /// Get all plans from disk (fallback implementation)

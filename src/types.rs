@@ -270,6 +270,12 @@ impl TicketMetadata {
     }
 }
 
+impl crate::repository::HasId for TicketMetadata {
+    fn get_id(&self) -> Option<String> {
+        self.id.clone()
+    }
+}
+
 /// Helper struct for tickets with computed blockers
 #[derive(Debug, Clone)]
 pub struct TicketWithBlockers {

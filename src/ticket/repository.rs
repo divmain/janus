@@ -1,6 +1,8 @@
+use crate::repository::ItemRepository;
 use crate::ticket::content;
 use crate::utils::DirScanner;
-use crate::{TicketMetadata, cache};
+use crate::{TicketMetadata, cache, Ticket};
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -12,6 +14,16 @@ pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
 }
 
 pub struct TicketRepository;
+
+#[async_trait]
+impl ItemRepository for TicketRepository {
+    type Item = Ticket;
+    type Metadata = TicketMetadata;
+
+    async fn get_all_static() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
+        Self::get_all().await
+    }
+}
 
 impl TicketRepository {
     pub async fn get_all() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
@@ -62,22 +74,15 @@ impl TicketRepository {
             eprintln!("Warning: cache read failed, falling back to file reads");
         }
 
-        Ok(Self::get_all()
-            .await?
-            .into_iter()
-            .filter_map(|t| t.id.clone().map(|id| (id, t)))
-            .collect())
+        // Use the trait method for consistency
+        <Self as ItemRepository>::build_map_static().await
     }
 
     pub async fn get_all_with_map()
     -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError>
     {
-        let tickets = Self::get_all().await?;
-        let map = tickets
-            .iter()
-            .filter_map(|t| t.id.clone().map(|id| (id, t.clone())))
-            .collect::<HashMap<String, TicketMetadata>>();
-        Ok((tickets, map))
+        // Use the trait method for efficiency
+        <Self as ItemRepository>::get_all_with_map_static().await
     }
 }
 

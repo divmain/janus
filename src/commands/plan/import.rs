@@ -40,7 +40,7 @@ pub fn cmd_show_import_spec() -> Result<()> {
 /// # Returns
 /// `Ok(())` if no duplicate exists, `Err(DuplicatePlanTitle)` if one does.
 async fn check_duplicate_plan_title(title: &str) -> Result<()> {
-    let existing_plans = get_all_plans().await;
+    let existing_plans = get_all_plans().await?;
 
     for plan in existing_plans {
         if let Some(ref existing_title) = plan.title

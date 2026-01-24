@@ -14,6 +14,7 @@ pub mod mcp;
 pub mod parser;
 pub mod plan;
 pub mod remote;
+pub mod repository;
 pub mod status;
 pub mod storage;
 pub mod ticket;

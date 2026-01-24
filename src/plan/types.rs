@@ -203,6 +203,12 @@ impl PlanMetadata {
     }
 }
 
+impl crate::repository::HasId for PlanMetadata {
+    fn get_id(&self) -> Option<String> {
+        self.id.clone()
+    }
+}
+
 /// A section in a plan - either structured (phase/tickets) or free-form
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlanSection {
