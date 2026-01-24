@@ -17,7 +17,7 @@ mod remote_browse;
 mod set;
 mod show;
 mod status;
-mod sync;
+pub mod sync;
 mod view;
 
 pub use add_note::cmd_add_note;
