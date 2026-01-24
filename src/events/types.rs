@@ -31,27 +31,26 @@ pub enum EventType {
     TicketMoved,
 }
 
-impl std::fmt::Display for EventType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            EventType::TicketCreated => "ticket_created",
-            EventType::StatusChanged => "status_changed",
-            EventType::NoteAdded => "note_added",
-            EventType::FieldUpdated => "field_updated",
-            EventType::DependencyAdded => "dependency_added",
-            EventType::DependencyRemoved => "dependency_removed",
-            EventType::LinkAdded => "link_added",
-            EventType::LinkRemoved => "link_removed",
-            EventType::PlanCreated => "plan_created",
-            EventType::TicketAddedToPlan => "ticket_added_to_plan",
-            EventType::TicketRemovedFromPlan => "ticket_removed_from_plan",
-            EventType::PhaseAdded => "phase_added",
-            EventType::PhaseRemoved => "phase_removed",
-            EventType::TicketMoved => "ticket_moved",
-        };
-        write!(f, "{}", s)
+enum_display_fromstr!(
+    EventType,
+    crate::error::JanusError::InvalidEventType,
+    {
+        TicketCreated => "ticket_created",
+        StatusChanged => "status_changed",
+        NoteAdded => "note_added",
+        FieldUpdated => "field_updated",
+        DependencyAdded => "dependency_added",
+        DependencyRemoved => "dependency_removed",
+        LinkAdded => "link_added",
+        LinkRemoved => "link_removed",
+        PlanCreated => "plan_created",
+        TicketAddedToPlan => "ticket_added_to_plan",
+        TicketRemovedFromPlan => "ticket_removed_from_plan",
+        PhaseAdded => "phase_added",
+        PhaseRemoved => "phase_removed",
+        TicketMoved => "ticket_moved",
     }
-}
+);
 
 /// The actor that triggered the event
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -63,15 +62,15 @@ pub enum Actor {
     Hook,
 }
 
-impl std::fmt::Display for Actor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Actor::Cli => write!(f, "cli"),
-            Actor::Mcp => write!(f, "mcp"),
-            Actor::Hook => write!(f, "hook"),
-        }
+enum_display_fromstr!(
+    Actor,
+    crate::error::JanusError::InvalidActor,
+    {
+        Cli => "cli",
+        Mcp => "mcp",
+        Hook => "hook",
     }
-}
+);
 
 /// A mutation event record
 ///

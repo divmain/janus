@@ -238,6 +238,12 @@ pub enum JanusError {
     #[error("invalid hook event '{0}'")]
     InvalidHookEvent(String),
 
+    #[error("invalid event type '{0}'")]
+    InvalidEventType(String),
+
+    #[error("invalid actor '{0}'. Must be one of: cli, mcp, hook")]
+    InvalidActor(String),
+
     #[error("hook recipe '{0}' not found")]
     HookRecipeNotFound(String),
 

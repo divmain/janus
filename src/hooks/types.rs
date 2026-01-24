@@ -72,11 +72,20 @@ impl HookEvent {
     }
 }
 
-impl fmt::Display for HookEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+enum_display!(
+    HookEvent,
+    {
+        TicketCreated => "ticket_created",
+        TicketUpdated => "ticket_updated",
+        PlanCreated => "plan_created",
+        PlanUpdated => "plan_updated",
+        PlanDeleted => "plan_deleted",
+        PreWrite => "pre_write",
+        PostWrite => "post_write",
+        PreDelete => "pre_delete",
+        PostDelete => "post_delete",
     }
-}
+);
 
 impl FromStr for HookEvent {
     type Err = JanusError;

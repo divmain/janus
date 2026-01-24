@@ -1,3 +1,6 @@
+#[macro_use]
+pub mod macros;
+
 pub mod cache;
 pub mod cli;
 pub mod commands;

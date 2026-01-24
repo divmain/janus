@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -62,17 +61,16 @@ impl TicketStatus {
     }
 }
 
-impl fmt::Display for TicketStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TicketStatus::New => write!(f, "new"),
-            TicketStatus::Next => write!(f, "next"),
-            TicketStatus::InProgress => write!(f, "in_progress"),
-            TicketStatus::Complete => write!(f, "complete"),
-            TicketStatus::Cancelled => write!(f, "cancelled"),
-        }
+enum_display!(
+    TicketStatus,
+    {
+        New => "new",
+        Next => "next",
+        InProgress => "in_progress",
+        Complete => "complete",
+        Cancelled => "cancelled",
     }
-}
+);
 
 impl FromStr for TicketStatus {
     type Err = JanusError;
@@ -106,36 +104,17 @@ pub enum TicketType {
     Chore,
 }
 
-impl fmt::Display for TicketType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TicketType::Bug => write!(f, "bug"),
-            TicketType::Feature => write!(f, "feature"),
-            TicketType::Task => write!(f, "task"),
-            TicketType::Epic => write!(f, "epic"),
-            TicketType::Chore => write!(f, "chore"),
-        }
+enum_display_fromstr!(
+    TicketType,
+    JanusError::InvalidTicketType,
+    {
+        Bug => "bug",
+        Feature => "feature",
+        Task => "task",
+        Epic => "epic",
+        Chore => "chore",
     }
-}
-
-impl FromStr for TicketType {
-    type Err = JanusError;
-
-    /// Parses a ticket type from a string.
-    ///
-    /// Parsing is case-insensitive: "bug", "BUG", and "Bug" all parse to TicketType::Bug.
-    /// Valid values: "bug", "feature", "task", "epic", "chore"
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "bug" => Ok(TicketType::Bug),
-            "feature" => Ok(TicketType::Feature),
-            "task" => Ok(TicketType::Task),
-            "epic" => Ok(TicketType::Epic),
-            "chore" => Ok(TicketType::Chore),
-            _ => Err(JanusError::InvalidTicketType(s.to_string())),
-        }
-    }
-}
+);
 
 pub const VALID_TYPES: &[&str] = &["bug", "feature", "task", "epic", "chore"];
 
@@ -146,29 +125,14 @@ pub enum EntityType {
     Plan,
 }
 
-impl fmt::Display for EntityType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EntityType::Ticket => write!(f, "ticket"),
-            EntityType::Plan => write!(f, "plan"),
-        }
+enum_display_fromstr!(
+    EntityType,
+    JanusError::InvalidEntityType,
+    {
+        Ticket => "ticket",
+        Plan => "plan",
     }
-}
-
-impl FromStr for EntityType {
-    type Err = JanusError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "ticket" => Ok(EntityType::Ticket),
-            "plan" => Ok(EntityType::Plan),
-            _ => Err(JanusError::InvalidEntityType(format!(
-                "'{}'. Must be one of: ticket, plan",
-                s
-            ))),
-        }
-    }
-}
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TicketPriority {
@@ -197,30 +161,17 @@ impl TicketPriority {
     }
 }
 
-impl fmt::Display for TicketPriority {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_num())
+enum_display_fromstr!(
+    TicketPriority,
+    JanusError::InvalidPriority,
+    {
+        P0 => "0",
+        P1 => "1",
+        P2 => "2",
+        P3 => "3",
+        P4 => "4",
     }
-}
-
-impl FromStr for TicketPriority {
-    type Err = JanusError;
-
-    /// Parses a ticket priority from a string.
-    ///
-    /// Accepts numeric strings "0" through "4" (P0 = highest priority, P4 = lowest).
-    /// Case is not applicable for numeric values, but maintained for API consistency.
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "0" => Ok(TicketPriority::P0),
-            "1" => Ok(TicketPriority::P1),
-            "2" => Ok(TicketPriority::P2),
-            "3" => Ok(TicketPriority::P3),
-            "4" => Ok(TicketPriority::P4),
-            _ => Err(JanusError::InvalidPriority(s.to_string())),
-        }
-    }
-}
+);
 
 pub const VALID_PRIORITIES: &[&str] = &["0", "1", "2", "3", "4"];
 
