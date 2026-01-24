@@ -18,6 +18,7 @@ fn sanitize_for_yaml(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::remote::RemoteStatus;
 
     #[test]
     fn test_sanitize_for_yaml_basic() {
@@ -63,6 +64,95 @@ mod tests {
             "Description\n&#45;&#45;&#45;\nid: inject\n&#45;&#45;&#45;\nMore text"
         );
     }
+
+    #[test]
+    fn test_build_remote_ref_from_github_issue_by_number() {
+        let issue = RemoteIssue {
+            id: "2".to_string(),
+            url: "https://github.com/owner/repo/issues/2".to_string(),
+            title: "Test Issue".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let remote_ref = build_remote_ref_from_issue(&issue).unwrap();
+        match remote_ref {
+            RemoteRef::GitHub {
+                owner,
+                repo,
+                issue_number,
+            } => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(issue_number, 2);
+            }
+            _ => panic!("Expected GitHub ref"),
+        }
+    }
+
+    #[test]
+    fn test_build_remote_ref_from_linear_issue_by_id() {
+        let issue = RemoteIssue {
+            id: "ENG-123".to_string(),
+            url: "https://linear.app/my-org/issue/ENG-123/test-issue".to_string(),
+            title: "Test Issue".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let remote_ref = build_remote_ref_from_issue(&issue).unwrap();
+        match remote_ref {
+            RemoteRef::Linear { org, issue_id } => {
+                assert_eq!(org, "my-org");
+                assert_eq!(issue_id, "ENG-123");
+            }
+            _ => panic!("Expected Linear ref"),
+        }
+    }
+
+    #[test]
+    fn test_build_remote_ref_invalid() {
+        let issue = RemoteIssue {
+            id: "invalid".to_string(),
+            url: "https://example.com/invalid".to_string(),
+            title: "Test".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let result = build_remote_ref_from_issue(&issue);
+        assert!(result.is_err());
+    }
 }
 
 /// Adopt remote issues into local tickets
@@ -81,24 +171,31 @@ pub fn adopt_issues(issues: &[RemoteIssue], _local_ids: &HashSet<String>) -> Res
 
 /// Build a RemoteRef from a RemoteIssue
 fn build_remote_ref_from_issue(issue: &RemoteIssue) -> Result<RemoteRef> {
-    // Note: Config might be needed in the future to determine default provider org info
-    let _config = crate::remote::config::Config::load()?;
-
-    if issue.id.contains('/') {
-        let parts: Vec<&str> = issue.id.split('/').collect();
-        if parts.len() == 2 {
-            return Ok(RemoteRef::Linear {
-                org: parts[0].to_string(),
-                issue_id: parts[1].to_string(),
-            });
-        } else if parts.len() == 3 {
-            let issue_number: u64 = parts[2].parse().map_err(|_| {
+    // Parse from URL for GitHub issues (format: https://github.com/owner/repo/issues/123)
+    if issue.url.contains("github.com") {
+        let url_parts: Vec<&str> = issue.url.split('/').collect();
+        if url_parts.len() >= 5 {
+            let owner = url_parts[3].to_string();
+            let repo = url_parts[4].to_string();
+            let issue_number: u64 = issue.id.parse().map_err(|_| {
                 JanusError::InvalidRemoteRef(issue.id.clone(), "invalid issue number".to_string())
             })?;
             return Ok(RemoteRef::GitHub {
-                owner: parts[0].to_string(),
-                repo: parts[1].to_string(),
+                owner,
+                repo,
                 issue_number,
+            });
+        }
+    }
+
+    // Parse from URL for Linear issues (format: https://linear.app/org/issue/ISSUE-123/title)
+    if issue.url.contains("linear.app") {
+        let url_parts: Vec<&str> = issue.url.split('/').collect();
+        if url_parts.len() >= 4 {
+            let org = url_parts[3].to_string();
+            return Ok(RemoteRef::Linear {
+                org,
+                issue_id: issue.id.clone(),
             });
         }
     }
