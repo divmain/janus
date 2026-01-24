@@ -412,6 +412,7 @@ impl RemoteProvider for GitHubProvider {
         let issues: Vec<RemoteIssue> = result
             .items
             .into_iter()
+            .filter(|issue| issue.pull_request.is_none())
             .map(|issue| self.convert_github_issue(&issue))
             .collect();
 
