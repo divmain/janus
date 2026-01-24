@@ -117,7 +117,6 @@ impl TicketService {
             .status(status.to_string())
             .ticket_type(ticket_type.to_string())
             .priority(priority.as_num().to_string())
-            .include_uuid(false)
             .run_hooks(false)
             .build()?;
 

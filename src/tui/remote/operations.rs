@@ -15,6 +15,34 @@ fn sanitize_for_yaml(input: &str) -> String {
     input.replace("---", "&#45;&#45;&#45;")
 }
 
+/// Extract the issue ID from a remote reference string
+pub fn extract_issue_id_from_remote_ref(remote_ref: &str) -> Option<String> {
+    let parts: Vec<&str> = remote_ref.split(':').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+
+    match parts[0] {
+        "github" => {
+            let id_parts: Vec<&str> = parts[1].split('/').collect();
+            if id_parts.len() >= 3 {
+                Some(id_parts[2].to_string())
+            } else {
+                None
+            }
+        }
+        "linear" => {
+            let id_parts: Vec<&str> = parts[1].split('/').collect();
+            if id_parts.len() >= 2 {
+                Some(id_parts[1].to_string())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +181,39 @@ mod tests {
         let result = build_remote_ref_from_issue(&issue);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_extract_issue_id_from_github_ref() {
+        assert_eq!(
+            extract_issue_id_from_remote_ref("github:owner/repo/123"),
+            Some("123".to_string())
+        );
+        assert_eq!(
+            extract_issue_id_from_remote_ref("github:foo/bar/456"),
+            Some("456".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_issue_id_from_linear_ref() {
+        assert_eq!(
+            extract_issue_id_from_remote_ref("linear:org/PROJ-123"),
+            Some("PROJ-123".to_string())
+        );
+        assert_eq!(
+            extract_issue_id_from_remote_ref("linear:company/ENG-456"),
+            Some("ENG-456".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_issue_id_invalid_formats() {
+        assert_eq!(extract_issue_id_from_remote_ref("invalid:format"), None);
+        assert_eq!(extract_issue_id_from_remote_ref("github:owner"), None);
+        assert_eq!(extract_issue_id_from_remote_ref("github:owner/repo"), None);
+        assert_eq!(extract_issue_id_from_remote_ref("linear:org"), None);
+        assert_eq!(extract_issue_id_from_remote_ref(""), None);
+    }
 }
 
 /// Adopt remote issues into local tickets
@@ -226,7 +287,6 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
         .ticket_type("task")
         .priority(priority.to_string())
         .remote(Some(remote_ref.to_string()))
-        .include_uuid(false)
         .run_hooks(false)
         .build()?;
 

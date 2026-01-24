@@ -44,6 +44,28 @@ pub struct ListPaneProps {
     pub all_local_tickets: Vec<TicketMetadata>,
 }
 
+/// Build a set of linked issue IDs from local tickets
+///
+/// Iterates through all tickets and extracts issue IDs from their `remote` field.
+/// Uses `extract_issue_id_from_remote_ref()` to parse the remote reference string.
+/// Returns a HashSet for O(1) lookup performance when checking if a remote issue
+/// is linked to a local ticket.
+///
+/// # Arguments
+/// * `tickets` - Slice of ticket metadata to process
+///
+/// # Returns
+/// * `HashSet<String>` - Set of valid issue IDs extracted from remote references
+pub fn build_linked_issue_ids(tickets: &[TicketMetadata]) -> HashSet<String> {
+    tickets
+        .iter()
+        .filter_map(|ticket| ticket.remote.as_ref())
+        .filter_map(|remote_ref| {
+            crate::tui::remote::operations::extract_issue_id_from_remote_ref(remote_ref)
+        })
+        .collect()
+}
+
 /// List pane showing either local tickets or remote issues
 #[component]
 pub fn ListPane(props: &ListPaneProps) -> impl Into<AnyElement<'static>> {
@@ -102,12 +124,13 @@ fn render_remote_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
         );
     }
 
+    let linked_issue_ids = build_linked_issue_ids(&props.all_local_tickets);
+
     // Clone data for rendering
     let remote_list = props.remote_list.clone();
     let remote_scroll_offset = props.remote_scroll_offset;
     let remote_selected_index = props.remote_selected_index;
     let remote_selected_ids = props.remote_selected_ids.clone();
-    let all_local_tickets = props.all_local_tickets.clone();
 
     Some(
         element! {
@@ -130,9 +153,7 @@ fn render_remote_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
 
                     let indicator = if is_selected { ">" } else { " " };
                     let marker = if is_marked { "*" } else { " " };
-                    let is_linked = all_local_tickets.iter().any(|t| {
-                        t.remote.as_ref().is_some_and(|r| r.contains(&issue.id))
-                    });
+                    let is_linked = linked_issue_ids.contains(&issue.id);
                     let link_indicator = if is_linked { "⟷" } else { " " };
 
                     let status_str = match &issue.status {

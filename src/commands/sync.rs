@@ -88,7 +88,6 @@ fn create_ticket_from_remote(
         .status(status.to_string())
         .priority(priority.to_string())
         .remote(Some(remote_ref.to_string()))
-        .include_uuid(false)
         .run_hooks(false)
         .build()?;
 

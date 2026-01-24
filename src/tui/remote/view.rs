@@ -817,6 +817,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     visible: detail_visible,
                     remote_scroll_offset: remote_detail_scroll_offset.get(),
                     local_scroll_offset: local_detail_scroll_offset.get(),
+                    all_local_tickets: all_local_tickets.clone(),
                 )
             }
 

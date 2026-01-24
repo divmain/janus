@@ -27,6 +27,8 @@ pub struct DetailPaneProps {
     pub remote_scroll_offset: usize,
     /// Scroll offset for local detail body
     pub local_scroll_offset: usize,
+    /// All local tickets (for checking link status of remote issues)
+    pub all_local_tickets: Vec<TicketMetadata>,
 }
 
 /// Detail pane showing issue/ticket details
@@ -49,7 +51,7 @@ pub fn DetailPane(props: &DetailPaneProps) -> impl Into<AnyElement<'static>> {
             border_color: theme.border,
         ) {
             #(if props.view_mode == ViewMode::Remote {
-                render_remote_detail(&props.selected_remote, props.remote_scroll_offset)
+                render_remote_detail(&props.selected_remote, props.remote_scroll_offset, &props.all_local_tickets)
             } else {
                 render_local_detail(&props.selected_local, props.local_scroll_offset)
             })
@@ -61,6 +63,7 @@ pub fn DetailPane(props: &DetailPaneProps) -> impl Into<AnyElement<'static>> {
 fn render_remote_detail(
     selected_remote: &Option<RemoteIssue>,
     remote_scroll_offset: usize,
+    all_local_tickets: &[TicketMetadata],
 ) -> Option<AnyElement<'static>> {
     let theme = theme();
 
@@ -78,6 +81,19 @@ fn render_remote_detail(
         let issue_assignee = issue.assignee.clone();
         let issue_updated = issue.updated_at.clone();
         let issue_body = issue.body.clone();
+
+        // Find linked local ticket
+        let linked_ticket_id = all_local_tickets.iter().find_map(|ticket| {
+            ticket.remote.as_ref().and_then(|remote_ref| {
+                let remote_issue_id =
+                    crate::tui::remote::operations::extract_issue_id_from_remote_ref(remote_ref)?;
+                if remote_issue_id == issue.id {
+                    ticket.id.clone()
+                } else {
+                    None
+                }
+            })
+        });
 
         Some(
             element! {
@@ -111,6 +127,9 @@ fn render_remote_detail(
                         Text(content: format!("Priority: {:?}", issue_priority), color: theme.text)
                         Text(content: format!("Assignee: {:?}", issue_assignee), color: theme.text)
                         Text(content: format!("Updated: {}", &issue_updated[..10.min(issue_updated.len())]), color: theme.text)
+                        #(linked_ticket_id.as_ref().map(|linked_id| element! {
+                            Text(content: format!("Linked: {}", linked_id), color: Color::Cyan)
+                        }))
                     }
 
                     // Body
