@@ -84,16 +84,12 @@ pub fn Header<'a>(props: &mut HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
                 #(std::mem::take(&mut props.extra).unwrap_or_default())
 
                 // Ticket count
-                #(if let Some(count) = props.ticket_count {
-                    Some(element! {
+                #(props.ticket_count.map(|count| element! {
                         Text(
                             content: format!("{} tickets", count),
                             color: theme.text_dimmed,
                         )
-                    })
-                } else {
-                    None
-                })
+                    }))
             }
         }
     }

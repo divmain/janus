@@ -17,9 +17,59 @@ pub trait Action: Send + Clone + 'static {
 
 /// Result of an action execution
 #[derive(Debug, Clone)]
-pub struct ActionResult {
-    pub success: bool,
-    pub message: Option<String>,
+pub enum ActionResult {
+    /// Simple success/error result
+    Result {
+        success: bool,
+        message: Option<String>,
+    },
+    /// LoadForEdit result with ticket data
+    LoadForEdit {
+        success: bool,
+        message: Option<String>,
+        id: String,
+        metadata: TicketMetadata,
+        body: String,
+    },
+}
+
+impl ActionResult {
+    pub fn success(&self) -> bool {
+        match self {
+            ActionResult::Result { success, .. } => *success,
+            ActionResult::LoadForEdit { success, .. } => *success,
+        }
+    }
+
+    pub fn message(&self) -> Option<String> {
+        match self {
+            ActionResult::Result { message, .. } => message.clone(),
+            ActionResult::LoadForEdit { message, .. } => message.clone(),
+        }
+    }
+}
+
+/// Ticket metadata for load actions (simplified version, avoids full import)
+#[derive(Debug, Clone, Default)]
+pub struct TicketMetadata {
+    pub id: Option<String>,
+    pub uuid: Option<String>,
+    pub title: Option<String>,
+    pub status: Option<crate::types::TicketStatus>,
+    pub ticket_type: Option<crate::types::TicketType>,
+    pub priority: Option<crate::types::TicketPriority>,
+    pub triaged: Option<bool>,
+    pub created: Option<String>,
+    pub file_path: Option<String>,
+    pub deps: Vec<String>,
+    pub links: Vec<String>,
+    pub external_ref: Option<String>,
+    pub remote: Option<String>,
+    pub parent: Option<String>,
+    pub spawned_from: Option<String>,
+    pub spawn_context: Option<String>,
+    pub depth: Option<u32>,
+    pub completion_summary: Option<String>,
 }
 
 /// Channel for sending actions
@@ -81,20 +131,20 @@ where
         });
 
         let action_processor_clone = action_processor.clone();
-        let needs_reload_clone = needs_reload.clone();
-        let toast_clone = toast.clone();
+        let needs_reload_clone = needs_reload;
+        let toast_clone = toast;
 
-        let channel_state_for_handler = channel.clone();
+        let channel_state_for_handler = channel;
         let action_handler: Handler<()> = hooks.use_async_handler({
             let action_processor_clone = action_processor_clone.clone();
-            let needs_reload = needs_reload_clone.clone();
-            let toast = toast_clone.clone();
-            let channel_state = channel_state_for_handler.clone();
+            let needs_reload = needs_reload_clone;
+            let toast = toast_clone;
+            let channel_state = channel_state_for_handler;
 
             move |_| Box::pin({
                 let action_processor = action_processor_clone.clone();
-                let needs_reload = needs_reload.clone();
-                let toast = toast.clone();
+                let needs_reload = needs_reload;
+                let toast = toast;
 
                 async move {
                     let mut actions = Vec::new();
@@ -116,8 +166,8 @@ where
                             let actions_to_process = std::mem::take(&mut actions);
                             action_processor(
                                 actions_to_process,
-                                needs_reload.clone(),
-                                toast.clone(),
+                                needs_reload,
+                                toast,
                             ).await;
                         }
                     }

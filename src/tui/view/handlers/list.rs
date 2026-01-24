@@ -6,7 +6,7 @@ use crate::tui::state::Pane;
 
 use super::HandleResult;
 use super::context::ViewHandlerContext;
-use super::super::BrowserAction;
+use super::types::ViewAction;
 
 /// Handle events when list pane is active
 pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -135,7 +135,7 @@ fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx.action_tx.tx.send(BrowserAction::CycleStatus { id: id.clone() });
+        let _ = ctx.action_tx.tx.send(ViewAction::CycleStatus { id: id.clone() });
     }
 }
 
@@ -144,7 +144,7 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx.action_tx.tx.send(BrowserAction::LoadForEdit { id: id.clone() });
+        let _ = ctx.action_tx.tx.send(ViewAction::LoadForEdit { id: id.clone() });
     }
 }
 
@@ -159,7 +159,7 @@ fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx.action_tx.tx.send(BrowserAction::MarkTriaged {
+        let _ = ctx.action_tx.tx.send(ViewAction::MarkTriaged {
             id: id.clone(),
             triaged: true,
         });

@@ -56,26 +56,26 @@ impl Action for BoardAction {
                     match Ticket::find(&id).await {
                         Ok(ticket) => {
                             match ticket.update_field("status", &status.to_string()) {
-                                Ok(_) => ActionResult {
+                                Ok(_) => ActionResult::Result {
                                     success: true,
                                     message: Some(format!("Updated {} to {}", id, status)),
                                 },
-                                Err(e) => ActionResult {
+                                Err(e) => ActionResult::Result {
                                     success: false,
                                     message: Some(format!("Failed to update: {}", e)),
                                 },
                             }
                         }
-                        Err(e) => ActionResult {
+                        Err(e) => ActionResult::Result {
                             success: false,
                             message: Some(format!("Ticket not found: {}", e)),
                         },
                     }
                 }
                 BoardAction::LoadForEdit { id: _ } => {
-                    ActionResult {
+                    ActionResult::Result {
                         success: true,
-                        message: Some(format!("Loaded for editing")),
+                        message: Some("Loaded for editing".to_string()),
                     }
                 }
             }
@@ -93,18 +93,34 @@ async fn process_board_actions(
     mut needs_reload: State<bool>,
     mut toast: State<Option<Toast>>,
 ) {
+    use crate::tui::action_queue::ActionResult;
+
     let mut success_count = 0;
     let mut errors = Vec::new();
 
     for action in actions {
         let result = action.execute().await;
-        if result.success {
-            success_count += 1;
-            if let Some(msg) = result.message {
-                toast.set(Some(Toast::success(msg)));
+        match result {
+            ActionResult::Result { success, message } => {
+                if success {
+                    success_count += 1;
+                    if let Some(msg) = message {
+                        toast.set(Some(Toast::success(msg)));
+                    }
+                } else if let Some(msg) = message {
+                    errors.push(msg);
+                }
             }
-        } else if let Some(msg) = result.message {
-            errors.push(msg);
+            ActionResult::LoadForEdit { success, message, .. } => {
+                if success {
+                    success_count += 1;
+                    if let Some(msg) = message {
+                        toast.set(Some(Toast::success(msg)));
+                    }
+                } else if let Some(msg) = message {
+                    errors.push(msg);
+                }
+            }
         }
     }
 
@@ -176,8 +192,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let (_queue_state, _action_handler, action_channel) = ActionQueueBuilder::use_state(
         &mut hooks,
         |actions, needs_reload, toast| Box::pin(process_board_actions(actions, needs_reload, toast)),
-        needs_reload.clone(),
-        toast.clone(),
+        needs_reload,
+        toast,
     );
 
     // Async load handler with minimum 100ms display time to prevent UI flicker

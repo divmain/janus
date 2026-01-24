@@ -98,11 +98,10 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
 /// Adjust current column to first visible column if current is hidden
 pub fn adjust_column_after_toggle(current_column: &mut State<usize>, visible: &[bool; 5]) {
     let current = current_column.get();
-    if !visible[current] {
-        if let Some(first_visible) = visible.iter().position(|&v| v) {
+    if !visible[current]
+        && let Some(first_visible) = visible.iter().position(|&v| v) {
             current_column.set(first_visible);
         }
-    }
 }
 
 /// Get the ticket at a specific column and row

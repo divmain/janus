@@ -12,7 +12,7 @@ use crate::tui::search::FilteredTicket;
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 
-use super::super::BrowserAction;
+use super::types::ViewAction;
 
 /// Context struct holding all mutable state for event handlers
 pub struct ViewHandlerContext<'a> {
@@ -52,7 +52,7 @@ pub struct ViewHandlerContext<'a> {
     pub filtered_tickets: &'a [FilteredTicket],
 
     // Async action queue sender
-    pub action_tx: &'a ActionChannel<BrowserAction>,
+    pub action_tx: &'a ActionChannel<ViewAction>,
 }
 
 impl<'a> ViewHandlerContext<'a> {
