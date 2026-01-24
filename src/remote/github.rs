@@ -252,16 +252,13 @@ impl RemoteProvider for GitHubProvider {
         };
 
         let client = self.client.clone();
-        let issue = super::execute_with_retry(
-            || async {
-                client
-                    .issues(owner, repo)
-                    .get(issue_number)
-                    .await
-                    .map_err(GitHubError::from)
-            },
-            super::HttpRetryPolicy::create(),
-        )
+        let issue = super::execute_with_retry(|| async {
+            client
+                .issues(owner, repo)
+                .get(issue_number)
+                .await
+                .map_err(GitHubError::from)
+        })
         .await
         .map_err(|e| {
             let janus_err = Self::handle_octocrab_error(e);
@@ -309,18 +306,15 @@ impl RemoteProvider for GitHubProvider {
         let body = body.to_string();
 
         let client = self.client.clone();
-        let issue = super::execute_with_retry(
-            || async {
-                client
-                    .issues(&owner, &repo)
-                    .create(&title)
-                    .body(&body)
-                    .send()
-                    .await
-                    .map_err(GitHubError::from)
-            },
-            super::HttpRetryPolicy::create(),
-        )
+        let issue = super::execute_with_retry(|| async {
+            client
+                .issues(&owner, &repo)
+                .create(&title)
+                .body(&body)
+                .send()
+                .await
+                .map_err(GitHubError::from)
+        })
         .await
         .map_err(Self::handle_octocrab_error)?;
 
@@ -362,23 +356,20 @@ impl RemoteProvider for GitHubProvider {
         let owner = owner.to_string();
         let repo = repo.to_string();
 
-        let _ = super::execute_with_retry(
-            || async {
-                let issues = client.issues(&owner, &repo);
-                let mut builder = issues.update(issue_number);
-                if let Some(t) = &title {
-                    builder = builder.title(t);
-                }
-                if let Some(b) = &body {
-                    builder = builder.body(b);
-                }
-                if let Some(s) = &state {
-                    builder = builder.state(s.clone());
-                }
-                builder.send().await.map_err(GitHubError::from)
-            },
-            super::HttpRetryPolicy::create(),
-        )
+        let _ = super::execute_with_retry(|| async {
+            let issues = client.issues(&owner, &repo);
+            let mut builder = issues.update(issue_number);
+            if let Some(t) = &title {
+                builder = builder.title(t);
+            }
+            if let Some(b) = &body {
+                builder = builder.body(b);
+            }
+            if let Some(s) = &state {
+                builder = builder.state(s.clone());
+            }
+            builder.send().await.map_err(GitHubError::from)
+        })
         .await
         .map_err(Self::handle_octocrab_error)?;
 
@@ -394,18 +385,15 @@ impl RemoteProvider for GitHubProvider {
         let owner = owner.to_string();
         let repo = repo.to_string();
 
-        let result = super::execute_with_retry(
-            || async {
-                client
-                    .issues(&owner, &repo)
-                    .list()
-                    .per_page(query.limit.min(100) as u8)
-                    .send()
-                    .await
-                    .map_err(GitHubError::from)
-            },
-            super::HttpRetryPolicy::create(),
-        )
+        let result = super::execute_with_retry(|| async {
+            client
+                .issues(&owner, &repo)
+                .list()
+                .per_page(query.limit.min(100) as u8)
+                .send()
+                .await
+                .map_err(GitHubError::from)
+        })
         .await
         .map_err(Self::handle_octocrab_error)?;
 
@@ -430,18 +418,15 @@ impl RemoteProvider for GitHubProvider {
         let repo = repo.to_string();
         let query_str = format!("repo:{}/{} is:issue {}", owner, repo, text);
 
-        let result = super::execute_with_retry(
-            || async {
-                client
-                    .search()
-                    .issues_and_pull_requests(&query_str)
-                    .per_page(limit.min(100) as u8)
-                    .send()
-                    .await
-                    .map_err(GitHubError::from)
-            },
-            super::HttpRetryPolicy::create(),
-        )
+        let result = super::execute_with_retry(|| async {
+            client
+                .search()
+                .issues_and_pull_requests(&query_str)
+                .per_page(limit.min(100) as u8)
+                .send()
+                .await
+                .map_err(GitHubError::from)
+        })
         .await
         .map_err(Self::handle_octocrab_error)?;
 

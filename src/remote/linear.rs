@@ -446,35 +446,32 @@ impl LinearProvider {
         ResponseData: serde::de::DeserializeOwned + 'static,
         Vars: serde::Serialize + std::marker::Sync,
     {
-        let response = super::execute_with_retry(
-            || async {
-                let response = self
-                    .client
-                    .post(LINEAR_API_URL)
-                    .header("Authorization", self.api_key.expose_secret())
-                    .header("Content-Type", "application/json")
-                    .json(&operation)
-                    .send()
-                    .await?;
+        let response = super::execute_with_retry(|| async {
+            let response = self
+                .client
+                .post(LINEAR_API_URL)
+                .header("Authorization", self.api_key.expose_secret())
+                .header("Content-Type", "application/json")
+                .json(&operation)
+                .send()
+                .await?;
 
-                let status = response.status();
+            let status = response.status();
 
-                if !status.is_success() {
-                    return Err(LinearError {
-                        status: Some(status),
-                        retry_after: response
-                            .headers()
-                            .get("Retry-After")
-                            .and_then(|v| v.to_str().ok())
-                            .and_then(|s| s.parse::<u64>().ok()),
-                        message: format!("HTTP {}", status),
-                    });
-                }
+            if !status.is_success() {
+                return Err(LinearError {
+                    status: Some(status),
+                    retry_after: response
+                        .headers()
+                        .get("Retry-After")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.parse::<u64>().ok()),
+                    message: format!("HTTP {}", status),
+                });
+            }
 
-                Ok(response)
-            },
-            super::HttpRetryPolicy::create::<LinearError>(),
-        )
+            Ok(response)
+        })
         .await?;
 
         let result: GraphQlResponse<ResponseData, ErrorExtensions> = response.json().await?;
