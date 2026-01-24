@@ -5,15 +5,10 @@ use iocraft::prelude::*;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
+const CHANNEL_CAPACITY: usize = 100;
 const MAX_BATCH_SIZE: usize = 10;
-
-/// Generic action for the queue
-pub trait Action: Send + Clone + 'static {
-    /// Execute the action
-    fn execute(self) -> Pin<Box<dyn Future<Output = ActionResult> + Send>>;
-}
 
 /// Result of an action execution
 #[derive(Debug, Clone)]
@@ -72,19 +67,18 @@ pub struct TicketMetadata {
     pub completion_summary: Option<String>,
 }
 
-/// Channel for sending actions
+/// Channel for sending actions (bounded for backpressure)
 #[derive(Clone)]
 pub struct ActionChannel<A>
 where
     A: Send + Clone + 'static,
 {
-    pub tx: mpsc::UnboundedSender<A>,
-    _rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<A>>>,
+    pub tx: tokio::sync::mpsc::Sender<A>,
 }
 
 impl<A: Send + Clone> ActionChannel<A> {
-    pub fn send(&self, action: A) -> Result<(), mpsc::error::SendError<A>> {
-        self.tx.send(action)
+    pub fn send(&self, action: A) -> Result<(), tokio::sync::mpsc::error::SendError<A>> {
+        self.tx.blocking_send(action)
     }
 }
 
@@ -95,8 +89,14 @@ where
 {
     _channel: ActionChannel<A>,
     _processor: P,
-    _is_processing: bool,
 }
+
+/// Processor function type for action queues
+pub type ActionProcessor<A> = Arc<
+    dyn Fn(Vec<A>, State<bool>, State<Option<Toast>>) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// Builder for creating an action queue
 pub struct ActionQueueBuilder<A, P> {
@@ -106,7 +106,6 @@ pub struct ActionQueueBuilder<A, P> {
 impl<A, P> ActionQueueBuilder<A, P>
 where
     A: Send + Clone + 'static,
-    P: Send + Sync + 'static,
 {
     /// Create a new action queue with state
     pub fn use_state(
@@ -123,51 +122,50 @@ where
             ) -> Pin<Box<dyn Future<Output = ()> + Send>>
             + Clone
             + 'static,
+        P: Send + Sync + 'static,
     {
-        let channel: State<ActionChannel<A>> = hooks.use_state(|| {
-            let (tx, rx) = mpsc::unbounded_channel::<A>();
-            ActionChannel {
-                tx,
-                _rx: Arc::new(tokio::sync::Mutex::new(rx)),
-            }
-        });
+        let (tx, rx) = tokio::sync::mpsc::channel::<A>(CHANNEL_CAPACITY);
+        let rx = Arc::new(Mutex::new(rx));
+
+        let channel = ActionChannel { tx: tx.clone() };
 
         let action_processor_clone = action_processor.clone();
         let needs_reload_clone = needs_reload;
         let toast_clone = toast;
 
-        let channel_state_for_handler = channel;
         let action_handler: Handler<()> = hooks.use_async_handler({
-            let action_processor_clone = action_processor_clone.clone();
-            let needs_reload = needs_reload_clone;
-            let toast = toast_clone;
-            let channel_state = channel_state_for_handler;
-
+            let rx = rx.clone();
             move |_| {
                 Box::pin({
                     let action_processor = action_processor_clone.clone();
-                    let needs_reload = needs_reload;
-                    let toast = toast;
+                    let needs_reload = needs_reload_clone;
+                    let toast = toast_clone;
+                    let rx = rx.clone();
 
                     async move {
                         let mut actions = Vec::new();
 
                         loop {
-                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-                            let channel_ref = channel_state.read();
-                            if let Ok(mut rx) = channel_ref._rx.try_lock() {
-                                while let Ok(action) = rx.try_recv() {
+                            tokio::select! {
+                                            action = async {
+                                let mut rx_guard = rx.lock().await;
+                                rx_guard.recv().await
+                            } => {
+                                if let Some(action) = action {
                                     actions.push(action);
-                                    if actions.len() >= MAX_BATCH_SIZE {
-                                        break;
-                                    }
+                                } else {
+                                    break;
                                 }
                             }
+                                        }
 
                             if !actions.is_empty() {
                                 let actions_to_process = std::mem::take(&mut actions);
                                 action_processor(actions_to_process, needs_reload, toast).await;
+
+                                if actions.len() >= MAX_BATCH_SIZE {
+                                    continue;
+                                }
                             }
                         }
                     }
@@ -175,19 +173,11 @@ where
             }
         });
 
-        let channel_inner = channel.read();
-        let tx = channel_inner.tx.clone();
-        let channel_clone = ActionChannel {
-            tx: tx.clone(),
-            _rx: Arc::new(tokio::sync::Mutex::new(mpsc::unbounded_channel::<A>().1)),
-        };
-
         let queue_state = ActionQueueState {
-            _channel: channel_clone.clone(),
+            _channel: channel.clone(),
             _processor: action_processor,
-            _is_processing: true,
         };
 
-        (queue_state, action_handler, channel_clone)
+        (queue_state, action_handler, channel)
     }
 }

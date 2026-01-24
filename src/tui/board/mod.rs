@@ -7,11 +7,9 @@ pub mod handlers;
 pub mod model;
 
 use iocraft::prelude::*;
-use std::future::Future;
-use std::pin::Pin;
 
 use crate::ticket::Ticket;
-use crate::tui::action_queue::{Action, ActionQueueBuilder, ActionResult};
+use crate::tui::action_queue::{ActionQueueBuilder, ActionResult};
 use crate::tui::components::{
     EmptyState, EmptyStateKind, InlineSearchBox, TicketCard, Toast, board_shortcuts,
     compute_empty_state, edit_shortcuts, empty_shortcuts,
@@ -49,35 +47,6 @@ pub enum BoardAction {
     LoadForEdit { id: String },
 }
 
-impl Action for BoardAction {
-    fn execute(self) -> Pin<Box<dyn Future<Output = ActionResult> + Send>> {
-        Box::pin(async move {
-            match self {
-                BoardAction::UpdateStatus { id, status } => match Ticket::find(&id).await {
-                    Ok(ticket) => match ticket.update_field("status", &status.to_string()) {
-                        Ok(_) => ActionResult::Result {
-                            success: true,
-                            message: Some(format!("Updated {} to {}", id, status)),
-                        },
-                        Err(e) => ActionResult::Result {
-                            success: false,
-                            message: Some(format!("Failed to update: {}", e)),
-                        },
-                    },
-                    Err(e) => ActionResult::Result {
-                        success: false,
-                        message: Some(format!("Ticket not found: {}", e)),
-                    },
-                },
-                BoardAction::LoadForEdit { id: _ } => ActionResult::Result {
-                    success: true,
-                    message: Some("Loaded for editing".to_string()),
-                },
-            }
-        })
-    }
-}
-
 /// Props for the KanbanBoard component
 #[derive(Default, Props)]
 pub struct KanbanBoardProps {}
@@ -88,13 +57,33 @@ async fn process_board_actions(
     mut needs_reload: State<bool>,
     mut toast: State<Option<Toast>>,
 ) {
-    use crate::tui::action_queue::ActionResult;
-
     let mut success_count = 0;
     let mut errors = Vec::new();
 
     for action in actions {
-        let result = action.execute().await;
+        let result: ActionResult = match action {
+            BoardAction::UpdateStatus { id, status } => match Ticket::find(&id).await {
+                Ok(ticket) => match ticket.update_field("status", &status.to_string()) {
+                    Ok(_) => ActionResult::Result {
+                        success: true,
+                        message: Some(format!("Updated {} to {}", id, status)),
+                    },
+                    Err(e) => ActionResult::Result {
+                        success: false,
+                        message: Some(format!("Failed to update: {}", e)),
+                    },
+                },
+                Err(e) => ActionResult::Result {
+                    success: false,
+                    message: Some(format!("Ticket not found: {}", e)),
+                },
+            },
+            BoardAction::LoadForEdit { id: _ } => ActionResult::Result {
+                success: true,
+                message: Some("Loaded for editing".to_string()),
+            },
+        };
+
         match result {
             ActionResult::Result { success, message } => {
                 if success {

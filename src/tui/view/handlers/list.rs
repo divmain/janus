@@ -138,7 +138,7 @@ fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx
+        _ = ctx
             .actions
             .tx
             .send(ViewAction::CycleStatus { id: id.clone() });
@@ -153,7 +153,7 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx
+        _ = ctx
             .actions
             .tx
             .send(ViewAction::LoadForEdit { id: id.clone() });
@@ -174,7 +174,7 @@ fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx.actions.tx.send(ViewAction::MarkTriaged {
+        _ = ctx.actions.tx.send(ViewAction::MarkTriaged {
             id: id.clone(),
             triaged: true,
         });

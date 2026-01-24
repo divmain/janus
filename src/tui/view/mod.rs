@@ -12,7 +12,9 @@ use std::pin::Pin;
 
 use crate::formatting::extract_ticket_body;
 use crate::ticket::Ticket;
-use crate::tui::action_queue::{Action, ActionQueueBuilder};
+use crate::tui::action_queue::{
+    ActionQueueBuilder, ActionResult, TicketMetadata as QueueTicketMetadata,
+};
 use crate::tui::components::{
     EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox, TicketDetail, TicketList,
     TicketModalData, Toast, browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
@@ -25,6 +27,7 @@ use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::search::{FilteredTicket, compute_title_highlights};
+use crate::tui::services::TicketService;
 use crate::tui::state::Pane;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -45,13 +48,95 @@ async fn process_browser_actions(
     mut editing_body: State<String>,
     mut is_editing: State<bool>,
 ) {
-    use crate::tui::action_queue::ActionResult;
-
     let mut success_count = 0;
     let mut errors = Vec::new();
 
     for action in actions {
-        let result = action.execute().await;
+        let result: ActionResult = match action {
+            ViewAction::CycleStatus { id } => match TicketService::cycle_status(&id).await {
+                Ok(_) => ActionResult::Result {
+                    success: true,
+                    message: Some(format!("Status cycled for {}", id)),
+                },
+                Err(e) => ActionResult::Result {
+                    success: false,
+                    message: Some(format!("Failed to cycle status: {}", e)),
+                },
+            },
+            ViewAction::LoadForEdit { id } => match TicketService::load_for_edit(&id).await {
+                Ok((metadata, body)) => {
+                    let queue_metadata = QueueTicketMetadata {
+                        id: metadata.id.clone(),
+                        uuid: metadata.uuid,
+                        title: metadata.title.clone(),
+                        status: metadata.status,
+                        ticket_type: metadata.ticket_type,
+                        priority: metadata.priority,
+                        triaged: metadata.triaged,
+                        created: metadata.created,
+                        file_path: metadata.file_path.map(|p| p.to_string_lossy().to_string()),
+                        deps: metadata.deps,
+                        links: metadata.links,
+                        external_ref: metadata.external_ref,
+                        remote: metadata.remote,
+                        parent: metadata.parent,
+                        spawned_from: metadata.spawned_from,
+                        spawn_context: metadata.spawn_context,
+                        depth: metadata.depth,
+                        completion_summary: metadata.completion_summary,
+                    };
+                    ActionResult::LoadForEdit {
+                        success: true,
+                        message: Some(format!("Loaded {} for editing", id)),
+                        id: id.clone(),
+                        metadata: Box::new(queue_metadata),
+                        body,
+                    }
+                }
+                Err(e) => ActionResult::Result {
+                    success: false,
+                    message: Some(format!("Failed to load ticket: {}", e)),
+                },
+            },
+            ViewAction::MarkTriaged { id, triaged } => {
+                match TicketService::mark_triaged(&id, triaged).await {
+                    Ok(_) => ActionResult::Result {
+                        success: true,
+                        message: Some(if triaged {
+                            format!("Marked {} as triaged", id)
+                        } else {
+                            format!("Unmarked {} as triaged", id)
+                        }),
+                    },
+                    Err(e) => ActionResult::Result {
+                        success: false,
+                        message: Some(format!("Failed to mark as triaged: {}", e)),
+                    },
+                }
+            }
+            ViewAction::CancelTicket { id } => {
+                match TicketService::set_status(&id, crate::types::TicketStatus::Cancelled).await {
+                    Ok(_) => ActionResult::Result {
+                        success: true,
+                        message: Some(format!("Cancelled {}", id)),
+                    },
+                    Err(e) => ActionResult::Result {
+                        success: false,
+                        message: Some(format!("Failed to cancel ticket: {}", e)),
+                    },
+                }
+            }
+            ViewAction::AddNote { id, note } => match TicketService::add_note(&id, &note).await {
+                Ok(_) => ActionResult::Result {
+                    success: true,
+                    message: Some(format!("Added note to {}", id)),
+                },
+                Err(e) => ActionResult::Result {
+                    success: false,
+                    message: Some(format!("Failed to add note: {}", e)),
+                },
+            },
+        };
 
         match result {
             ActionResult::LoadForEdit {

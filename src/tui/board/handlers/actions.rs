@@ -49,7 +49,7 @@ fn handle_edit_ticket(ctx: &mut BoardHandlerContext<'_>) {
     if let Some(ticket) = get_ticket_at(ctx, col, row)
         && let Some(id) = &ticket.id
     {
-        let _ = ctx
+        _ = ctx
             .action_tx
             .tx
             .send(BoardAction::LoadForEdit { id: id.clone() });
