@@ -14,8 +14,8 @@ use crate::formatting::extract_ticket_body;
 use crate::ticket::Ticket;
 use crate::tui::action_queue::{Action, ActionQueueBuilder};
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, SearchBox, TicketDetail, TicketList, Toast,
-    browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
+    EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox, TicketDetail, TicketList,
+    TicketModalData, Toast, browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
     edit_shortcuts, empty_shortcuts, note_input_modal_shortcuts, search_shortcuts,
     triage_shortcuts,
 };
@@ -156,13 +156,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Track if search is currently running (for loading indicator)
     let mut search_in_flight = hooks.use_state(|| false);
 
-    // Modal state for triage mode
-    let show_note_modal = hooks.use_state(|| false);
-    let show_cancel_confirm = hooks.use_state(|| false);
-    let note_text: State<String> = hooks.use_state(String::new);
-    // Store the ticket info for modals
-    let modal_ticket_id: State<String> = hooks.use_state(String::new);
-    let modal_ticket_title: State<String> = hooks.use_state(String::new);
+    // Modal state for triage mode using generic ModalState
+    // Marker types for type-level modal distinction
+    struct NoteModalMarker;
+    struct CancelConfirmModalMarker;
+
+    let note_modal = ModalState::<NoteModalMarker, NoteModalData>::use_state(&mut hooks);
+    let cancel_confirm_modal =
+        ModalState::<CancelConfirmModalMarker, TicketModalData>::use_state(&mut hooks);
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
     let load_handler: Handler<()> =
@@ -383,14 +384,9 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         let action_channel_for_events = action_channel.clone();
         let is_triage_mode_for_events = is_triage_mode.get();
         let is_editing_for_events = is_editing;
-        let show_note_modal_for_events = show_note_modal.get();
-        let show_cancel_confirm_for_events = show_cancel_confirm.get();
+        let note_modal_open = note_modal.is_open();
+        let cancel_confirm_open = cancel_confirm_modal.is_open();
         let mut is_triage_mode_mut = is_triage_mode;
-        let mut show_note_modal_mut = show_note_modal;
-        let mut show_cancel_confirm_mut = show_cancel_confirm;
-        let mut note_text_mut = note_text;
-        let mut modal_ticket_id_mut = modal_ticket_id;
-        let mut modal_ticket_title_mut = modal_ticket_title;
         move |event| {
             // Skip if edit form is open (it handles its own events)
             if is_editing_for_events {
@@ -405,24 +401,23 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     ..
                 }) if should_process_key_event(kind) => {
                     // Handle note input modal events
-                    if show_note_modal_for_events {
+                    if note_modal_open {
                         match code {
                             KeyCode::Esc => {
                                 // Cancel note input
-                                show_note_modal_mut.set(false);
-                                note_text_mut.set(String::new());
+                                note_modal.close();
                             }
                             KeyCode::Enter if modifiers == KeyModifiers::NONE => {
                                 // Submit note if not empty
-                                let note = note_text_mut.to_string();
-                                if !note.trim().is_empty() {
-                                    let id = modal_ticket_id_mut.to_string();
-                                    let _ = action_channel_for_events
-                                        .send(ViewAction::AddNote { id, note });
+                                let data = note_modal.data();
+                                if !data.text.trim().is_empty() {
+                                    let _ = action_channel_for_events.send(ViewAction::AddNote {
+                                        id: data.ticket_id,
+                                        note: data.text,
+                                    });
                                     actions_pending.set(true);
                                 }
-                                show_note_modal_mut.set(false);
-                                note_text_mut.set(String::new());
+                                note_modal.close();
                             }
                             _ => {
                                 // Let the modal's TextInput handle other keys
@@ -432,15 +427,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     }
 
                     // Handle cancel confirmation modal events
-                    if show_cancel_confirm_for_events {
+                    if cancel_confirm_open {
                         if code == KeyCode::Char('c') {
                             // Confirm cancellation
-                            let id = modal_ticket_id_mut.to_string();
-                            let _ = action_channel_for_events.send(ViewAction::CancelTicket { id });
+                            let data = cancel_confirm_modal.data();
+                            let _ = action_channel_for_events
+                                .send(ViewAction::CancelTicket { id: data.ticket_id });
                             actions_pending.set(true);
                         }
                         // Any key (including 'c' after confirming) closes the modal
-                        show_cancel_confirm_mut.set(false);
+                        cancel_confirm_modal.close();
                         return;
                     }
 
@@ -458,11 +454,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             if let Some(ft) = filtered_for_events.get(selected_index.get())
                                 && let Some(id) = &ft.ticket.id
                             {
-                                modal_ticket_id_mut.set(id.clone());
-                                modal_ticket_title_mut
-                                    .set(ft.ticket.title.clone().unwrap_or_default());
-                                note_text_mut.set(String::new());
-                                show_note_modal_mut.set(true);
+                                note_modal.open(NoteModalData::new(id.clone()));
                             }
                             return;
                         }
@@ -471,10 +463,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             if let Some(ft) = filtered_for_events.get(selected_index.get())
                                 && let Some(id) = &ft.ticket.id
                             {
-                                modal_ticket_id_mut.set(id.clone());
-                                modal_ticket_title_mut
-                                    .set(ft.ticket.title.clone().unwrap_or_default());
-                                show_cancel_confirm_mut.set(true);
+                                cancel_confirm_modal.open(TicketModalData::new(
+                                    id.clone(),
+                                    ft.ticket.title.clone().unwrap_or_default(),
+                                ));
                             }
                             return;
                         }
@@ -561,10 +553,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     );
 
     // Determine shortcuts to show - check modals first, then normal modes
-    let shortcuts = if show_note_modal.get() {
+    let shortcuts = if note_modal.is_open() {
         // Triage mode: note input modal is open
         note_input_modal_shortcuts()
-    } else if show_cancel_confirm.get() {
+    } else if cancel_confirm_modal.is_open() {
         // Triage mode: cancel confirmation modal is open
         cancel_confirm_modal_shortcuts()
     } else if is_editing {
@@ -688,11 +680,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             })
 
             // Note input modal (triage mode)
-            #(if show_note_modal.get() {
+            #(if note_modal.is_open() {
+                let data = note_modal.data();
                 Some(element! {
                     NoteInputModal(
-                        ticket_id: modal_ticket_id.to_string(),
-                        note_text: Some(note_text),
+                        ticket_id: data.ticket_id.clone(),
+                        note_text: Some(note_modal.data_state()),
                     )
                 })
             } else {
@@ -700,11 +693,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             })
 
             // Cancel confirmation modal (triage mode)
-            #(if show_cancel_confirm.get() {
+            #(if cancel_confirm_modal.is_open() {
+                let data = cancel_confirm_modal.data();
                 Some(element! {
                     CancelConfirmModal(
-                        ticket_id: modal_ticket_id.to_string(),
-                        ticket_title: modal_ticket_title.to_string(),
+                        ticket_id: data.ticket_id.clone(),
+                        ticket_title: data.ticket_title.clone(),
                     )
                 })
             } else {

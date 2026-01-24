@@ -8,6 +8,7 @@ pub mod footer;
 pub mod header;
 pub mod modal_container;
 pub mod modal_overlay;
+pub mod modal_state;
 pub mod search_box;
 pub mod select;
 pub mod shortcuts;
@@ -30,6 +31,7 @@ pub use modal_container::{
     ModalBorderColor, ModalContainer, ModalContainerProps, ModalHeight, ModalWidth,
 };
 pub use modal_overlay::{ModalOverlay, ModalOverlayProps, MODAL_BACKDROP};
+pub use modal_state::{ModalState, NoteModalData, TicketModalData};
 pub use search_box::{InlineSearchBox, InlineSearchBoxProps, SearchBox, SearchBoxProps};
 pub use select::{options_for, Select, SelectProps, Selectable};
 pub use shortcuts::ShortcutsBuilder;

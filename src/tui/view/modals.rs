@@ -7,7 +7,7 @@
 use iocraft::prelude::*;
 
 use crate::tui::components::{
-    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
+    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth, NoteModalData,
 };
 use crate::tui::theme::theme;
 
@@ -20,8 +20,8 @@ use crate::tui::theme::theme;
 pub struct NoteInputModalProps {
     /// The ticket ID being annotated
     pub ticket_id: String,
-    /// Current note text state
-    pub note_text: Option<State<String>>,
+    /// Current note data state (contains ticket_id and text)
+    pub note_text: Option<State<NoteModalData>>,
 }
 
 /// Modal dialog for inputting a note to add to a ticket
@@ -36,8 +36,11 @@ pub fn NoteInputModal<'a>(
 ) -> impl Into<AnyElement<'a>> {
     let theme = theme();
 
-    // Local state for TextInput
-    let initial_value = props.note_text.map(|s| s.to_string()).unwrap_or_default();
+    // Local state for TextInput - get initial value from the NoteModalData
+    let initial_value = props
+        .note_text
+        .map(|s| s.read().text.clone())
+        .unwrap_or_default();
     let mut local_value = hooks.use_state(move || initial_value);
 
     // Handle for imperative cursor control
@@ -76,7 +79,10 @@ pub fn NoteInputModal<'a>(
                         on_change: move |new_value: String| {
                             local_value.set(new_value.clone());
                             if let Some(mut ext) = external_value {
-                                ext.set(new_value);
+                                // Update the text field in NoteModalData
+                                let mut data = ext.read().clone();
+                                data.text = new_value;
+                                ext.set(data);
                             }
                         },
                         multiline: true,
