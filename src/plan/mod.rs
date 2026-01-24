@@ -1,21 +1,38 @@
+//! Plan module with focused component architecture
+//!
+//! This module provides the `Plan` facade type which orchestrates:
+//! - `PlanLocator`: ID and path resolution
+//! - `PlanFile`: File I/O with `StorageHandle` and `FileStorage` traits
+//! - `PlanEditor`: Content modification with hook orchestration
+//!
+//! The architecture mirrors the Ticket module pattern for consistency.
+
+mod editor;
+mod file;
+mod locator;
 pub mod parser;
 pub mod types;
+
+pub use editor::PlanEditor;
+pub use file::PlanFile;
+pub use locator::PlanLocator;
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use async_trait::async_trait;
+
 use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
-use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::repository::ItemRepository;
-use crate::storage::{FileStorage, StorageHandle};
-use crate::types::{EntityType, TicketMetadata, plans_dir};
-use crate::utils::{DirScanner, extract_id_from_path};
-use async_trait::async_trait;
+use crate::storage::FileStorage;
+use crate::types::{plans_dir, TicketMetadata};
+use crate::utils::DirScanner;
 
 // Re-export status computation functions
 pub use crate::status::plan::{
@@ -95,54 +112,67 @@ impl PlanRepository {
     }
 }
 
-impl StorageHandle for Plan {
-    fn file_path(&self) -> &std::path::Path {
-        &self.file_path
-    }
-
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn item_type(&self) -> EntityType {
-        EntityType::Plan
-    }
-}
-
-impl FileStorage for Plan {
-}
-
 /// Find a plan file by partial ID
 pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     crate::finder::find_by_partial_id::<PlanFinder>(partial_id).await
 }
 
-/// A plan handle for reading and writing plan files
-#[derive(Debug)]
+/// A plan handle for reading and writing plan files.
+///
+/// `Plan` is a facade that orchestrates the focused components:
+/// - `PlanLocator`: ID and path resolution
+/// - `PlanFile`: File I/O with `StorageHandle` and `FileStorage` traits
+/// - `PlanEditor`: Content modification with hook orchestration
+///
+/// The public fields `file_path` and `id` are maintained for backward compatibility.
 pub struct Plan {
+    /// Path to the plan file (for backward compatibility)
     pub file_path: PathBuf,
+    /// Plan ID (for backward compatibility)
     pub id: String,
+    /// Internal file handle for I/O operations
+    file: PlanFile,
+    /// Internal editor for content modifications
+    editor: PlanEditor,
+}
+
+impl std::fmt::Debug for Plan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Plan")
+            .field("file_path", &self.file_path)
+            .field("id", &self.id)
+            .finish()
+    }
 }
 
 impl Plan {
     /// Find a plan by its (partial) ID
     pub async fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_plan_by_id(partial_id).await?;
-        Plan::new(file_path)
+        let locator = PlanLocator::find(partial_id).await?;
+        Ok(Self::from_locator(locator))
     }
 
     /// Create a plan handle for a given file path
     pub fn new(file_path: PathBuf) -> Result<Self> {
-        let id = extract_id_from_path(&file_path, "plan")?;
-        Ok(Plan { file_path, id })
+        let locator = PlanLocator::new(file_path)?;
+        Ok(Self::from_locator(locator))
     }
 
     /// Create a plan handle for a new plan with the given ID
     pub fn with_id(id: &str) -> Self {
-        let file_path = plans_dir().join(format!("{}.md", id));
+        let locator = PlanLocator::with_id(id);
+        Self::from_locator(locator)
+    }
+
+    /// Internal constructor from a locator
+    fn from_locator(locator: PlanLocator) -> Self {
+        let file = PlanFile::new(locator.clone());
+        let editor = PlanEditor::new(file.clone());
         Plan {
-            file_path,
-            id: id.to_string(),
+            file_path: locator.file_path.clone(),
+            id: locator.id.clone(),
+            file,
+            editor,
         }
     }
 
@@ -156,10 +186,15 @@ impl Plan {
     /// Parses the full plan file including YAML frontmatter, title, description,
     /// acceptance criteria, phases/tickets, and free-form sections.
     pub fn read(&self) -> Result<PlanMetadata> {
-        let content = self.read_content()?;
+        let content = self.file.read_raw()?;
         let mut metadata = parse_plan_content(&content)?;
         metadata.file_path = Some(self.file_path.clone());
         Ok(metadata)
+    }
+
+    /// Read the raw content of the plan file
+    pub fn read_content(&self) -> Result<String> {
+        self.file.read_raw()
     }
 
     /// Write content to the plan file
@@ -167,12 +202,7 @@ impl Plan {
     /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `PlanUpdated`
     /// hooks after successful write.
     pub fn write(&self, content: &str) -> Result<()> {
-        self.write_with_hooks(content, true)?;
-
-        // Additional plan-specific post-hooks
-        let context = self.hook_context();
-        run_post_hooks(HookEvent::PlanUpdated, &context);
-        Ok(())
+        self.editor.write(content)
     }
 
     /// Write content to the plan file without triggering hooks.
@@ -180,7 +210,7 @@ impl Plan {
     /// Used internally when hooks should be handled at a higher level
     /// (e.g., plan creation where PlanCreated should be fired instead of PlanUpdated).
     pub(crate) fn write_without_hooks(&self, content: &str) -> Result<()> {
-        self.write_with_hooks(content, false)
+        self.editor.write_without_hooks(content)
     }
 
     /// Delete the plan file
@@ -215,6 +245,14 @@ impl Plan {
         run_post_hooks(HookEvent::PlanDeleted, &context);
 
         Ok(())
+    }
+
+    /// Build a hook context for this plan.
+    ///
+    /// This is a convenience method to avoid repeating the same hook context
+    /// construction pattern throughout the codebase.
+    pub fn hook_context(&self) -> HookContext {
+        self.file.hook_context()
     }
 
     /// Compute the status of this plan based on its tickets
