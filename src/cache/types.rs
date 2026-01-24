@@ -3,6 +3,8 @@
 //! These types are lightweight representations optimized for fast queries,
 //! distinct from the full domain types used for file operations.
 
+use crate::plan::types::{HasPhaseIdentity, HasPhaseContent};
+
 /// Cached plan metadata - a lightweight representation for fast queries.
 ///
 /// This type is optimized for reading from the cache database rather than
@@ -51,6 +53,22 @@ pub struct CachedPhase {
     pub number: String,
     pub name: String,
     pub tickets: Vec<String>,
+}
+
+impl HasPhaseIdentity for CachedPhase {
+    fn number(&self) -> &str {
+        &self.number
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl HasPhaseContent for CachedPhase {
+    fn tickets(&self) -> &[String] {
+        &self.tickets
+    }
 }
 
 #[cfg(test)]
@@ -102,5 +120,58 @@ mod tests {
         assert_eq!(all, vec!["t1", "t2", "t3"]);
         assert!(!plan.is_phased());
         assert!(plan.is_simple());
+    }
+
+    // ============================================================
+    // Phase Identity Trait Tests
+    // ============================================================
+
+    #[test]
+    fn test_cached_phase_has_phase_identity() {
+        let phase = CachedPhase {
+            number: "1".to_string(),
+            name: "Infrastructure".to_string(),
+            tickets: vec![],
+        };
+
+        assert_eq!(phase.number(), "1");
+        assert_eq!(phase.name(), "Infrastructure");
+    }
+
+    #[test]
+    fn test_cached_phase_has_phase_content() {
+        let phase = CachedPhase {
+            number: "1".to_string(),
+            name: "Test".to_string(),
+            tickets: vec!["j-a1b2".to_string(), "j-c3d4".to_string()],
+        };
+
+        let tickets = phase.tickets();
+        assert_eq!(tickets, &["j-a1b2", "j-c3d4"]);
+    }
+
+    #[test]
+    fn test_cached_phase_get_phase_identity_generic() {
+        let phase = CachedPhase {
+            number: "2a".to_string(),
+            name: "Sync Part A".to_string(),
+            tickets: vec![],
+        };
+
+        let (num, name) = crate::plan::types::get_phase_identity(&phase);
+        assert_eq!(num, "2a");
+        assert_eq!(name, "Sync Part A");
+    }
+
+    #[test]
+    fn test_cached_phase_get_phase_tickets_generic() {
+        let phase = CachedPhase {
+            number: "1".to_string(),
+            name: "Test".to_string(),
+            tickets: vec!["j-a1b2".to_string(), "j-c3d4".to_string()],
+        };
+
+        let tickets = crate::plan::types::get_phase_tickets(&phase);
+        assert_eq!(tickets, &["j-a1b2", "j-c3d4"]);
     }
 }
