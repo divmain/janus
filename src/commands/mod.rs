@@ -4,6 +4,7 @@ mod cache;
 mod config;
 pub mod create;
 mod dep;
+mod dep_tree;
 mod edit;
 mod graph;
 mod hook;
