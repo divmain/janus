@@ -9,32 +9,57 @@ use crate::tui::theme::theme;
 /// Props for the Header component
 #[derive(Default, Props)]
 pub struct HeaderProps<'a> {
-    /// Title to display (defaults to "Janus")
+    /// Title (defaults to "Janus")
     pub title: Option<&'a str>,
-    /// Optional subtitle (e.g., "Board" or "Browser")
+
+    /// Subtitle
     pub subtitle: Option<&'a str>,
-    /// Optional ticket count to display on the right
+
+    /// Ticket count
     pub ticket_count: Option<usize>,
+
+    /// Extra elements to render on the right (before ticket count)
+    pub extra: Option<Vec<AnyElement<'a>>>,
+
+    /// Provider info (for remote screen) - owned string to avoid lifetime issues
+    pub provider: Option<String>,
+
+    /// Custom prefix before title
+    pub prefix: Option<&'a str>,
 }
 
 /// App header bar showing title and ticket count
 #[component]
-pub fn Header<'a>(props: &HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
+pub fn Header<'a>(props: &mut HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
     let theme = theme();
-    let title = props.title.unwrap_or("Janus");
-    let subtitle = props.subtitle;
 
-    // Build the left side: title + optional subtitle
-    let left_text = match subtitle {
-        Some(sub) => format!("{} - {}", title, sub),
-        None => title.to_string(),
+    // Build title
+    let title = if let (Some(title), Some(provider)) = (props.title, props.provider.as_ref()) {
+        // Remote screen: "janus remote [Provider]"
+        format!("{} [{}]", title, provider)
+    } else if let Some(title) = props.title {
+        // Custom title
+        title.to_string()
+    } else if let Some(provider) = props.provider.as_ref() {
+        // Just provider
+        format!("Janus [{}]", provider)
+    } else {
+        // Default
+        "Janus".to_string()
     };
 
-    // Build the right side: ticket count
-    let right_text = props
-        .ticket_count
-        .map(|count| format!("{} tickets", count))
-        .unwrap_or_default();
+    // Build prefix + title
+    let title_display = if let Some(prefix) = props.prefix {
+        format!("{} {}", prefix, title)
+    } else {
+        title
+    };
+
+    // Build the left side: title + optional subtitle
+    let left_text = match props.subtitle {
+        Some(sub) => format!("{} - {}", title_display, sub),
+        None => title_display,
+    };
 
     element! {
         View(
@@ -54,11 +79,21 @@ pub fn Header<'a>(props: &HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
                     weight: Weight::Bold,
                 )
             }
-            View {
-                Text(
-                    content: right_text,
-                    color: theme.text_dimmed,
-                )
+            View(flex_direction: FlexDirection::Row, gap: 1) {
+                // Extra elements (column toggles, help indicator, etc.)
+                #(std::mem::take(&mut props.extra).unwrap_or_default())
+
+                // Ticket count
+                #(if let Some(count) = props.ticket_count {
+                    Some(element! {
+                        Text(
+                            content: format!("{} tickets", count),
+                            color: theme.text_dimmed,
+                        )
+                    })
+                } else {
+                    None
+                })
             }
         }
     }

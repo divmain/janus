@@ -11,7 +11,7 @@ use tokio::sync::{Mutex, mpsc};
 
 use crate::ticket::Ticket;
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, Footer, InlineSearchBox, TicketCard, Toast, ToastNotification,
+    EmptyState, EmptyStateKind, Footer, Header, InlineSearchBox, TicketCard, Toast, ToastNotification,
     board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult, extract_body_for_edit};
@@ -489,42 +489,16 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             position: Position::Relative,
         ) {
             // Header with column toggles
-            View(
-                width: 100pct,
-                height: 1,
-                flex_direction: FlexDirection::Row,
-                flex_shrink: 0.0,
-                justify_content: JustifyContent::SpaceBetween,
-                padding_left: 1,
-                padding_right: 1,
-                background_color: theme.highlight,
-            ) {
-                Text(
-                    content: "Janus - Board",
-                    color: theme.text,
-                    weight: Weight::Bold,
-                )
-                View(flex_direction: FlexDirection::Row, gap: 1) {
+            Header(
+                title: Some("Janus - Board"),
+                ticket_count: Some(total_tickets),
+                extra: Some(vec![element! {
                     Text(
-                        content: if search_in_flight.get() {
-                            "Searching...".to_string()
-                        } else {
-                            format!("{} tickets", total_tickets)
-                        },
-                        color: theme.text_dimmed,
+                        content: column_toggles.clone(),
+                        color: theme.text,
                     )
-                    #(if !show_full_empty_state {
-                        Some(element! {
-                            Text(
-                                content: column_toggles.clone(),
-                                color: theme.text,
-                            )
-                        })
-                    } else {
-                        None
-                    })
-                }
-            }
+                }.into()]),
+            )
 
             #(if show_full_empty_state {
                 // Show full-screen empty state

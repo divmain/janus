@@ -15,7 +15,7 @@ use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::{
-    Footer, InlineSearchBox, Shortcut, confirm_dialog_shortcuts, error_modal_shortcuts,
+    Footer, Header, InlineSearchBox, Shortcut, confirm_dialog_shortcuts, error_modal_shortcuts,
     filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts, search_shortcuts,
     sync_preview_shortcuts,
 };
@@ -23,7 +23,7 @@ use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
 
 use super::components::overlays::{render_link_mode_banner, render_toast};
-use super::components::{DetailPane, ListPane, ModalOverlays, RemoteHeader, SelectionBar, TabBar};
+use super::components::{DetailPane, ListPane, ModalOverlays, SelectionBar, TabBar};
 use super::confirm_modal::ConfirmDialogState;
 use super::error_toast::Toast;
 use super::filter::{
@@ -761,7 +761,13 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             position: Position::Relative,
         ) {
             // Header row
-            RemoteHeader(provider: Some(provider.get()))
+            Header(
+                title: Some("janus remote"),
+                provider: Some(format!("{}", provider.get())),
+                extra: Some(vec![element! {
+                    Text(content: "[?]", color: theme.text_dimmed)
+                }.into()]),
+            )
 
             // Tab bar
             TabBar(

@@ -4,14 +4,12 @@
 //! the main view.rs to improve maintainability.
 
 mod detail_pane;
-mod header;
 mod list_pane;
 pub mod overlays;
 mod selection_bar;
 mod tab_bar;
 
 pub use detail_pane::DetailPane;
-pub use header::RemoteHeader;
 pub use list_pane::ListPane;
 pub use overlays::ModalOverlays;
 pub use selection_bar::SelectionBar;
