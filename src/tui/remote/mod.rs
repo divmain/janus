@@ -14,6 +14,7 @@ mod help_modal;
 mod link_mode;
 pub mod model;
 mod operations;
+pub mod shortcuts;
 mod state;
 mod sync_preview;
 pub mod view;

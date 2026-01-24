@@ -17,6 +17,7 @@ use common::mock_data::{
 };
 use janus::remote::RemoteStatus;
 use janus::tui::remote::model::*;
+use janus::tui::remote::shortcuts::{ModalVisibility, compute_shortcuts};
 use janus::tui::remote::{FilterState, LinkModeState, ViewMode};
 use janus::types::{TicketPriority, TicketStatus, TicketType};
 use serial_test::serial;
@@ -710,8 +711,7 @@ fn test_key_mapping_unknown_keys() {
 
 #[test]
 fn test_shortcuts_normal_mode() {
-    let state = default_state();
-    let shortcuts = compute_shortcuts(&state);
+    let shortcuts = compute_shortcuts(&ModalVisibility::new(), ViewMode::Local);
 
     assert!(shortcuts.iter().any(|s| s.key == "Tab"));
     assert!(shortcuts.iter().any(|s| s.key == "q"));
@@ -720,9 +720,13 @@ fn test_shortcuts_normal_mode() {
 
 #[test]
 fn test_shortcuts_search_mode() {
-    let mut state = default_state();
-    state.search_focused = true;
-    let shortcuts = compute_shortcuts(&state);
+    let shortcuts = compute_shortcuts(
+        &ModalVisibility {
+            search_focused: true,
+            ..Default::default()
+        },
+        ViewMode::Local,
+    );
 
     assert!(shortcuts.iter().any(|s| s.key == "Enter"));
     assert!(shortcuts.iter().any(|s| s.key == "Esc"));
@@ -730,9 +734,13 @@ fn test_shortcuts_search_mode() {
 
 #[test]
 fn test_shortcuts_help_modal() {
-    let mut state = default_state();
-    state.show_help_modal = true;
-    let shortcuts = compute_shortcuts(&state);
+    let shortcuts = compute_shortcuts(
+        &ModalVisibility {
+            show_help_modal: true,
+            ..Default::default()
+        },
+        ViewMode::Local,
+    );
 
     assert!(shortcuts.iter().any(|s| s.key == "Esc"));
     assert!(shortcuts.iter().any(|s| s.key == "?"));
@@ -740,13 +748,13 @@ fn test_shortcuts_help_modal() {
 
 #[test]
 fn test_shortcuts_link_mode() {
-    let mut state = default_state();
-    state.link_mode = Some(LinkModeState::new(
+    let shortcuts = compute_shortcuts(
+        &ModalVisibility {
+            show_link_mode: true,
+            ..Default::default()
+        },
         ViewMode::Local,
-        "j-1".to_string(),
-        "Test".to_string(),
-    ));
-    let shortcuts = compute_shortcuts(&state);
+    );
 
     assert!(shortcuts.iter().any(|s| s.key == "Enter"));
     assert!(shortcuts.iter().any(|s| s.key == "Esc"));

@@ -17,6 +17,7 @@ use super::filter::{
 };
 use super::filter_modal::FilterState;
 use super::link_mode::LinkModeState;
+use super::shortcuts::{ModalVisibility, compute_shortcuts};
 use super::state::ViewMode;
 use super::sync_preview::SyncPreviewState;
 
@@ -369,7 +370,18 @@ pub fn compute_remote_view_model(state: &RemoteState, list_height: usize) -> Rem
         .map(|fi| fi.issue.clone());
 
     // Compute shortcuts based on current state
-    let shortcuts = compute_shortcuts(state);
+    let shortcuts = compute_shortcuts(
+        &ModalVisibility {
+            show_help_modal: state.show_help_modal,
+            show_error_modal: state.show_error_modal,
+            show_sync_preview: state.sync_preview.is_some(),
+            show_confirm_dialog: false, // confirm_dialog is not tracked in RemoteState
+            show_link_mode: state.link_mode.is_some(),
+            show_filter: state.filter_modal.is_some(),
+            search_focused: state.search_focused,
+        },
+        state.active_view,
+    );
 
     // Check if any filters are active
     let has_active_filters = state.active_filters.status.is_some()
@@ -1004,58 +1016,6 @@ fn normal_key_to_action(code: KeyCode, modifiers: KeyModifiers) -> Option<Remote
 
         _ => None,
     }
-}
-
-/// Compute keyboard shortcuts for the current state
-///
-/// Note: This function is used by the model for testability. The actual view
-/// uses `compute_view_shortcuts` in view.rs which handles additional state
-/// like confirm_dialog that isn't tracked in RemoteState.
-pub fn compute_shortcuts(state: &RemoteState) -> Vec<Shortcut> {
-    use crate::tui::components::{
-        error_modal_shortcuts, filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts,
-        search_shortcuts, sync_preview_shortcuts,
-    };
-
-    // Check modal states first (in order of priority)
-    if state.show_help_modal {
-        return help_modal_shortcuts();
-    }
-
-    if state.show_error_modal {
-        return error_modal_shortcuts();
-    }
-
-    if state.sync_preview.is_some() {
-        return sync_preview_shortcuts();
-    }
-
-    // Note: confirm_dialog is tracked in the view but not in RemoteState,
-    // so it's handled by compute_view_shortcuts in view.rs
-
-    if state.link_mode.is_some() {
-        return link_mode_shortcuts();
-    }
-
-    if state.filter_modal.is_some() {
-        return filter_modal_shortcuts();
-    }
-
-    if state.search_focused {
-        return search_shortcuts();
-    }
-
-    // Normal mode shortcuts
-    vec![
-        Shortcut::new("Tab", "Switch View"),
-        Shortcut::new("j/k", "Navigate"),
-        Shortcut::new("/", "Search"),
-        Shortcut::new("l", "Link"),
-        Shortcut::new("s", "Sync"),
-        Shortcut::new("r", "Refresh"),
-        Shortcut::new("?", "Help"),
-        Shortcut::new("q", "Quit"),
-    ]
 }
 
 /// Get the local ticket at a specific index from the filtered list
@@ -1706,8 +1666,7 @@ mod tests {
 
     #[test]
     fn test_compute_shortcuts_normal() {
-        let state = default_state();
-        let shortcuts = compute_shortcuts(&state);
+        let shortcuts = compute_shortcuts(&ModalVisibility::new(), ViewMode::Local);
         assert!(!shortcuts.is_empty());
         assert!(shortcuts.iter().any(|s| s.key == "q"));
         assert!(shortcuts.iter().any(|s| s.key == "Tab"));
@@ -1715,17 +1674,25 @@ mod tests {
 
     #[test]
     fn test_compute_shortcuts_help_modal() {
-        let mut state = default_state();
-        state.show_help_modal = true;
-        let shortcuts = compute_shortcuts(&state);
+        let shortcuts = compute_shortcuts(
+            &ModalVisibility {
+                show_help_modal: true,
+                ..Default::default()
+            },
+            ViewMode::Local,
+        );
         assert!(shortcuts.iter().any(|s| s.key == "Esc"));
     }
 
     #[test]
     fn test_compute_shortcuts_search() {
-        let mut state = default_state();
-        state.search_focused = true;
-        let shortcuts = compute_shortcuts(&state);
+        let shortcuts = compute_shortcuts(
+            &ModalVisibility {
+                search_focused: true,
+                ..Default::default()
+            },
+            ViewMode::Local,
+        );
         assert!(shortcuts.iter().any(|s| s.key == "Enter"));
         assert!(shortcuts.iter().any(|s| s.key == "Esc"));
     }

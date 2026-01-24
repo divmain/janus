@@ -14,11 +14,7 @@ use iocraft::prelude::*;
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
-use crate::tui::components::{
-    InlineSearchBox, Shortcut, ShortcutsBuilder, confirm_dialog_shortcuts, error_modal_shortcuts,
-    filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts, search_shortcuts,
-    sync_preview_shortcuts,
-};
+use crate::tui::components::InlineSearchBox;
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
@@ -33,6 +29,7 @@ use super::filter::{
 use super::filter_modal::FilterState;
 use super::handlers::{self, HandlerContext};
 use super::link_mode::LinkModeState;
+use super::shortcuts::{ModalVisibility, compute_shortcuts};
 use super::state::ViewMode;
 use super::sync_preview::SyncPreviewState;
 
@@ -41,76 +38,6 @@ use super::sync_preview::SyncPreviewState;
 enum FetchResult {
     Success(Vec<RemoteIssue>),
     Error(String, String), // (error_type, error_message)
-}
-
-/// Modal visibility state for computing shortcuts
-struct ModalVisibility {
-    help: bool,
-    error: bool,
-    sync_preview: bool,
-    confirm_dialog: bool,
-    link_mode: bool,
-    filter: bool,
-    search_focused: bool,
-}
-
-/// Compute keyboard shortcuts based on current modal/view state
-///
-/// Checks modals in priority order (most specific first) and returns
-/// the appropriate shortcuts. Falls back to normal mode shortcuts if
-/// no modal is active.
-fn compute_view_shortcuts(modals: ModalVisibility, current_view: ViewMode) -> Vec<Shortcut> {
-    // Check modal states in priority order
-    if modals.help {
-        return help_modal_shortcuts();
-    }
-
-    if modals.error {
-        return error_modal_shortcuts();
-    }
-
-    if modals.sync_preview {
-        return sync_preview_shortcuts();
-    }
-
-    if modals.confirm_dialog {
-        return confirm_dialog_shortcuts();
-    }
-
-    if modals.link_mode {
-        return link_mode_shortcuts();
-    }
-
-    if modals.filter {
-        return filter_modal_shortcuts();
-    }
-
-    if modals.search_focused {
-        return search_shortcuts();
-    }
-
-    // Normal mode shortcuts - vary by current view
-    let base = ShortcutsBuilder::new()
-        .with_quit()
-        .add("Tab", "Switch View")
-        .add("j/k", "Navigate")
-        .add("Space", "Select")
-        .add("/", "Search")
-        .add("P", "Provider")
-        .add("r", "Refresh")
-        .add("f", "Filter");
-
-    let view_specific = if current_view == ViewMode::Remote {
-        base.add("a", "Adopt")
-    } else {
-        base.add("p", "Push").add("u", "Unlink")
-    };
-
-    view_specific
-        .add("l", "Link")
-        .add("s", "Sync")
-        .add("?", "Help")
-        .build()
 }
 
 /// Fetch remote issues from the given provider with optional query filters
@@ -728,14 +655,14 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         .map(|f| f.issue.clone());
 
     // Shortcuts for footer - check modals first, then normal mode
-    let shortcuts = compute_view_shortcuts(
-        ModalVisibility {
-            help: show_help_modal.get(),
-            error: show_error_modal.get(),
-            sync_preview: sync_preview.read().is_some(),
-            confirm_dialog: confirm_dialog.read().is_some(),
-            link_mode: link_mode.read().is_some(),
-            filter: filter_state.read().is_some(),
+    let shortcuts = compute_shortcuts(
+        &ModalVisibility {
+            show_help_modal: show_help_modal.get(),
+            show_error_modal: show_error_modal.get(),
+            show_sync_preview: sync_preview.read().is_some(),
+            show_confirm_dialog: confirm_dialog.read().is_some(),
+            show_link_mode: link_mode.read().is_some(),
+            show_filter: filter_state.read().is_some(),
             search_focused: search_focused.get(),
         },
         current_view,
