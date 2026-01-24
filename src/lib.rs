@@ -32,6 +32,7 @@ pub use plan::{
 pub use remote::{Config, Platform, RemoteIssue, RemoteRef, RemoteStatus};
 pub use ticket::{
     Ticket, TicketBuilder, build_ticket_map, get_all_tickets, get_all_tickets_from_disk,
+    resolve_id_partial,
 };
 pub use types::{
     EntityType, PLANS_DIR, TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority,

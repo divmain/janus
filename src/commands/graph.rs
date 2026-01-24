@@ -7,7 +7,7 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
-use crate::ticket::build_ticket_map;
+use crate::ticket::{build_ticket_map, resolve_id_partial};
 use crate::types::TicketMetadata;
 
 /// Output format for the graph
@@ -153,8 +153,7 @@ fn get_reachable_tickets(
     ticket_map: &HashMap<String, TicketMetadata>,
     filter: RelationshipFilter,
 ) -> Result<HashSet<String>> {
-    // Find the actual ticket ID (handle partial match)
-    let root = find_ticket_id(root_id, ticket_map)?;
+    let root = resolve_id_partial(root_id, ticket_map)?;
 
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
@@ -206,32 +205,6 @@ fn get_reachable_tickets(
     }
 
     Ok(visited)
-}
-
-/// Find ticket ID by partial match
-fn find_ticket_id(
-    partial_id: &str,
-    ticket_map: &HashMap<String, TicketMetadata>,
-) -> Result<String> {
-    // Exact match first
-    if ticket_map.contains_key(partial_id) {
-        return Ok(partial_id.to_string());
-    }
-
-    // Partial match
-    let matches: Vec<_> = ticket_map
-        .keys()
-        .filter(|k| k.contains(partial_id))
-        .collect();
-
-    match matches.len() {
-        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
-        1 => Ok(matches[0].clone()),
-        _ => Err(JanusError::AmbiguousId(
-            partial_id.to_string(),
-            matches.iter().map(|s| s.to_string()).collect(),
-        )),
-    }
 }
 
 /// Get all tickets from a plan
@@ -685,66 +658,5 @@ mod tests {
 
         let edges = build_edges(&ticket_ids, &ticket_map, RelationshipFilter::All);
         assert_eq!(edges.len(), 2);
-    }
-
-    #[test]
-    fn test_find_ticket_id_exact() {
-        let mut ticket_map = HashMap::new();
-        ticket_map.insert(
-            "j-abc123".to_string(),
-            TicketMetadata {
-                id: Some("j-abc123".to_string()),
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(find_ticket_id("j-abc123", &ticket_map).unwrap(), "j-abc123");
-    }
-
-    #[test]
-    fn test_find_ticket_id_partial() {
-        let mut ticket_map = HashMap::new();
-        ticket_map.insert(
-            "j-abc123".to_string(),
-            TicketMetadata {
-                id: Some("j-abc123".to_string()),
-                ..Default::default()
-            },
-        );
-
-        assert_eq!(find_ticket_id("abc", &ticket_map).unwrap(), "j-abc123");
-    }
-
-    #[test]
-    fn test_find_ticket_id_not_found() {
-        let ticket_map = HashMap::new();
-        assert!(find_ticket_id("j-notfound", &ticket_map).is_err());
-    }
-
-    #[test]
-    fn test_find_ticket_id_ambiguous() {
-        let mut ticket_map = HashMap::new();
-        ticket_map.insert(
-            "j-abc1".to_string(),
-            TicketMetadata {
-                id: Some("j-abc1".to_string()),
-                ..Default::default()
-            },
-        );
-        ticket_map.insert(
-            "j-abc2".to_string(),
-            TicketMetadata {
-                id: Some("j-abc2".to_string()),
-                ..Default::default()
-            },
-        );
-
-        let result = find_ticket_id("abc", &ticket_map);
-        assert!(result.is_err());
-        if let Err(JanusError::AmbiguousId(_, matches)) = result {
-            assert_eq!(matches.len(), 2);
-        } else {
-            panic!("Expected AmbiguousId error");
-        }
     }
 }

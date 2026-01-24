@@ -17,7 +17,7 @@ pub use repository::{
     get_all_tickets_with_map, get_children_count, get_file_mtime,
 };
 
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::hooks::HookContext;
 use crate::ticket::parser::parse;
 use crate::types::EntityType;
@@ -96,5 +96,83 @@ impl Ticket {
             .with_item_type(EntityType::Ticket)
             .with_item_id(&self.id)
             .with_file_path(&self.file_path)
+    }
+}
+
+/// Resolve a partial ID to a full ID using a ticket map
+///
+/// # Arguments
+///
+/// * `partial_id` - The partial ID to resolve (e.g., "j-a1")
+/// * `map` - A HashMap of ticket IDs to tickets
+///
+/// # Returns
+///
+/// Returns the full ID if found uniquely, otherwise an error:
+/// - `TicketNotFound` if no matches
+/// - `AmbiguousId` if multiple matches
+pub fn resolve_id_partial<T>(
+    partial_id: &str,
+    map: &std::collections::HashMap<String, T>,
+) -> Result<String> {
+    if map.contains_key(partial_id) {
+        return Ok(partial_id.to_string());
+    }
+
+    let matches: Vec<_> = map
+        .keys()
+        .filter(|k| k.contains(partial_id))
+        .cloned()
+        .collect();
+
+    match matches.len() {
+        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        1 => Ok(matches[0].clone()),
+        _ => Err(JanusError::AmbiguousId(
+            partial_id.to_string(),
+            matches,
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_exact_match() {
+        let mut map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
+        map.insert("j-a1b2".to_string (), ());
+
+        let result = resolve_id_partial("j-a1b2", &map).unwrap();
+        assert_eq!(result, "j-a1b2");
+    }
+
+    #[test]
+    fn test_resolve_partial_match_single() {
+        let mut map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
+        map.insert("j-a1b2".to_string (), ());
+        map.insert("k-c3d4".to_string (), ());
+
+        let result = resolve_id_partial("j-a1", &map).unwrap();
+        assert_eq!(result, "j-a1b2");
+    }
+
+    #[test]
+    fn test_resolve_partial_match_multiple() {
+        let mut map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
+        map.insert("j-a1b2".to_string (), ());
+        map.insert("j-a1c3".to_string (), ());
+
+        let result = resolve_id_partial("j-a1", &map);
+        assert!(matches!(result, Err(JanusError::AmbiguousId(_, _))));
+    }
+
+    #[test]
+    fn test_resolve_no_match() {
+        let map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
+
+        let result = resolve_id_partial("x-y-z", &map);
+        assert!(matches!(result, Err(JanusError::TicketNotFound(_))));
     }
 }

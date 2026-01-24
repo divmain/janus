@@ -6,7 +6,7 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::{log_dependency_added, log_dependency_removed};
-use crate::ticket::{Ticket, build_ticket_map};
+use crate::ticket::{Ticket, build_ticket_map, resolve_id_partial};
 use crate::types::TicketMetadata;
 
 /// Check if adding a dependency would create a circular dependency.
@@ -141,20 +141,7 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result
 pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Result<()> {
     let ticket_map = build_ticket_map().await?;
 
-    // Find the matching ticket ID
-    let matching_ids: Vec<_> = ticket_map.keys().filter(|k| k.contains(id)).collect();
-
-    if matching_ids.is_empty() {
-        return Err(JanusError::TicketNotFound(id.to_string()));
-    }
-    if matching_ids.len() > 1 {
-        return Err(JanusError::AmbiguousId(
-            id.to_string(),
-            matching_ids.iter().map(|s| s.to_string()).collect(),
-        ));
-    }
-
-    let root = matching_ids[0].clone();
+    let root = resolve_id_partial(id, &ticket_map)?;
 
     // Build JSON tree data
     fn build_tree_json(
