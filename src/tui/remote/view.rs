@@ -15,14 +15,15 @@ use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::{
-    Footer, Header, InlineSearchBox, Shortcut, confirm_dialog_shortcuts, error_modal_shortcuts,
+    InlineSearchBox, Shortcut, confirm_dialog_shortcuts, error_modal_shortcuts,
     filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts, search_shortcuts,
     sync_preview_shortcuts, ShortcutsBuilder,
 };
+use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
 
-use super::components::overlays::{render_link_mode_banner, render_toast};
+use super::components::overlays::render_link_mode_banner;
 use super::components::{DetailPane, ListPane, ModalOverlays, SelectionBar, TabBar};
 use super::confirm_modal::ConfirmDialogState;
 use super::error_toast::Toast;
@@ -576,8 +577,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Calculate visible list height for scroll/pagination calculations
     // This is NOT for layout (handled by flexbox) but for determining how many
     // items fit in the visible area for keyboard navigation and scroll offset.
-    // Subtracts: header(1) + tabs(1) + search(1) + link_banner(1) + selection_bar(1) + footer(1) + borders(1) = 7
-    let list_height = height.saturating_sub(7) as usize;
+    // Additional elements: tabs(1) + search(1) + link_banner(1) + selection_bar(1) + borders(1) = 5
+    let list_height = calculate_list_height(height, 5);
 
     // Get current values for rendering
     let current_view = active_view.get();
@@ -634,7 +635,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 kind,
                 modifiers,
                 ..
-            }) if kind != KeyEventKind::Release => {
+            }) if should_process_key_event(kind) => {
                 // Build the handler context with grouped state references
                 use handlers::context::{
                     AsyncHandlers, FilteringState, ModalState, NavigationState, RemoteState,
@@ -747,22 +748,17 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Render the UI using sub-components
     element! {
-        View(
-            width,
-            height,
-            flex_direction: FlexDirection::Column,
-            background_color: theme.background,
-            position: Position::Relative,
+        ScreenLayout(
+            width: width,
+            height: height,
+            header_title: Some("janus remote"),
+            header_provider: Some(format!("{}", provider.get())),
+            header_extra: Some(vec![element! {
+                Text(content: "[?]", color: theme.text_dimmed)
+            }.into()]),
+            shortcuts: shortcuts,
+            toast: toast_state.clone(),
         ) {
-            // Header row
-            Header(
-                title: Some("janus remote"),
-                provider: Some(format!("{}", provider.get())),
-                extra: Some(vec![element! {
-                    Text(content: "[?]", color: theme.text_dimmed)
-                }.into()]),
-            )
-
             // Tab bar
             TabBar(
                 active_view: current_view,
@@ -826,12 +822,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 local_count: local_sel_count,
                 remote_count: remote_sel_count,
             )
-
-            // Footer
-            Footer(shortcuts: shortcuts)
-
-            // Toast notification
-            #(render_toast(&toast_state))
 
             // Modal overlays
             ModalOverlays(

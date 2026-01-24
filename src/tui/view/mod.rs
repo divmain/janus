@@ -12,9 +12,10 @@ use std::pin::Pin;
 
 use crate::formatting::extract_ticket_body;
 use crate::ticket::Ticket;
+use crate::tui::action_queue::{Action, ActionQueueBuilder};
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, Footer, Header, SearchBox, TicketDetail, TicketList, Toast,
-    ToastNotification, browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
+    EmptyState, EmptyStateKind, SearchBox, TicketDetail, TicketList, Toast,
+    browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
     edit_shortcuts, empty_shortcuts, note_input_modal_shortcuts, search_shortcuts,
     triage_shortcuts,
 };
@@ -22,10 +23,9 @@ use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::EditFormState;
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
+use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::search::{FilteredTicket, compute_title_highlights};
 use crate::tui::state::Pane;
-use crate::tui::theme::theme;
-use crate::tui::action_queue::{Action, ActionQueueBuilder};
 use crate::types::{TicketMetadata, TicketStatus};
 
 use handlers::ViewAction;
@@ -143,7 +143,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut scroll_offset = hooks.use_state(|| 0usize);
     let mut detail_scroll_offset = hooks.use_state(|| 0usize);
     let mut max_detail_scroll = hooks.use_state(|| 0usize);
-    let mut active_pane = hooks.use_state(|| Pane::List); // Start on list, not search
+    let mut active_pane = hooks.use_state(|| Pane::List);
     let mut should_exit = hooks.use_state(|| false);
     let mut needs_reload = hooks.use_state(|| false);
 
@@ -369,12 +369,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     }
 
     // Calculate available height for the list (required for scroll state management)
-    // Total height - header (1) - search box (3) - footer (1) - borders (2)
+    // Additional elements: search box (3) + borders (2) = 5
     // NOTE: This calculated value is needed for scroll/navigation logic in handlers
     // and components. The declarative layout uses `height: 100pct` to fill space,
     // but scroll calculations need the actual row count for page-up/down and
     // scroll indicator logic.
-    let list_height = height.saturating_sub(7) as usize;
+    let list_height = calculate_list_height(height, 5);
 
     // Keyboard event handling
     hooks.use_terminal_events({
@@ -403,7 +403,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     kind,
                     modifiers,
                     ..
-                }) if kind != KeyEventKind::Release => {
+                }) if should_process_key_event(kind) => {
                     // Handle note input modal events
                     if show_note_modal_for_events {
                         match code {
@@ -531,8 +531,6 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let total_ticket_count = tickets_ref_for_count.len();
     drop(tickets_ref_for_count);
 
-    let theme = theme();
-
     // Get editing state for rendering using shared EditFormState
     let (edit_ticket, edit_body) = {
         let edit_state = EditFormState {
@@ -583,19 +581,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     };
 
     element! {
-        View(
-            width,
-            height,
-            flex_direction: FlexDirection::Column,
-            background_color: theme.background,
-            position: Position::Relative,
+        ScreenLayout(
+            width: width,
+            height: height,
+            header_subtitle: Some("Browser"),
+            header_ticket_count: Some(ticket_count),
+            shortcuts: shortcuts,
+            toast: toast.read().clone(),
         ) {
-            // Header
-            Header(
-                subtitle: Some("Browser"),
-                ticket_count: Some(ticket_count),
-            )
-
             #(if show_full_empty_state {
                 // Show full-screen empty state
                 Some(element! {
@@ -680,21 +673,6 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     }
                 })
             })
-
-            // Toast notification
-            #({
-                let toast_val = toast.read().clone();
-                if toast_val.is_some() {
-                    Some(element! {
-                        ToastNotification(toast: toast_val)
-                    })
-                } else {
-                    None
-                }
-            })
-
-            // Footer
-            Footer(shortcuts: shortcuts)
 
             // Edit form overlay
             #(if is_editing {

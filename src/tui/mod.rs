@@ -16,6 +16,7 @@ pub mod hooks;
 pub mod navigation;
 pub mod remote;
 pub mod repository;
+pub mod screen_base;
 pub mod search;
 pub mod services;
 pub mod state;
@@ -29,6 +30,10 @@ pub use edit::{
 };
 pub use remote::RemoteTui;
 pub use repository::{InitResult, TicketRepository};
+pub use screen_base::{
+    ScreenLayout, ScreenLayoutProps, ScreenState, calculate_list_height, handle_screen_exit,
+    should_process_key_event, use_screen_state,
+};
 pub use search::{FilteredItem, FilteredTicket, filter_items, filter_tickets};
 pub use services::TicketService;
 pub use state::{Pane, TuiState};

@@ -7,19 +7,20 @@ pub mod handlers;
 pub mod model;
 
 use iocraft::prelude::*;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 use crate::ticket::Ticket;
 use crate::tui::action_queue::{Action, ActionResult, ActionQueueBuilder};
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, Footer, Header, InlineSearchBox, TicketCard, Toast, ToastNotification,
+    EmptyState, EmptyStateKind, InlineSearchBox, TicketCard, Toast,
     board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::EditFormState;
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
+use crate::tui::screen_base::{ScreenLayout, should_process_key_event};
 use crate::tui::search::{FilteredTicket, compute_title_highlights};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
@@ -357,7 +358,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                     kind,
                     modifiers,
                     ..
-                }) if kind != KeyEventKind::Release => {
+                }) if should_process_key_event(kind) => {
                     let mut ctx = BoardHandlerContext {
                         search_query: &mut search_query,
                         search_focused: &mut search_focused,
@@ -451,25 +452,20 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     };
 
     element! {
-        View(
-            width,
-            height,
-            flex_direction: FlexDirection::Column,
-            background_color: theme.background,
-            position: Position::Relative,
+        ScreenLayout(
+            width: width,
+            height: height,
+            header_title: Some("Janus - Board"),
+            header_ticket_count: Some(total_tickets),
+            header_extra: Some(vec![element! {
+                Text(
+                    content: column_toggles.clone(),
+                    color: theme.text,
+                )
+            }.into()]),
+            shortcuts: shortcuts,
+            toast: toast.read().clone(),
         ) {
-            // Header with column toggles
-            Header(
-                title: Some("Janus - Board"),
-                ticket_count: Some(total_tickets),
-                extra: Some(vec![element! {
-                    Text(
-                        content: column_toggles.clone(),
-                        color: theme.text,
-                    )
-                }.into()]),
-            )
-
             #(if show_full_empty_state {
                 // Show full-screen empty state
                 Some(element! {
@@ -653,21 +649,6 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                     }
                 })
             })
-
-            // Toast notification
-            #({
-                let toast_val = toast.read().clone();
-                if toast_val.is_some() {
-                    Some(element! {
-                        ToastNotification(toast: toast_val)
-                    })
-                } else {
-                    None
-                }
-            })
-
-            // Footer
-            Footer(shortcuts: shortcuts)
 
             // Edit form overlay
             #(if is_editing {

@@ -84,15 +84,6 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
     }
 }
 
-/// Render a toast notification
-///
-/// This is a re-export of the shared toast rendering function for backward compatibility.
-pub fn render_toast(
-    toast: &Option<crate::tui::components::toast::Toast>,
-) -> Option<AnyElement<'static>> {
-    crate::tui::components::toast::render_toast(toast)
-}
-
 /// Render a link mode banner
 pub fn render_link_mode_banner(
     link_mode: &Option<crate::tui::remote::link_mode::LinkModeState>,
