@@ -2,9 +2,9 @@
 
 use crate::tui::components::Toast;
 use iocraft::prelude::*;
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::future::Future;
 use tokio::sync::mpsc;
 
 const MAX_BATCH_SIZE: usize = 10;
@@ -28,7 +28,7 @@ pub enum ActionResult {
         success: bool,
         message: Option<String>,
         id: String,
-        metadata: TicketMetadata,
+        metadata: Box<TicketMetadata>,
         body: String,
     },
 }
@@ -114,13 +114,15 @@ where
         action_processor: P,
         needs_reload: State<bool>,
         toast: State<Option<Toast>>,
-    ) -> (
-        ActionQueueState<A, P>,
-        Handler<()>,
-        ActionChannel<A>,
-    )
+    ) -> (ActionQueueState<A, P>, Handler<()>, ActionChannel<A>)
     where
-        P: Fn(Vec<A>, State<bool>, State<Option<Toast>>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Clone + 'static,
+        P: Fn(
+                Vec<A>,
+                State<bool>,
+                State<Option<Toast>>,
+            ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+            + Clone
+            + 'static,
     {
         let channel: State<ActionChannel<A>> = hooks.use_state(|| {
             let (tx, rx) = mpsc::unbounded_channel::<A>();
@@ -141,38 +143,36 @@ where
             let toast = toast_clone;
             let channel_state = channel_state_for_handler;
 
-            move |_| Box::pin({
-                let action_processor = action_processor_clone.clone();
-                let needs_reload = needs_reload;
-                let toast = toast;
+            move |_| {
+                Box::pin({
+                    let action_processor = action_processor_clone.clone();
+                    let needs_reload = needs_reload;
+                    let toast = toast;
 
-                async move {
-                    let mut actions = Vec::new();
+                    async move {
+                        let mut actions = Vec::new();
 
-                    loop {
-                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-                        let channel_ref = channel_state.read();
-                        if let Ok(mut rx) = channel_ref._rx.try_lock() {
-                            while let Ok(action) = rx.try_recv() {
-                                actions.push(action);
-                                if actions.len() >= MAX_BATCH_SIZE {
-                                    break;
+                            let channel_ref = channel_state.read();
+                            if let Ok(mut rx) = channel_ref._rx.try_lock() {
+                                while let Ok(action) = rx.try_recv() {
+                                    actions.push(action);
+                                    if actions.len() >= MAX_BATCH_SIZE {
+                                        break;
+                                    }
                                 }
                             }
-                        }
 
-                        if !actions.is_empty() {
-                            let actions_to_process = std::mem::take(&mut actions);
-                            action_processor(
-                                actions_to_process,
-                                needs_reload,
-                                toast,
-                            ).await;
+                            if !actions.is_empty() {
+                                let actions_to_process = std::mem::take(&mut actions);
+                                action_processor(actions_to_process, needs_reload, toast).await;
+                            }
                         }
                     }
-                }
-            })
+                })
+            }
         });
 
         let channel_inner = channel.read();

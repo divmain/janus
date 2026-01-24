@@ -4,7 +4,7 @@
 //! properly orchestrating pre/post hooks and plan-specific events.
 
 use crate::error::Result;
-use crate::hooks::{run_post_hooks, run_pre_hooks, HookEvent};
+use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::file::PlanFile;
 use crate::plan::parser::parse_plan_content;
 use crate::storage::FileStorage;

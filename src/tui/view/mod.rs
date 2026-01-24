@@ -54,7 +54,13 @@ async fn process_browser_actions(
         let result = action.execute().await;
 
         match result {
-            ActionResult::LoadForEdit { success, id: _action_id, metadata, body, message } => {
+            ActionResult::LoadForEdit {
+                success,
+                id: _action_id,
+                metadata,
+                body,
+                message,
+            } => {
                 if success {
                     let ticket_id = metadata.id.clone().unwrap_or_default();
                     let ticket_metadata = TicketMetadata {
@@ -108,7 +114,11 @@ async fn process_browser_actions(
     }
 
     if !errors.is_empty() {
-        toast.set(Some(Toast::error(format!("{} error(s): {}", errors.len(), errors.join("; ")))))
+        toast.set(Some(Toast::error(format!(
+            "{} error(s): {}",
+            errors.len(),
+            errors.join("; ")
+        ))))
     }
 }
 
@@ -226,7 +236,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         let editing_ticket = editing_ticket;
         let editing_body = editing_body;
         let is_editing = is_editing_existing;
-        move |actions, needs_reload, toast| -> Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        move |actions,
+              needs_reload,
+              toast|
+              -> Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
             Box::pin(process_browser_actions(
                 actions,
                 needs_reload,
@@ -239,12 +252,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         }
     };
 
-    let (_queue_state, _action_handler, action_channel) = ActionQueueBuilder::use_state(
-        &mut hooks,
-        process_fn,
-        needs_reload,
-        toast,
-    );
+    let (_queue_state, _action_handler, action_channel) =
+        ActionQueueBuilder::use_state(&mut hooks, process_fn, needs_reload, toast);
 
     // Track if actions are pending (set when handlers send actions)
     let mut actions_pending = hooks.use_state(|| false);

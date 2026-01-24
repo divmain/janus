@@ -22,8 +22,8 @@ use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
 use crate::hooks::{HookContext, context_to_env};
 use crate::remote::config::Config;
-use crate::types::EntityType;
 use crate::ticket::Ticket;
+use crate::types::EntityType;
 use crate::types::janus_root;
 
 /// The directory within .janus where hook scripts are stored.

@@ -40,7 +40,7 @@ use std::time::Duration;
 
 use wait_timeout::ChildExt;
 
-pub use types::{HookContext, HookEvent, ItemType};
+pub use types::{HookContext, HookEvent};
 
 pub use crate::types::EntityType;
 

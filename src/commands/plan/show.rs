@@ -12,7 +12,7 @@ use crate::display::format_status_colored;
 use crate::error::{JanusError, Result};
 use crate::plan::types::{PlanMetadata, PlanSection, ProgressTracking};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
-use crate::storage::FileStorage;
+
 use crate::ticket::build_ticket_map;
 use crate::types::TicketMetadata;
 

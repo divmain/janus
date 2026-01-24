@@ -1,7 +1,7 @@
 use crate::repository::ItemRepository;
 use crate::ticket::content;
 use crate::utils::DirScanner;
-use crate::{TicketMetadata, cache, Ticket};
+use crate::{Ticket, TicketMetadata, cache};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fs;

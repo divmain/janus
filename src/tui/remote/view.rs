@@ -15,9 +15,9 @@ use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::{
-    InlineSearchBox, Shortcut, confirm_dialog_shortcuts, error_modal_shortcuts,
+    InlineSearchBox, Shortcut, ShortcutsBuilder, confirm_dialog_shortcuts, error_modal_shortcuts,
     filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts, search_shortcuts,
-    sync_preview_shortcuts, ShortcutsBuilder,
+    sync_preview_shortcuts,
 };
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::theme::theme;
@@ -106,7 +106,11 @@ fn compute_view_shortcuts(modals: ModalVisibility, current_view: ViewMode) -> Ve
         base.add("p", "Push").add("u", "Unlink")
     };
 
-    view_specific.add("l", "Link").add("s", "Sync").add("?", "Help").build()
+    view_specific
+        .add("l", "Link")
+        .add("s", "Sync")
+        .add("?", "Help")
+        .build()
 }
 
 /// Fetch remote issues from the given provider with optional query filters

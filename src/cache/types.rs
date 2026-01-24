@@ -3,7 +3,7 @@
 //! These types are lightweight representations optimized for fast queries,
 //! distinct from the full domain types used for file operations.
 
-use crate::plan::types::{HasPhaseIdentity, HasPhaseContent};
+use crate::plan::types::{HasPhaseContent, HasPhaseIdentity};
 
 /// Cached plan metadata - a lightweight representation for fast queries.
 ///

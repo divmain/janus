@@ -5,11 +5,11 @@ use serde_json::json;
 use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::events::log_plan_created;
-use crate::hooks::{run_post_hooks, run_pre_hooks, HookEvent};
+use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
-use crate::plan::{ensure_plans_dir, generate_plan_id, Plan};
-use crate::storage::FileStorage;
+use crate::plan::{Plan, ensure_plans_dir, generate_plan_id};
+
 use crate::utils::{generate_uuid, iso_date};
 
 /// Create a new plan

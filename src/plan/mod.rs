@@ -26,12 +26,12 @@ use async_trait::async_trait;
 use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
-use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
+use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::repository::ItemRepository;
 use crate::storage::FileStorage;
-use crate::types::{plans_dir, TicketMetadata};
+use crate::types::{TicketMetadata, plans_dir};
 use crate::utils::DirScanner;
 
 // Re-export status computation functions

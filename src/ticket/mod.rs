@@ -128,10 +128,7 @@ pub fn resolve_id_partial<T>(
     match matches.len() {
         0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
         1 => Ok(matches[0].clone()),
-        _ => Err(JanusError::AmbiguousId(
-            partial_id.to_string(),
-            matches,
-        )),
+        _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
     }
 }
 
@@ -142,7 +139,7 @@ mod tests {
     #[test]
     fn test_resolve_exact_match() {
         let mut map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
-        map.insert("j-a1b2".to_string (), ());
+        map.insert("j-a1b2".to_string(), ());
 
         let result = resolve_id_partial("j-a1b2", &map).unwrap();
         assert_eq!(result, "j-a1b2");
@@ -151,8 +148,8 @@ mod tests {
     #[test]
     fn test_resolve_partial_match_single() {
         let mut map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
-        map.insert("j-a1b2".to_string (), ());
-        map.insert("k-c3d4".to_string (), ());
+        map.insert("j-a1b2".to_string(), ());
+        map.insert("k-c3d4".to_string(), ());
 
         let result = resolve_id_partial("j-a1", &map).unwrap();
         assert_eq!(result, "j-a1b2");
@@ -161,8 +158,8 @@ mod tests {
     #[test]
     fn test_resolve_partial_match_multiple() {
         let mut map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
-        map.insert("j-a1b2".to_string (), ());
-        map.insert("j-a1c3".to_string (), ());
+        map.insert("j-a1b2".to_string(), ());
+        map.insert("j-a1c3".to_string(), ());
 
         let result = resolve_id_partial("j-a1", &map);
         assert!(matches!(result, Err(JanusError::AmbiguousId(_, _))));

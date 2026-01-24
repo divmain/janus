@@ -27,8 +27,8 @@ use rmcp::model::{
 use serde_json::json;
 
 use crate::commands::{get_next_items_phased, get_next_items_simple};
-use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::plan::types::ProgressTracking;
+use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::ticket::{Ticket, build_ticket_map, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketStatus};
 

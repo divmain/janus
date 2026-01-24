@@ -2,7 +2,6 @@
 //!
 //! This module defines the core types used for hook events and contexts.
 
-use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -102,26 +101,6 @@ impl FromStr for HookEvent {
             "pre_delete" => Ok(HookEvent::PreDelete),
             "post_delete" => Ok(HookEvent::PostDelete),
             _ => Err(JanusError::InvalidHookEvent(s.to_string())),
-        }
-    }
-}
-
-/// The type of item being operated on.
-///
-/// @deprecated Since 1.0.0. Use [`crate::types::EntityType`] instead.
-#[deprecated(since = "1.0.0", note = "Use crate::types::EntityType instead")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ItemType {
-    Ticket,
-    Plan,
-}
-
-impl fmt::Display for ItemType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ItemType::Ticket => write!(f, "ticket"),
-            ItemType::Plan => write!(f, "plan"),
         }
     }
 }
@@ -232,12 +211,6 @@ mod tests {
         assert_eq!(all.len(), 9);
         assert!(all.contains(&HookEvent::TicketCreated));
         assert!(all.contains(&HookEvent::PostDelete));
-    }
-
-    #[test]
-    fn test_item_type_display() {
-        assert_eq!(ItemType::Ticket.to_string(), "ticket");
-        assert_eq!(ItemType::Plan.to_string(), "plan");
     }
 
     #[test]

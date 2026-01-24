@@ -1,7 +1,7 @@
 //! Generic storage abstractions for file-based entities
 
 use crate::error::{JanusError, Result};
-use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
+use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::types::EntityType;
 use std::path::Path;
 

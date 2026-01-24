@@ -34,7 +34,12 @@ pub trait ItemRepository: Send + Sync {
     }
 
     /// Get all items and the map together (efficient single call)
-    async fn get_all_with_map(&self) -> Result<(Vec<Self::Metadata>, std::collections::HashMap<String, Self::Metadata>)> {
+    async fn get_all_with_map(
+        &self,
+    ) -> Result<(
+        Vec<Self::Metadata>,
+        std::collections::HashMap<String, Self::Metadata>,
+    )> {
         let items = self.get_all().await?;
         let map: std::collections::HashMap<_, _> = items
             .iter()
@@ -44,7 +49,10 @@ pub trait ItemRepository: Send + Sync {
     }
 
     /// Get all items and the map together (static version)
-    async fn get_all_with_map_static() -> Result<(Vec<Self::Metadata>, std::collections::HashMap<String, Self::Metadata>)> {
+    async fn get_all_with_map_static() -> Result<(
+        Vec<Self::Metadata>,
+        std::collections::HashMap<String, Self::Metadata>,
+    )> {
         let items = Self::get_all_static().await?;
         let map: std::collections::HashMap<_, _> = items
             .iter()
@@ -58,4 +66,3 @@ pub trait ItemRepository: Send + Sync {
 pub trait HasId {
     fn get_id(&self) -> Option<String>;
 }
-

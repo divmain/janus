@@ -135,7 +135,10 @@ fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx.action_tx.tx.send(ViewAction::CycleStatus { id: id.clone() });
+        let _ = ctx
+            .action_tx
+            .tx
+            .send(ViewAction::CycleStatus { id: id.clone() });
     }
 }
 
@@ -144,7 +147,10 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx.filtered_tickets.get(ctx.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        let _ = ctx.action_tx.tx.send(ViewAction::LoadForEdit { id: id.clone() });
+        let _ = ctx
+            .action_tx
+            .tx
+            .send(ViewAction::LoadForEdit { id: id.clone() });
     }
 }
 

@@ -46,55 +46,51 @@ impl Action for ViewAction {
     fn execute(self) -> Pin<Box<dyn std::future::Future<Output = ActionResult> + Send>> {
         Box::pin(async move {
             match self {
-                ViewAction::CycleStatus { id } => {
-                    match TicketService::cycle_status(&id).await {
-                        Ok(_) => ActionResult::Result {
+                ViewAction::CycleStatus { id } => match TicketService::cycle_status(&id).await {
+                    Ok(_) => ActionResult::Result {
+                        success: true,
+                        message: Some(format!("Status cycled for {}", id)),
+                    },
+                    Err(e) => ActionResult::Result {
+                        success: false,
+                        message: Some(format!("Failed to cycle status: {}", e)),
+                    },
+                },
+                ViewAction::LoadForEdit { id } => match TicketService::load_for_edit(&id).await {
+                    Ok((metadata, body)) => {
+                        let queue_metadata = QueueTicketMetadata {
+                            id: metadata.id.clone(),
+                            uuid: metadata.uuid,
+                            title: metadata.title.clone(),
+                            status: metadata.status,
+                            ticket_type: metadata.ticket_type,
+                            priority: metadata.priority,
+                            triaged: metadata.triaged,
+                            created: metadata.created,
+                            file_path: metadata.file_path.map(|p| p.to_string_lossy().to_string()),
+                            deps: metadata.deps,
+                            links: metadata.links,
+                            external_ref: metadata.external_ref,
+                            remote: metadata.remote,
+                            parent: metadata.parent,
+                            spawned_from: metadata.spawned_from,
+                            spawn_context: metadata.spawn_context,
+                            depth: metadata.depth,
+                            completion_summary: metadata.completion_summary,
+                        };
+                        ActionResult::LoadForEdit {
                             success: true,
-                            message: Some(format!("Status cycled for {}", id)),
-                        },
-                        Err(e) => ActionResult::Result {
-                            success: false,
-                            message: Some(format!("Failed to cycle status: {}", e)),
-                        },
-                    }
-                }
-                ViewAction::LoadForEdit { id } => {
-                    match TicketService::load_for_edit(&id).await {
-                        Ok((metadata, body)) => {
-                            let queue_metadata = QueueTicketMetadata {
-                                id: metadata.id.clone(),
-                                uuid: metadata.uuid,
-                                title: metadata.title.clone(),
-                                status: metadata.status,
-                                ticket_type: metadata.ticket_type,
-                                priority: metadata.priority,
-                                triaged: metadata.triaged,
-                                created: metadata.created,
-                                file_path: metadata.file_path.map(|p| p.to_string_lossy().to_string()),
-                                deps: metadata.deps,
-                                links: metadata.links,
-                                external_ref: metadata.external_ref,
-                                remote: metadata.remote,
-                                parent: metadata.parent,
-                                spawned_from: metadata.spawned_from,
-                                spawn_context: metadata.spawn_context,
-                                depth: metadata.depth,
-                                completion_summary: metadata.completion_summary,
-                            };
-                            ActionResult::LoadForEdit {
-                                success: true,
-                                message: Some(format!("Loaded {} for editing", id)),
-                                id: id.clone(),
-                                metadata: queue_metadata,
-                                body,
-                            }
+                            message: Some(format!("Loaded {} for editing", id)),
+                            id: id.clone(),
+                            metadata: Box::new(queue_metadata),
+                            body,
                         }
-                        Err(e) => ActionResult::Result {
-                            success: false,
-                            message: Some(format!("Failed to load ticket: {}", e)),
-                        },
                     }
-                }
+                    Err(e) => ActionResult::Result {
+                        success: false,
+                        message: Some(format!("Failed to load ticket: {}", e)),
+                    },
+                },
                 ViewAction::MarkTriaged { id, triaged } => {
                     match TicketService::mark_triaged(&id, triaged).await {
                         Ok(_) => ActionResult::Result {
@@ -112,11 +108,8 @@ impl Action for ViewAction {
                     }
                 }
                 ViewAction::CancelTicket { id } => {
-                    match TicketService::set_status(
-                        &id,
-                        crate::types::TicketStatus::Cancelled,
-                    )
-                    .await
+                    match TicketService::set_status(&id, crate::types::TicketStatus::Cancelled)
+                        .await
                     {
                         Ok(_) => ActionResult::Result {
                             success: true,

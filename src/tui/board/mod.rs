@@ -11,10 +11,10 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::ticket::Ticket;
-use crate::tui::action_queue::{Action, ActionResult, ActionQueueBuilder};
+use crate::tui::action_queue::{Action, ActionQueueBuilder, ActionResult};
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, InlineSearchBox, TicketCard, Toast,
-    board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
+    EmptyState, EmptyStateKind, InlineSearchBox, TicketCard, Toast, board_shortcuts,
+    compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::EditFormState;
@@ -53,32 +53,26 @@ impl Action for BoardAction {
     fn execute(self) -> Pin<Box<dyn Future<Output = ActionResult> + Send>> {
         Box::pin(async move {
             match self {
-                BoardAction::UpdateStatus { id, status } => {
-                    match Ticket::find(&id).await {
-                        Ok(ticket) => {
-                            match ticket.update_field("status", &status.to_string()) {
-                                Ok(_) => ActionResult::Result {
-                                    success: true,
-                                    message: Some(format!("Updated {} to {}", id, status)),
-                                },
-                                Err(e) => ActionResult::Result {
-                                    success: false,
-                                    message: Some(format!("Failed to update: {}", e)),
-                                },
-                            }
-                        }
+                BoardAction::UpdateStatus { id, status } => match Ticket::find(&id).await {
+                    Ok(ticket) => match ticket.update_field("status", &status.to_string()) {
+                        Ok(_) => ActionResult::Result {
+                            success: true,
+                            message: Some(format!("Updated {} to {}", id, status)),
+                        },
                         Err(e) => ActionResult::Result {
                             success: false,
-                            message: Some(format!("Ticket not found: {}", e)),
+                            message: Some(format!("Failed to update: {}", e)),
                         },
-                    }
-                }
-                BoardAction::LoadForEdit { id: _ } => {
-                    ActionResult::Result {
-                        success: true,
-                        message: Some("Loaded for editing".to_string()),
-                    }
-                }
+                    },
+                    Err(e) => ActionResult::Result {
+                        success: false,
+                        message: Some(format!("Ticket not found: {}", e)),
+                    },
+                },
+                BoardAction::LoadForEdit { id: _ } => ActionResult::Result {
+                    success: true,
+                    message: Some("Loaded for editing".to_string()),
+                },
             }
         })
     }
@@ -112,7 +106,9 @@ async fn process_board_actions(
                     errors.push(msg);
                 }
             }
-            ActionResult::LoadForEdit { success, message, .. } => {
+            ActionResult::LoadForEdit {
+                success, message, ..
+            } => {
                 if success {
                     success_count += 1;
                     if let Some(msg) = message {
@@ -130,7 +126,11 @@ async fn process_board_actions(
     }
 
     if !errors.is_empty() {
-        toast.set(Some(Toast::error(format!("{} error(s): {}", errors.len(), errors.join("; ")))))
+        toast.set(Some(Toast::error(format!(
+            "{} error(s): {}",
+            errors.len(),
+            errors.join("; ")
+        ))))
     }
 }
 
@@ -192,7 +192,9 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Action queue for async ticket operations using ActionQueueBuilder
     let (_queue_state, _action_handler, action_channel) = ActionQueueBuilder::use_state(
         &mut hooks,
-        |actions, needs_reload, toast| Box::pin(process_board_actions(actions, needs_reload, toast)),
+        |actions, needs_reload, toast| {
+            Box::pin(process_board_actions(actions, needs_reload, toast))
+        },
         needs_reload,
         toast,
     );
