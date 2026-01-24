@@ -18,18 +18,6 @@ impl TicketFile {
             locator: TicketLocator::new(file_path)?,
         })
     }
-
-    pub fn locator(&self) -> &TicketLocator {
-        &self.locator
-    }
-
-    pub fn file_path(&self) -> &PathBuf {
-        &self.locator.file_path
-    }
-
-    pub fn id(&self) -> &str {
-        &self.locator.id
-    }
 }
 
 impl StorageHandle for TicketFile {

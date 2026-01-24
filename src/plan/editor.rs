@@ -87,6 +87,7 @@ impl PlanEditor {
 mod tests {
     use super::*;
     use crate::plan::locator::PlanLocator;
+    use crate::storage::StorageHandle;
 
     fn make_editor(id: &str) -> PlanEditor {
         let locator = PlanLocator::with_id(id);

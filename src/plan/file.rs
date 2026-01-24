@@ -39,21 +39,6 @@ impl PlanFile {
         })
     }
 
-    /// Get a reference to the underlying locator.
-    pub fn locator(&self) -> &PlanLocator {
-        &self.locator
-    }
-
-    /// Get a reference to the file path.
-    pub fn file_path(&self) -> &PathBuf {
-        &self.locator.file_path
-    }
-
-    /// Get the plan ID.
-    pub fn id(&self) -> &str {
-        &self.locator.id
-    }
-
     /// Read raw content from the plan file.
     ///
     /// This is a convenience method that delegates to `FileStorage::read_content`.

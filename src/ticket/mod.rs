@@ -19,6 +19,7 @@ pub use repository::{
 
 use crate::error::{JanusError, Result};
 use crate::hooks::HookContext;
+use crate::storage::StorageHandle;
 use crate::ticket::parser::parse;
 use crate::types::EntityType;
 use crate::types::TicketMetadata;
@@ -59,7 +60,7 @@ impl Ticket {
     pub fn read(&self) -> Result<TicketMetadata> {
         let raw_content = self.file.read_raw()?;
         let mut metadata = parse(&raw_content)?;
-        metadata.file_path = Some(self.file.file_path().clone());
+        metadata.file_path = Some(self.file.file_path().to_path_buf());
         Ok(metadata)
     }
 
