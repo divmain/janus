@@ -41,8 +41,8 @@ impl StorageHandle for TicketFile {
         &self.locator.id
     }
 
-    fn item_type(&self) -> crate::hooks::ItemType {
-        crate::hooks::ItemType::Ticket
+    fn item_type(&self) -> crate::types::EntityType {
+        crate::types::EntityType::Ticket
     }
 }
 

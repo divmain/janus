@@ -20,8 +20,9 @@ use serde_json::json;
 use super::{CommandOutput, print_json};
 use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
-use crate::hooks::{HookContext, ItemType, context_to_env};
+use crate::hooks::{HookContext, context_to_env};
 use crate::remote::config::Config;
+use crate::types::EntityType;
 use crate::ticket::Ticket;
 use crate::types::janus_root;
 
@@ -378,12 +379,12 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
         // Try to find as ticket first
         if let Ok(ticket) = Ticket::find(item_id).await {
             context = context
-                .with_item_type(ItemType::Ticket)
+                .with_item_type(EntityType::Ticket)
                 .with_item_id(&ticket.id)
                 .with_file_path(&ticket.file_path);
         } else if let Ok(plan) = crate::plan::Plan::find(item_id).await {
             context = context
-                .with_item_type(ItemType::Plan)
+                .with_item_type(EntityType::Plan)
                 .with_item_id(&plan.id)
                 .with_file_path(&plan.file_path);
         } else {

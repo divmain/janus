@@ -18,8 +18,9 @@ pub use repository::{
 };
 
 use crate::error::Result;
-use crate::hooks::{HookContext, ItemType};
+use crate::hooks::HookContext;
 use crate::ticket::parser::parse;
+use crate::types::EntityType;
 use crate::types::TicketMetadata;
 use std::path::PathBuf;
 
@@ -92,7 +93,7 @@ impl Ticket {
     /// construction pattern throughout the codebase.
     pub fn hook_context(&self) -> HookContext {
         HookContext::new()
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id(&self.id)
             .with_file_path(&self.file_path)
     }

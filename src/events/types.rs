@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::types::EntityType;
+
 /// The type of event being logged
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,23 +50,6 @@ impl std::fmt::Display for EventType {
             EventType::TicketMoved => "ticket_moved",
         };
         write!(f, "{}", s)
-    }
-}
-
-/// The type of entity the event relates to
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum EntityType {
-    Ticket,
-    Plan,
-}
-
-impl std::fmt::Display for EntityType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EntityType::Ticket => write!(f, "ticket"),
-            EntityType::Plan => write!(f, "plan"),
-        }
     }
 }
 

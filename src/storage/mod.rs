@@ -1,7 +1,8 @@
 //! Generic storage abstractions for file-based entities
 
 use crate::error::{JanusError, Result};
-use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent, ItemType};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
+use crate::types::EntityType;
 use std::path::Path;
 
 /// Generic trait for file-based storage with hook support
@@ -13,7 +14,7 @@ pub trait StorageHandle {
     fn id(&self) -> &str;
 
     /// Get the item type for hooks
-    fn item_type(&self) -> ItemType;
+    fn item_type(&self) -> EntityType;
 }
 
 /// Common file I/O operations applicable to both tickets and plans
@@ -26,8 +27,8 @@ pub trait FileStorage: StorageHandle {
                 format!(
                     "Failed to read {} at {}: {}",
                     match self.item_type() {
-                        ItemType::Ticket => "ticket",
-                        ItemType::Plan => "plan",
+                        EntityType::Ticket => "ticket",
+                        EntityType::Plan => "plan",
                     },
                     self.file_path().display(),
                     e
@@ -62,8 +63,8 @@ pub trait FileStorage: StorageHandle {
                 format!(
                     "Failed to write {} at {}: {}",
                     match self.item_type() {
-                        ItemType::Ticket => "ticket",
-                        ItemType::Plan => "plan",
+                        EntityType::Ticket => "ticket",
+                        EntityType::Plan => "plan",
                     },
                     self.file_path().display(),
                     e
@@ -83,8 +84,8 @@ pub trait FileStorage: StorageHandle {
                     format!(
                         "Failed to create directory for {} at {}: {}",
                         match self.item_type() {
-                            ItemType::Ticket => "ticket",
-                            ItemType::Plan => "plan",
+                            EntityType::Ticket => "ticket",
+                            EntityType::Plan => "plan",
                         },
                         parent.display(),
                         e

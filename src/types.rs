@@ -139,6 +139,37 @@ impl FromStr for TicketType {
 
 pub const VALID_TYPES: &[&str] = &["bug", "feature", "task", "epic", "chore"];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EntityType {
+    Ticket,
+    Plan,
+}
+
+impl fmt::Display for EntityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityType::Ticket => write!(f, "ticket"),
+            EntityType::Plan => write!(f, "plan"),
+        }
+    }
+}
+
+impl FromStr for EntityType {
+    type Err = JanusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "ticket" => Ok(EntityType::Ticket),
+            "plan" => Ok(EntityType::Plan),
+            _ => Err(JanusError::InvalidEntityType(format!(
+                "'{}'. Must be one of: ticket, plan",
+                s
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TicketPriority {
     #[serde(rename = "0")]

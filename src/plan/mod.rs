@@ -8,11 +8,11 @@ use std::path::PathBuf;
 use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
-use crate::hooks::{HookEvent, ItemType, run_post_hooks, run_pre_hooks};
+use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanStatus};
 use crate::storage::{FileStorage, StorageHandle};
-use crate::types::{TicketMetadata, plans_dir};
+use crate::types::{EntityType, TicketMetadata, plans_dir};
 use crate::utils::{DirScanner, extract_id_from_path};
 
 // Re-export status computation functions
@@ -73,8 +73,8 @@ impl StorageHandle for Plan {
         &self.id
     }
 
-    fn item_type(&self) -> ItemType {
-        ItemType::Plan
+    fn item_type(&self) -> EntityType {
+        EntityType::Plan
     }
 }
 

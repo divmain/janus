@@ -19,7 +19,7 @@ pub mod types;
 pub mod utils;
 
 pub use error::{JanusError, Result};
-pub use hooks::{HookContext, HookEvent, ItemType, context_to_env, run_post_hooks, run_pre_hooks};
+pub use hooks::{HookContext, HookEvent, context_to_env, run_post_hooks, run_pre_hooks};
 pub use plan::parser::parse_plan_content;
 pub use plan::types::{FreeFormSection, Phase, PhaseStatus, PlanMetadata, PlanSection, PlanStatus};
 pub use plan::{
@@ -31,6 +31,6 @@ pub use ticket::{
     Ticket, TicketBuilder, build_ticket_map, get_all_tickets, get_all_tickets_from_disk,
 };
 pub use types::{
-    PLANS_DIR, TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority, TicketStatus,
-    TicketType, janus_root, plans_dir, tickets_items_dir,
+    EntityType, PLANS_DIR, TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority,
+    TicketStatus, TicketType, janus_root, plans_dir, tickets_items_dir,
 };

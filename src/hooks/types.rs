@@ -9,6 +9,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{JanusError, Result};
+use crate::types::EntityType;
 
 /// Events that can trigger hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -97,6 +98,9 @@ impl FromStr for HookEvent {
 }
 
 /// The type of item being operated on.
+///
+/// @deprecated Since 1.0.0. Use [`crate::types::EntityType`] instead.
+#[deprecated(since = "1.0.0", note = "Use crate::types::EntityType instead")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ItemType {
@@ -119,7 +123,7 @@ pub struct HookContext {
     /// The event that triggered this hook
     pub event: Option<HookEvent>,
     /// The type of item being operated on
-    pub item_type: Option<ItemType>,
+    pub item_type: Option<EntityType>,
     /// The ID of the item being operated on
     pub item_id: Option<String>,
     /// The file path of the item
@@ -145,7 +149,7 @@ impl HookContext {
     }
 
     /// Set the item type.
-    pub fn with_item_type(mut self, item_type: ItemType) -> Self {
+    pub fn with_item_type(mut self, item_type: EntityType) -> Self {
         self.item_type = Some(item_type);
         self
     }
@@ -231,7 +235,7 @@ mod tests {
     fn test_hook_context_builder() {
         let ctx = HookContext::new()
             .with_event(HookEvent::TicketCreated)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-1234")
             .with_file_path("/path/to/file.md")
             .with_field_name("status")
@@ -239,7 +243,7 @@ mod tests {
             .with_new_value("complete");
 
         assert_eq!(ctx.event, Some(HookEvent::TicketCreated));
-        assert_eq!(ctx.item_type, Some(ItemType::Ticket));
+        assert_eq!(ctx.item_type, Some(EntityType::Ticket));
         assert_eq!(ctx.item_id, Some("j-1234".to_string()));
         assert_eq!(ctx.file_path, Some(PathBuf::from("/path/to/file.md")));
         assert_eq!(ctx.field_name, Some("status".to_string()));

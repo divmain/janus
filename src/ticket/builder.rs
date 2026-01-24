@@ -1,6 +1,6 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, ItemType, run_post_hooks, run_pre_hooks};
-use crate::types::{TicketPriority, TicketStatus, TicketType, tickets_items_dir};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
+use crate::types::{tickets_items_dir, EntityType, TicketPriority, TicketStatus, TicketType};
 use crate::utils;
 use std::fs;
 use std::path::PathBuf;
@@ -226,7 +226,7 @@ impl TicketBuilder {
 
         if self.run_hooks {
             let context = HookContext::new()
-                .with_item_type(ItemType::Ticket)
+                .with_item_type(EntityType::Ticket)
                 .with_item_id(&id)
                 .with_file_path(&file_path);
 

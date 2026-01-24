@@ -279,6 +279,9 @@ pub enum JanusError {
     #[error("invalid ticket type: {0}")]
     InvalidTicketType(String),
 
+    #[error("invalid entity type: {0}. Must be one of: ticket, plan")]
+    InvalidEntityType(String),
+
     #[error("invalid priority: {0}")]
     InvalidPriority(String),
 

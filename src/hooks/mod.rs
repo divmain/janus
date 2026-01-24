@@ -42,6 +42,8 @@ use wait_timeout::ChildExt;
 
 pub use types::{HookContext, HookEvent, ItemType};
 
+pub use crate::types::EntityType;
+
 use crate::error::{JanusError, Result};
 use crate::remote::Config;
 use crate::types::janus_root;
@@ -356,7 +358,7 @@ mod tests {
     fn test_context_to_env_full() {
         let context = HookContext::new()
             .with_event(HookEvent::TicketCreated)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-1234")
             .with_file_path("/path/to/ticket.md")
             .with_field_name("status")
@@ -401,7 +403,7 @@ mod tests {
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-1234");
 
         // Should succeed even without config
@@ -417,7 +419,7 @@ mod tests {
 
         let context = HookContext::new()
             .with_event(HookEvent::PostWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-1234");
 
         // Should succeed even without config
@@ -443,7 +445,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         // Should succeed because hooks are disabled
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
@@ -468,7 +470,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
         assert!(matches!(result, Err(JanusError::HookScriptNotFound(_))));
@@ -498,7 +500,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-1234");
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
@@ -529,7 +531,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
         assert!(matches!(result, Err(JanusError::PreHookFailed { .. })));
@@ -571,7 +573,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PostWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-test");
 
         run_post_hooks(HookEvent::PostWrite, &context);
@@ -611,7 +613,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
         assert!(matches!(result, Err(JanusError::HookTimeout { .. })));
@@ -678,7 +680,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-test");
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
@@ -730,7 +732,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PostWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-test");
 
         // Post hooks don't return errors, they just log warnings
@@ -770,7 +772,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
 
@@ -802,7 +804,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
 
@@ -820,7 +822,7 @@ hooks:
         // Pre-hooks should not run for post events
         let context = HookContext::new()
             .with_event(HookEvent::PostWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         // This should succeed immediately without doing anything
         let result = run_pre_hooks(HookEvent::PostWrite, &context);
@@ -848,7 +850,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
 
@@ -869,7 +871,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
 
@@ -891,7 +893,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
-            .with_item_type(ItemType::Ticket);
+            .with_item_type(EntityType::Ticket);
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
 
@@ -928,7 +930,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PostWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-test");
 
         // Run post hook (should fail but not return error)
@@ -980,7 +982,7 @@ hooks:
 
         let context = HookContext::new()
             .with_event(HookEvent::PostWrite)
-            .with_item_type(ItemType::Ticket)
+            .with_item_type(EntityType::Ticket)
             .with_item_id("j-test");
 
         // Run post hook multiple times
