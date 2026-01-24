@@ -8,6 +8,7 @@ use crate::ticket::get_all_tickets_from_disk;
 
 use super::super::error_toast::Toast;
 use super::super::operations;
+
 use super::HandleResult;
 use super::context::HandlerContext;
 
@@ -35,18 +36,27 @@ fn handle_adopt(ctx: &mut HandlerContext<'_>) {
         .iter()
         .cloned()
         .collect();
-    if selected_ids.is_empty() {
-        return;
-    }
 
-    let issues: Vec<_> = ctx
-        .view_data
-        .remote_issues
-        .read()
-        .iter()
-        .filter(|i| selected_ids.contains(&i.id))
-        .cloned()
-        .collect();
+    let issues: Vec<_> = if selected_ids.is_empty() {
+        let issues = ctx.view_data.remote_issues.read();
+        let selected_idx = ctx.view_data.remote_nav.selected_index.get();
+        if let Some(issue) = issues.get(selected_idx).cloned() {
+            vec![issue]
+        } else {
+            ctx.modals
+                .toast
+                .set(Some(Toast::error("No issue to adopt")));
+            return;
+        }
+    } else {
+        ctx.view_data
+            .remote_issues
+            .read()
+            .iter()
+            .filter(|i| selected_ids.contains(&i.id))
+            .cloned()
+            .collect()
+    };
 
     match operations::adopt_issues(&issues, &ctx.view_data.local_nav.selected_ids.read()) {
         Ok(ids) => {
