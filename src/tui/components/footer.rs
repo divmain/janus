@@ -4,6 +4,7 @@
 
 use iocraft::prelude::*;
 
+use super::shortcuts::ShortcutsBuilder;
 use crate::tui::theme::theme;
 
 /// A single keyboard shortcut entry
@@ -71,71 +72,69 @@ pub fn Footer(props: &FooterProps) -> impl Into<AnyElement<'static>> {
 
 /// Shortcuts for the issue browser list pane
 pub fn browser_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("j/k", "Up/Down"),
-        Shortcut::new("g/G", "Top/Bottom"),
-        Shortcut::new("/", "Search"),
-        Shortcut::new("e", "Edit"),
-        Shortcut::new("s", "Cycle Status"),
-        Shortcut::new("n", "New Ticket"),
-        Shortcut::new("Tab", "Switch Pane"),
-        Shortcut::new("C-t", "Triage"),
-        Shortcut::new("q", "Quit"),
-    ]
+    ShortcutsBuilder::new()
+        .with_navigation()
+        .with_search()
+        .with_edit()
+        .with_quit()
+        .add("s", "Cycle Status")
+        .add("Tab", "Switch Pane")
+        .add("C-t", "Triage")
+        .build()
 }
 
 /// Shortcuts for the kanban board
 pub fn board_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("h/l", "Column"),
-        Shortcut::new("j/k", "Card"),
-        Shortcut::new("g/G", "Top/Bot"),
-        Shortcut::new("/", "Search"),
-        Shortcut::new("e", "Edit"),
-        Shortcut::new("s/S", "Move Right/Left"),
-        Shortcut::new("n", "New Ticket"),
-        Shortcut::new("1-5", "Toggle Column"),
-        Shortcut::new("q", "Quit"),
-    ]
+    ShortcutsBuilder::new()
+        .with_navigation()
+        .with_search()
+        .with_edit()
+        .with_quit()
+        .add("h/l", "Column")
+        .add("s/S", "Move Right/Left")
+        .add("1-5", "Toggle Column")
+        .build()
 }
 
 /// Shortcuts for the edit form
 pub fn edit_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("Tab", "Next Field"),
-        Shortcut::new("S-Tab", "Prev Field"),
-        Shortcut::new("C-s", "Save"),
-        Shortcut::new("Esc", "Cancel"),
-    ]
+    ShortcutsBuilder::new()
+        .add("Tab", "Next Field")
+        .add("S-Tab", "Prev Field")
+        .add("C-s", "Save")
+        .add("Esc", "Cancel")
+        .build()
 }
 
 /// Shortcuts for search mode
 pub fn search_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("Enter", "Apply Search"),
-        Shortcut::new("Tab", "Exit Search"),
-        Shortcut::new("Esc", "Clear & Exit"),
-        Shortcut::new("C-q", "Quit"),
-    ]
+    ShortcutsBuilder::new()
+        .add("Enter", "Apply Search")
+        .add("Tab", "Exit Search")
+        .add("Esc", "Clear & Exit")
+        .add("C-q", "Quit")
+        .build()
 }
 
 /// Shortcuts shown when empty state is displayed
 pub fn empty_shortcuts() -> Vec<Shortcut> {
-    vec![Shortcut::new("n", "New Ticket"), Shortcut::new("q", "Quit")]
+    ShortcutsBuilder::new()
+        .add("n", "New Ticket")
+        .add("q", "Quit")
+        .build()
 }
 
 /// Shortcuts for triage mode
 pub fn triage_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("j/k", "Up/Down"),
-        Shortcut::new("g/G", "Top/Bottom"),
-        Shortcut::new("/", "Search"),
-        Shortcut::new("t", "Mark Triaged"),
-        Shortcut::new("n", "Add Note"),
-        Shortcut::new("c", "Cancel"),
-        Shortcut::new("C-t", "Exit Triage"),
-        Shortcut::new("q", "Quit"),
-    ]
+    ShortcutsBuilder::new()
+        .with_navigation()
+        .with_search()
+        .add("t", "Mark Triaged")
+        .add("n", "Add Note")
+        .add("c", "Cancel")
+        .add("C-t", "Exit Triage")
+        .add("q", "Quit")
+        .build()
 }
 
 // =============================================================================
@@ -144,70 +143,70 @@ pub fn triage_shortcuts() -> Vec<Shortcut> {
 
 /// Shortcuts for the help modal
 pub fn help_modal_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("j/k", "Scroll"),
-        Shortcut::new("g/G", "Top/Bottom"),
-        Shortcut::new("Esc", "Close"),
-        Shortcut::new("?", "Close"),
-    ]
+    ShortcutsBuilder::new()
+        .add("j/k", "Scroll")
+        .add("g/G", "Top/Bottom")
+        .add("Esc", "Close")
+        .add("?", "Close")
+        .build()
 }
 
 /// Shortcuts for the error detail modal
 pub fn error_modal_shortcuts() -> Vec<Shortcut> {
-    vec![Shortcut::new("Esc", "Close")]
+    ShortcutsBuilder::new().add("Esc", "Close").build()
 }
 
 /// Shortcuts for the filter modal
 pub fn filter_modal_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("Tab/j/k", "Navigate"),
-        Shortcut::new("Enter", "Toggle/Edit"),
-        Shortcut::new("x", "Clear"),
-        Shortcut::new("Esc", "Cancel"),
-    ]
+    ShortcutsBuilder::new()
+        .add("Tab/j/k", "Navigate")
+        .add("Enter", "Toggle/Edit")
+        .add("x", "Clear")
+        .add("Esc", "Cancel")
+        .build()
 }
 
 /// Shortcuts for the sync preview modal
 pub fn sync_preview_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("y", "Accept"),
-        Shortcut::new("n", "Skip"),
-        Shortcut::new("a", "Accept All"),
-        Shortcut::new("c", "Cancel"),
-    ]
+    ShortcutsBuilder::new()
+        .add("y", "Accept")
+        .add("n", "Skip")
+        .add("a", "Accept All")
+        .add("c", "Cancel")
+        .build()
 }
 
 /// Shortcuts for the confirm dialog
 pub fn confirm_dialog_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("Y", "Yes"),
-        Shortcut::new("n", "No"),
-        Shortcut::new("c", "Cancel"),
-    ]
+    ShortcutsBuilder::new()
+        .add("Y", "Yes")
+        .add("n", "No")
+        .add("c", "Cancel")
+        .build()
 }
 
 /// Shortcuts for the link mode (when selecting a target)
 pub fn link_mode_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("j/k", "Navigate"),
-        Shortcut::new("l", "Confirm"),
-        Shortcut::new("Enter", "Confirm"),
-        Shortcut::new("Esc", "Cancel"),
-    ]
+    ShortcutsBuilder::new()
+        .add("j/k", "Navigate")
+        .add("l", "Confirm")
+        .add("Enter", "Confirm")
+        .add("Esc", "Cancel")
+        .build()
 }
 
 /// Shortcuts for the note input modal (triage mode)
 pub fn note_input_modal_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("Enter", "Submit"),
-        Shortcut::new("Esc", "Cancel"),
-    ]
+    ShortcutsBuilder::new()
+        .add("Enter", "Submit")
+        .add("Esc", "Cancel")
+        .build()
 }
 
 /// Shortcuts for the cancel confirm modal (triage mode)
 pub fn cancel_confirm_modal_shortcuts() -> Vec<Shortcut> {
-    vec![
-        Shortcut::new("c", "Confirm"),
-        Shortcut::new("Esc", "Cancel"),
-    ]
+    ShortcutsBuilder::new()
+        .add("c", "Confirm")
+        .add("Esc", "Cancel")
+        .build()
 }

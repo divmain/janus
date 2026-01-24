@@ -17,7 +17,7 @@ use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::{
     Footer, Header, InlineSearchBox, Shortcut, confirm_dialog_shortcuts, error_modal_shortcuts,
     filter_modal_shortcuts, help_modal_shortcuts, link_mode_shortcuts, search_shortcuts,
-    sync_preview_shortcuts,
+    sync_preview_shortcuts, ShortcutsBuilder,
 };
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
@@ -89,29 +89,23 @@ fn compute_view_shortcuts(modals: ModalVisibility, current_view: ViewMode) -> Ve
     }
 
     // Normal mode shortcuts - vary by current view
-    let mut shortcuts = vec![
-        Shortcut::new("q", "Quit"),
-        Shortcut::new("Tab", "Switch View"),
-        Shortcut::new("j/k", "Navigate"),
-        Shortcut::new("Space", "Select"),
-        Shortcut::new("/", "Search"),
-        Shortcut::new("P", "Provider"),
-        Shortcut::new("r", "Refresh"),
-        Shortcut::new("f", "Filter"),
-    ];
+    let base = ShortcutsBuilder::new()
+        .with_quit()
+        .add("Tab", "Switch View")
+        .add("j/k", "Navigate")
+        .add("Space", "Select")
+        .add("/", "Search")
+        .add("P", "Provider")
+        .add("r", "Refresh")
+        .add("f", "Filter");
 
-    if current_view == ViewMode::Remote {
-        shortcuts.push(Shortcut::new("a", "Adopt"));
+    let view_specific = if current_view == ViewMode::Remote {
+        base.add("a", "Adopt")
     } else {
-        shortcuts.push(Shortcut::new("p", "Push"));
-        shortcuts.push(Shortcut::new("u", "Unlink"));
-    }
+        base.add("p", "Push").add("u", "Unlink")
+    };
 
-    shortcuts.push(Shortcut::new("l", "Link"));
-    shortcuts.push(Shortcut::new("s", "Sync"));
-    shortcuts.push(Shortcut::new("?", "Help"));
-
-    shortcuts
+    view_specific.add("l", "Link").add("s", "Sync").add("?", "Help").build()
 }
 
 /// Fetch remote issues from the given provider with optional query filters
