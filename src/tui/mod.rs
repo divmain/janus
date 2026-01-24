@@ -18,6 +18,7 @@ pub mod remote;
 pub mod repository;
 pub mod screen_base;
 pub mod search;
+pub mod search_orchestrator;
 pub mod services;
 pub mod state;
 pub mod theme;
@@ -28,6 +29,7 @@ pub use board::{KanbanBoard, KanbanBoardProps};
 pub use edit::{
     EditField, EditForm, EditFormOverlay, EditFormProps, EditResult, extract_body_for_edit,
 };
+pub use handlers::{SearchAction, handle_search_input};
 pub use remote::RemoteTui;
 pub use repository::{InitResult, TicketRepository};
 pub use screen_base::{
@@ -35,6 +37,7 @@ pub use screen_base::{
     should_process_key_event, use_screen_state,
 };
 pub use search::{FilteredItem, FilteredTicket, filter_items, filter_tickets};
+pub use search_orchestrator::{SearchState, compute_filtered_tickets};
 pub use services::TicketService;
 pub use state::{Pane, TuiState};
 pub use theme::Theme;

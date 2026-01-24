@@ -8,6 +8,7 @@ use iocraft::prelude::State;
 use crate::tui::action_queue::ActionChannel;
 use crate::tui::edit_state::EditFormState;
 use crate::tui::search::FilteredTicket;
+use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 
@@ -16,7 +17,7 @@ use super::types::ViewAction;
 /// Search functionality state
 pub struct SearchState<'a> {
     pub query: &'a mut State<String>,
-    pub pending: &'a mut State<bool>,
+    pub orchestrator: &'a mut SearchOrchestrator,
 }
 
 /// List navigation state (selection and scroll in list)

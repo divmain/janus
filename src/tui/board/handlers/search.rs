@@ -21,7 +21,7 @@ pub fn handle(
         }
         SearchAction::Exit => {
             // User pressed Enter - trigger search execution
-            ctx.pending_search.set(true);
+            ctx.search_orchestrator.trigger_pending();
             ctx.search_focused.set(false);
             HandleResult::Handled
         }

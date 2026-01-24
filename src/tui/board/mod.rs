@@ -19,7 +19,8 @@ use crate::tui::edit_state::EditFormState;
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
 use crate::tui::screen_base::{ScreenLayout, should_process_key_event};
-use crate::tui::search::{FilteredTicket, compute_title_highlights};
+use crate::tui::search::FilteredTicket;
+use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -166,10 +167,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let mut needs_reload = hooks.use_state(|| false);
 
     // Search state - search is executed on Enter, not while typing
-    // Store filtered tickets from search (Vec<FilteredTicket> with highlights)
-    let mut search_filtered_tickets: State<Option<Vec<FilteredTicket>>> = hooks.use_state(|| None);
-    // Track if search is currently running (for loading indicator)
-    let mut search_in_flight = hooks.use_state(|| false);
+    let mut search_state = SearchState::use_state(&mut hooks);
 
     // Edit form state - declared early for use in action processor
     let mut edit_result: State<EditResult> = hooks.use_state(EditResult::default);
@@ -206,42 +204,6 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         load_handler.clone()(());
     }
 
-    // Async search handler - executes SQL search via cache
-    // Called when user presses Enter in search box
-    let search_handler: Handler<String> = hooks.use_async_handler({
-        let search_filtered_setter = search_filtered_tickets;
-        let search_in_flight_setter = search_in_flight;
-
-        move |query: String| {
-            let mut search_filtered_setter = search_filtered_setter;
-            let mut search_in_flight_setter = search_in_flight_setter;
-
-            Box::pin(async move {
-                if query.is_empty() {
-                    // Empty query - clear results
-                    search_filtered_setter.set(None);
-                    search_in_flight_setter.set(false);
-                    return;
-                }
-
-                // Execute SQL search via cache
-                let results = if let Some(cache) = crate::cache::get_or_init_cache().await {
-                    cache.search_tickets(&query).await.unwrap_or_default()
-                } else {
-                    vec![]
-                };
-
-                // Convert to FilteredTicket with title highlights
-                let highlighted = compute_title_highlights(&results, &query);
-                search_filtered_setter.set(Some(highlighted));
-                search_in_flight_setter.set(false);
-            })
-        }
-    });
-
-    // Track if search needs to be triggered (set by Enter key handler)
-    let mut pending_search = hooks.use_state(|| false);
-
     // Column visibility state (all visible by default)
     let mut visible_columns = hooks.use_state(|| [true; 5]);
 
@@ -274,55 +236,13 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     let is_editing = is_editing_existing.get() || is_creating_new.get();
 
-    // Filter tickets by search query for rendering
+    // Compute filtered tickets
     let query_str = search_query.to_string();
 
-    // Trigger search if pending (set by Enter key in search mode)
-    if pending_search.get() {
-        pending_search.set(false);
-        search_in_flight.set(true);
-        search_handler.clone()(query_str.clone());
-    }
+    search_state.check_pending(query_str.clone());
+    search_state.clear_if_empty(&query_str);
 
-    // Clear search results if search box is empty
-    if query_str.is_empty() && search_filtered_tickets.read().is_some() {
-        search_filtered_tickets.set(None);
-    }
-
-    // Determine which tickets to display
-    // - Empty query: show all tickets
-    // - Have search results: show them (regardless of what's currently in search box)
-    // - No search results and non-empty query: show all tickets (waiting for first search)
-    let filtered: Vec<FilteredTicket> = if query_str.is_empty() {
-        // Empty query - show all tickets
-        let tickets_ref = all_tickets.read();
-        let result = tickets_ref
-            .iter()
-            .map(|t| FilteredTicket {
-                ticket: t.clone(),
-                score: 0,
-                title_indices: vec![],
-            })
-            .collect();
-        drop(tickets_ref);
-        result
-    } else if let Some(results) = search_filtered_tickets.read().as_ref() {
-        // Have search results - keep showing them until a new search is executed
-        results.clone()
-    } else {
-        // No search results yet and query is non-empty - show all tickets
-        let tickets_ref = all_tickets.read();
-        let result = tickets_ref
-            .iter()
-            .map(|t| FilteredTicket {
-                ticket: t.clone(),
-                score: 0,
-                title_indices: vec![],
-            })
-            .collect();
-        drop(tickets_ref);
-        result
-    };
+    let filtered = compute_filtered_tickets(&all_tickets.read(), &search_state, &query_str);
 
     // Group filtered tickets by status for rendering
     let tickets_by_status: Vec<Vec<FilteredTicket>> = COLUMNS
@@ -360,7 +280,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                     let mut ctx = BoardHandlerContext {
                         search_query: &mut search_query,
                         search_focused: &mut search_focused,
-                        pending_search: &mut pending_search,
+                        search_orchestrator: &mut search_state,
                         should_exit: &mut should_exit,
                         needs_reload: &mut needs_reload,
                         visible_columns: &mut visible_columns,

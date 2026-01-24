@@ -8,6 +8,7 @@ use iocraft::prelude::State;
 use crate::tui::action_queue::ActionChannel;
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::EditFormState;
+use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::types::TicketMetadata;
 
 use super::super::BoardAction;
@@ -16,7 +17,7 @@ use super::super::BoardAction;
 pub struct BoardHandlerContext<'a> {
     pub search_query: &'a mut State<String>,
     pub search_focused: &'a mut State<bool>,
-    pub pending_search: &'a mut State<bool>,
+    pub search_orchestrator: &'a mut SearchOrchestrator,
     pub should_exit: &'a mut State<bool>,
     pub needs_reload: &'a mut State<bool>,
     pub visible_columns: &'a mut State<[bool; 5]>,

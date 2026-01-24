@@ -22,7 +22,7 @@ pub fn handle(
         }
         SearchAction::Exit => {
             // User pressed Enter - trigger search execution
-            ctx.search.pending.set(true);
+            ctx.search.orchestrator.trigger_pending();
             ctx.app.active_pane.set(Pane::List);
             HandleResult::Handled
         }
