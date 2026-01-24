@@ -1,8 +1,10 @@
 use crate::cache;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
+use crate::locator::Locator;
+use crate::locator::TicketEntity;
 use crate::types::tickets_items_dir;
-use crate::utils::{extract_id_from_path, validate_identifier};
+use crate::utils::validate_identifier;
 use std::path::PathBuf;
 
 /// Ticket-specific implementation of the Findable trait
@@ -47,23 +49,8 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     crate::finder::find_by_partial_id::<TicketFinder>(&partial_id).await
 }
 
-#[derive(Debug, Clone)]
-pub struct TicketLocator {
-    pub file_path: PathBuf,
-    pub id: String,
-}
-
-impl TicketLocator {
-    pub fn new(file_path: PathBuf) -> Result<Self> {
-        let id = extract_id_from_path(&file_path, "ticket")?;
-        Ok(TicketLocator { file_path, id })
-    }
-
-    pub async fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_ticket_by_id(partial_id).await?;
-        TicketLocator::new(file_path)
-    }
-}
+/// Type alias for ticket locator using the generic Locator
+pub type TicketLocator = Locator<TicketEntity>;
 
 #[cfg(test)]
 mod tests {
@@ -128,19 +115,6 @@ mod tests {
         let locator = result.unwrap();
         assert_eq!(locator.id, "j-a1b2");
         assert_eq!(locator.file_path, path);
-    }
-
-    #[test]
-    fn test_ticket_locator_new_invalid_empty_path() {
-        let path = PathBuf::from("");
-        let result = TicketLocator::new(path);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            JanusError::InvalidFormat(msg) => {
-                assert!(msg.contains("Invalid ticket file path"));
-            }
-            _ => panic!("Expected InvalidFormat error"),
-        }
     }
 
     #[test]

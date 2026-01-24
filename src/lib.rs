@@ -10,6 +10,7 @@ pub mod events;
 pub mod finder;
 pub mod formatting;
 pub mod hooks;
+pub mod locator;
 pub mod mcp;
 pub mod parser;
 pub mod plan;
