@@ -72,7 +72,6 @@ use serde_json::json;
 pub struct CommandOutput {
     json: serde_json::Value,
     text: Option<String>,
-    text_fn: Option<Box<dyn FnOnce() -> String>>,
 }
 
 impl CommandOutput {
@@ -80,27 +79,12 @@ impl CommandOutput {
     ///
     /// If no text is provided, the JSON will be pretty-printed for text output too.
     pub fn new(json: serde_json::Value) -> Self {
-        Self {
-            json,
-            text: None,
-            text_fn: None,
-        }
+        Self { json, text: None }
     }
 
     /// Set the human-readable text output.
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
-        self
-    }
-
-    /// Set a lazy text generator for expensive text formatting.
-    ///
-    /// The function is only called if text output is needed.
-    pub fn with_text_fn<F>(mut self, f: F) -> Self
-    where
-        F: FnOnce() -> String + 'static,
-    {
-        self.text_fn = Some(Box::new(f));
         self
     }
 
@@ -110,8 +94,6 @@ impl CommandOutput {
             print_json(&self.json)?;
         } else if let Some(text) = self.text {
             println!("{}", text);
-        } else if let Some(text_fn) = self.text_fn {
-            println!("{}", text_fn());
         } else {
             // Fallback: pretty-print JSON for text output
             println!("{}", serde_json::to_string_pretty(&self.json)?);

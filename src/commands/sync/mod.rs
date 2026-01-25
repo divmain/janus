@@ -31,12 +31,19 @@ pub async fn cmd_adopt(
     let provider = create_provider(&remote_ref.platform(), &config)?;
     let remote_issue = provider.fetch_issue(&remote_ref).await?;
 
-    let id = create_ticket_from_remote(&remote_issue, &remote_ref, prefix)?;
-
     let status = remote_issue.status.to_ticket_status();
     let title = remote_issue.title.clone();
     let url = remote_issue.url.clone();
     let remote_ref_str = remote_ref.to_string();
+
+    let id = create_ticket_from_remote(&remote_issue, &remote_ref, prefix)?;
+    let text = format!(
+        "Created {} from {}\n  Title: {}\n  URL: {}",
+        id.cyan(),
+        &remote_ref_str,
+        &title,
+        url.dimmed()
+    );
 
     CommandOutput::new(json!({
         "id": id,
@@ -46,15 +53,7 @@ pub async fn cmd_adopt(
         "url": url,
         "status": status.to_string(),
     }))
-    .with_text_fn(move || {
-        format!(
-            "Created {} from {}\n  Title: {}\n  URL: {}",
-            id.cyan(),
-            remote_ref_str,
-            title,
-            url.dimmed()
-        )
-    })
+    .with_text(&text)
     .print(output_json)
 }
 
@@ -116,19 +115,19 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
     ticket.update_field("remote", &remote_ref_str)?;
 
     let ticket_id = ticket.id.clone();
+    let text = format!(
+        "Created {}\nUpdated {} -> remote: {}",
+        remote_ref_str.green(),
+        ticket_id.cyan(),
+        &remote_ref_str
+    );
+
     CommandOutput::new(json!({
         "id": ticket_id,
         "action": "pushed",
         "remote_ref": remote_ref_str,
     }))
-    .with_text_fn(move || {
-        format!(
-            "Created {}\nUpdated {} -> remote: {}",
-            remote_ref_str.green(),
-            ticket_id.cyan(),
-            remote_ref_str
-        )
-    })
+    .with_text(&text)
     .print(output_json)
 }
 
@@ -157,12 +156,14 @@ pub async fn cmd_remote_link(
     ticket.update_field("remote", &remote_ref_str)?;
 
     let ticket_id = ticket.id.clone();
+    let text = format!("Linked {} -> {}", ticket_id.cyan(), remote_ref_str.green());
+
     CommandOutput::new(json!({
         "id": ticket_id,
         "action": "remote_linked",
         "remote_ref": remote_ref_str,
     }))
-    .with_text_fn(move || format!("Linked {} -> {}", ticket_id.cyan(), remote_ref_str.green()))
+    .with_text(&text)
     .print(output_json)
 }
 
