@@ -21,6 +21,7 @@
 mod create;
 mod delete;
 mod edit;
+mod formatters;
 mod import;
 mod ls;
 mod next;
