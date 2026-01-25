@@ -1,10 +1,11 @@
-use std::io::{self, Write};
+use owo_colors::OwoColorize;
 
 use crate::error::Result;
 use crate::remote::{IssueUpdates, RemoteRef, RemoteStatus};
 use crate::ticket::update_title;
 
 use super::sync_strategy::SyncPlan;
+use crate::commands::interactive::prompt_choice;
 
 #[derive(Debug, Clone, Copy)]
 pub enum SyncChoice {
@@ -22,21 +23,17 @@ pub enum SyncDecision {
 }
 
 fn prompt_sync_choice() -> Result<SyncChoice> {
-    loop {
-        print!("Sync? [L]ocal->remote (default), [r]emote->local, [s]kip: ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
-        match input.trim().to_lowercase().as_str() {
-            "l" | "local" | "" => return Ok(SyncChoice::LocalToRemote),
-            "r" | "remote" => return Ok(SyncChoice::RemoteToLocal),
-            "s" | "skip" => return Ok(SyncChoice::Skip),
-            _ => println!(
-                "Invalid input. Please enter 'l', 'r', or 's' (or press Enter for local->remote)."
-            ),
-        }
+    let choices = [
+        ("l", "Local to remote"),
+        ("r", "Remote to local"),
+        ("s", "Skip"),
+    ];
+    let idx = prompt_choice("Sync direction", &choices, Some("l"))?;
+    match idx {
+        0 => Ok(SyncChoice::LocalToRemote),
+        1 => Ok(SyncChoice::RemoteToLocal),
+        2 => Ok(SyncChoice::Skip),
+        _ => unreachable!(),
     }
 }
 
@@ -48,7 +45,6 @@ pub fn prompt_user_for_action(
     let mut changes_made = false;
 
     if let Some(ref diff) = sync_plan.title_diff {
-        use owo_colors::OwoColorize;
         println!("\n{}", "Title differs:".yellow());
         println!("  Local:  {}", diff.local);
         println!("  Remote: {}", diff.remote);
@@ -77,7 +73,6 @@ pub fn prompt_user_for_action(
     }
 
     if let Some(ref diff) = sync_plan.status_diff {
-        use owo_colors::OwoColorize;
         println!("\n{}", "Status differs:".yellow());
         println!("  Local:  {}", diff.local);
         println!("  Remote: {} ({})", diff.remote_status, diff.remote_raw);

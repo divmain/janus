@@ -1,10 +1,8 @@
 //! Plan delete and rename commands
 
-use std::io::Write;
-
 use serde_json::json;
 
-use crate::commands::CommandOutput;
+use crate::commands::{CommandOutput, interactive};
 use crate::error::Result;
 use crate::plan::Plan;
 use crate::plan::parser::serialize_plan;
@@ -19,18 +17,13 @@ use crate::utils::is_stdin_tty;
 pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result<()> {
     let plan = Plan::find(id).await?;
 
-    if !force && !output_json && is_stdin_tty() {
-        // Prompt for confirmation
-        print!("Delete plan {}? [y/N] ", plan.id);
-        std::io::stdout().flush()?;
-
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-
-        if !input.trim().eq_ignore_ascii_case("y") {
-            println!("Cancelled");
-            return Ok(());
-        }
+    if !force
+        && !output_json
+        && is_stdin_tty()
+        && !interactive::confirm(&format!("Delete plan {}", plan.id))?
+    {
+        println!("Cancelled");
+        return Ok(());
     }
 
     let plan_id = plan.id.clone();

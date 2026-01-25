@@ -9,7 +9,6 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
@@ -17,7 +16,7 @@ use owo_colors::OwoColorize;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{CommandOutput, print_json};
+use super::{CommandOutput, interactive, print_json};
 use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
 use crate::hooks::{HookContext, context_to_env};
@@ -170,20 +169,18 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
         let is_hook_script = relative_path.starts_with("hooks/");
 
         if target_path.exists() {
-            print!(
-                "File {} already exists. [R]eplace/[A]bort/[S]kip? ",
-                relative_path.yellow()
-            );
-            io::stdout().flush()?;
+            let choices = [("r", "Replace"), ("a", "Abort"), ("s", "Skip")];
+            let idx = interactive::prompt_choice(
+                &format!("File {} already exists", relative_path.yellow()),
+                &choices,
+                Some("s"),
+            )?;
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-
-            match input.trim().to_lowercase().as_str() {
-                "r" | "replace" => {
+            match idx {
+                0 => {
                     files_to_write.push((target_path, content.clone(), is_hook_script));
                 }
-                "a" | "abort" => {
+                1 => {
                     println!("Installation aborted.");
                     return Ok(());
                 }
