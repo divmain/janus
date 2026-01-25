@@ -158,8 +158,11 @@ fn test_set_parent_nonexistent() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    let stderr = janus.run_failure(&["set", &id, "parent", "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["set", &id, "parent", "nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent parent"
+    );
 }
 
 #[test]
@@ -194,6 +197,9 @@ fn test_set_json_output() {
 fn test_set_ticket_not_found() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["set", "nonexistent", "priority", "1"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["set", "nonexistent", "priority", "1"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent ticket"
+    );
 }

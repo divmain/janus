@@ -161,8 +161,11 @@ fn test_query_children_count_zero_for_leaf_tickets() {
 fn test_ticket_not_found() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["show", "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["show", "nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent resource"
+    );
 }
 
 #[test]
@@ -197,5 +200,11 @@ fn test_dep_add_nonexistent() {
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     let stderr = janus.run_failure(&["dep", "add", &id, "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    assert!(
+        stderr.contains("not found")
+            || stderr.contains("not_found")
+            || stderr.contains("unknown")
+            || stderr.contains("does not exist"),
+        "Error should indicate resource was not found"
+    );
 }

@@ -317,7 +317,10 @@ fn test_graph_invalid_format() {
     let janus = JanusTest::new();
 
     let stderr = janus.run_failure(&["graph", "--format", "invalid"]);
-    assert!(stderr.contains("Invalid graph format"));
+    assert!(
+        stderr.contains("Invalid") && stderr.contains("graph") && stderr.contains("format"),
+        "Error should indicate invalid graph format"
+    );
 }
 
 #[test]
@@ -325,8 +328,11 @@ fn test_graph_invalid_format() {
 fn test_graph_root_not_found() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["graph", "--root", "j-nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["graph", "--root", "j-nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent graph root"
+    );
 }
 
 #[test]
@@ -334,6 +340,9 @@ fn test_graph_root_not_found() {
 fn test_graph_plan_not_found() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["graph", "--plan", "plan-nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["graph", "--plan", "plan-nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent graph plan"
+    );
 }

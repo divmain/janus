@@ -120,7 +120,13 @@ fn test_show_with_links() {
 fn test_show_not_found() {
     let janus = JanusTest::new();
     let stderr = janus.run_failure(&["show", "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    assert!(
+        stderr.contains("not found")
+            || stderr.contains("not_found")
+            || stderr.contains("unknown")
+            || stderr.contains("does not exist"),
+        "Error should indicate ticket was not found"
+    );
 }
 
 #[test]

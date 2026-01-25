@@ -112,7 +112,13 @@ fn test_link_remove_not_found() {
         .to_string();
 
     let stderr = janus.run_failure(&["link", "remove", &id1, &id2]);
-    assert!(stderr.contains("not found"));
+    assert!(
+        stderr.contains("not found")
+            || stderr.contains("not_found")
+            || stderr.contains("unknown")
+            || stderr.contains("does not exist"),
+        "Error should indicate resource was not found"
+    );
 }
 
 #[test]

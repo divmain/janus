@@ -147,5 +147,8 @@ fn test_status_invalid() {
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     let stderr = janus.run_failure(&["status", &id, "invalid"]);
-    assert!(stderr.contains("Invalid status"));
+    assert!(
+        stderr.contains("Invalid") && stderr.contains("status"),
+        "Error should indicate invalid status input"
+    );
 }

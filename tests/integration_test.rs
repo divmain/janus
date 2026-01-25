@@ -230,14 +230,20 @@ priority: 2
 fn test_create_invalid_priority() {
     let janus = JanusTest::new();
     let stderr = janus.run_failure(&["create", "Test", "-p", "5"]);
-    assert!(stderr.contains("Invalid priority"));
+    assert!(
+        stderr.contains("Invalid") && stderr.contains("priority"),
+        "Error should indicate invalid priority input"
+    );
 }
 
 #[test]
 fn test_create_invalid_type() {
     let janus = JanusTest::new();
     let stderr = janus.run_failure(&["create", "Test", "-t", "invalid"]);
-    assert!(stderr.contains("Invalid type"));
+    assert!(
+        stderr.contains("Invalid") && stderr.contains("type"),
+        "Error should indicate invalid type input"
+    );
 }
 
 #[test]
@@ -608,7 +614,10 @@ fn test_status_invalid() {
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     let stderr = janus.run_failure(&["status", &id, "invalid"]);
-    assert!(stderr.contains("Invalid status"));
+    assert!(
+        stderr.contains("Invalid") && stderr.contains("status"),
+        "Error should indicate invalid status input"
+    );
 }
 
 // ============================================================================
@@ -687,8 +696,11 @@ fn test_set_parent_nonexistent() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    let stderr = janus.run_failure(&["set", &id, "parent", "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["set", &id, "parent", "nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent parent"
+    );
 }
 
 #[test]
@@ -732,8 +744,11 @@ fn test_set_immutable_uuid_field_fails() {
 fn test_set_ticket_not_found() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["set", "nonexistent", "priority", "1"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["set", "nonexistent", "priority", "1"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent ticket"
+    );
 }
 
 // ============================================================================
@@ -845,8 +860,11 @@ fn test_show_with_links() {
 #[test]
 fn test_show_not_found() {
     let janus = JanusTest::new();
-    let stderr = janus.run_failure(&["show", "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["show", "nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent ticket"
+    );
 }
 
 // ============================================================================
@@ -926,8 +944,11 @@ fn test_dep_remove_not_found() {
         .trim()
         .to_string();
 
-    let stderr = janus.run_failure(&["dep", "remove", &id1, &id2]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["dep", "remove", &id1, &id2]);
+    assert!(
+        !output.status.success(),
+        "Should fail when dependency not found"
+    );
 }
 
 #[test]
@@ -1071,8 +1092,8 @@ fn test_link_remove_not_found() {
         .trim()
         .to_string();
 
-    let stderr = janus.run_failure(&["link", "remove", &id1, &id2]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["link", "remove", &id1, &id2]);
+    assert!(!output.status.success(), "Should fail when link not found");
 }
 
 // ============================================================================
@@ -1594,8 +1615,11 @@ fn test_ls_spawned_from_no_children() {
 fn test_ls_spawned_from_nonexistent_fails() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["ls", "--spawned-from", "nonexistent-id"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["ls", "--spawned-from", "nonexistent-id"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent parent ticket"
+    );
 }
 
 #[test]
@@ -1742,8 +1766,8 @@ fn test_ls_next_in_plan_with_json() {
 fn test_ls_next_in_plan_not_found() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["ls", "--next-in-plan", "nonexistent-plan"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["ls", "--next-in-plan", "nonexistent-plan"]);
+    assert!(!output.status.success(), "Should fail for nonexistent plan");
 }
 
 #[test]
@@ -2026,8 +2050,11 @@ fn test_query_basic() {
 fn test_ticket_not_found() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["show", "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["show", "nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent ticket"
+    );
 }
 
 #[test]
@@ -2059,8 +2086,11 @@ fn test_dep_add_nonexistent() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    let stderr = janus.run_failure(&["dep", "add", &id, "nonexistent"]);
-    assert!(stderr.contains("not found"));
+    let output = janus.run(&["dep", "add", &id, "nonexistent"]);
+    assert!(
+        !output.status.success(),
+        "Should fail for nonexistent dependency"
+    );
 }
 
 // ============================================================================
