@@ -2,7 +2,7 @@ use owo_colors::OwoColorize;
 use serde_json::json;
 
 use super::CommandOutput;
-use crate::commands::format_ticket_bullet;
+use crate::display::TicketFormatter;
 use crate::error::Result;
 use crate::ticket::{Ticket, build_ticket_map, get_children_count};
 use crate::types::{TicketMetadata, TicketStatus};
@@ -110,16 +110,19 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
         }
 
         // Print sections
-        output.push_str(&format_section("Blockers", &blockers));
-        output.push_str(&format_section("Blocking", &blocking));
-        output.push_str(&format_section("Children", &children));
+        output.push_str(&TicketFormatter::format_section("Blockers", &blockers));
+        output.push_str(&TicketFormatter::format_section("Blocking", &blocking));
+        output.push_str(&TicketFormatter::format_section("Children", &children));
 
         // Print linked tickets
         if !metadata.links.is_empty() {
             output.push_str("\n\n## Linked");
             for link_id in &metadata.links {
                 if let Some(linked) = ticket_map.get(link_id) {
-                    output.push_str(&format!("\n{}", format_ticket_bullet(linked)));
+                    output.push_str(&format!(
+                        "\n{}",
+                        crate::display::format_ticket_bullet(linked)
+                    ));
                 }
             }
         }
@@ -139,15 +142,4 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
     CommandOutput::new(json_output)
         .with_text(text_output)
         .print(output_json)
-}
-
-fn format_section(title: &str, items: &[&TicketMetadata]) -> String {
-    if items.is_empty() {
-        return String::new();
-    }
-    let mut output = format!("\n\n## {}", title);
-    for item in items {
-        output.push_str(&format!("\n{}", format_ticket_bullet(item)));
-    }
-    output
 }

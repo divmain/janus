@@ -2,11 +2,10 @@
 
 use std::collections::HashMap;
 
-use owo_colors::OwoColorize;
 use serde_json::json;
 
 use crate::commands::print_json;
-use crate::display::format_status_colored;
+use crate::display::PlanNextFormatter;
 use crate::error::Result;
 use crate::plan::types::PlanMetadata;
 use crate::plan::{Plan, compute_phase_status};
@@ -80,53 +79,7 @@ pub async fn cmd_plan_next(
 
     // Print next items
     for item in &next_items {
-        println!(
-            "{}",
-            format!("## Next: Phase {} - {}", item.phase_number, item.phase_name).bold()
-        );
-        println!();
-
-        for (i, (ticket_id, ticket_meta)) in item.tickets.iter().enumerate() {
-            let status = ticket_meta
-                .as_ref()
-                .and_then(|t| t.status)
-                .unwrap_or_default();
-            let status_badge = format_status_colored(status);
-            let title = ticket_meta
-                .as_ref()
-                .and_then(|t| t.title.as_deref())
-                .unwrap_or("");
-
-            println!("{} {} {}", status_badge, ticket_id.cyan(), title);
-
-            // Show priority and deps if available
-            if let Some(meta) = ticket_meta {
-                let priority = meta.priority.map(|p| p.as_num()).unwrap_or(2);
-                println!("  Priority: P{}", priority);
-
-                // Show dependencies with their status
-                if !meta.deps.is_empty() {
-                    let deps_with_status: Vec<String> = meta
-                        .deps
-                        .iter()
-                        .map(|dep| {
-                            let dep_status = ticket_map
-                                .get(dep)
-                                .and_then(|t| t.status)
-                                .map(|s| format!("[{}]", s))
-                                .unwrap_or_else(|| "[missing]".to_string());
-                            format!("{} {}", dep, dep_status)
-                        })
-                        .collect();
-                    println!("  Deps: {}", deps_with_status.join(", "));
-                }
-            }
-
-            if i < item.tickets.len() - 1 {
-                println!();
-            }
-        }
-        println!();
+        PlanNextFormatter::print_next_item(item, &ticket_map);
     }
 
     Ok(())

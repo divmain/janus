@@ -3,9 +3,11 @@ use owo_colors::OwoColorize;
 
 pub mod cli_formatting;
 pub mod data_formatting;
+pub mod formatters;
 
 pub use cli_formatting::*;
 pub use data_formatting::*;
+pub use formatters::*;
 
 pub fn format_status_colored(status: TicketStatus) -> String {
     format_status_colored_with_format(status, |s| format!("[{}]", s))
