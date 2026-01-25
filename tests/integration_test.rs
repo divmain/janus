@@ -135,13 +135,13 @@ fn test_create_basic() {
     assert!(id.contains('-'), "ID should contain a dash");
     assert!(janus.ticket_exists(id), "Ticket file should exist");
 
-    let content = janus.read_ticket(id);
-    assert!(content.contains("# Test ticket"));
-    assert!(content.contains("status: new"));
-    assert!(content.contains("deps: []"));
-    assert!(content.contains("links: []"));
-    assert!(content.contains("type: task"));
-    assert!(content.contains("priority: 2"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("# Test ticket"));
+    assert!(output.contains("status: new"));
+    assert!(output.contains("deps: []"));
+    assert!(output.contains("links: []"));
+    assert!(output.contains("type: task"));
+    assert!(output.contains("priority: 2"));
 }
 
 #[test]
@@ -162,12 +162,12 @@ fn test_create_with_options() {
     ]);
     let id = output.trim();
 
-    let content = janus.read_ticket(id);
-    assert!(content.contains("# Bug ticket"));
-    assert!(content.contains("This is a description"));
-    assert!(content.contains("priority: 0"));
-    assert!(content.contains("type: bug"));
-    assert!(content.contains("external-ref: gh-123"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("# Bug ticket"));
+    assert!(output.contains("This is a description"));
+    assert!(output.contains("priority: 0"));
+    assert!(output.contains("type: bug"));
+    assert!(output.contains("external-ref: gh-123"));
 }
 
 #[test]
@@ -183,8 +183,8 @@ fn test_create_with_parent() {
         .trim()
         .to_string();
 
-    let child_content = janus.read_ticket(&child_id);
-    assert!(child_content.contains(&format!("parent: {}", parent_id)));
+    let child_output = janus.run_success(&["show", &child_id]);
+    assert!(child_output.contains(&format!("parent: {}", parent_id)));
 }
 
 #[test]
@@ -194,9 +194,9 @@ fn test_create_default_triaged_false() {
     let output = janus.run_success(&["create", "Test ticket"]);
     let id = output.trim();
 
-    let content = janus.read_ticket(id);
+    let output = janus.run_success(&["show", &id]);
     assert!(
-        content.contains("triaged: false"),
+        output.contains("triaged: false"),
         "New tickets should have triaged: false"
     );
 }
@@ -241,58 +241,46 @@ fn test_create_invalid_type() {
 }
 
 #[test]
-fn test_create_with_custom_prefix() {
-    let janus = JanusTest::new();
+fn test_create_with_prefix_variations() {
+    let test_cases: Vec<(&str, Option<&str>, bool)> = vec![
+        ("perf", Some("perf-"), true),
+        ("", None, false),
+        ("my-prefix", Some("my-prefix-"), true),
+        ("my_prefix", Some("my_prefix-"), true),
+    ];
 
-    let output = janus.run_success(&["create", "Test ticket", "--prefix", "perf"]);
-    let id = output.trim();
+    for (prefix, expected_start, verify_uuid) in test_cases {
+        let janus = JanusTest::new();
 
-    assert!(id.starts_with("perf-"), "ID should start with 'perf-'");
-    assert!(janus.ticket_exists(id), "Ticket file should exist");
+        let args = if prefix.is_empty() {
+            vec!["create", "Test ticket", "--prefix", ""]
+        } else {
+            vec!["create", "Test ticket", "--prefix", prefix]
+        };
 
-    let content = janus.read_ticket(id);
-    assert!(content.contains("# Test ticket"));
-    assert!(content.contains("uuid:"), "Ticket should have a UUID");
-}
+        let output = janus.run_success(&args);
+        let id = output.trim();
 
-#[test]
-fn test_create_with_empty_uses_default() {
-    let janus = JanusTest::new();
+        if let Some(start) = expected_start {
+            assert!(
+                id.starts_with(start),
+                "ID should start with '{}', got '{}'",
+                start,
+                id
+            );
+        } else {
+            assert!(!id.is_empty(), "Should output a ticket ID");
+            assert!(id.contains('-'), "ID should contain a dash");
+        }
 
-    let output = janus.run_success(&["create", "Test ticket", "--prefix", ""]);
-    let id = output.trim();
+        assert!(janus.ticket_exists(id), "Ticket file should exist");
 
-    assert!(!id.is_empty(), "Should output a ticket ID");
-    assert!(id.contains('-'), "ID should contain a dash");
-    assert!(janus.ticket_exists(id), "Ticket file should exist");
-}
-
-#[test]
-fn test_create_with_hyphen_prefix() {
-    let janus = JanusTest::new();
-
-    let output = janus.run_success(&["create", "Test ticket", "--prefix", "my-prefix"]);
-    let id = output.trim();
-
-    assert!(
-        id.starts_with("my-prefix-"),
-        "ID should start with 'my-prefix-'"
-    );
-    assert!(janus.ticket_exists(id), "Ticket file should exist");
-}
-
-#[test]
-fn test_create_with_underscore_prefix() {
-    let janus = JanusTest::new();
-
-    let output = janus.run_success(&["create", "Test ticket", "--prefix", "my_prefix"]);
-    let id = output.trim();
-
-    assert!(
-        id.starts_with("my_prefix-"),
-        "ID should start with 'my_prefix-'"
-    );
-    assert!(janus.ticket_exists(id), "Ticket file should exist");
+        if verify_uuid {
+            let output = janus.run_success(&["show", &id]);
+            assert!(output.contains("# Test ticket"));
+            assert!(output.contains("uuid:"), "Ticket should have a UUID");
+        }
+    }
 }
 
 #[test]
@@ -373,17 +361,17 @@ fn test_create_with_spawned_from() {
         .trim()
         .to_string();
 
-    let child_content = janus.read_ticket(&child_id);
+    let child_output = janus.run_success(&["show", &child_id]);
     assert!(
-        child_content.contains(&format!("spawned-from: {}", parent_id)),
+        child_output.contains(&format!("spawned-from: {}", parent_id)),
         "Child should have spawned-from field"
     );
     assert!(
-        child_content.contains("spawn-context: Needs OAuth setup first"),
+        child_output.contains("spawn-context: Needs OAuth setup first"),
         "Child should have spawn-context field"
     );
     assert!(
-        child_content.contains("depth: 1"),
+        child_output.contains("depth: 1"),
         "Child should have depth: 1 (parent has implicit depth 0)"
     );
 }
@@ -404,9 +392,9 @@ fn test_create_spawned_chain_depth() {
         .trim()
         .to_string();
 
-    let depth1_content = janus.read_ticket(&depth1_id);
+    let depth1_output = janus.run_success(&["show", &depth1_id]);
     assert!(
-        depth1_content.contains("depth: 1"),
+        depth1_output.contains("depth: 1"),
         "First spawn should have depth 1"
     );
 
@@ -416,9 +404,9 @@ fn test_create_spawned_chain_depth() {
         .trim()
         .to_string();
 
-    let depth2_content = janus.read_ticket(&depth2_id);
+    let depth2_output = janus.run_success(&["show", &depth2_id]);
     assert!(
-        depth2_content.contains("depth: 2"),
+        depth2_output.contains("depth: 2"),
         "Second spawn should have depth 2"
     );
 }
@@ -430,19 +418,19 @@ fn test_create_without_spawning_fields() {
     let output = janus.run_success(&["create", "Regular ticket"]);
     let id = output.trim();
 
-    let content = janus.read_ticket(id);
+    let output = janus.run_success(&["show", &id]);
 
     // Spawning fields should not be present
     assert!(
-        !content.contains("spawned-from"),
+        !output.contains("spawned-from"),
         "Regular ticket should not have spawned-from"
     );
     assert!(
-        !content.contains("spawn-context"),
+        !output.contains("spawn-context"),
         "Regular ticket should not have spawn-context"
     );
     assert!(
-        !content.contains("depth"),
+        !output.contains("depth"),
         "Regular ticket should not have depth"
     );
 }
@@ -458,13 +446,13 @@ fn test_create_spawned_from_nonexistent_parent() {
         .trim()
         .to_string();
 
-    let child_content = janus.read_ticket(&child_id);
+    let child_output = janus.run_success(&["show", &child_id]);
     assert!(
-        child_content.contains("spawned-from: j-nonexistent"),
+        child_output.contains("spawned-from: j-nonexistent"),
         "Should still record spawned-from even if parent doesn't exist"
     );
     assert!(
-        child_content.contains("depth: 1"),
+        child_output.contains("depth: 1"),
         "Should default to depth 1 when parent not found"
     );
 }
@@ -493,12 +481,12 @@ fn test_create_spawned_with_other_options() {
         .trim()
         .to_string();
 
-    let child_content = janus.read_ticket(&child_id);
-    assert!(child_content.contains(&format!("spawned-from: {}", parent_id)));
-    assert!(child_content.contains("type: bug"));
-    assert!(child_content.contains("priority: 0"));
-    assert!(child_content.contains("Fix critical issue"));
-    assert!(child_content.contains("depth: 1"));
+    let child_output = janus.run_success(&["show", &child_id]);
+    assert!(child_output.contains(&format!("spawned-from: {}", parent_id)));
+    assert!(child_output.contains("type: bug"));
+    assert!(child_output.contains("priority: 0"));
+    assert!(child_output.contains("Fix critical issue"));
+    assert!(child_output.contains("depth: 1"));
 }
 
 #[test]
@@ -539,12 +527,12 @@ fn test_status_start() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "complete"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: complete"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: complete"));
 
     janus.run_success(&["start", &id]);
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: in_progress"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: in_progress"));
 }
 
 #[test]
@@ -554,8 +542,8 @@ fn test_status_close() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["close", &id, "--no-summary"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: complete"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: complete"));
 }
 
 #[test]
@@ -566,8 +554,8 @@ fn test_status_reopen() {
     janus.run_success(&["close", &id, "--no-summary"]);
     janus.run_success(&["reopen", &id]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: new"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: new"));
 }
 
 #[test]
@@ -577,8 +565,8 @@ fn test_status_cancelled() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "cancelled"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: cancelled"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: cancelled"));
 }
 
 #[test]
@@ -588,8 +576,8 @@ fn test_status_next() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "next"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: next"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: next"));
 }
 
 #[test]
@@ -599,8 +587,8 @@ fn test_status_in_progress() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "in_progress"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: in_progress"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: in_progress"));
 }
 
 #[test]
@@ -610,8 +598,8 @@ fn test_start_sets_in_progress() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["start", &id]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: in_progress"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: in_progress"));
 }
 
 #[test]
@@ -628,21 +616,6 @@ fn test_status_invalid() {
 // ============================================================================
 
 #[test]
-fn test_set_priority() {
-    let janus = JanusTest::new();
-
-    let id = janus.run_success(&["create", "Test"]).trim().to_string();
-
-    // Default priority is 2, change to 0
-    let output = janus.run_success(&["set", &id, "priority", "0"]);
-    assert!(output.contains("Updated"));
-    assert!(output.contains("priority"));
-
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("priority: 0"));
-}
-
-#[test]
 fn test_set_priority_invalid() {
     let janus = JanusTest::new();
 
@@ -650,21 +623,6 @@ fn test_set_priority_invalid() {
     let stderr = janus.run_failure(&["set", &id, "priority", "5"]);
     assert!(stderr.contains("invalid value"));
     assert!(stderr.contains("priority"));
-}
-
-#[test]
-fn test_set_type() {
-    let janus = JanusTest::new();
-
-    let id = janus.run_success(&["create", "Test"]).trim().to_string();
-
-    // Default type is task, change to bug
-    let output = janus.run_success(&["set", &id, "type", "bug"]);
-    assert!(output.contains("Updated"));
-    assert!(output.contains("type"));
-
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("type: bug"));
 }
 
 #[test]
@@ -695,8 +653,8 @@ fn test_set_parent() {
     assert!(output.contains("Updated"));
     assert!(output.contains("parent"));
 
-    let content = janus.read_ticket(&child_id);
-    assert!(content.contains(&format!("parent: {}", parent_id)));
+    let output = janus.run_success(&["show", &child_id]);
+    assert!(output.contains(&format!("parent: {}", parent_id)));
 }
 
 #[test]
@@ -713,15 +671,15 @@ fn test_set_parent_clear() {
         .to_string();
 
     // Verify parent is set
-    let content = janus.read_ticket(&child_id);
-    assert!(content.contains(&format!("parent: {}", parent_id)));
+    let output = janus.run_success(&["show", &child_id]);
+    assert!(output.contains(&format!("parent: {}", parent_id)));
 
     // Clear parent by omitting the value argument
     let output = janus.run_success(&["set", &child_id, "parent"]);
     assert!(output.contains("Updated"));
 
-    let content = janus.read_ticket(&child_id);
-    assert!(!content.contains("parent:"));
+    let output = janus.run_success(&["show", &child_id]);
+    assert!(!output.contains("parent:"));
 }
 
 #[test]
@@ -911,8 +869,9 @@ fn test_dep_add() {
     let output = janus.run_success(&["dep", "add", &id1, &id2]);
     assert!(output.contains("Added dependency"));
 
-    let content = janus.read_ticket(&id1);
-    assert!(content.contains(&format!("[\"{}\"]", id2)));
+    let output = janus.run_success(&["show", &id1]);
+    assert!(output.contains("## Blockers"));
+    assert!(output.contains(&id2));
 }
 
 #[test]
@@ -950,8 +909,8 @@ fn test_dep_remove() {
     let output = janus.run_success(&["dep", "remove", &id1, &id2]);
     assert!(output.contains("Removed dependency"));
 
-    let content = janus.read_ticket(&id1);
-    assert!(content.contains("deps: []"));
+    let output = janus.run_success(&["show", &id1]);
+    assert!(!output.contains("## Blockers"));
 }
 
 #[test]
@@ -1171,25 +1130,6 @@ fn test_ls_status_filter() {
 }
 
 #[test]
-fn test_ready() {
-    let janus = JanusTest::new();
-
-    let dep_id = janus
-        .run_success(&["create", "Dependency"])
-        .trim()
-        .to_string();
-    let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
-    let ready_id = janus.run_success(&["create", "Ready"]).trim().to_string();
-
-    janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
-
-    let output = janus.run_success(&["ls", "--ready"]);
-    assert!(output.contains(&dep_id));
-    assert!(output.contains(&ready_id));
-    assert!(!output.contains(&blocked_id));
-}
-
-#[test]
 fn test_ready_after_dep_closed() {
     let janus = JanusTest::new();
 
@@ -1211,77 +1151,6 @@ fn test_ready_after_dep_closed() {
     // Now ready
     let output = janus.run_success(&["ls", "--ready"]);
     assert!(output.contains(&blocked_id));
-}
-
-#[test]
-fn test_blocked() {
-    let janus = JanusTest::new();
-
-    let dep_id = janus
-        .run_success(&["create", "Dependency"])
-        .trim()
-        .to_string();
-    let blocked_id = janus.run_success(&["create", "Blocked"]).trim().to_string();
-    let ready_id = janus.run_success(&["create", "Ready"]).trim().to_string();
-
-    janus.run_success(&["dep", "add", &blocked_id, &dep_id]);
-
-    let output = janus.run_success(&["ls", "--blocked"]);
-
-    // The blocked ticket should appear with its title
-    assert!(output.contains(&blocked_id), "Blocked ticket should appear");
-    assert!(
-        output.contains("Blocked"),
-        "Blocked ticket title should appear"
-    );
-
-    // The dep_id appears in the suffix as a blocker, which is expected
-    // But the dependency ticket's title should NOT appear (it's not blocked itself)
-    assert!(
-        !output.contains("Dependency"),
-        "Dependency ticket should not be listed as blocked"
-    );
-
-    // Ready ticket should not appear at all
-    assert!(
-        !output.contains(&ready_id),
-        "Ready ticket should not appear"
-    );
-    assert!(
-        !output.contains("Ready"),
-        "Ready ticket title should not appear"
-    );
-}
-
-#[test]
-fn test_closed() {
-    let janus = JanusTest::new();
-
-    let id1 = janus.run_success(&["create", "Open"]).trim().to_string();
-    let id2 = janus.run_success(&["create", "Closed"]).trim().to_string();
-    janus.run_success(&["close", &id2, "--no-summary"]);
-
-    let output = janus.run_success(&["ls", "--closed"]);
-    assert!(!output.contains(&id1));
-    assert!(output.contains(&id2));
-}
-
-#[test]
-fn test_closed_limit() {
-    let janus = JanusTest::new();
-
-    // Create and close 5 tickets
-    for i in 0..5 {
-        let id = janus
-            .run_success(&["create", &format!("Ticket {}", i)])
-            .trim()
-            .to_string();
-        janus.run_success(&["close", &id, "--no-summary"]);
-    }
-
-    let output = janus.run_success(&["ls", "--closed", "--limit", "2"]);
-    let lines: Vec<&str> = output.lines().collect();
-    assert_eq!(lines.len(), 2);
 }
 
 // ============================================================================

@@ -19,8 +19,9 @@ fn test_set_priority() {
     assert!(output.contains("Updated"));
     assert!(output.contains("priority"));
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("priority: 0"));
+    let output = janus.run_success(&["show", &id, "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(json["priority"], 0);
 }
 
 #[test]
@@ -32,9 +33,11 @@ fn test_set_priority_all_values() {
         let id = janus.run_success(&["create", "Test"]).trim().to_string();
         janus.run_success(&["set", &id, "priority", priority]);
 
-        let content = janus.read_ticket(&id);
-        assert!(
-            content.contains(&format!("priority: {}", priority)),
+        let output = janus.run_success(&["show", &id, "--json"]);
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(
+            json["priority"],
+            priority.parse::<u8>().unwrap(),
             "Priority should be set to {}",
             priority
         );
@@ -64,8 +67,9 @@ fn test_set_type() {
     assert!(output.contains("Updated"));
     assert!(output.contains("type"));
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("type: bug"));
+    let output = janus.run_success(&["show", &id, "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(json["type"], "bug");
 }
 
 #[test]
@@ -77,9 +81,10 @@ fn test_set_type_all_values() {
         let id = janus.run_success(&["create", "Test"]).trim().to_string();
         janus.run_success(&["set", &id, "type", ticket_type]);
 
-        let content = janus.read_ticket(&id);
-        assert!(
-            content.contains(&format!("type: {}", ticket_type)),
+        let output = janus.run_success(&["show", &id, "--json"]);
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(
+            json["type"], *ticket_type,
             "Type should be set to {}",
             ticket_type
         );
@@ -116,8 +121,9 @@ fn test_set_parent() {
     assert!(output.contains("Updated"));
     assert!(output.contains("parent"));
 
-    let content = janus.read_ticket(&child_id);
-    assert!(content.contains(&format!("parent: {}", parent_id)));
+    // Verify parent is set using show command
+    let output = janus.run_success(&["show", &child_id]);
+    assert!(output.contains(&parent_id));
 }
 
 #[test]
@@ -134,16 +140,16 @@ fn test_set_parent_clear() {
         .trim()
         .to_string();
 
-    // Verify parent is set
-    let content = janus.read_ticket(&child_id);
-    assert!(content.contains(&format!("parent: {}", parent_id)));
+    // Verify parent is set using show command
+    let output = janus.run_success(&["show", &child_id]);
+    assert!(output.contains(&parent_id));
 
     // Clear parent by omitting the value argument
     let output = janus.run_success(&["set", &child_id, "parent"]);
     assert!(output.contains("Updated"));
 
-    let content = janus.read_ticket(&child_id);
-    assert!(!content.contains("parent:"));
+    let output = janus.run_success(&["show", &child_id]);
+    assert!(!output.contains(&parent_id));
 }
 
 #[test]

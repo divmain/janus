@@ -15,12 +15,12 @@ fn test_status_start() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "complete"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: complete"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: complete"));
 
     janus.run_success(&["start", &id]);
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: in_progress"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: in_progress"));
 }
 
 #[test]
@@ -31,10 +31,10 @@ fn test_status_close_no_summary() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["close", &id, "--no-summary"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: complete"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: complete"));
     // Should not contain completion summary section
-    assert!(!content.contains("## Completion Summary"));
+    assert!(!output.contains("## Completion Summary"));
 }
 
 #[test]
@@ -45,10 +45,10 @@ fn test_status_close_with_summary() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["close", &id, "--summary", "Fixed the bug successfully"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: complete"));
-    assert!(content.contains("## Completion Summary"));
-    assert!(content.contains("Fixed the bug successfully"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: complete"));
+    assert!(output.contains("## Completion Summary"));
+    assert!(output.contains("Fixed the bug successfully"));
 }
 
 #[test]
@@ -88,8 +88,8 @@ fn test_status_reopen() {
     janus.run_success(&["close", &id, "--no-summary"]);
     janus.run_success(&["reopen", &id]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: new"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: new"));
 }
 
 #[test]
@@ -100,8 +100,8 @@ fn test_status_cancelled() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "cancelled"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: cancelled"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: cancelled"));
 }
 
 #[test]
@@ -112,8 +112,8 @@ fn test_status_next() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "next"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: next"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: next"));
 }
 
 #[test]
@@ -124,8 +124,8 @@ fn test_status_in_progress() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["status", &id, "in_progress"]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: in_progress"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: in_progress"));
 }
 
 #[test]
@@ -136,8 +136,8 @@ fn test_start_sets_in_progress() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     janus.run_success(&["start", &id]);
 
-    let content = janus.read_ticket(&id);
-    assert!(content.contains("status: in_progress"));
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: in_progress"));
 }
 
 #[test]

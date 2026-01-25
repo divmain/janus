@@ -24,8 +24,12 @@ fn test_dep_add() {
     let output = janus.run_success(&["dep", "add", &id1, &id2]);
     assert!(output.contains("Added dependency"));
 
-    let content = janus.read_ticket(&id1);
-    assert!(content.contains(&format!("[\"{}\"]", id2)));
+    // Verify dependency was added using CLI
+    let output = janus.run_success(&["dep", "tree", &id1]);
+    assert!(output.contains(&id2));
+    let output = janus.run_success(&["show", &id1]);
+    assert!(output.contains("## Blockers"));
+    assert!(output.contains(&id2));
 }
 
 #[test]
@@ -65,8 +69,11 @@ fn test_dep_remove() {
     let output = janus.run_success(&["dep", "remove", &id1, &id2]);
     assert!(output.contains("Removed dependency"));
 
-    let content = janus.read_ticket(&id1);
-    assert!(content.contains("deps: []"));
+    // Verify dependency was removed using CLI
+    let output = janus.run_success(&["dep", "tree", &id1]);
+    assert!(!output.contains(&id2));
+    let output = janus.run_success(&["show", &id1]);
+    assert!(!output.contains("## Blockers"));
 }
 
 #[test]
@@ -99,11 +106,18 @@ fn test_dep_tree() {
     janus.run_success(&["dep", "add", &id1, &id2]);
     janus.run_success(&["dep", "add", &id1, &id3]);
 
+    // Verify using dep tree command
     let output = janus.run_success(&["dep", "tree", &id1]);
     assert!(output.contains(&id1));
     assert!(output.contains(&id2));
     assert!(output.contains(&id3));
     assert!(output.contains("Root"));
+
+    // Verify using show command
+    let output = janus.run_success(&["show", &id1]);
+    assert!(output.contains("## Blockers"));
+    assert!(output.contains(&id2));
+    assert!(output.contains(&id3));
 }
 
 #[test]
@@ -153,9 +167,11 @@ fn test_dep_add_direct_circular() {
     assert!(stderr.contains("circular dependency"));
     assert!(stderr.contains("direct"));
 
-    // Verify B still has no dependencies
-    let content = janus.read_ticket(&id2);
-    assert!(content.contains("deps: []"));
+    // Verify B still has no dependencies using CLI
+    let output = janus.run_success(&["dep", "tree", &id2]);
+    assert!(!output.contains(&id1));
+    let output = janus.run_success(&["show", &id2]);
+    assert!(!output.contains("## Blockers"));
 }
 
 #[test]
@@ -187,9 +203,11 @@ fn test_dep_add_transitive_circular_3_level() {
     assert!(stderr.contains("circular dependency"));
     assert!(stderr.contains("cycle"));
 
-    // Verify C still has no dependencies
-    let content = janus.read_ticket(&id3);
-    assert!(content.contains("deps: []"));
+    // Verify C still has no dependencies using CLI
+    let output = janus.run_success(&["dep", "tree", &id3]);
+    assert!(!output.contains(&id1));
+    let output = janus.run_success(&["show", &id3]);
+    assert!(!output.contains("## Blockers"));
 }
 
 #[test]
@@ -224,9 +242,11 @@ fn test_dep_add_transitive_circular_4_level() {
     assert!(stderr.contains("circular dependency"));
     assert!(stderr.contains("cycle"));
 
-    // Verify D still only depends on nothing (we didn't add any deps to D)
-    let content = janus.read_ticket(&id4);
-    assert!(content.contains("deps: []"));
+    // Verify D still only depends on nothing (we didn't add any deps to D) using CLI
+    let output = janus.run_success(&["dep", "tree", &id4]);
+    assert!(!output.contains(&id1));
+    let output = janus.run_success(&["show", &id4]);
+    assert!(!output.contains("## Blockers"));
 }
 
 #[test]
@@ -256,13 +276,22 @@ fn test_dep_add_valid_non_circular_chain() {
     janus.run_success(&["dep", "add", &id2, &id3]);
     janus.run_success(&["dep", "add", &id1, &id4]);
 
-    // All should succeed
-    let content1 = janus.read_ticket(&id1);
-    assert!(content1.contains(&id2));
-    assert!(content1.contains(&id4));
+    // All should succeed - verify using CLI
+    let output = janus.run_success(&["dep", "tree", &id1]);
+    assert!(output.contains(&id2));
+    assert!(output.contains(&id4));
 
-    let content2 = janus.read_ticket(&id2);
-    assert!(content2.contains(&id3));
+    let output = janus.run_success(&["dep", "tree", &id2]);
+    assert!(output.contains(&id3));
+
+    let output = janus.run_success(&["show", &id1]);
+    assert!(output.contains("## Blockers"));
+    assert!(output.contains(&id2));
+    assert!(output.contains(&id4));
+
+    let output = janus.run_success(&["show", &id2]);
+    assert!(output.contains("## Blockers"));
+    assert!(output.contains(&id3));
 }
 
 #[test]
@@ -293,10 +322,15 @@ fn test_dep_add_valid_diamond_dependency() {
     janus.run_success(&["dep", "add", &id2, &id4]);
     janus.run_success(&["dep", "add", &id3, &id4]);
 
-    // All should succeed - diamond patterns are valid
-    let content1 = janus.read_ticket(&id1);
-    assert!(content1.contains(&id2));
-    assert!(content1.contains(&id3));
+    // All should succeed - diamond patterns are valid - verify using CLI
+    let output = janus.run_success(&["dep", "tree", &id1]);
+    assert!(output.contains(&id2));
+    assert!(output.contains(&id3));
+
+    let output = janus.run_success(&["show", &id1]);
+    assert!(output.contains("## Blockers"));
+    assert!(output.contains(&id2));
+    assert!(output.contains(&id3));
 }
 
 #[test]
@@ -330,15 +364,15 @@ fn test_dep_add_circular_in_middle_of_chain() {
     let stderr = janus.run_failure(&["dep", "add", &id3, &id2]);
     assert!(stderr.contains("circular dependency"));
 
-    // Verify the chain structure is unchanged
-    let content1 = janus.read_ticket(&id1);
-    assert!(content1.contains(&id2));
+    // Verify the chain structure is unchanged using CLI
+    let output = janus.run_success(&["dep", "tree", &id1]);
+    assert!(output.contains(&id2));
 
-    let content2 = janus.read_ticket(&id2);
-    assert!(content2.contains(&id3));
-    assert!(!content2.contains(&id1)); // B should not depend on A
+    let output = janus.run_success(&["dep", "tree", &id2]);
+    assert!(output.contains(&id3));
+    assert!(!output.contains(&id1)); // B should not depend on A
 
-    let content3 = janus.read_ticket(&id3);
-    assert!(content3.contains(&id4));
-    assert!(!content3.contains(&id2)); // C should not depend on B
+    let output = janus.run_success(&["dep", "tree", &id3]);
+    assert!(output.contains(&id4));
+    assert!(!output.contains(&id2)); // C should not depend on B
 }

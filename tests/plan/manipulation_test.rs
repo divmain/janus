@@ -23,9 +23,9 @@ fn test_plan_add_ticket_simple() {
     assert!(output.contains("Added"));
     assert!(output.contains(&ticket_id));
 
-    // Verify ticket is in plan
-    let content = janus.read_plan(&plan_id);
-    assert!(content.contains(&ticket_id));
+    // Verify ticket is in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(output.contains(&ticket_id));
 }
 
 #[test]
@@ -63,9 +63,9 @@ fn test_plan_add_ticket_phased() {
     ]);
     assert!(output.contains("Added"));
 
-    // Verify ticket is in plan
-    let content = janus.read_plan(&plan_id);
-    assert!(content.contains(&ticket_id));
+    // Verify ticket is in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(output.contains(&ticket_id));
 }
 
 #[test]
@@ -144,11 +144,11 @@ fn test_plan_add_ticket_with_position() {
     // Add ticket2 at position 2 (between ticket1 and ticket3)
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket2, "--position", "2"]);
 
-    // Verify order in plan
-    let content = janus.read_plan(&plan_id);
-    let pos1 = content.find(&ticket1).unwrap();
-    let pos2 = content.find(&ticket2).unwrap();
-    let pos3 = content.find(&ticket3).unwrap();
+    // Verify order in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    let pos1 = output.find(&ticket1).unwrap();
+    let pos2 = output.find(&ticket2).unwrap();
+    let pos3 = output.find(&ticket3).unwrap();
     assert!(pos1 < pos2);
     assert!(pos2 < pos3);
 }
@@ -170,17 +170,17 @@ fn test_plan_remove_ticket() {
         .to_string();
     janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
 
-    // Verify ticket is in plan
-    let content = janus.read_plan(&plan_id);
-    assert!(content.contains(&ticket_id));
+    // Verify ticket is in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(output.contains(&ticket_id));
 
     // Remove ticket
     let output = janus.run_success(&["plan", "remove-ticket", &plan_id, &ticket_id]);
     assert!(output.contains("Removed"));
 
-    // Verify ticket is no longer in plan
-    let content = janus.read_plan(&plan_id);
-    assert!(!content.contains(&ticket_id));
+    // Verify ticket is no longer in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(!output.contains(&ticket_id));
 }
 
 #[test]
@@ -248,10 +248,10 @@ fn test_plan_move_ticket() {
     assert!(output.contains("Moved"));
     assert!(output.contains("Phase Two"));
 
-    // Verify the move - ticket should be after Phase 2 header
-    let content = janus.read_plan(&plan_id);
-    let phase2_pos = content.find("Phase 2").unwrap();
-    let ticket_pos = content.rfind(&ticket_id).unwrap(); // Use rfind to find the last occurrence
+    // Verify the move using CLI output - ticket should be after Phase 2 header
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    let phase2_pos = output.find("Phase 2").unwrap();
+    let ticket_pos = output.rfind(&ticket_id).unwrap(); // Use rfind to find the last occurrence
     assert!(
         ticket_pos > phase2_pos,
         "Ticket should be after Phase 2 header"
@@ -273,10 +273,10 @@ fn test_plan_add_phase() {
     assert!(output.contains("Added phase"));
     assert!(output.contains("New Phase"));
 
-    // Verify phase is in plan
-    let content = janus.read_plan(&plan_id);
-    assert!(content.contains("New Phase"));
-    assert!(content.contains("## Phase"));
+    // Verify phase is in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(output.contains("New Phase"));
+    assert!(output.contains("## Phase"));
 }
 
 #[test]
@@ -292,10 +292,10 @@ fn test_plan_add_phase_to_phased_plan() {
     // Add another phase
     janus.run_success(&["plan", "add-phase", &plan_id, "Phase Two"]);
 
-    // Verify both phases are in plan
-    let content = janus.read_plan(&plan_id);
-    assert!(content.contains("Phase One"));
-    assert!(content.contains("Phase Two"));
+    // Verify both phases are in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(output.contains("Phase One"));
+    assert!(output.contains("Phase Two"));
 }
 
 #[test]
@@ -320,10 +320,10 @@ fn test_plan_remove_phase_empty() {
     let output = janus.run_success(&["plan", "remove-phase", &plan_id, "Phase One"]);
     assert!(output.contains("Removed"));
 
-    // Verify phase is no longer in plan
-    let content = janus.read_plan(&plan_id);
-    assert!(!content.contains("Phase One"));
-    assert!(content.contains("Phase Two"));
+    // Verify phase is no longer in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(!output.contains("Phase One"));
+    assert!(output.contains("Phase Two"));
 }
 
 #[test]
@@ -354,9 +354,9 @@ fn test_plan_remove_phase_with_force() {
     let output = janus.run_success(&["plan", "remove-phase", &plan_id, "Phase One", "--force"]);
     assert!(output.contains("Removed"));
 
-    // Verify phase is gone
-    let content = janus.read_plan(&plan_id);
-    assert!(!content.contains("Phase One"));
+    // Verify phase is gone using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(!output.contains("Phase One"));
 }
 
 #[test]
@@ -403,11 +403,11 @@ fn test_plan_remove_phase_with_migrate() {
     assert!(output.contains("Migrated"));
     assert!(output.contains("Removed"));
 
-    // Verify ticket is now in Phase Two
-    let content = janus.read_plan(&plan_id);
-    assert!(!content.contains("Phase One"));
-    assert!(content.contains("Phase Two"));
-    assert!(content.contains(&ticket_id));
+    // Verify ticket is now in Phase Two using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    assert!(!output.contains("Phase One"));
+    assert!(output.contains("Phase Two"));
+    assert!(output.contains(&ticket_id));
 }
 
 #[test]
@@ -448,11 +448,11 @@ fn test_plan_add_ticket_with_after() {
         &ticket1,
     ]);
 
-    // Verify order in plan
-    let content = janus.read_plan(&plan_id);
-    let pos1 = content.find(&ticket1).unwrap();
-    let pos2 = content.find(&ticket2).unwrap();
-    let pos3 = content.find(&ticket3).unwrap();
+    // Verify order in plan using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    let pos1 = output.find(&ticket1).unwrap();
+    let pos2 = output.find(&ticket2).unwrap();
+    let pos3 = output.find(&ticket3).unwrap();
     assert!(pos1 < pos2);
     assert!(pos2 < pos3);
 }
@@ -512,10 +512,10 @@ fn test_plan_add_phase_with_position() {
     // Add a phase at position 2 (between First and Third)
     janus.run_success(&["plan", "add-phase", &plan_id, "Second", "--position", "2"]);
 
-    let content = janus.read_plan(&plan_id);
-    let first_pos = content.find("First").unwrap();
-    let second_pos = content.find("Second").unwrap();
-    let third_pos = content.find("Third").unwrap();
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    let first_pos = output.find("First").unwrap();
+    let second_pos = output.find("Second").unwrap();
+    let third_pos = output.find("Third").unwrap();
 
     assert!(first_pos < second_pos, "First should come before Second");
     assert!(second_pos < third_pos, "Second should come before Third");
@@ -542,10 +542,10 @@ fn test_plan_add_phase_with_after() {
     // Add a phase after First
     janus.run_success(&["plan", "add-phase", &plan_id, "Second", "--after", "First"]);
 
-    let content = janus.read_plan(&plan_id);
-    let first_pos = content.find("First").unwrap();
-    let second_pos = content.find("Second").unwrap();
-    let third_pos = content.find("Third").unwrap();
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    let first_pos = output.find("First").unwrap();
+    let second_pos = output.find("Second").unwrap();
+    let third_pos = output.find("Third").unwrap();
 
     assert!(first_pos < second_pos, "First should come before Second");
     assert!(second_pos < third_pos, "Second should come before Third");
@@ -624,11 +624,11 @@ fn test_plan_move_ticket_with_position() {
     ]);
     assert!(output.contains("Moved"));
 
-    // Verify ticket1 is now first in Phase Two
-    let content = janus.read_plan(&plan_id);
-    let phase2_pos = content.find("Phase 2").unwrap();
-    let t1_after_p2 = content[phase2_pos..].find(&ticket1);
-    let t2_after_p2 = content[phase2_pos..].find(&ticket2);
+    // Verify ticket1 is now first in Phase Two using CLI output
+    let output = janus.run_success(&["plan", "show", &plan_id]);
+    let phase2_pos = output.find("Phase 2").unwrap();
+    let t1_after_p2 = output[phase2_pos..].find(&ticket1);
+    let t2_after_p2 = output[phase2_pos..].find(&ticket2);
 
     assert!(
         t1_after_p2.is_some() && t2_after_p2.is_some(),
