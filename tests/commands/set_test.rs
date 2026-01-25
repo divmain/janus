@@ -138,8 +138,8 @@ fn test_set_parent_clear() {
     let content = janus.read_ticket(&child_id);
     assert!(content.contains(&format!("parent: {}", parent_id)));
 
-    // Clear parent with empty string
-    let output = janus.run_success(&["set", &child_id, "parent", ""]);
+    // Clear parent by omitting the value argument
+    let output = janus.run_success(&["set", &child_id, "parent"]);
     assert!(output.contains("Updated"));
 
     let content = janus.read_ticket(&child_id);

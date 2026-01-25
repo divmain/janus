@@ -18,9 +18,9 @@ use crate::error::Result;
 ///
 /// # Example
 /// ```no_run
-/// use janus::commands::interactive::confirm;
-///
-/// if confirm("Delete this file")? {
+/// # use janus::commands::interactive::confirm;
+/// let confirmed = confirm("Delete this file").unwrap();
+/// if confirmed {
 ///     // proceed with deletion
 /// }
 /// ```
@@ -46,10 +46,9 @@ pub fn confirm(prompt: &str) -> Result<bool> {
 ///
 /// # Example
 /// ```no_run
-/// use janus::commands::interactive::select_option;
-///
+/// # use janus::commands::interactive::select_option;
 /// let options = ["Replace", "Abort", "Skip"];
-/// let choice = select_option("Choose an action", &options, Some(0))?;
+/// let choice = select_option("Choose an action", &options, Some(0)).unwrap();
 /// ```
 pub fn select_option(prompt: &str, options: &[&str], default: Option<usize>) -> Result<usize> {
     loop {
@@ -97,9 +96,8 @@ pub fn select_option(prompt: &str, options: &[&str], default: Option<usize>) -> 
 ///
 /// # Example
 /// ```no_run
-/// use janus::commands::interactive::prompt_text;
-///
-/// let name = prompt_text("Enter your name", Some("Guest"))?;
+/// # use janus::commands::interactive::prompt_text;
+/// let name = prompt_text("Enter your name", Some("Guest")).unwrap();
 /// ```
 pub fn prompt_text(prompt: &str, default: Option<&str>) -> Result<String> {
     if let Some(d) = default {
@@ -135,10 +133,9 @@ pub fn prompt_text(prompt: &str, default: Option<&str>) -> Result<String> {
 ///
 /// # Example
 /// ```no_run
-/// use janus::commands::interactive::prompt_choice;
-///
+/// # use janus::commands::interactive::prompt_choice;
 /// let choices = [("l", "Local to remote"), ("r", "Remote to local"), ("s", "Skip")];
-/// let choice = prompt_choice("Sync direction", &choices, Some("l"))?;
+/// let choice = prompt_choice("Sync direction", &choices, Some("l")).unwrap();
 /// ```
 pub fn prompt_choice(
     prompt: &str,

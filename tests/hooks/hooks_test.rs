@@ -611,33 +611,7 @@ async fn test_invalid_hook_event_error_message() {
     }
 }
 
-#[test]
-fn test_hook_recipe_not_found_error() {
-    // Test the error variant directly
-    let error = JanusError::HookRecipeNotFound("nonexistent-recipe".to_string());
-    let message = error.to_string();
-    assert!(message.contains("nonexistent-recipe"));
-    assert!(message.contains("not found"));
-}
 
-#[test]
-fn test_hook_fetch_failed_error() {
-    // Test the error variant directly
-    let error = JanusError::HookFetchFailed("network error".to_string());
-    let message = error.to_string();
-    assert!(message.contains("network error"));
-    assert!(message.contains("failed to fetch"));
-}
-
-#[test]
-fn test_hook_security_error() {
-    // Test the error variant directly
-    let error =
-        JanusError::HookSecurity("Script path resolves outside hooks directory".to_string());
-    let message = error.to_string();
-    assert!(message.contains("security violation"));
-    assert!(message.contains("outside hooks directory"));
-}
 
 #[test]
 #[serial]

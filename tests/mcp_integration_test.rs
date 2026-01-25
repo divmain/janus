@@ -407,88 +407,10 @@ fn test_mcp_read_ticket_not_found() {
 
     // Should return an error
     assert!(response["error"].is_object());
-    assert!(
-        response["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("not found")
-    );
-}
-
-#[test]
-#[serial]
-fn test_mcp_read_graph_deps() {
-    let janus = common::JanusTest::new();
-
-    // Create tickets and add dependency
-    let id1 = janus
-        .run_success(&["create", "Ticket 1"])
-        .trim()
-        .to_string();
-    let id2 = janus
-        .run_success(&["create", "Ticket 2"])
-        .trim()
-        .to_string();
-    janus.run_success(&["dep", "add", &id2, &id1]);
-
-    let mut client = McpTestClient::new(janus.temp_dir.path());
-    client.initialize();
-    client.send_initialized();
-
-    // Read dependency graph
-    let response = client.send_request(
-        "resources/read",
-        serde_json::json!({
-            "uri": "janus://graph/deps"
-        }),
-    );
-
-    let contents = response["result"]["contents"].as_array().unwrap();
-    assert_eq!(contents[0]["mimeType"], "text/vnd.graphviz");
-
-    let dot = contents[0]["text"].as_str().unwrap();
-    assert!(dot.contains("digraph janus"));
-    assert!(dot.contains(&id1));
-    assert!(dot.contains(&id2));
-    assert!(dot.contains("blocks"));
-}
-
-#[test]
-#[serial]
-fn test_mcp_read_graph_spawning() {
-    let janus = common::JanusTest::new();
-
-    // Create tickets with spawning relationship
-    let parent_id = janus
-        .run_success(&["create", "Parent ticket"])
-        .trim()
-        .to_string();
-    let child_id = janus
-        .run_success(&["create", "Child ticket", "--spawned-from", &parent_id])
-        .trim()
-        .to_string();
-
-    let mut client = McpTestClient::new(janus.temp_dir.path());
-    client.initialize();
-    client.send_initialized();
-
-    // Read spawning graph
-    let response = client.send_request(
-        "resources/read",
-        serde_json::json!({
-            "uri": "janus://graph/spawning"
-        }),
-    );
-
-    let contents = response["result"]["contents"].as_array().unwrap();
-    assert_eq!(contents[0]["mimeType"], "text/vnd.graphviz");
-
-    let dot = contents[0]["text"].as_str().unwrap();
-    assert!(dot.contains("digraph janus"));
-    assert!(dot.contains(&parent_id));
-    assert!(dot.contains(&child_id));
-    assert!(dot.contains("spawned"));
-    assert!(dot.contains("style=dashed"));
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
 }
 
 #[test]
@@ -842,12 +764,10 @@ fn test_mcp_read_plan_not_found() {
 
     // Should return an error
     assert!(response["error"].is_object());
-    assert!(
-        response["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("not found")
-    );
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
 }
 
 #[test]

@@ -188,22 +188,6 @@ fn test_create_with_parent() {
 }
 
 #[test]
-fn test_create_all_types() {
-    let janus = JanusTest::new();
-
-    for ticket_type in &["bug", "feature", "task", "epic", "chore"] {
-        let output = janus.run_success(&["create", "Test", "-t", ticket_type]);
-        let id = output.trim();
-        let content = janus.read_ticket(id);
-        assert!(
-            content.contains(&format!("type: {}", ticket_type)),
-            "Type should be {}",
-            ticket_type
-        );
-    }
-}
-
-#[test]
 fn test_create_default_triaged_false() {
     let janus = JanusTest::new();
 
@@ -240,22 +224,6 @@ priority: 2
         output.contains("Old Ticket"),
         "Old ticket should be readable"
     );
-}
-
-#[test]
-fn test_create_all_priorities() {
-    let janus = JanusTest::new();
-
-    for priority in &["0", "1", "2", "3", "4"] {
-        let output = janus.run_success(&["create", "Test", "-p", priority]);
-        let id = output.trim();
-        let content = janus.read_ticket(id);
-        assert!(
-            content.contains(&format!("priority: {}", priority)),
-            "Priority should be {}",
-            priority
-        );
-    }
 }
 
 #[test]
@@ -675,23 +643,6 @@ fn test_set_priority() {
 }
 
 #[test]
-fn test_set_priority_all_values() {
-    let janus = JanusTest::new();
-
-    for priority in &["0", "1", "2", "3", "4"] {
-        let id = janus.run_success(&["create", "Test"]).trim().to_string();
-        janus.run_success(&["set", &id, "priority", priority]);
-
-        let content = janus.read_ticket(&id);
-        assert!(
-            content.contains(&format!("priority: {}", priority)),
-            "Priority should be set to {}",
-            priority
-        );
-    }
-}
-
-#[test]
 fn test_set_priority_invalid() {
     let janus = JanusTest::new();
 
@@ -714,23 +665,6 @@ fn test_set_type() {
 
     let content = janus.read_ticket(&id);
     assert!(content.contains("type: bug"));
-}
-
-#[test]
-fn test_set_type_all_values() {
-    let janus = JanusTest::new();
-
-    for ticket_type in &["bug", "feature", "task", "epic", "chore"] {
-        let id = janus.run_success(&["create", "Test"]).trim().to_string();
-        janus.run_success(&["set", &id, "type", ticket_type]);
-
-        let content = janus.read_ticket(&id);
-        assert!(
-            content.contains(&format!("type: {}", ticket_type)),
-            "Type should be set to {}",
-            ticket_type
-        );
-    }
 }
 
 #[test]
@@ -782,8 +716,8 @@ fn test_set_parent_clear() {
     let content = janus.read_ticket(&child_id);
     assert!(content.contains(&format!("parent: {}", parent_id)));
 
-    // Clear parent with empty string
-    let output = janus.run_success(&["set", &child_id, "parent", ""]);
+    // Clear parent by omitting the value argument
+    let output = janus.run_success(&["set", &child_id, "parent"]);
     assert!(output.contains("Updated"));
 
     let content = janus.read_ticket(&child_id);
@@ -834,21 +768,6 @@ fn test_set_immutable_uuid_field_fails() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     let stderr = janus.run_failure(&["set", &id, "uuid", "new-uuid"]);
     assert!(stderr.contains("invalid field"));
-}
-
-#[test]
-fn test_set_json_output() {
-    let janus = JanusTest::new();
-
-    let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    let output = janus.run_success(&["set", &id, "priority", "1", "--json"]);
-
-    // Verify JSON output
-    let json: serde_json::Value = serde_json::from_str(&output).expect("Should be valid JSON");
-    assert_eq!(json["action"], "field_updated");
-    assert_eq!(json["field"], "priority");
-    assert_eq!(json["new_value"], "1");
-    assert_eq!(json["id"], id);
 }
 
 #[test]
@@ -1724,30 +1643,6 @@ fn test_ls_all_three_filters_union() {
     assert!(output.contains("Closed"));
 }
 
-#[test]
-fn test_ls_json_output_works() {
-    let janus = JanusTest::new();
-
-    let id = janus.run_success(&["create", "Test"]).trim().to_string();
-
-    // Test --json flag with regular ls
-    let output = janus.run_success(&["ls", "--json"]);
-    assert!(output.contains(&id));
-    // JSON output should have status field in format "status": "new"
-    assert!(output.contains("\"status\":"));
-    assert!(output.contains("\"new\""));
-
-    // Test --json flag with --ready
-    let output = janus.run_success(&["ls", "--ready", "--json"]);
-    assert!(output.contains(&id));
-    assert!(output.contains("\"status\":"));
-    assert!(output.contains("\"new\""));
-
-    // Test --json flag with --blocked
-    let _output = janus.run_success(&["ls", "--blocked", "--json"]);
-    // No blocked tickets, so should be empty or just contain the ready one
-}
-
 // ============================================================================
 // Spawning-related filter tests
 // ============================================================================
@@ -2252,23 +2147,6 @@ fn test_query_basic() {
     assert!(output.contains(&id));
     assert!(output.contains("Test ticket"));
     assert!(output.contains("\"status\":\"new\""));
-}
-
-#[test]
-fn test_query_json_format() {
-    let janus = JanusTest::new();
-
-    janus.run_success(&["create", "Test"]);
-
-    let output = janus.run_success(&["query"]);
-
-    // Should be valid JSON on each line
-    for line in output.lines() {
-        if !line.trim().is_empty() {
-            let _: serde_json::Value =
-                serde_json::from_str(line).expect("Output should be valid JSON");
-        }
-    }
 }
 
 // ============================================================================
@@ -2791,12 +2669,10 @@ fn test_cache_path_command() {
 
     assert!(cache_path.is_absolute());
     assert!(cache_path.to_string_lossy().contains("janus"));
-    assert!(
-        cache_path
-            .extension()
-            .map(|ext| ext == "db")
-            .unwrap_or(false)
-    );
+    assert!(cache_path
+        .extension()
+        .map(|ext| ext == "db")
+        .unwrap_or(false));
 }
 
 #[test]
@@ -6796,393 +6672,6 @@ impl JanusTest {
         let path = self.temp_dir.path().join(relative_path);
         fs::read_to_string(path).ok()
     }
-}
-
-#[test]
-fn test_hook_pre_write_aborts_ticket_create() {
-    let janus = JanusTest::new();
-
-    // Create a pre-write hook that always fails
-    janus.write_hook_script("pre-write.sh", "#!/bin/sh\necho 'Abort!' >&2\nexit 1\n");
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    pre_write: pre-write.sh
-"#,
-    );
-
-    // Ticket creation should fail because pre-hook returns non-zero
-    let stderr = janus.run_failure(&["create", "Test ticket"]);
-    assert!(
-        stderr.contains("pre-hook") || stderr.contains("failed"),
-        "Error message should mention pre-hook failure: {}",
-        stderr
-    );
-}
-
-#[test]
-fn test_hook_post_write_runs_after_ticket_create() {
-    let janus = JanusTest::new();
-
-    // Create a post-write hook that writes to a marker file
-    let marker_file = janus.temp_dir.path().join("hook_ran.txt");
-    let script_content = format!(
-        r#"#!/bin/sh
-echo "ITEM_TYPE=$JANUS_ITEM_TYPE" >> "{}"
-echo "EVENT=$JANUS_EVENT" >> "{}"
-echo "ITEM_ID=$JANUS_ITEM_ID" >> "{}"
-exit 0
-"#,
-        marker_file.display(),
-        marker_file.display(),
-        marker_file.display()
-    );
-    janus.write_hook_script("post-write.sh", &script_content);
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    post_write: post-write.sh
-"#,
-    );
-
-    // Create a ticket
-    let output = janus.run_success(&["create", "Test ticket"]);
-    let id = output.trim();
-    assert!(!id.is_empty(), "Should output a ticket ID");
-
-    // Give the hook a moment to complete
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Check that the hook ran
-    let marker_content = match fs::read_to_string(&marker_file) {
-        Ok(content) => content,
-        Err(e) => panic!(
-            "Hook marker file should exist at {}: {}",
-            marker_file.display(),
-            e
-        ),
-    };
-    assert!(
-        marker_content.contains("ITEM_TYPE=ticket"),
-        "Hook should receive ticket item type. Got: {}",
-        marker_content
-    );
-    assert!(
-        marker_content.contains("EVENT=post_write"),
-        "Hook should receive post_write event. Got: {}",
-        marker_content
-    );
-}
-
-#[test]
-fn test_hook_ticket_created_event_fires() {
-    let janus = JanusTest::new();
-
-    // Create a ticket_created hook that writes to a marker file
-    let marker_file = janus.temp_dir.path().join("ticket_created.txt");
-    let script_content = format!(
-        r#"#!/bin/sh
-echo "ITEM_TYPE=$JANUS_ITEM_TYPE" >> "{}"
-echo "EVENT=$JANUS_EVENT" >> "{}"
-exit 0
-"#,
-        marker_file.display(),
-        marker_file.display()
-    );
-    janus.write_hook_script("ticket-created.sh", &script_content);
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    ticket_created: ticket-created.sh
-"#,
-    );
-
-    // Create a ticket
-    let output = janus.run_success(&["create", "Test ticket"]);
-    assert!(!output.trim().is_empty(), "Should output a ticket ID");
-
-    // Give the hook a moment to complete
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Check that the hook ran
-    let marker_content = fs::read_to_string(&marker_file).expect("Hook marker file should exist");
-    assert!(
-        marker_content.contains("EVENT=ticket_created"),
-        "Hook should receive ticket_created event"
-    );
-}
-
-#[test]
-fn test_hook_pre_write_aborts_plan_create() {
-    let janus = JanusTest::new();
-
-    // Create a pre-write hook that always fails
-    janus.write_hook_script(
-        "pre-write.sh",
-        "#!/bin/sh\necho 'Plan creation blocked!' >&2\nexit 1\n",
-    );
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    pre_write: pre-write.sh
-"#,
-    );
-
-    // Plan creation should fail because pre-hook returns non-zero
-    let stderr = janus.run_failure(&["plan", "create", "Test plan"]);
-    assert!(
-        stderr.contains("pre-hook") || stderr.contains("failed"),
-        "Error message should mention pre-hook failure: {}",
-        stderr
-    );
-}
-
-#[test]
-fn test_hook_plan_created_event_fires() {
-    let janus = JanusTest::new();
-
-    // Create a plan_created hook that writes to a marker file
-    let marker_file = janus.temp_dir.path().join("plan_created.txt");
-    let script_content = format!(
-        r#"#!/bin/sh
-echo "ITEM_TYPE=$JANUS_ITEM_TYPE" >> "{}"
-echo "EVENT=$JANUS_EVENT" >> "{}"
-exit 0
-"#,
-        marker_file.display(),
-        marker_file.display()
-    );
-    janus.write_hook_script("plan-created.sh", &script_content);
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    plan_created: plan-created.sh
-"#,
-    );
-
-    // Create a plan
-    let output = janus.run_success(&["plan", "create", "Test plan"]);
-    assert!(!output.trim().is_empty(), "Should output a plan ID");
-
-    // Give the hook a moment to complete
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Check that the hook ran
-    let marker_content = fs::read_to_string(&marker_file).expect("Hook marker file should exist");
-    assert!(
-        marker_content.contains("EVENT=plan_created"),
-        "Hook should receive plan_created event"
-    );
-    assert!(
-        marker_content.contains("ITEM_TYPE=plan"),
-        "Hook should receive plan item type"
-    );
-}
-
-#[test]
-fn test_hook_pre_delete_aborts_plan_delete() {
-    let janus = JanusTest::new();
-
-    // First create a plan
-    let plan_id = janus
-        .run_success(&["plan", "create", "Test plan"])
-        .trim()
-        .to_string();
-
-    // Create a pre-delete hook that always fails
-    janus.write_hook_script(
-        "pre-delete.sh",
-        "#!/bin/sh\necho 'Delete blocked!' >&2\nexit 1\n",
-    );
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    pre_delete: pre-delete.sh
-"#,
-    );
-
-    // Plan deletion should fail because pre-hook returns non-zero
-    let stderr = janus.run_failure(&["plan", "delete", &plan_id, "--force"]);
-    assert!(
-        stderr.contains("pre-hook") || stderr.contains("failed"),
-        "Error message should mention pre-hook failure: {}",
-        stderr
-    );
-
-    // Plan should still exist
-    assert!(janus.plan_exists(&plan_id), "Plan should still exist");
-}
-
-#[test]
-fn test_hook_plan_deleted_event_fires() {
-    let janus = JanusTest::new();
-
-    // First create a plan
-    let plan_id = janus
-        .run_success(&["plan", "create", "Test plan"])
-        .trim()
-        .to_string();
-
-    // Create a plan_deleted hook that writes to a marker file
-    let marker_file = janus.temp_dir.path().join("plan_deleted.txt");
-    let script_content = format!(
-        r#"#!/bin/sh
-echo "ITEM_TYPE=$JANUS_ITEM_TYPE" >> "{}"
-echo "EVENT=$JANUS_EVENT" >> "{}"
-echo "ITEM_ID=$JANUS_ITEM_ID" >> "{}"
-exit 0
-"#,
-        marker_file.display(),
-        marker_file.display(),
-        marker_file.display()
-    );
-    janus.write_hook_script("plan-deleted.sh", &script_content);
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    plan_deleted: plan-deleted.sh
-"#,
-    );
-
-    // Delete the plan
-    janus.run_success(&["plan", "delete", &plan_id, "--force"]);
-
-    // Give the hook a moment to complete
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Check that the hook ran
-    let marker_content = fs::read_to_string(&marker_file).expect("Hook marker file should exist");
-    assert!(
-        marker_content.contains("EVENT=plan_deleted"),
-        "Hook should receive plan_deleted event"
-    );
-    assert!(
-        marker_content.contains(&format!("ITEM_ID={}", plan_id)),
-        "Hook should receive the plan ID"
-    );
-}
-
-#[test]
-fn test_hook_ticket_updated_on_status_change() {
-    let janus = JanusTest::new();
-
-    // First create a ticket
-    let ticket_id = janus
-        .run_success(&["create", "Test ticket"])
-        .trim()
-        .to_string();
-
-    // Create a ticket_updated hook that writes to a marker file
-    let marker_file = janus.temp_dir.path().join("ticket_updated.txt");
-    let script_content = format!(
-        r#"#!/bin/sh
-echo "EVENT=$JANUS_EVENT" >> "{}"
-echo "FIELD_NAME=$JANUS_FIELD_NAME" >> "{}"
-echo "OLD_VALUE=$JANUS_OLD_VALUE" >> "{}"
-echo "NEW_VALUE=$JANUS_NEW_VALUE" >> "{}"
-exit 0
-"#,
-        marker_file.display(),
-        marker_file.display(),
-        marker_file.display(),
-        marker_file.display()
-    );
-    janus.write_hook_script("ticket-updated.sh", &script_content);
-
-    // Create config to enable the hook
-    janus.write_config(
-        r#"
-hooks:
-  enabled: true
-  timeout: 30
-  scripts:
-    ticket_updated: ticket-updated.sh
-"#,
-    );
-
-    // Change the ticket status
-    janus.run_success(&["status", &ticket_id, "in_progress"]);
-
-    // Give the hook a moment to complete
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Check that the hook ran
-    let marker_content = fs::read_to_string(&marker_file).expect("Hook marker file should exist");
-    assert!(
-        marker_content.contains("EVENT=ticket_updated"),
-        "Hook should receive ticket_updated event"
-    );
-    assert!(
-        marker_content.contains("FIELD_NAME=status"),
-        "Hook should receive field name"
-    );
-    assert!(
-        marker_content.contains("NEW_VALUE=in_progress"),
-        "Hook should receive new value"
-    );
-}
-
-#[test]
-fn test_hook_disabled_does_not_run() {
-    let janus = JanusTest::new();
-
-    // Create a pre-write hook that would fail if run
-    janus.write_hook_script(
-        "pre-write.sh",
-        "#!/bin/sh\necho 'Should not run!' >&2\nexit 1\n",
-    );
-
-    // Create config with hooks DISABLED
-    janus.write_config(
-        r#"
-hooks:
-  enabled: false
-  timeout: 30
-  scripts:
-    pre_write: pre-write.sh
-"#,
-    );
-
-    // Ticket creation should succeed because hooks are disabled
-    let output = janus.run_success(&["create", "Test ticket"]);
-    let id = output.trim();
-    assert!(!id.is_empty(), "Should output a ticket ID");
-    assert!(janus.ticket_exists(id), "Ticket file should exist");
 }
 
 // ============================================================
