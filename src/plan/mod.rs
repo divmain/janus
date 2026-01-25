@@ -90,7 +90,7 @@ impl ItemRepository for PlanRepository {
     type Item = Plan;
     type Metadata = PlanMetadata;
 
-    async fn get_all_static() -> Result<Vec<PlanMetadata>> {
+    async fn get_all() -> Result<Vec<PlanMetadata>> {
         get_all_plans().await
     }
 }
@@ -103,12 +103,12 @@ impl PlanRepository {
 
     /// Build a HashMap by ID
     pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
-        <Self as ItemRepository>::build_map_static().await
+        <Self as ItemRepository>::build_map().await
     }
 
     /// Get all plans and the map together (efficient single call)
     pub async fn get_all_with_map() -> Result<(Vec<PlanMetadata>, HashMap<String, PlanMetadata>)> {
-        <Self as ItemRepository>::get_all_with_map_static().await
+        <Self as ItemRepository>::get_all_with_map().await
     }
 }
 

@@ -20,13 +20,7 @@ impl ItemRepository for TicketRepository {
     type Item = Ticket;
     type Metadata = TicketMetadata;
 
-    async fn get_all_static() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
-        Self::get_all().await
-    }
-}
-
-impl TicketRepository {
-    pub async fn get_all() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
+    async fn get_all() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
         if let Some(cache) = cache::get_or_init_cache().await {
             if let Ok(tickets) = cache.get_all_tickets().await {
                 return Ok(tickets);
@@ -34,9 +28,11 @@ impl TicketRepository {
             eprintln!("Warning: cache read failed, falling back to file reads");
         }
 
-        Self::get_all_from_disk().map_err(crate::error::JanusError::Io)
+        get_all_tickets_from_disk().map_err(crate::error::JanusError::Io)
     }
+}
 
+impl TicketRepository {
     fn get_all_from_disk() -> Result<Vec<TicketMetadata>, std::io::Error> {
         use crate::types::tickets_items_dir;
 
@@ -75,14 +71,14 @@ impl TicketRepository {
         }
 
         // Use the trait method for consistency
-        <Self as ItemRepository>::build_map_static().await
+        <Self as ItemRepository>::build_map().await
     }
 
     pub async fn get_all_with_map()
     -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError>
     {
         // Use the trait method for efficiency
-        <Self as ItemRepository>::get_all_with_map_static().await
+        <Self as ItemRepository>::get_all_with_map().await
     }
 }
 
