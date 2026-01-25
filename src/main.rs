@@ -80,7 +80,7 @@ async fn main() -> ExitCode {
             field,
             value,
             json,
-        } => cmd_set(&id, &field, &value, json).await,
+        } => cmd_set(&id, &field, value.as_deref(), json).await,
 
         Commands::Dep { action } => match action {
             DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json).await,

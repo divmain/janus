@@ -169,8 +169,8 @@ pub enum Commands {
         /// Field name to update (priority, type, parent)
         field: String,
 
-        /// New value (use empty string to clear parent)
-        value: String,
+        /// New value (omit to clear parent)
+        value: Option<String>,
 
         /// Output as JSON
         #[arg(long)]

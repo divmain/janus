@@ -10,7 +10,7 @@ use crate::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_TYPES};
 const SUPPORTED_FIELDS: &[&str] = &["priority", "type", "parent"];
 
 /// Set a field on a ticket
-pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id).await?;
     let metadata = ticket.read()?;
 
@@ -29,6 +29,11 @@ pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> R
     match field {
         "priority" => {
             previous_value = metadata.priority.map(|p| p.to_string());
+            let value = value.ok_or_else(|| JanusError::InvalidFieldValue {
+                field: field.to_string(),
+                value: "(none)".to_string(),
+                valid_values: VALID_PRIORITIES.iter().map(|s| s.to_string()).collect(),
+            })?;
             // Validate priority
             let _parsed: TicketPriority =
                 value.parse().map_err(|_| JanusError::InvalidFieldValue {
@@ -41,6 +46,11 @@ pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> R
         }
         "type" => {
             previous_value = metadata.ticket_type.map(|t| t.to_string());
+            let value = value.ok_or_else(|| JanusError::InvalidFieldValue {
+                field: field.to_string(),
+                value: "(none)".to_string(),
+                valid_values: VALID_TYPES.iter().map(|s| s.to_string()).collect(),
+            })?;
             // Validate type
             let _parsed: TicketType = value.parse().map_err(|_| JanusError::InvalidFieldValue {
                 field: field.to_string(),
@@ -52,11 +62,7 @@ pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> R
         }
         "parent" => {
             previous_value = metadata.parent.clone();
-            if value.is_empty() {
-                // Clear parent
-                ticket.remove_field("parent")?;
-                new_value = String::new();
-            } else {
+            if let Some(value) = value {
                 // Validate parent ticket exists
                 let parent_ticket = Ticket::find(value).await?;
                 if parent_ticket.id == ticket.id {
@@ -64,6 +70,10 @@ pub async fn cmd_set(id: &str, field: &str, value: &str, output_json: bool) -> R
                 }
                 new_value = parent_ticket.id.clone();
                 ticket.update_field("parent", &parent_ticket.id)?;
+            } else {
+                // Clear parent
+                ticket.remove_field("parent")?;
+                new_value = String::new();
             }
         }
         _ => unreachable!(), // Already validated above
