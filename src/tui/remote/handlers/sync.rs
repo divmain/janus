@@ -108,7 +108,7 @@ pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
             .filter(|t| {
                 t.remote
                     .as_ref()
-                    .is_some_and(|r| selected_remote.iter().any(|sr| r.contains(sr)))
+                    .is_some_and(|r| selected_remote.contains(r))
             })
             .filter_map(|t| t.id.clone())
             .collect()
