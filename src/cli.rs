@@ -73,6 +73,7 @@ pub enum Commands {
     #[command(visible_alias = "s")]
     Show {
         /// Ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON
@@ -84,6 +85,7 @@ pub enum Commands {
     #[command(visible_alias = "e")]
     Edit {
         /// Ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON (prints file path without opening editor)
@@ -94,6 +96,7 @@ pub enum Commands {
     /// Add timestamped note to ticket
     AddNote {
         /// Ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Note text (provide as argument or pipe from stdin)
@@ -108,6 +111,7 @@ pub enum Commands {
     /// Mark ticket as in-progress
     Start {
         /// Ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON
@@ -118,6 +122,7 @@ pub enum Commands {
     /// Mark ticket as complete
     Close {
         /// Ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Completion summary text (required unless --no-summary is used)
@@ -140,6 +145,7 @@ pub enum Commands {
     /// Reopen a closed ticket
     Reopen {
         /// Ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON
@@ -150,6 +156,7 @@ pub enum Commands {
     /// Set ticket status
     Status {
         /// Ticket ID (partial match supported)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// New status: new, next, in_progress, complete, cancelled (case-insensitive)
@@ -164,6 +171,7 @@ pub enum Commands {
     /// Set a ticket field (priority, type, parent)
     Set {
         /// Ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Field name to update (priority, type, parent)
@@ -337,8 +345,10 @@ pub enum DepAction {
     /// Add a dependency
     Add {
         /// Ticket ID
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
         /// Dependency ID (ticket that must be completed first)
+        #[arg(value_parser = parse_ticket_id)]
         dep_id: String,
         /// Output as JSON
         #[arg(long)]
@@ -347,8 +357,10 @@ pub enum DepAction {
     /// Remove a dependency
     Remove {
         /// Ticket ID
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
         /// Dependency ID to remove
+        #[arg(value_parser = parse_ticket_id)]
         dep_id: String,
         /// Output as JSON
         #[arg(long)]
@@ -357,6 +369,7 @@ pub enum DepAction {
     /// Show dependency tree
     Tree {
         /// Ticket ID
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
         /// Show full tree (including duplicate nodes)
         #[arg(long)]
@@ -372,7 +385,7 @@ pub enum LinkAction {
     /// Link tickets together
     Add {
         /// Ticket IDs to link
-        #[arg(required = true, num_args = 2..)]
+        #[arg(required = true, num_args = 2.., value_parser = parse_ticket_id)]
         ids: Vec<String>,
         /// Output as JSON
         #[arg(long)]
@@ -381,8 +394,10 @@ pub enum LinkAction {
     /// Remove link between tickets
     Remove {
         /// First ticket ID
+        #[arg(value_parser = parse_ticket_id)]
         id1: String,
         /// Second ticket ID
+        #[arg(value_parser = parse_ticket_id)]
         id2: String,
         /// Output as JSON
         #[arg(long)]
@@ -464,7 +479,7 @@ pub enum HookAction {
         /// Hook event name (e.g., "post_write", "ticket_created")
         event: String,
         /// Optional item ID for context
-        #[arg(long)]
+        #[arg(long, value_parser = parse_ticket_id)]
         id: Option<String>,
     },
     /// Enable hooks
@@ -516,6 +531,7 @@ pub enum RemoteAction {
     /// Push a local ticket to create a remote issue
     Push {
         /// Local ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON
@@ -526,6 +542,7 @@ pub enum RemoteAction {
     /// Link a local ticket to an existing remote issue
     Link {
         /// Local ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Remote reference
@@ -539,6 +556,7 @@ pub enum RemoteAction {
     /// Sync a local ticket with its remote issue
     Sync {
         /// Local ticket ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON
@@ -565,6 +583,7 @@ pub enum PlanAction {
     /// Display a plan with full details
     Show {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Show raw file content instead of enhanced output
@@ -590,6 +609,7 @@ pub enum PlanAction {
     /// Open plan in $EDITOR
     Edit {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON (prints file path as JSON instead of opening editor)
@@ -609,9 +629,11 @@ pub enum PlanAction {
     /// Add a ticket to a plan
     AddTicket {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         plan_id: String,
 
         /// Ticket ID to add
+        #[arg(value_parser = parse_ticket_id)]
         ticket_id: String,
 
         /// Target phase (required for phased plans)
@@ -633,9 +655,11 @@ pub enum PlanAction {
     /// Remove a ticket from a plan
     RemoveTicket {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         plan_id: String,
 
         /// Ticket ID to remove
+        #[arg(value_parser = parse_ticket_id)]
         ticket_id: String,
 
         /// Output as JSON
@@ -645,9 +669,11 @@ pub enum PlanAction {
     /// Move a ticket between phases
     MoveTicket {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         plan_id: String,
 
         /// Ticket ID to move
+        #[arg(value_parser = parse_ticket_id)]
         ticket_id: String,
 
         /// Target phase (required)
@@ -669,6 +695,7 @@ pub enum PlanAction {
     /// Add a new phase to a plan
     AddPhase {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         plan_id: String,
 
         /// Phase name
@@ -689,6 +716,7 @@ pub enum PlanAction {
     /// Remove a phase from a plan
     RemovePhase {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         plan_id: String,
 
         /// Phase name or number
@@ -709,6 +737,7 @@ pub enum PlanAction {
     /// Reorder tickets or phases
     Reorder {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         plan_id: String,
 
         /// Reorder tickets within a specific phase
@@ -726,6 +755,7 @@ pub enum PlanAction {
     /// Delete a plan
     Delete {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Skip confirmation prompt
@@ -739,6 +769,7 @@ pub enum PlanAction {
     /// Rename a plan (update its title)
     Rename {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// New title
@@ -751,6 +782,7 @@ pub enum PlanAction {
     /// Show the next actionable item(s) in a plan
     Next {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Show next item in current phase only
@@ -772,6 +804,7 @@ pub enum PlanAction {
     /// Show plan status summary
     Status {
         /// Plan ID (can be partial)
+        #[arg(value_parser = parse_ticket_id)]
         id: String,
 
         /// Output as JSON
@@ -830,6 +863,36 @@ fn parse_status(s: &str) -> Result<String, String> {
                 VALID_STATUSES.join(", ")
             )
         })
+}
+
+fn parse_ticket_id(s: &str) -> Result<String, String> {
+    if s.is_empty() {
+        return Err("ID cannot be empty".to_string());
+    }
+
+    if !s.contains('-') {
+        return Err("ID must contain at least one '-' separator".to_string());
+    }
+
+    if let Some(last_dash_pos) = s.rfind('-') {
+        let hash_part = &s[last_dash_pos + 1..];
+        if hash_part.len() < 4 {
+            return Err(
+                "ID must have at least 4 characters after the last '-' separator".to_string(),
+            );
+        }
+    }
+
+    if !s
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(
+            "ID must contain only alphanumeric characters, hyphens, and underscores".to_string(),
+        );
+    }
+
+    Ok(s.to_string())
 }
 
 pub fn generate_completions(shell: Shell) {

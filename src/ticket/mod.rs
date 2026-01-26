@@ -110,12 +110,17 @@ impl Ticket {
 /// # Returns
 ///
 /// Returns the full ID if found uniquely, otherwise an error:
+/// - `Other` with "No tickets loaded" if map is empty
 /// - `TicketNotFound` if no matches
 /// - `AmbiguousId` if multiple matches
 pub fn resolve_id_partial<T>(
     partial_id: &str,
     map: &std::collections::HashMap<String, T>,
 ) -> Result<String> {
+    if map.is_empty() {
+        return Err(JanusError::Other("No tickets loaded".to_string()));
+    }
+
     if map.contains_key(partial_id) {
         return Ok(partial_id.to_string());
     }
@@ -171,6 +176,14 @@ mod tests {
         let map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
 
         let result = resolve_id_partial("x-y-z", &map);
-        assert!(matches!(result, Err(JanusError::TicketNotFound(_))));
+        assert!(matches!(result, Err(JanusError::Other(_))));
+    }
+
+    #[test]
+    fn test_resolve_empty_map() {
+        let map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
+
+        let result = resolve_id_partial("j-a1b2", &map);
+        assert!(matches!(result, Err(JanusError::Other(msg)) if msg.contains("No tickets loaded")));
     }
 }
