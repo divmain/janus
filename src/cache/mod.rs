@@ -522,17 +522,15 @@ Description of the plan.
         let arr = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
         let json = TicketCache::serialize_array(&arr).unwrap();
 
-        assert!(json.is_some());
-        let json_str = json.unwrap();
-        assert!(json_str.starts_with('['));
-        assert!(json_str.ends_with(']'));
+        assert!(json.starts_with('['));
+        assert!(json.ends_with(']'));
 
-        let decoded: Vec<String> = serde_json::from_str(&json_str).unwrap();
+        let decoded: Vec<String> = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, arr);
 
         let empty_arr: Vec<String> = vec![];
         let empty_json = TicketCache::serialize_array(&empty_arr).unwrap();
-        assert!(empty_json.is_none());
+        assert_eq!(empty_json, "[]");
 
         let db_path = _cache.cache_db_path();
         drop(_cache);

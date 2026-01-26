@@ -61,20 +61,19 @@ async fn update_status_with_summary(
 fn write_completion_summary(ticket: &Ticket, summary: &str) -> Result<()> {
     let content = ticket.read_content()?;
 
-    // Check if there's already a Completion Summary section (case-insensitive)
     let section_start = find_completion_summary_section(&content);
 
     let new_content = if let Some(start_idx) = section_start {
-        // Replace existing section - find where it ends (next H2 or EOF)
         let after_header = &content[start_idx..];
-        // Find the end of the header line
         let header_end = after_header
             .find('\n')
-            .map(|i| i + 1)
-            .unwrap_or(after_header.len());
+            .ok_or_else(|| {
+                JanusError::Other(format!(
+                    "Invalid ticket file structure: '## Completion Summary' header found but missing newline"
+                ))
+            })?;
         let section_content_start = start_idx + header_end;
 
-        // Find the next H2 heading or EOF
         let section_content = &content[section_content_start..];
         let next_h2_re = regex::Regex::new(r"(?m)^## ").expect("regex should compile");
         let section_end = next_h2_re
@@ -82,7 +81,6 @@ fn write_completion_summary(ticket: &Ticket, summary: &str) -> Result<()> {
             .map(|m| section_content_start + m.start())
             .unwrap_or(content.len());
 
-        // Build new content: everything before section + new section + everything after
         let before = &content[..start_idx];
         let after = &content[section_end..];
 
@@ -93,7 +91,6 @@ fn write_completion_summary(ticket: &Ticket, summary: &str) -> Result<()> {
             if after.is_empty() { "" } else { "\n" }.to_owned() + after.trim_start_matches('\n')
         )
     } else {
-        // Add new section at the end of the file
         let trimmed = content.trim_end();
         format!("{}\n\n## Completion Summary\n\n{}\n", trimmed, summary)
     };

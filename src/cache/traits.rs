@@ -116,8 +116,8 @@ impl CacheableItem for TicketMetadata {
         let status = self.status.map(|s| s.to_string());
         let priority = self.priority.map(|p| p.as_num() as i64);
         let ticket_type = self.ticket_type.map(|t| t.to_string());
-        let deps_json = serialize_array(&self.deps);
-        let links_json = serialize_array(&self.links);
+        let deps_json = Some(serialize_array(&self.deps));
+        let links_json = Some(serialize_array(&self.links));
         let title = self.title.clone();
         let parent = self.parent.clone();
         let created = self.created.clone();
@@ -291,10 +291,10 @@ impl CacheableItem for PlanMetadata {
 // =============================================================================
 
 /// Serialize an array to JSON, returning None for empty arrays.
-fn serialize_array(arr: &[String]) -> Option<String> {
+fn serialize_array(arr: &[String]) -> String {
     if arr.is_empty() {
-        None
+        "[]".to_string()
     } else {
-        serde_json::to_string(arr).ok()
+        serde_json::to_string(arr).unwrap_or_else(|_| "[]".to_string())
     }
 }

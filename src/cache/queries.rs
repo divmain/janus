@@ -661,11 +661,11 @@ impl TicketCache {
     /// Serialize an array to JSON, returning None for empty arrays.
     /// Exposed for testing purposes.
     #[cfg(test)]
-    pub(crate) fn serialize_array(arr: &[String]) -> Result<Option<String>> {
+    pub(crate) fn serialize_array(arr: &[String]) -> Result<String> {
         if arr.is_empty() {
-            Ok(None)
+            Ok("[]".to_string())
         } else {
-            serde_json::to_string(arr).map(Some).map_err(|e| {
+            serde_json::to_string(arr).map_err(|e| {
                 CacheError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
             })
         }
