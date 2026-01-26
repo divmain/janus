@@ -2063,6 +2063,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "turso",
+ "url",
  "uuid",
  "wait-timeout",
 ]

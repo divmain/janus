@@ -6,6 +6,7 @@ use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef};
 use crate::ticket::TicketBuilder;
 use crate::types::TicketMetadata;
 use std::collections::HashSet;
+use url::Url;
 
 use super::sync_preview::{SyncChange, SyncDirection};
 
@@ -214,6 +215,165 @@ mod tests {
         assert_eq!(extract_issue_id_from_remote_ref("linear:org"), None);
         assert_eq!(extract_issue_id_from_remote_ref(""), None);
     }
+
+    #[test]
+    fn test_build_remote_ref_github_with_trailing_slash() {
+        let issue = RemoteIssue {
+            id: "42".to_string(),
+            url: "https://github.com/owner/repo/issues/42/".to_string(),
+            title: "Test Issue".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let remote_ref = build_remote_ref_from_issue(&issue).unwrap();
+        match remote_ref {
+            RemoteRef::GitHub {
+                owner,
+                repo,
+                issue_number,
+            } => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(issue_number, 42);
+            }
+            _ => panic!("Expected GitHub ref"),
+        }
+    }
+
+    #[test]
+    fn test_build_remote_ref_github_with_www_prefix() {
+        let issue = RemoteIssue {
+            id: "99".to_string(),
+            url: "https://www.github.com/owner/repo/issues/99".to_string(),
+            title: "Test Issue".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let remote_ref = build_remote_ref_from_issue(&issue).unwrap();
+        match remote_ref {
+            RemoteRef::GitHub {
+                owner,
+                repo,
+                issue_number,
+            } => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(issue_number, 99);
+            }
+            _ => panic!("Expected GitHub ref"),
+        }
+    }
+
+    #[test]
+    fn test_build_remote_ref_linear_with_trailing_slash() {
+        let issue = RemoteIssue {
+            id: "ENG-456".to_string(),
+            url: "https://linear.app/my-org/issue/ENG-456/test-issue/".to_string(),
+            title: "Test Issue".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let remote_ref = build_remote_ref_from_issue(&issue).unwrap();
+        match remote_ref {
+            RemoteRef::Linear { org, issue_id } => {
+                assert_eq!(org, "my-org");
+                assert_eq!(issue_id, "ENG-456");
+            }
+            _ => panic!("Expected Linear ref"),
+        }
+    }
+
+    #[test]
+    fn test_build_remote_ref_github_with_query_params() {
+        let issue = RemoteIssue {
+            id: "7".to_string(),
+            url: "https://github.com/owner/repo/issues/7?q=1".to_string(),
+            title: "Test Issue".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let remote_ref = build_remote_ref_from_issue(&issue).unwrap();
+        match remote_ref {
+            RemoteRef::GitHub {
+                owner,
+                repo,
+                issue_number,
+            } => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(issue_number, 7);
+            }
+            _ => panic!("Expected GitHub ref"),
+        }
+    }
+
+    #[test]
+    fn test_build_remote_ref_invalid_url() {
+        let issue = RemoteIssue {
+            id: "123".to_string(),
+            url: "not-a-valid-url".to_string(),
+            title: "Test".to_string(),
+            body: "".to_string(),
+            status: RemoteStatus::Open,
+            priority: None,
+            assignee: None,
+            updated_at: "".to_string(),
+            labels: vec![],
+            team: None,
+            project: None,
+            milestone: None,
+            due_date: None,
+            created_at: "".to_string(),
+            creator: None,
+        };
+
+        let result = build_remote_ref_from_issue(&issue);
+        assert!(result.is_err());
+    }
 }
 
 /// Adopt remote issues into local tickets
@@ -232,38 +392,88 @@ pub fn adopt_issues(issues: &[RemoteIssue], _local_ids: &HashSet<String>) -> Res
 
 /// Build a RemoteRef from a RemoteIssue
 fn build_remote_ref_from_issue(issue: &RemoteIssue) -> Result<RemoteRef> {
-    // Parse from URL for GitHub issues (format: https://github.com/owner/repo/issues/123)
-    if issue.url.contains("github.com") {
-        let url_parts: Vec<&str> = issue.url.split('/').collect();
-        if url_parts.len() >= 5 {
-            let owner = url_parts[3].to_string();
-            let repo = url_parts[4].to_string();
-            let issue_number: u64 = issue.id.parse().map_err(|_| {
-                JanusError::InvalidRemoteRef(issue.id.clone(), "invalid issue number".to_string())
-            })?;
-            return Ok(RemoteRef::GitHub {
-                owner,
-                repo,
-                issue_number,
-            });
-        }
+    let parsed_url = Url::parse(&issue.url).map_err(|e| {
+        JanusError::InvalidRemoteRef(issue.id.clone(), format!("invalid URL: {}", e))
+    })?;
+
+    let host = parsed_url.host_str().ok_or_else(|| {
+        JanusError::InvalidRemoteRef(issue.id.clone(), "URL has no host".to_string())
+    })?;
+
+    if host.ends_with("github.com") {
+        let mut path_segments = parsed_url.path_segments().ok_or_else(|| {
+            JanusError::InvalidRemoteRef(issue.id.clone(), "invalid GitHub URL path".to_string())
+        })?;
+
+        let owner = path_segments
+            .next()
+            .ok_or_else(|| {
+                JanusError::InvalidRemoteRef(
+                    issue.id.clone(),
+                    "missing owner in GitHub URL".to_string(),
+                )
+            })?
+            .to_string();
+
+        let repo = path_segments
+            .next()
+            .ok_or_else(|| {
+                JanusError::InvalidRemoteRef(
+                    issue.id.clone(),
+                    "missing repo in GitHub URL".to_string(),
+                )
+            })?
+            .to_string();
+
+        let _issues_segment = path_segments.next().ok_or_else(|| {
+            JanusError::InvalidRemoteRef(
+                issue.id.clone(),
+                "missing 'issues' segment in GitHub URL".to_string(),
+            )
+        })?;
+
+        let issue_number: u64 = issue.id.parse().map_err(|_| {
+            JanusError::InvalidRemoteRef(issue.id.clone(), "invalid issue number".to_string())
+        })?;
+
+        return Ok(RemoteRef::GitHub {
+            owner,
+            repo,
+            issue_number,
+        });
     }
 
-    // Parse from URL for Linear issues (format: https://linear.app/org/issue/ISSUE-123/title)
-    if issue.url.contains("linear.app") {
-        let url_parts: Vec<&str> = issue.url.split('/').collect();
-        if url_parts.len() >= 4 {
-            let org = url_parts[3].to_string();
-            return Ok(RemoteRef::Linear {
-                org,
-                issue_id: issue.id.clone(),
-            });
-        }
+    if host.ends_with("linear.app") {
+        let mut path_segments = parsed_url.path_segments().ok_or_else(|| {
+            JanusError::InvalidRemoteRef(issue.id.clone(), "invalid Linear URL path".to_string())
+        })?;
+
+        let org = path_segments
+            .next()
+            .ok_or_else(|| {
+                JanusError::InvalidRemoteRef(
+                    issue.id.clone(),
+                    "missing org in Linear URL".to_string(),
+                )
+            })?
+            .to_string();
+
+        let _issue_segment = path_segments.next().ok_or_else(|| {
+            JanusError::InvalidRemoteRef(
+                issue.id.clone(),
+                "missing 'issue' segment in Linear URL".to_string(),
+            )
+        })?;
+
+        return Ok(RemoteRef::Linear {
+            org,
+            issue_id: issue.id.clone(),
+        });
     }
 
     Err(JanusError::InvalidRemoteRef(
         issue.id.clone(),
-        "unable to parse".to_string(),
+        "unsupported URL host".to_string(),
     ))
 }
 
