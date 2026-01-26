@@ -275,6 +275,10 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
     let sanitized_title = sanitize_for_yaml(&remote_issue.title);
     let sanitized_body = sanitize_for_yaml(&remote_issue.body);
 
+    if sanitized_title.is_empty() {
+        return Err(JanusError::EmptyTitle);
+    }
+
     let body = if sanitized_body.is_empty() {
         None
     } else {
