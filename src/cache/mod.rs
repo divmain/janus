@@ -285,11 +285,7 @@ Description of the plan.
             .await
             .unwrap();
 
-        let stored_path: Option<String> = if let Some(row) = rows.next().await.unwrap() {
-            Some(row.get(0).unwrap())
-        } else {
-            None
-        };
+        let stored_path: Option<String> = rows.next().await.unwrap().map(|row| row.get(0).unwrap());
 
         assert_eq!(stored_path, Some(repo_path_str));
     }
@@ -311,11 +307,8 @@ Description of the plan.
             .await
             .unwrap();
 
-        let stored_version: Option<String> = if let Some(row) = rows.next().await.unwrap() {
-            Some(row.get(0).unwrap())
-        } else {
-            None
-        };
+        let stored_version: Option<String> =
+            rows.next().await.unwrap().map(|row| row.get(0).unwrap());
 
         assert_eq!(stored_version, Some(database::CACHE_VERSION.to_string()));
 
@@ -571,7 +564,7 @@ Description of the plan.
         assert!(files.contains_key("j-a1b2"));
         assert!(files.contains_key("j-c3d4"));
 
-        for (_, mtime_ns) in &files {
+        for mtime_ns in files.values() {
             assert!(*mtime_ns > 0);
         }
 

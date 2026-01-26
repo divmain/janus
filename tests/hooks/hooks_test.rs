@@ -611,8 +611,6 @@ async fn test_invalid_hook_event_error_message() {
     }
 }
 
-
-
 #[test]
 #[serial]
 #[cfg(unix)]

@@ -184,21 +184,23 @@ mod tests {
 
     #[test]
     fn test_serialize_simple_plan() {
-        let mut metadata = PlanMetadata::default();
-        metadata.id = Some("plan-a1b2".to_string());
-        metadata.uuid = Some("550e8400-e29b-41d4-a716-446655440000".to_string());
-        metadata.created = Some("2024-01-01T00:00:00Z".to_string());
-        metadata.title = Some("Simple Plan Title".to_string());
-        metadata.description = Some("This is the plan description.".to_string());
-        metadata.acceptance_criteria = vec![
-            "All tests pass".to_string(),
-            "Documentation complete".to_string(),
-        ];
-        metadata.sections.push(PlanSection::Tickets(vec![
-            "j-a1b2".to_string(),
-            "j-c3d4".to_string(),
-            "j-e5f6".to_string(),
-        ]));
+        let metadata = PlanMetadata {
+            id: Some("plan-a1b2".to_string()),
+            uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
+            created: Some("2024-01-01T00:00:00Z".to_string()),
+            title: Some("Simple Plan Title".to_string()),
+            description: Some("This is the plan description.".to_string()),
+            acceptance_criteria: vec![
+                "All tests pass".to_string(),
+                "Documentation complete".to_string(),
+            ],
+            sections: vec![PlanSection::Tickets(vec![
+                "j-a1b2".to_string(),
+                "j-c3d4".to_string(),
+                "j-e5f6".to_string(),
+            ])],
+            file_path: None,
+        };
 
         let serialized = serialize_plan(&metadata);
 
@@ -220,13 +222,6 @@ mod tests {
 
     #[test]
     fn test_serialize_phased_plan() {
-        let mut metadata = PlanMetadata::default();
-        metadata.id = Some("plan-b2c3".to_string());
-        metadata.created = Some("2024-01-01T00:00:00Z".to_string());
-        metadata.title = Some("Phased Plan".to_string());
-        metadata.description = Some("Overview of the plan.".to_string());
-        metadata.acceptance_criteria = vec!["Performance targets met".to_string()];
-
         let mut phase1 = Phase::new("1", "Infrastructure");
         phase1.description = Some("Set up the foundational components.".to_string());
         phase1.success_criteria = vec![
@@ -238,8 +233,16 @@ mod tests {
         let mut phase2 = Phase::new("2", "Implementation");
         phase2.tickets = vec!["j-e5f6".to_string()];
 
-        metadata.sections.push(PlanSection::Phase(phase1));
-        metadata.sections.push(PlanSection::Phase(phase2));
+        let metadata = PlanMetadata {
+            id: Some("plan-b2c3".to_string()),
+            uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
+            created: Some("2024-01-01T00:00:00Z".to_string()),
+            title: Some("Phased Plan".to_string()),
+            description: Some("Overview of the plan.".to_string()),
+            acceptance_criteria: vec!["Performance targets met".to_string()],
+            sections: vec![PlanSection::Phase(phase1), PlanSection::Phase(phase2)],
+            file_path: None,
+        };
 
         let serialized = serialize_plan(&metadata);
 
@@ -259,22 +262,24 @@ mod tests {
 
     #[test]
     fn test_serialize_plan_with_freeform_sections() {
-        let mut metadata = PlanMetadata::default();
-        metadata.id = Some("plan-c3d4".to_string());
-        metadata.created = Some("2024-01-01T00:00:00Z".to_string());
-        metadata.title = Some("Plan with Free-form Content".to_string());
-        metadata.description = Some("Description.".to_string());
-
         // Add free-form section
-        metadata
-            .sections
-            .push(PlanSection::FreeForm(FreeFormSection::new(
+        let mut metadata = PlanMetadata {
+            id: Some("plan-c3d4".to_string()),
+            uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
+            created: Some("2024-01-01T00:00:00Z".to_string()),
+            title: Some("Plan with Free-form Content".to_string()),
+            description: Some("Description.".to_string()),
+            acceptance_criteria: vec![],
+            sections: vec![PlanSection::FreeForm(FreeFormSection::new(
                 "Overview",
                 "### Motivation\n\nThis section explains why we're doing this.",
-            )));
+            ))],
+            file_path: None,
+        };
 
         // Add phase
-        let mut phase = Phase::new("1", "Setup");
+        let phase = Phase::new("1", "Setup");
+        let mut phase = phase;
         phase.tickets = vec!["j-a1b2".to_string()];
         metadata.sections.push(PlanSection::Phase(phase));
 

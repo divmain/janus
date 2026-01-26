@@ -176,6 +176,109 @@ enum_display_fromstr!(
 
 pub const VALID_PRIORITIES: &[&str] = &["0", "1", "2", "3", "4"];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TicketField {
+    Id,
+    Uuid,
+    Status,
+    Deps,
+    Links,
+    Created,
+    Type,
+    Priority,
+    ExternalRef,
+    Remote,
+    Parent,
+    SpawnedFrom,
+    SpawnContext,
+    Depth,
+    Triaged,
+}
+
+impl TicketField {
+    pub fn is_immutable(&self) -> bool {
+        matches!(self, TicketField::Id | TicketField::Uuid)
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TicketField::Id => "id",
+            TicketField::Uuid => "uuid",
+            TicketField::Status => "status",
+            TicketField::Deps => "deps",
+            TicketField::Links => "links",
+            TicketField::Created => "created",
+            TicketField::Type => "type",
+            TicketField::Priority => "priority",
+            TicketField::ExternalRef => "external-ref",
+            TicketField::Remote => "remote",
+            TicketField::Parent => "parent",
+            TicketField::SpawnedFrom => "spawned-from",
+            TicketField::SpawnContext => "spawn-context",
+            TicketField::Depth => "depth",
+            TicketField::Triaged => "triaged",
+        }
+    }
+
+    pub fn all() -> &'static [Self] {
+        use TicketField::*;
+        &[
+            Id,
+            Uuid,
+            Status,
+            Deps,
+            Links,
+            Created,
+            Type,
+            Priority,
+            ExternalRef,
+            Remote,
+            Parent,
+            SpawnedFrom,
+            SpawnContext,
+            Depth,
+            Triaged,
+        ]
+    }
+}
+
+impl std::fmt::Display for TicketField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl std::str::FromStr for TicketField {
+    type Err = crate::error::JanusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "id" => Ok(TicketField::Id),
+            "uuid" => Ok(TicketField::Uuid),
+            "status" => Ok(TicketField::Status),
+            "deps" => Ok(TicketField::Deps),
+            "links" => Ok(TicketField::Links),
+            "created" => Ok(TicketField::Created),
+            "type" => Ok(TicketField::Type),
+            "priority" => Ok(TicketField::Priority),
+            "external-ref" => Ok(TicketField::ExternalRef),
+            "remote" => Ok(TicketField::Remote),
+            "parent" => Ok(TicketField::Parent),
+            "spawned-from" => Ok(TicketField::SpawnedFrom),
+            "spawn-context" => Ok(TicketField::SpawnContext),
+            "depth" => Ok(TicketField::Depth),
+            "triaged" => Ok(TicketField::Triaged),
+            _ => Err(JanusError::InvalidField {
+                field: s.to_string(),
+                valid_fields: TicketField::all()
+                    .iter()
+                    .map(|f| f.as_str().to_string())
+                    .collect(),
+            }),
+        }
+    }
+}
+
 pub const VALID_TICKET_FIELDS: &[&str] = &[
     "id",
     "uuid",
@@ -340,17 +443,12 @@ pub struct TicketWithBlockers {
 }
 
 pub fn validate_field_name(field: &str, operation: &str) -> crate::error::Result<()> {
-    if !VALID_TICKET_FIELDS.contains(&field) {
-        return Err(JanusError::InvalidField {
-            field: field.to_string(),
-            valid_fields: VALID_TICKET_FIELDS.iter().map(|s| s.to_string()).collect(),
-        });
-    }
+    let parsed = field.parse::<TicketField>()?;
 
-    if IMMUTABLE_TICKET_FIELDS.contains(&field) {
+    if parsed.is_immutable() {
         return Err(JanusError::Other(format!(
             "cannot {} immutable field '{}'",
-            operation, field
+            operation, parsed
         )));
     }
 
@@ -550,11 +648,13 @@ mod tests {
         use serde_yaml_ng as yaml;
 
         // Test that spawning fields serialize correctly when present
-        let mut metadata = TicketMetadata::default();
-        metadata.id = Some("j-test".to_string());
-        metadata.spawned_from = Some("j-parent".to_string());
-        metadata.spawn_context = Some("Test context".to_string());
-        metadata.depth = Some(2);
+        let metadata = TicketMetadata {
+            id: Some("j-test".to_string()),
+            spawned_from: Some("j-parent".to_string()),
+            spawn_context: Some("Test context".to_string()),
+            depth: Some(2),
+            ..Default::default()
+        };
 
         let yaml_str = yaml::to_string(&metadata).unwrap();
         assert!(yaml_str.contains("spawned-from: j-parent"));
@@ -567,9 +667,10 @@ mod tests {
         use serde_yaml_ng as yaml;
 
         // Test that spawning fields are skipped when None
-        let mut metadata = TicketMetadata::default();
-        metadata.id = Some("j-test".to_string());
-        // Leave spawning fields as None
+        let metadata = TicketMetadata {
+            id: Some("j-test".to_string()),
+            ..Default::default()
+        };
 
         let yaml_str = yaml::to_string(&metadata).unwrap();
         assert!(!yaml_str.contains("spawned-from"));
@@ -669,6 +770,80 @@ status: new
                 assert!(msg.contains("cannot remove immutable field 'id'"));
             }
             _ => panic!("Expected Other error for immutable field"),
+        }
+    }
+
+    #[test]
+    fn test_ticket_field_from_str_valid() {
+        assert_eq!(TicketField::from_str("id").unwrap(), TicketField::Id);
+        assert_eq!(TicketField::from_str("uuid").unwrap(), TicketField::Uuid);
+        assert_eq!(
+            TicketField::from_str("status").unwrap(),
+            TicketField::Status
+        );
+        assert_eq!(TicketField::from_str("deps").unwrap(), TicketField::Deps);
+        assert_eq!(TicketField::from_str("type").unwrap(), TicketField::Type);
+        assert_eq!(
+            TicketField::from_str("spawned-from").unwrap(),
+            TicketField::SpawnedFrom
+        );
+        assert_eq!(
+            TicketField::from_str("spawn-context").unwrap(),
+            TicketField::SpawnContext
+        );
+    }
+
+    #[test]
+    fn test_ticket_field_from_str_invalid() {
+        assert!(TicketField::from_str("invalid").is_err());
+        assert!(TicketField::from_str("").is_err());
+        assert!(TicketField::from_str("ID").is_err());
+    }
+
+    #[test]
+    fn test_ticket_field_is_immutable() {
+        assert!(TicketField::Id.is_immutable());
+        assert!(TicketField::Uuid.is_immutable());
+        assert!(!TicketField::Status.is_immutable());
+        assert!(!TicketField::Priority.is_immutable());
+        assert!(!TicketField::SpawnedFrom.is_immutable());
+    }
+
+    #[test]
+    fn test_ticket_field_as_str() {
+        assert_eq!(TicketField::Id.as_str(), "id");
+        assert_eq!(TicketField::Uuid.as_str(), "uuid");
+        assert_eq!(TicketField::Status.as_str(), "status");
+        assert_eq!(TicketField::SpawnedFrom.as_str(), "spawned-from");
+        assert_eq!(TicketField::SpawnContext.as_str(), "spawn-context");
+    }
+
+    #[test]
+    fn test_ticket_field_display() {
+        assert_eq!(format!("{}", TicketField::Id), "id");
+        assert_eq!(format!("{}", TicketField::SpawnedFrom), "spawned-from");
+    }
+
+    #[test]
+    fn test_validate_field_name_uses_strict_enum() {
+        let valid_fields = TicketField::all();
+        assert!(!valid_fields.is_empty());
+
+        for field in valid_fields {
+            if !field.is_immutable() {
+                assert!(
+                    validate_field_name(field.as_str(), "update").is_ok(),
+                    "Valid mutable field '{}' should be accepted",
+                    field
+                );
+            } else {
+                let result = validate_field_name(field.as_str(), "update");
+                assert!(
+                    result.is_err(),
+                    "Immutable field '{}' should be rejected for update",
+                    field
+                );
+            }
         }
     }
 }

@@ -22,8 +22,6 @@ use janus::tui::remote::ViewMode;
 use janus::types::{TicketPriority, TicketStatus, TicketType};
 use serial_test::serial;
 
-
-
 // ============================================================================
 // Test Helpers
 // ============================================================================

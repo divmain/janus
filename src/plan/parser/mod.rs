@@ -48,13 +48,12 @@ static LIST_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("item list regex should be valid")
 });
 
-/// Plan frontmatter struct for YAML deserialization
-#[derive(Debug, Deserialize, Default)]
+/// Strict plan frontmatter struct for YAML deserialization with required fields.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PlanFrontmatter {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    uuid: Option<String>,
+    id: String,
+    uuid: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     created: Option<String>,
 }
@@ -100,18 +99,6 @@ pub fn parse_plan_content(content: &str) -> Result<PlanMetadata> {
     let mut metadata = parse_yaml_frontmatter(&yaml)?;
     parse_body(&body, &mut metadata)?;
 
-    if metadata.id.is_none() {
-        return Err(JanusError::Other(
-            "plan metadata missing required field 'id'".to_string(),
-        ));
-    }
-
-    if metadata.uuid.is_none() {
-        return Err(JanusError::Other(
-            "plan metadata missing required field 'uuid'".to_string(),
-        ));
-    }
-
     Ok(metadata)
 }
 
@@ -121,8 +108,8 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
         .map_err(|e| JanusError::InvalidFormat(format!("YAML parsing error: {}", e)))?;
 
     let metadata = PlanMetadata {
-        id: frontmatter.id,
-        uuid: frontmatter.uuid,
+        id: Some(frontmatter.id),
+        uuid: Some(frontmatter.uuid),
         created: frontmatter.created,
         ..Default::default()
     };
@@ -1318,5 +1305,45 @@ Mixed line ending content.\r\n\
         assert_eq!(metadata.title, Some("Mixed Line Endings".to_string()));
         let tickets = metadata.all_tickets();
         assert_eq!(tickets, vec!["j-a1b2", "j-c3d4", "j-e5f6"]);
+    }
+
+    #[test]
+    fn test_parse_plan_missing_required_id_field() {
+        let content = r#"---
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Plan Without ID
+"#;
+
+        let result = parse_plan_content(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_plan_missing_required_uuid_field() {
+        let content = r#"---
+id: plan-test
+created: 2024-01-01T00:00:00Z
+---
+# Plan Without UUID
+"#;
+
+        let result = parse_plan_content(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_plan_unknown_field_rejected() {
+        let content = r#"---
+id: plan-test
+uuid: 550e8400-e29b-41d4-a716-446655440000
+unknown_field: should_be_rejected
+---
+# Plan With Unknown Field
+"#;
+
+        let result = parse_plan_content(content);
+        assert!(result.is_err());
     }
 }

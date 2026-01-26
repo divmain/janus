@@ -10,7 +10,7 @@
 
 mod common;
 
-use common::mock_data::{mock_tickets, TicketBuilder};
+use common::mock_data::{TicketBuilder, mock_tickets};
 use janus::tui::board::model::*;
 use janus::tui::repository::InitResult;
 use janus::types::{TicketPriority, TicketStatus, TicketType};

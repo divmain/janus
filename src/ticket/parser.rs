@@ -1,6 +1,42 @@
-use crate::error::{JanusError, Result};
+use serde::Deserialize;
+
+use crate::error::Result;
 use crate::parser::{ParsedDocument, parse_document};
-use crate::types::TicketMetadata;
+use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
+
+/// Strict frontmatter struct for YAML deserialization with required fields.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TicketFrontmatter {
+    id: String,
+    uuid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<TicketStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    deps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    links: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    ticket_type: Option<TicketType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    priority: Option<TicketPriority>,
+    #[serde(rename = "external-ref", skip_serializing_if = "Option::is_none")]
+    external_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remote: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent: Option<String>,
+    #[serde(rename = "spawned-from", skip_serializing_if = "Option::is_none")]
+    spawned_from: Option<String>,
+    #[serde(rename = "spawn-context", skip_serializing_if = "Option::is_none")]
+    spawn_context: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    depth: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    triaged: Option<bool>,
+}
 
 /// Parse a ticket file's content into TicketMetadata.
 ///
@@ -15,26 +51,34 @@ pub fn parse(content: &str) -> Result<TicketMetadata> {
 /// Convert a ParsedDocument to TicketMetadata.
 ///
 /// This handles the ticket-specific conversion logic, including:
-/// - Deserializing frontmatter into TicketMetadata fields
+/// - Deserializing frontmatter into strict TicketFrontmatter (validates required fields at parse time)
+/// - Mapping strict frontmatter to lenient TicketMetadata
 /// - Extracting title from the first H1 heading
 /// - Extracting completion summary from the `## Completion Summary` section
 fn ticket_metadata_from_document(doc: ParsedDocument) -> Result<TicketMetadata> {
-    let mut metadata: TicketMetadata = doc.deserialize_frontmatter()?;
+    let frontmatter: TicketFrontmatter = doc.deserialize_frontmatter()?;
 
-    metadata.title = doc.extract_title();
-    metadata.completion_summary = doc.extract_section("completion summary");
-
-    if metadata.id.is_none() {
-        return Err(JanusError::Other(
-            "ticket metadata missing required field 'id'".to_string(),
-        ));
-    }
-
-    if metadata.uuid.is_none() {
-        return Err(JanusError::Other(
-            "ticket metadata missing required field 'uuid'".to_string(),
-        ));
-    }
+    let metadata = TicketMetadata {
+        id: Some(frontmatter.id),
+        uuid: Some(frontmatter.uuid),
+        status: frontmatter.status,
+        deps: frontmatter.deps,
+        links: frontmatter.links,
+        created: frontmatter.created,
+        ticket_type: frontmatter.ticket_type,
+        priority: frontmatter.priority,
+        external_ref: frontmatter.external_ref,
+        remote: frontmatter.remote,
+        parent: frontmatter.parent,
+        spawned_from: frontmatter.spawned_from,
+        spawn_context: frontmatter.spawn_context,
+        depth: frontmatter.depth,
+        triaged: frontmatter.triaged,
+        title: doc.extract_title(),
+        completion_summary: doc.extract_section("completion summary"),
+        file_path: None,
+        body: None,
+    };
 
     Ok(metadata)
 }
@@ -346,5 +390,48 @@ This document has mixed line endings.\r\n\
         assert_eq!(metadata.id, Some("test-mixed".to_string()));
         assert_eq!(metadata.status, Some(TicketStatus::New));
         assert_eq!(metadata.title, Some("Mixed Line Endings".to_string()));
+        assert_eq!(metadata.ticket_type, Some(TicketType::Task));
+        assert_eq!(metadata.priority, Some(TicketPriority::P2));
+    }
+
+    #[test]
+    fn test_parse_missing_required_id_field() {
+        let content = r#"---
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+---
+# Test Ticket
+"#;
+
+        let result = parse(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_missing_required_uuid_field() {
+        let content = r#"---
+id: test-1234
+status: new
+---
+# Test Ticket
+"#;
+
+        let result = parse(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_unknown_field_rejected() {
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+unknown_field: should_be_rejected
+---
+# Test Ticket
+"#;
+
+        let result = parse(content);
+        assert!(result.is_err());
     }
 }

@@ -121,11 +121,11 @@ mod tests {
             PathBuf::from(".janus/test")
         }
 
-        fn cache_find_by_partial_id(
+        async fn cache_find_by_partial_id(
             _cache: &cache::TicketCache,
             _partial_id: &str,
-        ) -> impl std::future::Future<Output = Result<Vec<String>>> + Send {
-            async { Ok(vec![]) }
+        ) -> Result<Vec<String>> {
+            Ok(vec![])
         }
 
         fn not_found_error(partial_id: String) -> crate::error::JanusError {
