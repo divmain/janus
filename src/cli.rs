@@ -870,17 +870,8 @@ fn parse_ticket_id(s: &str) -> Result<String, String> {
         return Err("ID cannot be empty".to_string());
     }
 
-    if !s.contains('-') {
-        return Err("ID must contain at least one '-' separator".to_string());
-    }
-
-    if let Some(last_dash_pos) = s.rfind('-') {
-        let hash_part = &s[last_dash_pos + 1..];
-        if hash_part.len() < 4 {
-            return Err(
-                "ID must have at least 4 characters after the last '-' separator".to_string(),
-            );
-        }
+    if s.chars().all(char::is_whitespace) {
+        return Err("ID cannot be only whitespace".to_string());
     }
 
     if !s
