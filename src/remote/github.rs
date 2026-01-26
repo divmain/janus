@@ -114,17 +114,10 @@ impl From<octocrab::Error> for GitHubError {
 
 impl AsHttpError for GitHubError {
     fn as_http_error(&self) -> Option<(reqwest::StatusCode, Option<u64>)> {
-        if let octocrab::Error::Http { .. } = &self.inner {
-            let error_str = self.inner.to_string();
-            let is_rate_limited = error_str.contains("rate limit");
-            let matched = regex::Regex::new(r"status (\d+)")
-                .ok()
-                .and_then(|re| re.captures(&error_str))?;
-            let status_str = matched.get(1)?;
-            let status_code = status_str.as_str().parse::<u16>().ok()?;
-            if let Ok(status) = reqwest::StatusCode::from_u16(status_code) {
-                return Some((status, is_rate_limited.then_some(60)));
-            }
+        if let octocrab::Error::GitHub { source, .. } = &self.inner {
+            let status = reqwest::StatusCode::from_u16(source.status_code.as_u16()).ok()?;
+            let is_rate_limited = status.as_u16() == 403 || status.as_u16() == 429;
+            return Some((status, is_rate_limited.then_some(60)));
         }
         None
     }
