@@ -23,7 +23,7 @@ impl TicketEditor {
         validate_field_name(field, "update")?;
 
         let raw_content = self.file.read_raw()?;
-        let old_value = extract_field_value(&raw_content, field);
+        let old_value = extract_field_value(&raw_content, field)?;
 
         let mut context = self
             .file
@@ -49,7 +49,7 @@ impl TicketEditor {
         validate_field_name(field, "remove")?;
 
         let raw_content = self.file.read_raw()?;
-        let old_value = extract_field_value(&raw_content, field);
+        let old_value = extract_field_value(&raw_content, field)?;
 
         let mut context = self.file.hook_context().with_field_name(field);
 

@@ -1,74 +1,72 @@
-use regex::Regex;
-
-use crate::error::{JanusError, Result};
-use crate::parser::{FRONTMATTER_RE, TITLE_RE};
+use crate::error::Result;
+use crate::parser::TITLE_RE;
 
 /// Update a field in the YAML frontmatter of a ticket file.
 ///
 /// If the field exists, it will be updated in place. If it doesn't exist, it will be inserted
 /// after the first line (typically the `id` field).
 pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
-    let captures = FRONTMATTER_RE.captures(raw_content).ok_or_else(|| {
-        JanusError::InvalidFormat("missing or malformed YAML frontmatter".to_string())
-    })?;
+    let normalized = raw_content.replace("\r\n", "\n");
+    let (frontmatter, body) = crate::parser::split_frontmatter(&normalized)?;
 
-    let yaml = captures.get(1).map(|m| m.as_str()).unwrap_or("");
-    let body = captures.get(2).map(|m| m.as_str()).unwrap_or("");
+    let frontmatter_lines: Vec<&str> = frontmatter.lines().collect();
+    let mut updated_lines = Vec::new();
+    let mut field_found = false;
 
-    let mut yaml_lines: Vec<String> = yaml.lines().map(String::from).collect();
-    let line_re = Regex::new(&format!(r"^{}:\s*.*$", regex::escape(field)))
-        .expect("field regex should be valid");
-
-    let field_exists = yaml_lines.iter().any(|line| line_re.is_match(line));
-
-    if field_exists {
-        for line in &mut yaml_lines {
-            if line_re.is_match(line) {
-                *line = format!("{}: {}", field, value);
-                break;
-            }
+    for line in frontmatter_lines {
+        if line.starts_with(&format!("{}:", field)) {
+            updated_lines.push(format!("{}: {}", field, value));
+            field_found = true;
+        } else {
+            updated_lines.push(line.to_string());
         }
-    } else {
-        yaml_lines.insert(1, format!("{}: {}", field, value));
     }
 
-    let new_frontmatter = yaml_lines.join("\n");
-    Ok(format!("---\n{}\n---\n{}", new_frontmatter, body))
+    if !field_found {
+        updated_lines.push(format!("{}: {}", field, value));
+    }
+
+    let updated_frontmatter = updated_lines.join("\n");
+
+    Ok(format!("---\n{}\n---\n{}", updated_frontmatter, body))
 }
 
 /// Remove a field from the YAML frontmatter of a ticket file.
 pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
-    let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*\n?", regex::escape(field)))
-        .expect("field pattern regex should be valid");
-    Ok(field_pattern.replace(raw_content, "").into_owned())
+    let normalized = raw_content.replace("\r\n", "\n");
+    let (frontmatter, body) = crate::parser::split_frontmatter(&normalized)?;
+
+    let updated_frontmatter: Vec<&str> = frontmatter
+        .lines()
+        .filter(|line| !line.starts_with(&format!("{}:", field)))
+        .collect();
+
+    let updated_frontmatter = updated_frontmatter.join("\n");
+
+    Ok(format!("---\n{}\n---\n{}", updated_frontmatter, body))
 }
 
 /// Extract the body content from a ticket file (everything after the title).
-pub fn extract_body(raw_content: &str) -> String {
-    if let Some(end_idx) = raw_content.find("\n---\n") {
-        let after_frontmatter = &raw_content[end_idx + 5..];
-        let lines: Vec<&str> = after_frontmatter.lines().collect();
-        let body_start = lines
-            .iter()
-            .position(|l| !l.starts_with('#') && !l.is_empty())
-            .unwrap_or(0);
-        lines[body_start..].join("\n").trim().to_string()
-    } else {
-        String::new()
-    }
+pub fn extract_body(raw_content: &str) -> Result<String> {
+    let (_, body) = crate::parser::split_frontmatter(raw_content)?;
+
+    let title_re = crate::parser::TITLE_RE.clone();
+    let body_without_title = title_re.replace(&body, "").to_string();
+
+    Ok(body_without_title.trim().to_string())
 }
 
 /// Extract the value of a field from the YAML frontmatter of a ticket file.
-pub fn extract_field_value(raw_content: &str, field: &str) -> Option<String> {
-    let field_pattern = Regex::new(&format!(r"(?m)^{}:\s*.*$", regex::escape(field)))
-        .expect("field pattern regex should be valid");
-    field_pattern.find(raw_content).map(|m| {
-        m.as_str()
-            .split(':')
-            .nth(1)
-            .map(|v| v.trim().to_string())
-            .unwrap_or_default()
-    })
+pub fn extract_field_value(raw_content: &str, field: &str) -> Result<Option<String>> {
+    let (frontmatter, _) = crate::parser::split_frontmatter(raw_content)?;
+
+    for line in frontmatter.lines() {
+        if let Some(rest) = line.strip_prefix(&format!("{}:", field)) {
+            return Ok(Some(rest.trim().to_string()));
+        }
+    }
+
+    Ok(None)
 }
 
 /// Update the title (H1 heading) in a ticket file.
@@ -81,6 +79,7 @@ pub fn update_title(raw_content: &str, new_title: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::JanusError;
 
     #[test]
     fn test_update_field_existing_field() {
@@ -159,7 +158,7 @@ Body with --- multiple dashes ---
         assert!(result.is_err());
         match result.unwrap_err() {
             JanusError::InvalidFormat(msg) => {
-                assert!(msg.contains("missing or malformed"));
+                assert!(msg.contains("missing"));
             }
             _ => panic!("Expected InvalidFormat error"),
         }

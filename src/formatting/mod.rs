@@ -56,18 +56,14 @@ pub fn format_date_for_display(date_str: &str) -> String {
 /// assert!(body.unwrap().contains("This is the body"));
 /// ```
 pub fn extract_ticket_body(content: &str) -> Option<String> {
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() >= 3 {
-        let body = parts[2].trim();
-        let lines: Vec<&str> = body.lines().collect();
-        if lines.first().is_some_and(|l| l.starts_with('#')) {
-            Some(lines[1..].join("\n").trim().to_string())
-        } else {
-            Some(body.to_string())
-        }
-    } else {
-        None
-    }
+    use crate::parser::{TITLE_RE, split_frontmatter};
+
+    let (_frontmatter, body_with_title) = split_frontmatter(content).ok()?;
+
+    let title_re = TITLE_RE.clone();
+    let body = title_re.replace(&body_with_title, "").to_string();
+
+    Some(body.trim().to_string())
 }
 
 /// Extract title range from ticket file content
@@ -79,18 +75,19 @@ pub fn extract_ticket_body(content: &str) -> Option<String> {
 ///
 /// * `content` - The full ticket file content including YAML frontmatter
 pub fn extract_title_range(content: &str) -> Option<Range<usize>> {
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() >= 3 {
-        let body = parts[2].trim();
-        if let Some(first_body_line) = body.lines().next()
-            && first_body_line.starts_with("#")
-        {
-            let start = content.find(first_body_line)?;
-            let end = start + first_body_line.len();
-            return Some(start..end);
-        }
-    }
-    None
+    use crate::parser::split_frontmatter;
+
+    let (_frontmatter, body_with_title) = split_frontmatter(content).ok()?;
+
+    let title_re = crate::parser::TITLE_RE.clone();
+    let title_captures = title_re.captures(&body_with_title)?;
+    let title_text = title_captures.get(1)?.as_str();
+
+    let title_with_hash = format!("# {}", title_text);
+    let start = content.find(&title_with_hash)?;
+    let end = start + title_with_hash.len();
+
+    Some(start..end)
 }
 
 #[cfg(test)]

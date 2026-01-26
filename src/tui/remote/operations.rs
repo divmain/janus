@@ -392,28 +392,6 @@ pub struct PushError {
     pub error: String,
 }
 
-/// Extract body content from ticket file content (everything after the title)
-fn extract_body_from_content(content: &str) -> String {
-    use regex::Regex;
-
-    // Match frontmatter and extract body
-    let frontmatter_re =
-        Regex::new(r"(?s)^---\n.*?\n---\n(.*)$").expect("frontmatter regex should be valid");
-
-    if let Some(captures) = frontmatter_re.captures(content) {
-        let body = captures.get(1).map(|m| m.as_str()).unwrap_or("");
-
-        // Remove the title line (# heading) and get the rest
-        let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
-        let body_without_title = title_re.replace(body, "").to_string();
-
-        // Trim leading/trailing whitespace
-        body_without_title.trim().to_string()
-    } else {
-        String::new()
-    }
-}
-
 /// Push a single local ticket to the remote platform
 pub async fn push_ticket_to_remote(
     ticket_id: &str,
@@ -453,7 +431,15 @@ pub async fn push_ticket_to_remote(
         ticket_id: ticket_id.to_string(),
         error: format!("Failed to read ticket content: {}", e),
     })?;
-    let body = extract_body_from_content(&content);
+
+    use crate::parser;
+    use crate::parser::TITLE_RE;
+
+    let (_, body_with_title) =
+        parser::split_frontmatter(&content).unwrap_or_else(|_| (String::new(), content.clone()));
+
+    let title_re = TITLE_RE.clone();
+    let body = title_re.replace(&body_with_title, "").to_string();
 
     // Create the remote issue
     let remote_ref =

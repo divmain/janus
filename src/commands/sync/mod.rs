@@ -99,7 +99,7 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
 
     let title = metadata.title.unwrap_or_else(|| "Untitled".to_string());
     let content = ticket.read_content()?;
-    let body = extract_body(&content);
+    let body = extract_body(&content)?;
 
     let default_remote = config.default_remote.as_ref().ok_or_else(|| {
         JanusError::Config(
@@ -192,7 +192,7 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
         ))
     })?;
     let local_content = ticket.read_content()?;
-    let _local_body = extract_body(&local_content);
+    let _local_body = extract_body(&local_content)?;
 
     let sync_plan = compute_sync_state(local_title, local_status, &remote_issue);
 

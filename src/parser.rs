@@ -1,19 +1,30 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use comrak::nodes::NodeValue;
+use comrak::{Arena, Options};
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde_yaml_ng as yaml;
 
 use crate::error::{JanusError, Result};
 
-pub(crate) static FRONTMATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)^---\n(.*?)\n---\n(.*)$").expect("frontmatter regex should be valid")
-});
-
 pub static TITLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid"));
 
+/// Core frontmatter parsing using comrak's AST-based approach.
+///
+/// This module provides robust YAML frontmatter extraction that handles
+/// edge cases that would break regex-based parsers:
+///
+/// - YAML comments containing "---"
+/// - Multi-line strings with embedded delimiters
+/// - Block scalars with "---" patterns
+/// - Unicode and special characters
+///
+/// The parser uses comrak's markdown AST to identify frontmatter boundaries
+/// before any YAML parsing occurs, ensuring accurate delimiter detection.
+///
 /// A generic parsed document with YAML frontmatter and body content.
 ///
 /// This struct decouples the parsing logic from domain-specific types like `TicketMetadata`.
@@ -29,29 +40,79 @@ pub struct ParsedDocument {
     pub body: String,
 }
 
+fn strip_delimiters(fm: &str) -> Option<&str> {
+    let delimiter = "---\n";
+    let closing_delimiter = "\n---\n";
+
+    let after_first = fm.strip_prefix(delimiter)?;
+
+    if let Some(second_pos) = after_first.find(closing_delimiter) {
+        let frontmatter = &after_first[..second_pos];
+        Some(frontmatter)
+    } else {
+        None
+    }
+}
+
+/// Split content into YAML frontmatter and markdown body using comrak.
+///
+/// This function uses comrak's AST-based markdown parsing to robustly extract
+/// frontmatter. Unlike regex-based approaches, this correctly handles edge cases
+/// like YAML comments containing "---", multi-line strings with "---", and
+/// block scalars. Comrak parses the markdown structure first, then extracts
+/// the frontmatter as a raw string, ensuring accurate delimiter detection.
+///
+/// # Arguments
+/// * `content` - The full markdown document content
+///
+/// # Returns
+/// A tuple of `(frontmatter, body)` where:
+/// - `frontmatter` is the raw YAML string (without the --- delimiters)
+/// - `body` is everything after the closing ---
+///
+/// # Errors
+/// Returns `JanusError::InvalidFormat` if no frontmatter is found
+pub fn split_frontmatter_comrak(content: &str) -> Result<(String, String)> {
+    let mut options = Options::default();
+    options.extension.front_matter_delimiter = Some("---".to_string());
+
+    let arena = Arena::new();
+    let root = comrak::parse_document(&arena, content, &options);
+
+    for node in root.children() {
+        if let NodeValue::FrontMatter(fm) = &node.data.borrow().value
+            && let Some(frontmatter) = strip_delimiters(fm)
+        {
+            let body_start = fm.len();
+
+            let body = if body_start <= content.len() {
+                content[body_start..].to_string()
+            } else {
+                String::new()
+            };
+            return Ok((frontmatter.to_string(), body));
+        }
+    }
+
+    if content == "---\n---\n" || content.starts_with("---\n---\n") {
+        return Ok((String::new(), content[8..].trim_start().to_string()));
+    }
+
+    Err(JanusError::InvalidFormat(
+        "missing YAML frontmatter".to_string(),
+    ))
+}
+
 /// Split content into YAML frontmatter and markdown body.
 ///
-/// Handles CRLF line endings by normalizing to LF. Returns a tuple of
+/// Handles CRLF and CR line endings by normalizing to LF. Returns a tuple of
 /// (frontmatter_content, body_content) or an error if frontmatter is missing.
+///
+/// This function now uses comrak's robust AST-based parsing instead of regex,
+/// correctly handling edge cases like "---" in YAML comments or multi-line strings.
 pub fn split_frontmatter(content: &str) -> Result<(String, String)> {
-    let normalized = content.replace("\r\n", "\n");
-
-    let captures = FRONTMATTER_RE
-        .captures(&normalized)
-        .ok_or_else(|| JanusError::InvalidFormat("missing YAML frontmatter".to_string()))?;
-
-    let frontmatter = captures
-        .get(1)
-        .map(|m| m.as_str())
-        .unwrap_or("")
-        .to_string();
-    let body = captures
-        .get(2)
-        .map(|m| m.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    Ok((frontmatter, body))
+    let normalized = content.replace("\r\n", "\n").replace("\r", "\n");
+    split_frontmatter_comrak(&normalized)
 }
 
 impl ParsedDocument {
@@ -120,6 +181,7 @@ pub fn parse_document(content: &str) -> Result<ParsedDocument> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     // ==================== Generic Document Parsing Tests ====================
 
@@ -336,5 +398,135 @@ Body with --- multiple dashes --- here.
 "#;
         let doc = parse_document(content).unwrap();
         assert!(doc.body.contains("--- multiple dashes ---"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_frontmatter_with_yaml_comments_containing_dashes() {
+        let content = r#"---
+# This is a YAML comment with dashes ---
+id: test-123
+# Another comment --- with dashes ---
+status: new
+---
+# Title
+
+Body content.
+"#;
+        let (frontmatter, body) = split_frontmatter(content).unwrap();
+
+        assert!(frontmatter.contains("id: test-123"));
+        assert!(frontmatter.contains("status: new"));
+        assert!(body.contains("# Title"));
+        assert!(body.contains("Body content"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_frontmatter_with_multiline_string_containing_dashes() {
+        let content = r#"---
+id: test
+description: |-
+  This is a multi-line
+  string that contains --- dashes
+  and should not break parsing
+---
+# Title
+
+Body.
+"#;
+        let (frontmatter, body) = split_frontmatter(content).unwrap();
+
+        assert!(frontmatter.contains("id: test"));
+        assert!(frontmatter.contains("description"));
+        assert!(body.contains("# Title"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_frontmatter_with_block_scalar_containing_dashes() {
+        let content = r#"---
+id: test
+notes: |
+  Some notes with
+  --- problematic pattern ---
+  inside the block
+---
+# Title
+
+Body.
+"#;
+        let (frontmatter, body) = split_frontmatter(content).unwrap();
+
+        assert!(frontmatter.contains("id: test"));
+        assert!(frontmatter.contains("notes:"));
+        assert!(body.contains("# Title"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_empty_frontmatter_and_body() {
+        let content = "---\n---\n";
+        let (frontmatter, body) = split_frontmatter(content).unwrap();
+
+        assert_eq!(frontmatter, "");
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    #[serial]
+    fn test_body_preserves_dashes_pattern() {
+        let content = r#"---
+id: test
+---
+# Title
+
+This body has --- multiple dashes ---
+and they should be preserved.
+"#;
+        let (frontmatter, body) = split_frontmatter(content).unwrap();
+
+        assert_eq!(frontmatter, "id: test");
+        assert!(body.contains("--- multiple dashes ---"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_complex_yaml_with_nested_structures() {
+        let content = r#"---
+id: test
+metadata:
+  author: someone
+  tags:
+    - tag1
+    - tag2
+  description: |
+    Multi-line description
+    with --- dashes
+nested:
+  level1:
+    level2: value
+---
+# Title
+
+Body.
+"#;
+        let (frontmatter, body) = split_frontmatter(content).unwrap();
+
+        assert!(frontmatter.contains("id: test"));
+        assert!(frontmatter.contains("metadata:"));
+        assert!(frontmatter.contains("tags:"));
+        assert!(frontmatter.contains("nested:"));
+        assert!(body.contains("# Title"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_frontmatter_with_unicode() {
+        let content = "---\nid: test-日本語\ntitle: 标题\n---\n# Title\n";
+        let (frontmatter, _body) = split_frontmatter(content).unwrap();
+
+        assert!(frontmatter.contains("id: test-日本語"));
+        assert!(frontmatter.contains("title: 标题"));
     }
 }

@@ -74,7 +74,7 @@ impl TicketService {
 
         // Rewrite the body section
         let content = ticket.read_content()?;
-        let new_content = Self::rewrite_body(&content, title, body);
+        let new_content = Self::rewrite_body(&content, title, body)?;
         ticket.write(&new_content)?;
 
         Ok(())
@@ -124,20 +124,18 @@ impl TicketService {
     }
 
     /// Rewrite the body section of a ticket file while preserving frontmatter
-    fn rewrite_body(content: &str, title: &str, body: &str) -> String {
-        let parts: Vec<&str> = content.splitn(3, "---").collect();
-        if parts.len() >= 3 {
-            let frontmatter = parts[1];
-            let mut new_body = format!("# {}", title);
-            if !body.is_empty() {
-                new_body.push_str("\n\n");
-                new_body.push_str(body);
-            }
-            format!("---{}---\n{}\n", frontmatter, new_body)
-        } else {
-            // Fallback: just return original content
-            content.to_string()
+    fn rewrite_body(content: &str, title: &str, body: &str) -> Result<String> {
+        use crate::parser::split_frontmatter;
+
+        let (frontmatter, _body_with_title) = split_frontmatter(content)?;
+
+        let mut new_body = format!("# {}", title);
+        if !body.is_empty() {
+            new_body.push_str("\n\n");
+            new_body.push_str(body);
         }
+
+        Ok(format!("---\n{}\n---\n{}", frontmatter, new_body))
     }
 
     /// Mark a ticket as triaged
@@ -213,7 +211,8 @@ status: new
 
 Old body content.
 "#;
-        let result = TicketService::rewrite_body(content, "New Title", "New body content.");
+        let result =
+            TicketService::rewrite_body(content, "New Title", "New body content.").unwrap();
         assert!(result.contains("# New Title"));
         assert!(result.contains("New body content."));
         assert!(result.contains("id: test-1234"));
@@ -228,7 +227,7 @@ status: new
 ---
 # Old Title
 "#;
-        let result = TicketService::rewrite_body(content, "New Title", "");
+        let result = TicketService::rewrite_body(content, "New Title", "").unwrap();
         assert!(result.contains("# New Title"));
         assert!(!result.contains("\n\n"));
     }

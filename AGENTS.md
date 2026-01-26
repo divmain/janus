@@ -11,6 +11,7 @@ Janus is a plain-text issue tracking CLI tool written in Rust. It stores tickets
 - **Language**: Rust (Edition 2024)
 - **CLI Framework**: clap 4 with derive macros
 - **Serialization**: serde, serde_json, serde_yaml_ng
+- **Markdown Parsing**: comrak 0.34 (AST-based markdown parser)
 - **Date/Time**: jiff 0.2
 - **Error Handling**: thiserror 2
 - **Terminal Colors**: owo-colors 4
