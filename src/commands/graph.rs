@@ -31,6 +31,9 @@ pub async fn cmd_graph(
 ) -> Result<()> {
     use types::RelationshipFilter;
 
+    // Validate format early to fail fast
+    let graph_format: GraphFormat = format.parse()?;
+
     let filter = if deps_only && spawn_only {
         RelationshipFilter::All
     } else if deps_only {
@@ -40,8 +43,6 @@ pub async fn cmd_graph(
     } else {
         RelationshipFilter::All
     };
-
-    let graph_format: GraphFormat = format.parse()?;
 
     let ticket_map = build_ticket_map().await?;
 

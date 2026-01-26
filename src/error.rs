@@ -318,6 +318,9 @@ pub enum JanusError {
     )]
     EmptyNote,
 
+    #[error("ticket title cannot be empty")]
+    EmptyTitle,
+
     #[error("closing a ticket requires either --summary <TEXT> or --no-summary")]
     SummaryRequired,
 

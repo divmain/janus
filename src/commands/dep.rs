@@ -86,6 +86,13 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()
     // Validate that the dependency exists
     let dep_ticket = Ticket::find(dep_id).await?;
 
+    // Check for self-dependency
+    if ticket.id == dep_ticket.id {
+        return Err(JanusError::Other(
+            "A ticket cannot depend on itself.".to_string(),
+        ));
+    }
+
     // Check for circular dependencies before adding
     let ticket_map = build_ticket_map().await?;
     check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)?;

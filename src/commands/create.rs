@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::events::log_ticket_created;
 use crate::ticket::{TicketBuilder, parse_ticket};
 use crate::types::{TicketPriority, TicketType, tickets_items_dir};
@@ -61,6 +61,11 @@ fn compute_depth(spawned_from: Option<&str>) -> Option<u32> {
 
 /// Create a new ticket and print its ID
 pub fn cmd_create(options: CreateOptions, output_json: bool) -> Result<()> {
+    // Validate that title is not empty or only whitespace
+    if options.title.trim().is_empty() {
+        return Err(JanusError::EmptyTitle);
+    }
+
     // Auto-compute depth if spawned_from is provided
     let depth = compute_depth(options.spawned_from.as_deref());
 
