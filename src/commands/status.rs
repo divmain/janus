@@ -68,9 +68,10 @@ fn write_completion_summary(ticket: &Ticket, summary: &str) -> Result<()> {
         let header_end = after_header
             .find('\n')
             .ok_or_else(|| {
-                JanusError::Other(format!(
+                JanusError::Other(
                     "Invalid ticket file structure: '## Completion Summary' header found but missing newline"
-                ))
+                        .to_string(),
+                )
             })?;
         let section_content_start = start_idx + header_end;
 
