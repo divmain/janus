@@ -1,7 +1,10 @@
 //! List and Detail mode action handlers
 
+use std::fs;
+
 use iocraft::prelude::KeyCode;
 
+use crate::tui::edit::extract_body_for_edit;
 use crate::tui::state::Pane;
 
 use super::HandleResult;
@@ -140,7 +143,6 @@ fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
     {
         _ = ctx
             .actions
-            .tx
             .send(ViewAction::CycleStatus { id: id.clone() });
     }
 }
@@ -151,12 +153,18 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
         .data
         .filtered_tickets
         .get(ctx.data.list_nav.selected_index.get())
-        && let Some(id) = &ft.ticket.id
     {
-        _ = ctx
-            .actions
-            .tx
-            .send(ViewAction::LoadForEdit { id: id.clone() });
+        // Read body content synchronously from file
+        let body = ft
+            .ticket
+            .file_path
+            .as_ref()
+            .and_then(|path| fs::read_to_string(path).ok())
+            .map(|content| extract_body_for_edit(&content))
+            .unwrap_or_default();
+
+        // Set edit state directly (synchronous, like handle_create_new)
+        ctx.edit_form_state().start_edit(ft.ticket.clone(), body);
     }
 }
 
@@ -174,7 +182,7 @@ fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        _ = ctx.actions.tx.send(ViewAction::MarkTriaged {
+        _ = ctx.actions.send(ViewAction::MarkTriaged {
             id: id.clone(),
             triaged: true,
         });

@@ -51,7 +51,6 @@ fn handle_edit_ticket(ctx: &mut BoardHandlerContext<'_>) {
     {
         _ = ctx
             .action_tx
-            .tx
             .send(BoardAction::LoadForEdit { id: id.clone() });
     }
 }

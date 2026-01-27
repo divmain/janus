@@ -68,7 +68,7 @@ fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let next_status = COLUMNS[col + 1];
-        _ = ctx.action_tx.tx.send(BoardAction::UpdateStatus {
+        _ = ctx.action_tx.send(BoardAction::UpdateStatus {
             id: id.clone(),
             status: next_status,
         });
@@ -88,7 +88,7 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let prev_status = COLUMNS[col - 1];
-        _ = ctx.action_tx.tx.send(BoardAction::UpdateStatus {
+        _ = ctx.action_tx.send(BoardAction::UpdateStatus {
             id: id.clone(),
             status: prev_status,
         });

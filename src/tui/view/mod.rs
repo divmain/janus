@@ -389,13 +389,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         let filtered_for_events = filtered_clone.clone();
         let action_channel_for_events = action_channel.clone();
         let is_triage_mode_for_events = is_triage_mode.get();
-        let is_editing_for_events = is_editing;
+        let is_editing_existing_for_events = is_editing_existing;
+        let is_creating_new_for_events = is_creating_new;
         let note_modal_open = note_modal.is_open();
         let cancel_confirm_open = cancel_confirm_modal.is_open();
         let mut is_triage_mode_mut = is_triage_mode;
         move |event| {
             // Skip if edit form is open (it handles its own events)
-            if is_editing_for_events {
+            if is_editing_existing_for_events.get() || is_creating_new_for_events.get() {
                 return;
             }
 

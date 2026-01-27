@@ -78,7 +78,14 @@ where
 
 impl<A: Send + Clone> ActionChannel<A> {
     pub fn send(&self, action: A) -> Result<(), tokio::sync::mpsc::error::SendError<A>> {
-        self.tx.blocking_send(action)
+        self.tx.try_send(action).map_err(|e| match e {
+            tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                panic!("Action queue is full - this should not happen");
+            }
+            tokio::sync::mpsc::error::TrySendError::Closed(action) => {
+                tokio::sync::mpsc::error::SendError(action)
+            }
+        })
     }
 }
 
