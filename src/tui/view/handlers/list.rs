@@ -161,7 +161,8 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
             .unwrap_or_default();
 
         // Set edit state directly (synchronous, like handle_create_new)
-        ctx.edit_form_state().start_edit(ft.ticket.clone(), body);
+        ctx.edit_form_state()
+            .start_edit(ft.ticket.as_ref().clone(), body);
     }
 }
 

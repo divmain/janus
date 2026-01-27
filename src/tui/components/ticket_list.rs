@@ -233,18 +233,19 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
 mod tests {
     use super::*;
     use crate::types::{TicketMetadata, TicketPriority, TicketType};
+    use std::sync::Arc;
 
     #[allow(dead_code)]
     fn make_filtered_ticket(id: &str, title: &str) -> FilteredTicket {
         FilteredTicket {
-            ticket: TicketMetadata {
+            ticket: Arc::new(TicketMetadata {
                 id: Some(id.to_string()),
                 title: Some(title.to_string()),
                 status: Some(TicketStatus::New),
                 priority: Some(TicketPriority::P2),
                 ticket_type: Some(TicketType::Task),
                 ..Default::default()
-            },
+            }),
             score: 0,
             title_indices: vec![],
         }

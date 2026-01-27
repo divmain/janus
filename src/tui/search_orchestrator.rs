@@ -8,6 +8,7 @@
 //! - Result caching
 
 use iocraft::prelude::*;
+use std::sync::Arc;
 
 use crate::tui::search::{FilteredTicket, compute_title_highlights};
 use crate::types::TicketMetadata;
@@ -122,7 +123,7 @@ pub fn compute_filtered_tickets(
         all_tickets
             .iter()
             .map(|t: &TicketMetadata| FilteredTicket {
-                ticket: t.clone(),
+                ticket: Arc::new(t.clone()),
                 score: 0,
                 title_indices: vec![],
             })
@@ -133,7 +134,7 @@ pub fn compute_filtered_tickets(
         all_tickets
             .iter()
             .map(|t: &TicketMetadata| FilteredTicket {
-                ticket: t.clone(),
+                ticket: Arc::new(t.clone()),
                 score: 0,
                 title_indices: vec![],
             })

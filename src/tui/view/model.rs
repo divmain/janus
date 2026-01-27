@@ -226,7 +226,7 @@ pub fn compute_view_model(state: &ViewState, list_height: usize) -> ViewViewMode
 
     // Build detail view model
     let detail = DetailViewModel {
-        ticket: selected_ticket,
+        ticket: selected_ticket.map(|t| (*t).clone()),
         is_focused: state.active_pane == Pane::Detail && !is_editing,
     };
 
@@ -448,7 +448,7 @@ fn search_key_to_action(code: KeyCode, modifiers: KeyModifiers) -> Option<ViewAc
 /// Get the ticket at a specific index from the filtered list
 pub fn get_ticket_at(state: &ViewState, index: usize) -> Option<TicketMetadata> {
     let filtered = filter_tickets(&state.tickets, &state.search_query);
-    filtered.get(index).map(|ft| ft.ticket.clone())
+    filtered.get(index).map(|ft| ft.ticket.as_ref().clone())
 }
 
 /// Get the currently selected ticket

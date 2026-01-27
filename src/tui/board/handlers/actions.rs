@@ -87,5 +87,5 @@ pub fn get_ticket_at(
         .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
         .collect();
 
-    column_tickets.get(row).map(|ft| ft.ticket.clone())
+    column_tickets.get(row).map(|ft| ft.ticket.as_ref().clone())
 }

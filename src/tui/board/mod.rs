@@ -464,7 +464,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                         element! {
                                                             View(margin_top: 1) {
                                                                 TicketCard(
-                                                                    ticket: ft.ticket.clone(),
+                                                                    ticket: ft.ticket.as_ref().clone(),
                                                                     is_selected: is_selected,
                                                                 )
                                                             }
@@ -517,6 +517,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn test_columns_constant() {
@@ -537,24 +538,24 @@ mod tests {
 
         let tickets = vec![
             FilteredTicket {
-                ticket: TicketMetadata {
+                ticket: Arc::new(TicketMetadata {
                     id: Some("j-a1b2".to_string()),
                     status: Some(TicketStatus::New),
                     priority: Some(TicketPriority::P2),
                     ticket_type: Some(TicketType::Task),
                     ..Default::default()
-                },
+                }),
                 score: 0,
                 title_indices: vec![],
             },
             FilteredTicket {
-                ticket: TicketMetadata {
+                ticket: Arc::new(TicketMetadata {
                     id: Some("j-c3d4".to_string()),
                     status: Some(TicketStatus::InProgress),
                     priority: Some(TicketPriority::P1),
                     ticket_type: Some(TicketType::Bug),
                     ..Default::default()
-                },
+                }),
                 score: 0,
                 title_indices: vec![],
             },

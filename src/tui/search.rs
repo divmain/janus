@@ -6,14 +6,15 @@
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use regex::Regex;
+use std::sync::Arc;
 
 use crate::types::TicketMetadata;
 
 /// A ticket with its fuzzy match score and matched indices
 #[derive(Debug, Clone, Default)]
 pub struct FilteredTicket {
-    /// The original ticket metadata
-    pub ticket: TicketMetadata,
+    /// The original ticket metadata (shared via Arc to avoid cloning)
+    pub ticket: Arc<TicketMetadata>,
     /// The fuzzy match score (higher is better)
     pub score: i64,
     /// Indices of matched characters in the title (for highlighting)
@@ -106,7 +107,7 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
         return tickets
             .iter()
             .map(|t| FilteredTicket {
-                ticket: t.clone(),
+                ticket: Arc::new(t.clone()),
                 score: 0,
                 title_indices: vec![],
             })
@@ -130,7 +131,7 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
         return filtered_tickets
             .iter()
             .map(|t| FilteredTicket {
-                ticket: (*t).clone(),
+                ticket: Arc::new((*t).clone()),
                 score: 0,
                 title_indices: vec![],
             })
@@ -163,7 +164,7 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
     results
         .into_iter()
         .map(|filtered| FilteredTicket {
-            ticket: (*filtered.item).clone(),
+            ticket: Arc::new((*filtered.item).clone()),
             score: filtered.score,
             title_indices: filtered.title_indices,
         })
@@ -209,7 +210,7 @@ pub fn compute_title_highlights(tickets: &[TicketMetadata], query: &str) -> Vec<
         return tickets
             .iter()
             .map(|t| FilteredTicket {
-                ticket: t.clone(),
+                ticket: Arc::new(t.clone()),
                 score: 0,
                 title_indices: vec![],
             })
@@ -228,7 +229,7 @@ pub fn compute_title_highlights(tickets: &[TicketMetadata], query: &str) -> Vec<
                 .unwrap_or_default();
 
             FilteredTicket {
-                ticket: ticket.clone(),
+                ticket: Arc::new(ticket.clone()),
                 score: 0, // Score not relevant for SQL-based search
                 title_indices,
             }

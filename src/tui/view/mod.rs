@@ -242,8 +242,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
     let filtered = compute_filtered_tickets(&all_tickets.read(), &search_state, &query_str);
 
-    // Clone filtered for event handler closure
-    let filtered_clone = filtered.clone();
+    // Clone filtered for event handler closure (each clone is cheap since FilteredTicket contains Arc)
+    let filtered_for_handlers = filtered.clone();
 
     // Clone search state refs for event handler
     let search_in_flight_ref = search_state.in_flight;
@@ -251,7 +251,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Get the currently selected ticket
     let selected_ticket = filtered
         .get(selected_index.get())
-        .map(|ft| ft.ticket.clone());
+        .map(|ft| ft.ticket.as_ref().clone());
 
     // Compute max detail scroll (body line count - 1, or 0 if no body)
     let current_max_detail_scroll = if let Some(ref ticket) = selected_ticket {
@@ -294,8 +294,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
     // Keyboard event handling
     hooks.use_terminal_events({
-        let filtered_len = filtered_clone.len();
-        let filtered_for_events = filtered_clone.clone();
+        let filtered_len = filtered_for_handlers.len();
+        let filtered_for_events = filtered_for_handlers.clone();
         let is_triage_mode_for_events = is_triage_mode;
         let edit_mode_for_events = edit_mode;
         let note_modal_open = note_modal.is_open();

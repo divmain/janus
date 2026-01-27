@@ -598,7 +598,7 @@ fn get_selected_ticket(
     let column_tickets = &tickets_by_status[state.current_column];
     column_tickets
         .get(state.current_row)
-        .map(|ft| ft.ticket.clone())
+        .map(|ft| ft.ticket.as_ref().clone())
 }
 
 /// Get the ticket at a specific column and row position
@@ -615,7 +615,7 @@ pub fn get_ticket_at(state: &BoardState, column: usize, row: usize) -> Option<Ti
         .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
         .collect();
 
-    column_tickets.get(row).map(|ft| ft.ticket.clone())
+    column_tickets.get(row).map(|ft| ft.ticket.as_ref().clone())
 }
 
 // ============================================================================
@@ -626,6 +626,7 @@ pub fn get_ticket_at(state: &BoardState, column: usize, row: usize) -> Option<Ti
 mod tests {
     use super::*;
     use crate::types::{TicketPriority, TicketType};
+    use std::sync::Arc;
 
     fn make_ticket(id: &str, title: &str, status: TicketStatus) -> TicketMetadata {
         TicketMetadata {
@@ -1046,17 +1047,17 @@ mod tests {
     fn test_get_column_tickets_filters_correctly() {
         let filtered = vec![
             FilteredTicket {
-                ticket: make_ticket("j-1", "New task", TicketStatus::New),
+                ticket: Arc::new(make_ticket("j-1", "New task", TicketStatus::New)),
                 score: 0,
                 title_indices: vec![],
             },
             FilteredTicket {
-                ticket: make_ticket("j-2", "WIP task", TicketStatus::InProgress),
+                ticket: Arc::new(make_ticket("j-2", "WIP task", TicketStatus::InProgress)),
                 score: 0,
                 title_indices: vec![],
             },
             FilteredTicket {
-                ticket: make_ticket("j-3", "Another new", TicketStatus::New),
+                ticket: Arc::new(make_ticket("j-3", "Another new", TicketStatus::New)),
                 score: 0,
                 title_indices: vec![],
             },
