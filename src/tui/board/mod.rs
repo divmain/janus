@@ -200,8 +200,13 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let card_width = column_char_width.saturating_sub(5); // padding + borders
 
     // Calculate column heights
-    let available_height = height.saturating_sub(6); // header + search + column headers + footer
-    let cards_per_column = (available_height.saturating_sub(2) / 4).max(1) as usize; // Each card is ~3-4 lines, reserve 2 for indicators
+    // Layout overhead: header (1) + search bar (1) + search margin (1) +
+    // column headers (2) + column header margin (1) + footer (1) = 7 lines
+    let available_height = height.saturating_sub(7);
+    // Each card can be up to 7 lines: border (2) + ID (1) + title (1-3) + priority (1) + margin (1)
+    // Reserve 2 lines for "X more above/below" indicators
+    // Use 6 as average card height estimate
+    let cards_per_column = (available_height.saturating_sub(2) / 6).max(1) as usize;
 
     // Clone handler for use in event handler closure
     let update_status_handler_for_events = update_status_handler.clone();

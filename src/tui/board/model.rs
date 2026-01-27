@@ -339,24 +339,29 @@ pub fn compute_board_view_model(state: &BoardState, column_height: usize) -> Boa
     }
 }
 
-/// Adjust scroll offset to keep selected row visible within column height
-fn adjust_column_scroll(scroll_offset: usize, selected_row: usize, column_height: usize) -> usize {
-    if column_height == 0 {
+/// Adjust scroll offset to keep selected row vertically centered.
+///
+/// Centers the selected row in the visible area when possible.
+/// Clamps to valid scroll bounds (0 to max_scroll) when near the top or bottom.
+fn adjust_column_scroll(
+    _scroll_offset: usize,
+    selected_row: usize,
+    column_height: usize,
+    total_items: usize,
+) -> usize {
+    if column_height == 0 || total_items == 0 {
         return 0;
     }
 
-    // If selected is above the visible area, scroll up
-    if selected_row < scroll_offset {
-        return selected_row;
-    }
+    // Calculate ideal scroll offset to center the selected row
+    let half_height = column_height / 2;
+    let ideal_offset = selected_row.saturating_sub(half_height);
 
-    // If selected is below the visible area, scroll down
-    if selected_row >= scroll_offset + column_height {
-        return selected_row.saturating_sub(column_height - 1);
-    }
+    // Calculate maximum valid scroll offset
+    let max_offset = total_items.saturating_sub(column_height);
 
-    // Selected is within visible area, keep scroll as is
-    scroll_offset
+    // Clamp to valid range [0, max_offset]
+    ideal_offset.min(max_offset)
 }
 
 /// Pure function: apply action to state (reducer pattern)
@@ -386,10 +391,12 @@ pub fn reduce_board_state(
                 state.current_row = max_row;
             }
             // Adjust scroll for new column
+            let total_items = get_column_ticket_count(&state, new_col);
             state.column_scroll_offsets[new_col] = adjust_column_scroll(
                 state.column_scroll_offsets[new_col],
                 state.current_row,
                 column_height,
+                total_items,
             );
         }
         BoardAction::MoveRight => {
@@ -401,29 +408,35 @@ pub fn reduce_board_state(
                 state.current_row = max_row;
             }
             // Adjust scroll for new column
+            let total_items = get_column_ticket_count(&state, new_col);
             state.column_scroll_offsets[new_col] = adjust_column_scroll(
                 state.column_scroll_offsets[new_col],
                 state.current_row,
                 column_height,
+                total_items,
             );
         }
         BoardAction::MoveUp => {
             state.current_row = state.current_row.saturating_sub(1);
             let col = state.current_column;
+            let total_items = get_column_ticket_count(&state, col);
             state.column_scroll_offsets[col] = adjust_column_scroll(
                 state.column_scroll_offsets[col],
                 state.current_row,
                 column_height,
+                total_items,
             );
         }
         BoardAction::MoveDown => {
-            let max_row = get_column_ticket_count(&state, state.current_column).saturating_sub(1);
-            state.current_row = (state.current_row + 1).min(max_row);
             let col = state.current_column;
+            let total_items = get_column_ticket_count(&state, col);
+            let max_row = total_items.saturating_sub(1);
+            state.current_row = (state.current_row + 1).min(max_row);
             state.column_scroll_offsets[col] = adjust_column_scroll(
                 state.column_scroll_offsets[col],
                 state.current_row,
                 column_height,
+                total_items,
             );
         }
 
@@ -481,33 +494,39 @@ pub fn reduce_board_state(
         }
         BoardAction::GoToBottom => {
             let col = state.current_column;
-            let max_row = get_column_ticket_count(&state, col).saturating_sub(1);
+            let total_items = get_column_ticket_count(&state, col);
+            let max_row = total_items.saturating_sub(1);
             state.current_row = max_row;
             state.column_scroll_offsets[col] = adjust_column_scroll(
                 state.column_scroll_offsets[col],
                 state.current_row,
                 column_height,
+                total_items,
             );
         }
         BoardAction::PageDown => {
             let col = state.current_column;
-            let max_row = get_column_ticket_count(&state, col).saturating_sub(1);
+            let total_items = get_column_ticket_count(&state, col);
+            let max_row = total_items.saturating_sub(1);
             let jump = column_height / 2;
             state.current_row = (state.current_row + jump).min(max_row);
             state.column_scroll_offsets[col] = adjust_column_scroll(
                 state.column_scroll_offsets[col],
                 state.current_row,
                 column_height,
+                total_items,
             );
         }
         BoardAction::PageUp => {
             let col = state.current_column;
+            let total_items = get_column_ticket_count(&state, col);
             let jump = column_height / 2;
             state.current_row = state.current_row.saturating_sub(jump);
             state.column_scroll_offsets[col] = adjust_column_scroll(
                 state.column_scroll_offsets[col],
                 state.current_row,
                 column_height,
+                total_items,
             );
         }
     }
@@ -1097,34 +1116,39 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_scroll_down_keeps_selection_visible() {
+    fn test_scroll_down_keeps_selection_centered() {
         // Start at top of a 15-ticket column, column height = 5
         let mut state = BoardState {
             tickets: (0..15)
                 .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
-            current_row: 4, // Last visible row (0-4)
+            current_row: 4,
             column_scroll_offsets: [0; 5],
             ..default_state()
         };
 
-        // Move down should scroll
+        // Move down to row 5, should center it
+        // half_height = 5/2 = 2, ideal_offset = 5 - 2 = 3
         state = reduce_board_state(state, BoardAction::MoveDown, 5);
         assert_eq!(state.current_row, 5);
-        assert_eq!(state.column_scroll_offsets[0], 1, "Should scroll down by 1");
+        assert_eq!(
+            state.column_scroll_offsets[0], 3,
+            "Should center selected row (offset = row - half_height)"
+        );
 
-        // Move down again
+        // Move down again to row 6
+        // ideal_offset = 6 - 2 = 4
         state = reduce_board_state(state, BoardAction::MoveDown, 5);
         assert_eq!(state.current_row, 6);
         assert_eq!(
-            state.column_scroll_offsets[0], 2,
-            "Should scroll down by 1 more"
+            state.column_scroll_offsets[0], 4,
+            "Should center selected row"
         );
     }
 
     #[test]
-    fn test_scroll_up_keeps_selection_visible() {
+    fn test_scroll_up_keeps_selection_centered() {
         let mut state = BoardState {
             tickets: (0..15)
                 .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
@@ -1135,10 +1159,14 @@ mod tests {
             ..default_state()
         };
 
-        // Move up should scroll
+        // Move up to row 4, should center it
+        // half_height = 5/2 = 2, ideal_offset = 4 - 2 = 2
         state = reduce_board_state(state, BoardAction::MoveUp, 5);
         assert_eq!(state.current_row, 4);
-        assert_eq!(state.column_scroll_offsets[0], 4, "Should scroll up by 1");
+        assert_eq!(
+            state.column_scroll_offsets[0], 2,
+            "Should center selected row"
+        );
     }
 
     #[test]
@@ -1175,9 +1203,11 @@ mod tests {
 
         state = reduce_board_state(state, BoardAction::GoToBottom, 5);
         assert_eq!(state.current_row, 14, "Should be at last ticket");
+        // With column_height=5 and selected_row=14, scroll so row 14 is at
+        // last visible position: 14 - (5-1) = 10
         assert_eq!(
             state.column_scroll_offsets[0], 10,
-            "Should scroll to show bottom (14-5+1=10)"
+            "Should scroll to show bottom (14-4=10)"
         );
     }
 
