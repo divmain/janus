@@ -147,25 +147,29 @@ where
 
                         loop {
                             tokio::select! {
-                                            action = async {
-                                let mut rx_guard = rx.lock().await;
-                                rx_guard.recv().await
-                            } => {
-                                if let Some(action) = action {
-                                    actions.push(action);
-                                } else {
-                                    break;
+                                action = async {
+                                    let mut rx_guard = rx.lock().await;
+                                    rx_guard.recv().await
+                                } => {
+                                    if let Some(action) = action {
+                                        actions.push(action);
+
+                                        let mut rx_guard = rx.lock().await;
+                                        while actions.len() < MAX_BATCH_SIZE {
+                                            match rx_guard.try_recv() {
+                                                Ok(more_action) => actions.push(more_action),
+                                                Err(_) => break,
+                                            }
+                                        }
+                                    } else {
+                                        break;
+                                    }
                                 }
                             }
-                                        }
 
                             if !actions.is_empty() {
                                 let actions_to_process = std::mem::take(&mut actions);
                                 action_processor(actions_to_process, needs_reload, toast).await;
-
-                                if actions.len() >= MAX_BATCH_SIZE {
-                                    continue;
-                                }
                             }
                         }
                     }
