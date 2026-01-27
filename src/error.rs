@@ -93,6 +93,14 @@ fn format_ambiguous_plan_id(id: &str, matches: &[String]) -> String {
     format_error_with_list("ambiguous plan ID", id, "matches multiple plans:", matches)
 }
 
+fn format_retry_errors(attempts: &u32, errors: &[String]) -> String {
+    let mut msg = format!("operation failed after {attempts} attempts:");
+    for (i, error) in errors.iter().enumerate() {
+        msg.push_str(&format!("\n  - Attempt {}: {}", i + 1, error));
+    }
+    msg
+}
+
 #[derive(Error, Debug)]
 pub enum JanusError {
     #[error("ticket '{0}' not found")]
@@ -221,6 +229,9 @@ pub enum JanusError {
         message: String,
         issues: Vec<String>,
     },
+
+    #[error("{}", format_retry_errors(.attempts, .errors))]
+    RetryFailed { attempts: u32, errors: Vec<String> },
 
     #[error("plan with title '{0}' already exists ({1})")]
     DuplicatePlanTitle(String, String), // title, existing plan ID
@@ -490,6 +501,24 @@ mod tests {
         assert!(msg.contains("j-abc2"));
         assert!(msg.contains("j-abc3"));
         assert!(msg.contains("ambiguous ID"));
+    }
+
+    #[test]
+    fn test_retry_failed_error_message() {
+        let errors = vec![
+            "timeout: connection timed out".to_string(),
+            "429: rate limit exceeded".to_string(),
+            "401: authentication failed".to_string(),
+        ];
+        let error = JanusError::RetryFailed {
+            attempts: 3,
+            errors,
+        };
+        let msg = error.to_string();
+        assert!(msg.contains("failed after 3 attempts"));
+        assert!(msg.contains("Attempt 1: timeout"));
+        assert!(msg.contains("Attempt 2: 429: rate limit"));
+        assert!(msg.contains("Attempt 3: 401: authentication"));
     }
 
     #[test]

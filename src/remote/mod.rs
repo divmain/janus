@@ -402,14 +402,14 @@ impl Default for RetryConfig {
     }
 }
 
-async fn execute_with_retry<T, E, F, Fut>(operation: F) -> std::result::Result<T, E>
+async fn execute_with_retry<T, E, F, Fut>(operation: F) -> Result<T>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = std::result::Result<T, E>>,
-    E: AsHttpError,
+    E: AsHttpError + Into<JanusError>,
 {
     let config = RetryConfig::default();
-    let mut last_error = None;
+    let mut errors: Vec<String> = Vec::new();
 
     for attempt in 0..config.max_attempts {
         let fut = operation();
@@ -424,7 +424,7 @@ where
                 };
 
                 if !should_retry {
-                    return Err(e);
+                    return Err(e.into());
                 }
 
                 if let Some((status, retry_after)) = e.as_http_error()
@@ -437,12 +437,15 @@ where
                     tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                 }
 
-                last_error = Some(e);
+                errors.push(e.to_string());
             }
         }
     }
 
-    Err(last_error.expect("last_error should always be Some after exhausting all retry attempts"))
+    Err(JanusError::RetryFailed {
+        attempts: config.max_attempts,
+        errors,
+    })
 }
 
 /// Common interface for remote providers

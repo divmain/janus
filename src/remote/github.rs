@@ -166,6 +166,12 @@ impl AsHttpError for GitHubError {
     }
 }
 
+impl From<GitHubError> for JanusError {
+    fn from(error: GitHubError) -> Self {
+        GitHubProvider::handle_octocrab_error(error)
+    }
+}
+
 impl GitHubProvider {
     /// Convert a GitHubError to a JanusError
     fn handle_octocrab_error(error: GitHubError) -> JanusError {
@@ -260,13 +266,12 @@ impl RemoteProvider for GitHubProvider {
         })
         .await
         .map_err(|e| {
-            let janus_err = Self::handle_octocrab_error(e);
-            if let JanusError::Api(msg) = &janus_err
+            if let JanusError::Api(msg) = &e
                 && msg.contains("404")
             {
                 JanusError::RemoteIssueNotFound(remote_ref.to_string())
             } else {
-                janus_err
+                e
             }
         })?;
 
@@ -314,8 +319,7 @@ impl RemoteProvider for GitHubProvider {
                 .await
                 .map_err(GitHubError::from)
         })
-        .await
-        .map_err(Self::handle_octocrab_error)?;
+        .await?;
 
         Ok(RemoteRef::GitHub {
             owner,
@@ -369,8 +373,7 @@ impl RemoteProvider for GitHubProvider {
             }
             builder.send().await.map_err(GitHubError::from)
         })
-        .await
-        .map_err(Self::handle_octocrab_error)?;
+        .await?;
 
         Ok(())
     }
@@ -393,8 +396,7 @@ impl RemoteProvider for GitHubProvider {
                 .await
                 .map_err(GitHubError::from)
         })
-        .await
-        .map_err(Self::handle_octocrab_error)?;
+        .await?;
 
         let issues: Vec<RemoteIssue> = result
             .items
@@ -426,8 +428,7 @@ impl RemoteProvider for GitHubProvider {
                 .await
                 .map_err(GitHubError::from)
         })
-        .await
-        .map_err(Self::handle_octocrab_error)?;
+        .await?;
 
         let issues: Vec<RemoteIssue> = result
             .items
