@@ -104,12 +104,11 @@ impl TicketCache {
                 }
                 Err(e) => {
                     eprintln!(
-                        "Warning: removed cache entry for {} '{}' due to parse failure: {}",
+                        "Warning: keeping stale cache entry for {} '{}' due to parse failure: {}",
                         T::item_name(),
                         id,
                         e
                     );
-                    removed.push(id.clone());
                 }
             }
         }
