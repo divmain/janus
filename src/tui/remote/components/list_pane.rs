@@ -42,6 +42,8 @@ pub struct ListPaneProps {
     pub remote_selected_ids: HashSet<String>,
     /// All local tickets (for checking link status of remote issues)
     pub all_local_tickets: Vec<TicketMetadata>,
+    /// Cached set of linked issue IDs (pre-computed for performance)
+    pub linked_issue_ids: HashSet<String>,
 }
 
 /// Build a set of linked issue IDs from local tickets
@@ -56,6 +58,7 @@ pub struct ListPaneProps {
 ///
 /// # Returns
 /// * `HashSet<String>` - Set of valid issue IDs extracted from remote references
+#[allow(dead_code)]
 pub fn build_linked_issue_ids(tickets: &[TicketMetadata]) -> HashSet<String> {
     tickets
         .iter()
@@ -124,7 +127,7 @@ fn render_remote_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
         );
     }
 
-    let linked_issue_ids = build_linked_issue_ids(&props.all_local_tickets);
+    let linked_issue_ids = &props.linked_issue_ids;
 
     // Clone data for rendering
     let remote_list = props.remote_list.clone();

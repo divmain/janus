@@ -8,6 +8,7 @@
 #![allow(clippy::redundant_closure)]
 
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 use iocraft::prelude::*;
 
@@ -18,6 +19,28 @@ use crate::tui::components::InlineSearchBox;
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
+
+/// Simple hash function for Vec<TicketMetadata> to detect changes
+fn hash_tickets(tickets: &[TicketMetadata]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for ticket in tickets {
+        ticket.id.hash(&mut hasher);
+        ticket.title.hash(&mut hasher);
+        ticket.status.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Simple hash function for Vec<RemoteIssue> to detect changes
+fn hash_remote_issues(issues: &[RemoteIssue]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for issue in issues {
+        issue.id.hash(&mut hasher);
+        issue.title.hash(&mut hasher);
+        issue.status.hash(&mut hasher);
+    }
+    hasher.finish()
+}
 
 use super::components::overlays::render_link_mode_banner;
 use super::components::{DetailPane, ListPane, ModalOverlays, SelectionBar, TabBar};
@@ -129,6 +152,18 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Filter state
     let mut filter_state: State<Option<FilterState>> = hooks.use_state(|| None);
     let mut active_filters = hooks.use_state(|| RemoteQuery::new());
+
+    // Cached filtered data (memoization)
+    let mut filtered_local_cache: State<(String, Vec<FilteredLocalTicket>)> =
+        hooks.use_state(|| (String::new(), Vec::new()));
+    let mut filtered_remote_cache: State<(String, Vec<FilteredRemoteIssue>)> =
+        hooks.use_state(|| (String::new(), Vec::new()));
+    let mut local_tickets_hash: State<u64> = hooks.use_state(|| 0);
+    let mut remote_issues_hash: State<u64> = hooks.use_state(|| 0);
+
+    // Cached linked issue IDs (memoization)
+    let mut linked_issue_ids_cache: State<(u64, HashSet<String>)> =
+        hooks.use_state(|| (0, HashSet::new()));
 
     // Async fetch handler for refreshing remote issues
     let fetch_handler: Handler<(Platform, RemoteQuery)> = hooks.use_async_handler({
@@ -522,11 +557,63 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let local_selected_ref = local_selected_ids.read();
     let remote_selected_ref = remote_selected_ids.read();
 
-    // Filter based on search query
-    let query = search_query.to_string();
-    let filtered_local: Vec<FilteredLocalTicket> = filter_local_tickets(&local_tickets_ref, &query);
-    let filtered_remote: Vec<FilteredRemoteIssue> =
-        filter_remote_issues(&remote_issues_ref, &query);
+    // Compute data hashes for cache invalidation
+    let local_hash = hash_tickets(&local_tickets_ref);
+    let remote_hash = hash_remote_issues(&remote_issues_ref);
+
+    // Compute cached linked issue IDs
+    let linked_issue_ids = {
+        use crate::tui::remote::operations::extract_issue_id_from_remote_ref;
+        let cached_hash = linked_issue_ids_cache.read().0;
+
+        if cached_hash == local_hash {
+            linked_issue_ids_cache.read().1.clone()
+        } else {
+            let linked: HashSet<String> = local_tickets_ref
+                .iter()
+                .filter_map(|ticket| ticket.remote.as_ref())
+                .filter_map(|remote_ref| extract_issue_id_from_remote_ref(remote_ref))
+                .collect();
+            linked_issue_ids_cache.set((local_hash, linked.clone()));
+            linked
+        }
+    };
+
+    // Check if we need to update cached filtered data
+    let (query, filtered_local) = {
+        let cached_hash = local_tickets_hash.get();
+        let current_query = search_query.to_string();
+        let (cached_query, cached_filtered) = {
+            let r = filtered_local_cache.read();
+            (r.0.clone(), r.1.clone())
+        };
+
+        if cached_query == current_query && cached_hash == local_hash {
+            (current_query, cached_filtered)
+        } else {
+            local_tickets_hash.set(local_hash);
+            let filtered = filter_local_tickets(&local_tickets_ref, &current_query);
+            filtered_local_cache.set((current_query.clone(), filtered.clone()));
+            (current_query, filtered)
+        }
+    };
+
+    let filtered_remote = {
+        let cached_hash = remote_issues_hash.get();
+        let (cached_query, cached_filtered) = {
+            let r = filtered_remote_cache.read();
+            (r.0.clone(), r.1.clone())
+        };
+
+        if cached_query == query && cached_hash == remote_hash {
+            cached_filtered
+        } else {
+            remote_issues_hash.set(remote_hash);
+            let filtered = filter_remote_issues(&remote_issues_ref, &query);
+            filtered_remote_cache.set((query.clone(), filtered.clone()));
+            filtered
+        }
+    };
 
     let local_count = filtered_local.len();
     let remote_count = filtered_remote.len();
@@ -643,9 +730,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         system.exit();
     }
 
-    // Compute selected items for rendering (after event closure to avoid move issues)
-    let filtered_local_data = filter_local_tickets(&local_tickets.read(), &query);
-    let filtered_remote_data = filter_remote_issues(&remote_issues.read(), &query);
+    // Get cached filtered data for selected items
+    let filtered_local_data = filtered_local_cache.read().1.clone();
+    let filtered_remote_data = filtered_remote_cache.read().1.clone();
 
     let selected_local = filtered_local_data
         .get(local_selected_index.get())
@@ -734,6 +821,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     local_selected_ids: local_selected_ids.read().clone(),
                     remote_selected_ids: remote_selected_ids.read().clone(),
                     all_local_tickets: all_local_tickets.clone(),
+                    linked_issue_ids: linked_issue_ids.clone(),
                 )
 
                 // Detail pane

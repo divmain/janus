@@ -242,7 +242,7 @@ pub struct RemoteIssue {
 }
 
 /// Platform-agnostic status
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum RemoteStatus {
     Open,
     Closed,
