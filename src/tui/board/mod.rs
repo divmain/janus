@@ -9,13 +9,12 @@ pub mod model;
 use iocraft::prelude::*;
 
 use crate::ticket::Ticket;
-use crate::tui::action_queue::{ActionQueueBuilder, ActionResult};
 use crate::tui::components::{
     EmptyState, EmptyStateKind, InlineSearchBox, TicketCard, Toast, board_shortcuts,
     compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult};
-use crate::tui::edit_state::EditFormState;
+use crate::tui::edit_state::{EditFormState, EditMode};
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
 use crate::tui::screen_base::{ScreenLayout, should_process_key_event};
@@ -24,7 +23,7 @@ use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
-use handlers::BoardHandlerContext;
+use handlers::{BoardAsyncHandlers, BoardHandlerContext};
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -41,88 +40,9 @@ const COLUMN_NAMES: [&str; 5] = ["NEW", "NEXT", "IN PROGRESS", "COMPLETE", "CANC
 /// Column toggle keys for header display
 const COLUMN_KEYS: [char; 5] = ['N', 'X', 'I', 'C', '_'];
 
-/// Actions for the kanban board
-#[derive(Debug, Clone)]
-pub enum BoardAction {
-    UpdateStatus { id: String, status: TicketStatus },
-    LoadForEdit { id: String },
-}
-
 /// Props for the KanbanBoard component
 #[derive(Default, Props)]
 pub struct KanbanBoardProps {}
-
-/// Process board actions from the action queue
-async fn process_board_actions(
-    actions: Vec<BoardAction>,
-    mut needs_reload: State<bool>,
-    mut toast: State<Option<Toast>>,
-) {
-    let mut success_count = 0;
-    let mut errors = Vec::new();
-
-    for action in actions {
-        let result: ActionResult = match action {
-            BoardAction::UpdateStatus { id, status } => match Ticket::find(&id).await {
-                Ok(ticket) => match ticket.update_field("status", &status.to_string()) {
-                    Ok(_) => ActionResult::Result {
-                        success: true,
-                        message: Some(format!("Updated {} to {}", id, status)),
-                    },
-                    Err(e) => ActionResult::Result {
-                        success: false,
-                        message: Some(format!("Failed to update: {}", e)),
-                    },
-                },
-                Err(e) => ActionResult::Result {
-                    success: false,
-                    message: Some(format!("Ticket not found: {}", e)),
-                },
-            },
-            BoardAction::LoadForEdit { id: _ } => ActionResult::Result {
-                success: true,
-                message: Some("Loaded for editing".to_string()),
-            },
-        };
-
-        match result {
-            ActionResult::Result { success, message } => {
-                if success {
-                    success_count += 1;
-                    if let Some(msg) = message {
-                        toast.set(Some(Toast::success(msg)));
-                    }
-                } else if let Some(msg) = message {
-                    errors.push(msg);
-                }
-            }
-            ActionResult::LoadForEdit {
-                success, message, ..
-            } => {
-                if success {
-                    success_count += 1;
-                    if let Some(msg) = message {
-                        toast.set(Some(Toast::success(msg)));
-                    }
-                } else if let Some(msg) = message {
-                    errors.push(msg);
-                }
-            }
-        }
-    }
-
-    if success_count > 0 {
-        needs_reload.set(true);
-    }
-
-    if !errors.is_empty() {
-        toast.set(Some(Toast::error(format!(
-            "{} error(s): {}",
-            errors.len(),
-            errors.join("; ")
-        ))))
-    }
-}
 
 /// Get tickets for a specific column from the filtered list
 fn get_column_tickets(filtered: &[FilteredTicket], status: TicketStatus) -> Vec<FilteredTicket> {
@@ -169,33 +89,48 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Search state - search is executed on Enter, not while typing
     let mut search_state = SearchState::use_state(&mut hooks);
 
-    // Edit form state - declared early for use in action processor
+    // Edit form state - single enum tracks the editing mode
+    let mut edit_mode: State<EditMode> = hooks.use_state(EditMode::default);
     let mut edit_result: State<EditResult> = hooks.use_state(EditResult::default);
-    let mut is_editing_existing = hooks.use_state(|| false);
-    let mut is_creating_new = hooks.use_state(|| false);
-    let mut editing_ticket: State<TicketMetadata> = hooks.use_state(TicketMetadata::default);
-    let mut editing_body = hooks.use_state(String::new);
-
-    // Action queue for async ticket operations using ActionQueueBuilder
-    let (_queue_state, action_handler, action_channel) = ActionQueueBuilder::use_state(
-        &mut hooks,
-        |actions, needs_reload, toast| {
-            Box::pin(process_board_actions(actions, needs_reload, toast))
-        },
-        needs_reload,
-        toast,
-    );
-
-    // Trigger action handler to start processing actions
-    let mut action_handler_started = hooks.use_state(|| false);
-    if !action_handler_started.get() {
-        action_handler_started.set(true);
-        action_handler(());
-    }
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
+    // NOTE: This must be created before update_status_handler so it can be cloned into it
     let load_handler: Handler<()> =
         hooks.use_async_handler(use_ticket_loader(all_tickets, is_loading, init_result));
+
+    // Direct async handler for update status operations (replaces action queue pattern)
+    let update_status_handler: Handler<(String, TicketStatus)> = hooks.use_async_handler({
+        let toast_setter = toast;
+        let all_tickets_setter = all_tickets;
+        move |(ticket_id, status): (String, TicketStatus)| {
+            let mut toast_setter = toast_setter;
+            let mut all_tickets_setter = all_tickets_setter;
+            async move {
+                match Ticket::find(&ticket_id).await {
+                    Ok(ticket) => match ticket.update_field("status", &status.to_string()) {
+                        Ok(_) => {
+                            toast_setter.set(Some(Toast::success(format!(
+                                "Updated {} to {}",
+                                ticket_id, status
+                            ))));
+                            // Sync cache and reload tickets
+                            let _ = crate::cache::sync_cache().await;
+                            let tickets =
+                                crate::tui::repository::TicketRepository::load_tickets().await;
+                            all_tickets_setter.set(tickets);
+                        }
+                        Err(e) => {
+                            toast_setter
+                                .set(Some(Toast::error(format!("Failed to update: {}", e))));
+                        }
+                    },
+                    Err(e) => {
+                        toast_setter.set(Some(Toast::error(format!("Ticket not found: {}", e))));
+                    }
+                }
+            }
+        }
+    });
 
     // Trigger initial load on mount
     let mut load_started = hooks.use_state(|| false);
@@ -223,18 +158,15 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Handle edit form result using shared EditFormState
     {
         let mut edit_state = EditFormState {
+            mode: &mut edit_mode,
             result: &mut edit_result,
-            is_editing_existing: &mut is_editing_existing,
-            is_creating_new: &mut is_creating_new,
-            editing_ticket: &mut editing_ticket,
-            editing_body: &mut editing_body,
         };
         if edit_state.handle_result() {
             needs_reload.set(true);
         }
     }
 
-    let is_editing = is_editing_existing.get() || is_creating_new.get();
+    let is_editing = !matches!(*edit_mode.read(), EditMode::None);
 
     // Compute filtered tickets
     let query_str = search_query.to_string();
@@ -262,9 +194,11 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let available_height = height.saturating_sub(6); // header + search + column headers + footer
     let cards_per_column = (available_height.saturating_sub(2) / 4).max(1) as usize; // Each card is ~3-4 lines, reserve 2 for indicators
 
+    // Clone handler for use in event handler closure
+    let update_status_handler_for_events = update_status_handler.clone();
+
     // Keyboard event handling
     hooks.use_terminal_events({
-        let action_channel_for_events = action_channel.clone();
         move |event| {
             if is_editing {
                 return;
@@ -288,13 +222,12 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         current_row: &mut current_row,
                         column_scroll_offsets: &mut column_scroll_offsets,
                         column_height: cards_per_column,
+                        edit_mode: &mut edit_mode,
                         edit_result: &mut edit_result,
-                        is_editing_existing: &mut is_editing_existing,
-                        is_creating_new: &mut is_creating_new,
-                        editing_ticket: &mut editing_ticket,
-                        editing_body: &mut editing_body,
                         all_tickets: &all_tickets,
-                        action_tx: &action_channel_for_events,
+                        handlers: BoardAsyncHandlers {
+                            update_status: &update_status_handler_for_events,
+                        },
                     };
 
                     handlers::handle_key_event(&mut ctx, code, modifiers);
@@ -334,11 +267,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Get editing state for rendering using shared EditFormState
     let (edit_ticket, edit_body) = {
         let edit_state = EditFormState {
+            mode: &mut edit_mode,
             result: &mut edit_result,
-            is_editing_existing: &mut is_editing_existing,
-            is_creating_new: &mut is_creating_new,
-            editing_ticket: &mut editing_ticket,
-            editing_body: &mut editing_body,
         };
         (edit_state.get_edit_ticket(), edit_state.get_edit_body())
     };

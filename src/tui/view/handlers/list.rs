@@ -9,7 +9,6 @@ use crate::tui::state::Pane;
 
 use super::HandleResult;
 use super::context::ViewHandlerContext;
-use super::types::ViewAction;
 
 /// Handle events when list pane is active
 pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -133,7 +132,7 @@ fn handle_detail_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> Hand
     }
 }
 
-/// Cycle status for selected ticket
+/// Cycle status for selected ticket - calls async handler directly
 fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx
         .data
@@ -141,9 +140,7 @@ fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        _ = ctx
-            .actions
-            .send(ViewAction::CycleStatus { id: id.clone() });
+        ctx.handlers.cycle_status.clone()(id.clone());
     }
 }
 
@@ -170,11 +167,10 @@ fn handle_edit_ticket(ctx: &mut ViewHandlerContext<'_>) {
 
 /// Create a new ticket
 fn handle_create_new(ctx: &mut ViewHandlerContext<'_>) {
-    ctx.edit.editing_ticket_id.set(String::new());
     ctx.edit_form_state().start_create();
 }
 
-/// Mark selected ticket as triaged
+/// Mark selected ticket as triaged - calls async handler directly
 fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
     if let Some(ft) = ctx
         .data
@@ -182,9 +178,6 @@ fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        _ = ctx.actions.send(ViewAction::MarkTriaged {
-            id: id.clone(),
-            triaged: true,
-        });
+        ctx.handlers.mark_triaged.clone()((id.clone(), true));
     }
 }

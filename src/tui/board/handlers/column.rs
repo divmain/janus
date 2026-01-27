@@ -2,11 +2,10 @@
 
 use iocraft::prelude::{KeyCode, State};
 
-use crate::tui::search::filter_tickets;
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::TicketStatus;
 
-use super::super::BoardAction;
 use super::HandleResult;
+use super::actions::get_ticket_at;
 use super::context::BoardHandlerContext;
 
 /// The 5 kanban columns in order
@@ -55,7 +54,7 @@ pub fn handle_status_move(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> H
     }
 }
 
-/// Move ticket to next status (right) - sends action to async queue
+/// Move ticket to next status (right) - calls async handler directly
 fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
@@ -68,14 +67,11 @@ fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let next_status = COLUMNS[col + 1];
-        _ = ctx.action_tx.send(BoardAction::UpdateStatus {
-            id: id.clone(),
-            status: next_status,
-        });
+        ctx.handlers.update_status.clone()((id.clone(), next_status));
     }
 }
 
-/// Move ticket to previous status (left) - sends action to async queue
+/// Move ticket to previous status (left) - calls async handler directly
 fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
@@ -88,10 +84,7 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let prev_status = COLUMNS[col - 1];
-        _ = ctx.action_tx.send(BoardAction::UpdateStatus {
-            id: id.clone(),
-            status: prev_status,
-        });
+        ctx.handlers.update_status.clone()((id.clone(), prev_status));
     }
 }
 
@@ -103,27 +96,4 @@ pub fn adjust_column_after_toggle(current_column: &mut State<usize>, visible: &[
     {
         current_column.set(first_visible);
     }
-}
-
-/// Get the ticket at a specific column and row
-fn get_ticket_at(
-    ctx: &BoardHandlerContext<'_>,
-    column: usize,
-    row: usize,
-) -> Option<TicketMetadata> {
-    if column >= COLUMNS.len() {
-        return None;
-    }
-
-    let tickets_read = ctx.all_tickets.read();
-    let query = ctx.search_query.to_string();
-    let filtered = filter_tickets(&tickets_read, &query);
-    let status = COLUMNS[column];
-
-    let column_tickets: Vec<_> = filtered
-        .iter()
-        .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
-        .collect();
-
-    column_tickets.get(row).map(|ft| ft.ticket.clone())
 }

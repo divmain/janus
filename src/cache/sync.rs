@@ -21,7 +21,7 @@ impl TicketCache {
     /// Sync both tickets and plans from disk to cache.
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync(&mut self) -> Result<bool> {
+    pub async fn sync(&self) -> Result<bool> {
         let tickets_changed = self.sync_tickets().await?;
         let plans_changed = self.sync_plans().await?;
         Ok(tickets_changed || plans_changed)
@@ -30,14 +30,14 @@ impl TicketCache {
     /// Sync tickets from disk to cache.
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync_tickets(&mut self) -> Result<bool> {
+    pub async fn sync_tickets(&self) -> Result<bool> {
         self.sync_items::<TicketMetadata>().await
     }
 
     /// Sync plans from disk to cache.
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
-    pub async fn sync_plans(&mut self) -> Result<bool> {
+    pub async fn sync_plans(&self) -> Result<bool> {
         self.sync_items::<PlanMetadata>().await
     }
 
@@ -45,7 +45,7 @@ impl TicketCache {
     ///
     /// Scans the item's directory, compares mtimes with cached values,
     /// and updates the cache with any changes.
-    async fn sync_items<T: CacheableItem>(&mut self) -> Result<bool> {
+    async fn sync_items<T: CacheableItem>(&self) -> Result<bool> {
         let dir = T::directory();
 
         if !dir.exists() {

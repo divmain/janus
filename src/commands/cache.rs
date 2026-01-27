@@ -171,7 +171,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
     }
 
     match TicketCache::open().await {
-        Ok(mut cache) => {
+        Ok(cache) => {
             let start_sync = std::time::Instant::now();
             match cache.sync().await {
                 Ok(_changed) => {

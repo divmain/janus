@@ -8,13 +8,9 @@ pub mod modals;
 pub mod model;
 
 use iocraft::prelude::*;
-use std::pin::Pin;
 
 use crate::formatting::extract_ticket_body;
 use crate::ticket::Ticket;
-use crate::tui::action_queue::{
-    ActionQueueBuilder, ActionResult, TicketMetadata as QueueTicketMetadata,
-};
 use crate::tui::components::{
     EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox, TicketDetail, TicketList,
     TicketModalData, Toast, browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
@@ -22,7 +18,7 @@ use crate::tui::components::{
     triage_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult};
-use crate::tui::edit_state::EditFormState;
+use crate::tui::edit_state::{EditFormState, EditMode};
 use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::InitResult;
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
@@ -31,181 +27,11 @@ use crate::tui::services::TicketService;
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 
-use handlers::ViewAction;
 use modals::{CancelConfirmModal, NoteInputModal};
 
 /// Props for the IssueBrowser component
 #[derive(Default, Props)]
 pub struct IssueBrowserProps {}
-
-/// Process browser actions from the action queue
-async fn process_browser_actions(
-    actions: Vec<ViewAction>,
-    mut needs_reload: State<bool>,
-    mut toast: State<Option<Toast>>,
-    mut editing_ticket_id: State<String>,
-    mut editing_ticket: State<TicketMetadata>,
-    mut editing_body: State<String>,
-    mut is_editing: State<bool>,
-) {
-    let mut success_count = 0;
-    let mut errors = Vec::new();
-
-    for action in actions {
-        let result: ActionResult = match action {
-            ViewAction::CycleStatus { id } => match TicketService::cycle_status(&id).await {
-                Ok(_) => ActionResult::Result {
-                    success: true,
-                    message: Some(format!("Status cycled for {}", id)),
-                },
-                Err(e) => ActionResult::Result {
-                    success: false,
-                    message: Some(format!("Failed to cycle status: {}", e)),
-                },
-            },
-            ViewAction::LoadForEdit { id } => match TicketService::load_for_edit(&id).await {
-                Ok((metadata, body)) => {
-                    let queue_metadata = QueueTicketMetadata {
-                        id: metadata.id.clone(),
-                        uuid: metadata.uuid,
-                        title: metadata.title.clone(),
-                        status: metadata.status,
-                        ticket_type: metadata.ticket_type,
-                        priority: metadata.priority,
-                        triaged: metadata.triaged,
-                        created: metadata.created,
-                        file_path: metadata.file_path.map(|p| p.to_string_lossy().to_string()),
-                        deps: metadata.deps,
-                        links: metadata.links,
-                        external_ref: metadata.external_ref,
-                        remote: metadata.remote,
-                        parent: metadata.parent,
-                        spawned_from: metadata.spawned_from,
-                        spawn_context: metadata.spawn_context,
-                        depth: metadata.depth,
-                        completion_summary: metadata.completion_summary,
-                    };
-                    ActionResult::LoadForEdit {
-                        success: true,
-                        message: Some(format!("Loaded {} for editing", id)),
-                        id: id.clone(),
-                        metadata: Box::new(queue_metadata),
-                        body,
-                    }
-                }
-                Err(e) => ActionResult::Result {
-                    success: false,
-                    message: Some(format!("Failed to load ticket: {}", e)),
-                },
-            },
-            ViewAction::MarkTriaged { id, triaged } => {
-                match TicketService::mark_triaged(&id, triaged).await {
-                    Ok(_) => ActionResult::Result {
-                        success: true,
-                        message: Some(if triaged {
-                            format!("Marked {} as triaged", id)
-                        } else {
-                            format!("Unmarked {} as triaged", id)
-                        }),
-                    },
-                    Err(e) => ActionResult::Result {
-                        success: false,
-                        message: Some(format!("Failed to mark as triaged: {}", e)),
-                    },
-                }
-            }
-            ViewAction::CancelTicket { id } => {
-                match TicketService::set_status(&id, crate::types::TicketStatus::Cancelled).await {
-                    Ok(_) => ActionResult::Result {
-                        success: true,
-                        message: Some(format!("Cancelled {}", id)),
-                    },
-                    Err(e) => ActionResult::Result {
-                        success: false,
-                        message: Some(format!("Failed to cancel ticket: {}", e)),
-                    },
-                }
-            }
-            ViewAction::AddNote { id, note } => match TicketService::add_note(&id, &note).await {
-                Ok(_) => ActionResult::Result {
-                    success: true,
-                    message: Some(format!("Added note to {}", id)),
-                },
-                Err(e) => ActionResult::Result {
-                    success: false,
-                    message: Some(format!("Failed to add note: {}", e)),
-                },
-            },
-        };
-
-        match result {
-            ActionResult::LoadForEdit {
-                success,
-                id: _action_id,
-                metadata,
-                body,
-                message,
-            } => {
-                if success {
-                    let ticket_id = metadata.id.clone().unwrap_or_default();
-                    let ticket_metadata = TicketMetadata {
-                        id: metadata.id,
-                        uuid: metadata.uuid,
-                        title: metadata.title,
-                        status: metadata.status,
-                        ticket_type: metadata.ticket_type,
-                        priority: metadata.priority,
-                        triaged: metadata.triaged,
-                        created: metadata.created,
-                        file_path: metadata.file_path.map(std::path::PathBuf::from),
-                        deps: metadata.deps,
-                        links: metadata.links,
-                        external_ref: metadata.external_ref,
-                        remote: metadata.remote,
-                        parent: metadata.parent,
-                        spawned_from: metadata.spawned_from,
-                        spawn_context: metadata.spawn_context,
-                        depth: metadata.depth,
-                        completion_summary: metadata.completion_summary,
-                        body: None,
-                    };
-                    editing_ticket_id.set(ticket_id);
-                    editing_ticket.set(ticket_metadata);
-                    editing_body.set(body);
-                    is_editing.set(true);
-                    success_count += 1;
-                    if let Some(msg) = message {
-                        toast.set(Some(Toast::success(msg)));
-                    }
-                } else if let Some(msg) = message {
-                    errors.push(msg);
-                }
-            }
-            ActionResult::Result { success, message } => {
-                if success {
-                    success_count += 1;
-                    if let Some(msg) = message {
-                        toast.set(Some(Toast::success(msg)));
-                    }
-                } else if let Some(msg) = message {
-                    errors.push(msg);
-                }
-            }
-        }
-    }
-
-    if success_count > 0 {
-        needs_reload.set(true);
-    }
-
-    if !errors.is_empty() {
-        toast.set(Some(Toast::error(format!(
-            "{} error(s): {}",
-            errors.len(),
-            errors.join("; ")
-        ))))
-    }
-}
 
 /// Main issue browser component
 ///
@@ -263,48 +89,129 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         load_handler.clone()(());
     }
 
-    // Edit form state - use bool flags and separate storage for non-Copy data
+    // Edit form state - single enum tracks the editing mode
+    let mut edit_mode: State<EditMode> = hooks.use_state(EditMode::default);
     let mut edit_result: State<EditResult> = hooks.use_state(EditResult::default);
-    let mut is_editing_existing = hooks.use_state(|| false);
-    let mut is_creating_new = hooks.use_state(|| false);
-    let mut editing_ticket_id = hooks.use_state(String::new);
-    let mut editing_ticket: State<TicketMetadata> = hooks.use_state(TicketMetadata::default);
-    let mut editing_body = hooks.use_state(String::new);
 
-    // Action queue for async ticket operations using ActionQueueBuilder
-    let process_fn = {
-        let editing_ticket_id = editing_ticket_id;
-        let editing_ticket = editing_ticket;
-        let editing_body = editing_body;
-        let is_editing = is_editing_existing;
-        move |actions,
-              needs_reload,
-              toast|
-              -> Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
-            Box::pin(process_browser_actions(
-                actions,
-                needs_reload,
-                toast,
-                editing_ticket_id,
-                editing_ticket,
-                editing_body,
-                is_editing,
-            ))
+    // Direct async handlers for ticket operations (replaces action queue pattern)
+
+    // Cycle status handler
+    let cycle_status_handler: Handler<String> = hooks.use_async_handler({
+        let toast_setter = toast;
+        let all_tickets_setter = all_tickets;
+        move |ticket_id: String| {
+            let mut toast_setter = toast_setter;
+            let mut all_tickets_setter = all_tickets_setter;
+            async move {
+                match TicketService::cycle_status(&ticket_id).await {
+                    Ok(_) => {
+                        toast_setter.set(Some(Toast::success(format!(
+                            "Status cycled for {}",
+                            ticket_id
+                        ))));
+                        // Sync cache and reload tickets
+                        let _ = crate::cache::sync_cache().await;
+                        let tickets =
+                            crate::tui::repository::TicketRepository::load_tickets().await;
+                        all_tickets_setter.set(tickets);
+                    }
+                    Err(e) => {
+                        toast_setter
+                            .set(Some(Toast::error(format!("Failed to cycle status: {}", e))));
+                    }
+                }
+            }
         }
-    };
+    });
 
-    let (_queue_state, action_handler, action_channel) =
-        ActionQueueBuilder::use_state(&mut hooks, process_fn, needs_reload, toast);
+    // Mark triaged handler
+    let mark_triaged_handler: Handler<(String, bool)> = hooks.use_async_handler({
+        let toast_setter = toast;
+        let all_tickets_setter = all_tickets;
+        move |(ticket_id, triaged): (String, bool)| {
+            let mut toast_setter = toast_setter;
+            let mut all_tickets_setter = all_tickets_setter;
+            async move {
+                match TicketService::mark_triaged(&ticket_id, triaged).await {
+                    Ok(_) => {
+                        let msg = if triaged {
+                            format!("Marked {} as triaged", ticket_id)
+                        } else {
+                            format!("Unmarked {} as triaged", ticket_id)
+                        };
+                        toast_setter.set(Some(Toast::success(msg)));
+                        // Sync cache and reload tickets
+                        let _ = crate::cache::sync_cache().await;
+                        let tickets =
+                            crate::tui::repository::TicketRepository::load_tickets().await;
+                        all_tickets_setter.set(tickets);
+                    }
+                    Err(e) => {
+                        toast_setter.set(Some(Toast::error(format!(
+                            "Failed to mark as triaged: {}",
+                            e
+                        ))));
+                    }
+                }
+            }
+        }
+    });
 
-    // Trigger action handler to start processing actions
-    let mut action_handler_started = hooks.use_state(|| false);
-    if !action_handler_started.get() {
-        action_handler_started.set(true);
-        action_handler(());
-    }
+    // Cancel ticket handler
+    let cancel_ticket_handler: Handler<String> = hooks.use_async_handler({
+        let toast_setter = toast;
+        let all_tickets_setter = all_tickets;
+        move |ticket_id: String| {
+            let mut toast_setter = toast_setter;
+            let mut all_tickets_setter = all_tickets_setter;
+            async move {
+                match TicketService::set_status(&ticket_id, crate::types::TicketStatus::Cancelled)
+                    .await
+                {
+                    Ok(_) => {
+                        toast_setter.set(Some(Toast::success(format!("Cancelled {}", ticket_id))));
+                        // Sync cache and reload tickets
+                        let _ = crate::cache::sync_cache().await;
+                        let tickets =
+                            crate::tui::repository::TicketRepository::load_tickets().await;
+                        all_tickets_setter.set(tickets);
+                    }
+                    Err(e) => {
+                        toast_setter.set(Some(Toast::error(format!(
+                            "Failed to cancel ticket: {}",
+                            e
+                        ))));
+                    }
+                }
+            }
+        }
+    });
 
-    // Track if actions are pending (set when handlers send actions)
-    let mut actions_pending = hooks.use_state(|| false);
+    // Add note handler
+    let add_note_handler: Handler<(String, String)> = hooks.use_async_handler({
+        let toast_setter = toast;
+        let all_tickets_setter = all_tickets;
+        move |(ticket_id, note): (String, String)| {
+            let mut toast_setter = toast_setter;
+            let mut all_tickets_setter = all_tickets_setter;
+            async move {
+                match TicketService::add_note(&ticket_id, &note).await {
+                    Ok(_) => {
+                        toast_setter
+                            .set(Some(Toast::success(format!("Added note to {}", ticket_id))));
+                        // Sync cache and reload tickets
+                        let _ = crate::cache::sync_cache().await;
+                        let tickets =
+                            crate::tui::repository::TicketRepository::load_tickets().await;
+                        all_tickets_setter.set(tickets);
+                    }
+                    Err(e) => {
+                        toast_setter.set(Some(Toast::error(format!("Failed to add note: {}", e))));
+                    }
+                }
+            }
+        }
+    });
 
     // Reload tickets if needed - use async handler instead of sync
     if needs_reload.get() && !is_loading.get() {
@@ -316,20 +223,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Handle edit form result using shared EditFormState
     {
         let mut edit_state = EditFormState {
+            mode: &mut edit_mode,
             result: &mut edit_result,
-            is_editing_existing: &mut is_editing_existing,
-            is_creating_new: &mut is_creating_new,
-            editing_ticket: &mut editing_ticket,
-            editing_body: &mut editing_body,
         };
         if edit_state.handle_result() {
-            editing_ticket_id.set(String::new());
             needs_reload.set(true);
         }
     }
 
     // Check if edit form is open
-    let is_editing = is_editing_existing.get() || is_creating_new.get();
+    let is_editing = !matches!(*edit_mode.read(), EditMode::None);
 
     // Compute filtered tickets
     let query_str = search_query.to_string();
@@ -383,20 +286,24 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // scroll indicator logic.
     let list_height = calculate_list_height(height, 5);
 
+    // Clone handlers for use in event handler closure
+    let cycle_status_handler_for_events = cycle_status_handler.clone();
+    let mark_triaged_handler_for_events = mark_triaged_handler.clone();
+    let cancel_ticket_handler_for_events = cancel_ticket_handler.clone();
+    let add_note_handler_for_events = add_note_handler.clone();
+
     // Keyboard event handling
     hooks.use_terminal_events({
         let filtered_len = filtered_clone.len();
         let filtered_for_events = filtered_clone.clone();
-        let action_channel_for_events = action_channel.clone();
-        let is_triage_mode_for_events = is_triage_mode.get();
-        let is_editing_existing_for_events = is_editing_existing;
-        let is_creating_new_for_events = is_creating_new;
+        let is_triage_mode_for_events = is_triage_mode;
+        let edit_mode_for_events = edit_mode;
         let note_modal_open = note_modal.is_open();
         let cancel_confirm_open = cancel_confirm_modal.is_open();
         let mut is_triage_mode_mut = is_triage_mode;
         move |event| {
             // Skip if edit form is open (it handles its own events)
-            if is_editing_existing_for_events.get() || is_creating_new_for_events.get() {
+            if !matches!(*edit_mode_for_events.read(), EditMode::None) {
                 return;
             }
 
@@ -418,11 +325,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                 // Submit note if not empty
                                 let data = note_modal.data();
                                 if !data.text.trim().is_empty() {
-                                    let _ = action_channel_for_events.send(ViewAction::AddNote {
-                                        id: data.ticket_id,
-                                        note: data.text,
-                                    });
-                                    actions_pending.set(true);
+                                    add_note_handler_for_events.clone()((
+                                        data.ticket_id,
+                                        data.text,
+                                    ));
                                 }
                                 note_modal.close();
                             }
@@ -438,9 +344,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         if code == KeyCode::Char('c') {
                             // Confirm cancellation
                             let data = cancel_confirm_modal.data();
-                            let _ = action_channel_for_events
-                                .send(ViewAction::CancelTicket { id: data.ticket_id });
-                            actions_pending.set(true);
+                            cancel_ticket_handler_for_events.clone()(data.ticket_id);
                         }
                         // Any key (including 'c' after confirming) closes the modal
                         cancel_confirm_modal.close();
@@ -450,12 +354,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     // Handle Ctrl+T to toggle triage mode
                     if code == KeyCode::Char('t') && modifiers == KeyModifiers::CONTROL {
                         // Toggle triage mode
-                        is_triage_mode_mut.set(!is_triage_mode_for_events);
+                        is_triage_mode_mut.set(!is_triage_mode_for_events.get());
                         return;
                     }
 
                     // Handle triage mode modal triggers (before passing to handler)
-                    if is_triage_mode_for_events {
+                    if is_triage_mode_for_events.get() {
                         if code == KeyCode::Char('n') {
                             // Open note input modal
                             if let Some(ft) = filtered_for_events.get(selected_index.get())
@@ -488,7 +392,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             should_exit: &mut should_exit,
                             needs_reload: &mut needs_reload,
                             active_pane: &mut active_pane,
-                            is_triage_mode: is_triage_mode_for_events,
+                            is_triage_mode: is_triage_mode_for_events.get(),
                         },
                         data: handlers::ViewData {
                             filtered_tickets: &filtered_for_events,
@@ -504,20 +408,15 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             },
                         },
                         edit: handlers::EditState {
+                            mode: &mut edit_mode,
                             result: &mut edit_result,
-                            is_editing_existing: &mut is_editing_existing,
-                            is_creating_new: &mut is_creating_new,
-                            editing_ticket_id: &mut editing_ticket_id,
-                            editing_ticket: &mut editing_ticket,
-                            editing_body: &mut editing_body,
                         },
-                        actions: &action_channel_for_events,
+                        handlers: handlers::AsyncHandlers {
+                            cycle_status: &cycle_status_handler_for_events,
+                            mark_triaged: &mark_triaged_handler_for_events,
+                        },
                     };
                     handlers::handle_key_event(&mut ctx, code, modifiers);
-
-                    // Trigger action processor if actions were queued
-                    // The processor will handle any pending actions asynchronously
-                    actions_pending.set(true);
                 }
                 _ => {}
             }
@@ -545,11 +444,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Get editing state for rendering using shared EditFormState
     let (edit_ticket, edit_body) = {
         let edit_state = EditFormState {
+            mode: &mut edit_mode,
             result: &mut edit_result,
-            is_editing_existing: &mut is_editing_existing,
-            is_creating_new: &mut is_creating_new,
-            editing_ticket: &mut editing_ticket,
-            editing_body: &mut editing_body,
         };
         (edit_state.get_edit_ticket(), edit_state.get_edit_body())
     };

@@ -47,7 +47,7 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
     GLOBAL_CACHE
         .get_or_init(|| async {
             match TicketCache::open_with_corruption_handling().await {
-                Ok(mut cache) => {
+                Ok(cache) => {
                     if let Err(e) = cache.sync().await {
                         eprintln!(
                             "Warning: cache sync failed: {}. Falling back to file reads.",
@@ -92,6 +92,21 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
         })
         .await
         .as_ref()
+}
+
+/// Sync the global cache with disk.
+///
+/// This should be called after modifying ticket or plan files to ensure
+/// the cache reflects the latest state. If the cache is not initialized,
+/// this is a no-op.
+///
+/// Returns Ok(true) if changes were synced, Ok(false) if no changes or cache unavailable.
+pub async fn sync_cache() -> crate::error::Result<bool> {
+    if let Some(cache) = get_or_init_cache().await {
+        cache.sync().await
+    } else {
+        Ok(false)
+    }
 }
 
 #[cfg(test)]
@@ -330,7 +345,7 @@ Description of the plan.
         create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
         create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         let changed = cache.sync().await.unwrap();
 
         assert!(changed);
@@ -362,7 +377,7 @@ Description of the plan.
 
         create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         let changed1 = cache.sync().await.unwrap();
         assert!(changed1);
 
@@ -411,7 +426,7 @@ Description of the plan.
 
         let ticket_path = create_test_ticket(&repo_path, "j-a1b2", "Ticket 1");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let mut rows = cache
@@ -461,7 +476,7 @@ Description of the plan.
 
         std::thread::sleep(std::time::Duration::from_millis(10));
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let mut rows = cache
@@ -618,7 +633,7 @@ priority: 2
 "#;
         fs::write(&ticket_path, content).unwrap();
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Verify deps were stored correctly
@@ -683,7 +698,7 @@ remote: github
 "#;
         fs::write(&ticket_path, content).unwrap();
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Verify all fields were stored correctly
@@ -734,7 +749,7 @@ remote: github
         create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
 
         // Open cache and sync
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let db_path = cache.cache_db_path();
@@ -814,7 +829,7 @@ remote: github
         let tickets_dir = repo_path.join(".janus/items");
         fs::create_dir_all(&tickets_dir).unwrap();
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
 
         // Sync with empty directory should return false (no changes)
         let changed = cache.sync().await.unwrap();
@@ -847,7 +862,7 @@ remote: github
 
         // Don't create the tickets directory
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
 
         // Sync should create the directory and return false
         let changed = cache.sync().await.unwrap();
@@ -875,7 +890,7 @@ remote: github
         create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
         create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let tickets = cache.get_all_tickets().await.unwrap();
@@ -902,7 +917,7 @@ remote: github
 
         create_test_ticket(&repo_path, "j-a1b2", "Test Ticket");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let ticket = cache.get_ticket("j-a1b2").await.unwrap();
@@ -933,7 +948,7 @@ remote: github
         create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
         create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let matches = cache.find_by_partial_id("j-a").await.unwrap();
@@ -963,7 +978,7 @@ remote: github
         create_test_ticket(&repo_path, "j-a1b2", "Ticket A1");
         create_test_ticket(&repo_path, "j-a2c3", "Ticket A2");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let matches = cache.find_by_partial_id("j-a").await.unwrap();
@@ -989,7 +1004,7 @@ remote: github
         create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
         create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let map = cache.build_ticket_map().await.unwrap();
@@ -1037,7 +1052,7 @@ remote: github
 "#;
         fs::write(&ticket_path, content).unwrap();
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let tickets = cache.get_all_tickets().await.unwrap();
@@ -1075,7 +1090,7 @@ remote: github
 
         create_test_plan(&repo_path, "plan-a1b2", "Simple Test Plan", false);
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         let changed = cache.sync().await.unwrap();
 
         assert!(changed);
@@ -1119,7 +1134,7 @@ remote: github
 
         create_test_plan(&repo_path, "plan-b2c3", "Phased Test Plan", true);
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let plan = cache.get_plan("plan-b2c3").await.unwrap();
@@ -1162,7 +1177,7 @@ remote: github
         create_test_plan(&repo_path, "plan-c3d4", "Plan Two", true);
         create_test_plan(&repo_path, "plan-e5f6", "Plan Three", false);
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let plans = cache.get_all_plans().await.unwrap();
@@ -1190,7 +1205,7 @@ remote: github
 
         create_test_plan(&repo_path, "plan-a1b2", "Plan One", false);
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let plans = cache.get_all_plans().await.unwrap();
@@ -1223,7 +1238,7 @@ remote: github
 
         let plan_path = create_test_plan(&repo_path, "plan-a1b2", "Plan One", false);
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let plans = cache.get_all_plans().await.unwrap();
@@ -1258,7 +1273,7 @@ remote: github
 
         std::thread::sleep(std::time::Duration::from_millis(10));
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let plan = cache.get_plan("plan-a1b2").await.unwrap().unwrap();
@@ -1297,7 +1312,7 @@ remote: github
         create_test_plan(&repo_path, "plan-a2c3", "Plan Two", true);
         create_test_plan(&repo_path, "plan-b3d4", "Plan Three", false);
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Find by prefix
@@ -1335,7 +1350,7 @@ remote: github
 
         create_test_plan(&repo_path, "plan-a1b2", "Test Plan", false);
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
 
         // First sync should return true
         let changed1 = cache.sync().await.unwrap();
@@ -1363,7 +1378,7 @@ remote: github
         let plans_dir = repo_path.join(".janus/plans");
         fs::create_dir_all(&plans_dir).unwrap();
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         let changed = cache.sync().await.unwrap();
         assert!(!changed);
 
@@ -1386,7 +1401,7 @@ remote: github
 
         // Don't create the plans directory
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         let changed = cache.sync().await.unwrap();
         assert!(!changed);
 
@@ -1457,7 +1472,7 @@ remote: github
         fs::write(&invalid_path, invalid_content).unwrap();
 
         // Capture stderr to verify warning is logged
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
 
         // Sync should succeed and log a warning about the invalid ticket
         let changed = cache.sync().await.unwrap();
@@ -1528,7 +1543,7 @@ This is a valid ticket.
         fs::write(&ticket_path, valid_content).unwrap();
 
         // Sync to populate cache
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Verify ticket is in cache
@@ -1629,7 +1644,7 @@ spawned-from: {}
         // Create another ticket with no children
         create_test_ticket(&repo_path, "j-solo", "Solo Ticket");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Test: parent should have 3 children
@@ -1680,7 +1695,7 @@ triaged: true
 "#;
         fs::write(&ticket_path, content).unwrap();
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let ticket = cache.get_ticket("j-a1b2").await.unwrap();
@@ -1714,7 +1729,7 @@ triaged: true
         create_test_ticket(&repo_path, "j-c3d4", "Ticket 2");
         create_test_ticket(&repo_path, "j-e5f6", "Ticket 3");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let results = cache.search_tickets("").await.unwrap();
@@ -1738,7 +1753,7 @@ triaged: true
         create_test_ticket_with_body(&repo_path, "j-p1", "P1 Ticket", 1, "");
         create_test_ticket_with_body(&repo_path, "j-p2", "P2 Ticket", 2, "");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Search for P0 tickets only
@@ -1781,7 +1796,7 @@ triaged: true
         create_test_ticket_with_body(&repo_path, "j-a1b2", "Fix the bug", 2, "Some other content");
         create_test_ticket_with_body(&repo_path, "j-c3d4", "Add new feature", 2, "No issues here");
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let results = cache.search_tickets("bug").await.unwrap();
@@ -1826,7 +1841,7 @@ triaged: true
             "Just some random content without the keyword.",
         );
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         let results = cache.search_tickets("authentication").await.unwrap();
@@ -1885,7 +1900,7 @@ triaged: true
             "Different task without the keyword.",
         );
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // First, verify that priority-only search works
@@ -1972,7 +1987,7 @@ triaged: true
             "Use C:\\Users\\name\\path for Windows.",
         );
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Search for % character
@@ -2036,7 +2051,7 @@ triaged: true
             "The authentication module has issues.",
         );
 
-        let mut cache = TicketCache::open().await.unwrap();
+        let cache = TicketCache::open().await.unwrap();
         cache.sync().await.unwrap();
 
         // Search with lowercase

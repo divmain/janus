@@ -3,16 +3,13 @@
 //! This module organizes the TUI state into logical groups, making it easier
 //! to understand which state each handler needs and simplifying testing.
 
-use iocraft::prelude::State;
+use iocraft::prelude::{Handler, State};
 
-use crate::tui::action_queue::ActionChannel;
-use crate::tui::edit_state::EditFormState;
+use crate::tui::edit::EditResult;
+use crate::tui::edit_state::{EditFormState, EditMode};
 use crate::tui::search::FilteredTicket;
 use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::tui::state::Pane;
-use crate::types::TicketMetadata;
-
-use super::types::ViewAction;
 
 /// Search functionality state
 pub struct SearchState<'a> {
@@ -51,12 +48,14 @@ pub struct ViewData<'a> {
 
 /// Edit-related state
 pub struct EditState<'a> {
-    pub result: &'a mut State<crate::tui::edit::EditResult>,
-    pub is_editing_existing: &'a mut State<bool>,
-    pub is_creating_new: &'a mut State<bool>,
-    pub editing_ticket_id: &'a mut State<String>,
-    pub editing_ticket: &'a mut State<TicketMetadata>,
-    pub editing_body: &'a mut State<String>,
+    pub mode: &'a mut State<EditMode>,
+    pub result: &'a mut State<EditResult>,
+}
+
+/// Async handlers for ticket operations
+pub struct AsyncHandlers<'a> {
+    pub cycle_status: &'a Handler<String>,
+    pub mark_triaged: &'a Handler<(String, bool)>,
 }
 
 /// Main context struct holding grouped state for event handlers
@@ -70,18 +69,15 @@ pub struct ViewHandlerContext<'a> {
     pub app: AppState<'a>,
     pub data: ViewData<'a>,
     pub edit: EditState<'a>,
-    pub actions: &'a ActionChannel<ViewAction>,
+    pub handlers: AsyncHandlers<'a>,
 }
 
 impl<'a> ViewHandlerContext<'a> {
     /// Convenience method to create an EditFormState for edit operations
     pub fn edit_form_state(&mut self) -> EditFormState<'_> {
         EditFormState {
+            mode: self.edit.mode,
             result: self.edit.result,
-            is_editing_existing: self.edit.is_editing_existing,
-            is_creating_new: self.edit.is_creating_new,
-            editing_ticket: self.edit.editing_ticket,
-            editing_body: self.edit.editing_body,
         }
     }
 }

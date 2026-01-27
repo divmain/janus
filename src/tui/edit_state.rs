@@ -9,27 +9,48 @@ use crate::types::TicketMetadata;
 
 use super::edit::EditResult;
 
+/// The editing mode state machine
+///
+/// This enum represents the three possible states of the edit form:
+/// - `None`: No editing in progress
+/// - `Creating`: Creating a new ticket
+/// - `Editing`: Editing an existing ticket
+///
+/// Note: `TicketMetadata` is boxed to reduce enum size since the `Editing` variant
+/// is much larger than `None` and `Creating`.
+#[derive(Clone, Default)]
+pub enum EditMode {
+    #[default]
+    None,
+    Creating {
+        body: String,
+    },
+    Editing {
+        ticket: Box<TicketMetadata>,
+        body: String,
+    },
+}
+
 /// Holds all the state needed for the edit form
 pub struct EditFormState<'a> {
+    pub mode: &'a mut State<EditMode>,
     pub result: &'a mut State<EditResult>,
-    pub is_editing_existing: &'a mut State<bool>,
-    pub is_creating_new: &'a mut State<bool>,
-    pub editing_ticket: &'a mut State<TicketMetadata>,
-    pub editing_body: &'a mut State<String>,
 }
 
 impl EditFormState<'_> {
     /// Check if the edit form is currently open
     pub fn is_editing(&self) -> bool {
-        self.is_editing_existing.get() || self.is_creating_new.get()
+        !matches!(*self.mode.read(), EditMode::None)
+    }
+
+    /// Check if we're creating a new ticket (vs editing existing)
+    pub fn is_creating_new(&self) -> bool {
+        matches!(*self.mode.read(), EditMode::Creating { .. })
     }
 
     /// Reset all edit state to defaults
     pub fn reset(&mut self) {
-        self.is_editing_existing.set(false);
-        self.is_creating_new.set(false);
-        self.editing_ticket.set(TicketMetadata::default());
-        self.editing_body.set(String::new());
+        self.mode.set(EditMode::None);
     }
 
     /// Handle the edit result, returning true if reload is needed
@@ -51,35 +72,32 @@ impl EditFormState<'_> {
 
     /// Start editing an existing ticket
     pub fn start_edit(&mut self, ticket: TicketMetadata, body: String) {
-        self.editing_ticket.set(ticket);
-        self.editing_body.set(body);
-        self.is_editing_existing.set(true);
-        self.is_creating_new.set(false);
+        self.mode.set(EditMode::Editing {
+            ticket: Box::new(ticket),
+            body,
+        });
     }
 
     /// Start creating a new ticket
     pub fn start_create(&mut self) {
-        self.editing_ticket.set(TicketMetadata::default());
-        self.editing_body.set(String::new());
-        self.is_editing_existing.set(false);
-        self.is_creating_new.set(true);
+        self.mode.set(EditMode::Creating {
+            body: String::new(),
+        });
     }
 
     /// Get the ticket being edited (if editing existing)
     pub fn get_edit_ticket(&self) -> Option<TicketMetadata> {
-        if self.is_editing_existing.get() {
-            Some(self.editing_ticket.read().clone())
-        } else {
-            None
+        match &*self.mode.read() {
+            EditMode::Editing { ticket, .. } => Some((**ticket).clone()),
+            _ => None,
         }
     }
 
     /// Get the body for the edit form
     pub fn get_edit_body(&self) -> Option<String> {
-        if self.is_editing() {
-            Some(self.editing_body.read().clone())
-        } else {
-            None
+        match &*self.mode.read() {
+            EditMode::Editing { body, .. } | EditMode::Creating { body } => Some(body.clone()),
+            EditMode::None => None,
         }
     }
 }

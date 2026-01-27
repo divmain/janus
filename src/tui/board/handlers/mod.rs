@@ -10,7 +10,7 @@ mod navigation;
 mod search;
 mod types;
 
-pub use context::BoardHandlerContext;
+pub use context::{BoardAsyncHandlers, BoardHandlerContext};
 
 use super::model::BoardAction;
 use crate::tui::handlers::{SearchAction, handle_search_input};

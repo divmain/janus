@@ -1,11 +1,13 @@
 //! Action handlers (q, /, e, Enter, n)
 
+use std::fs;
+
 use iocraft::prelude::KeyCode;
 
+use crate::tui::edit::extract_body_for_edit;
 use crate::tui::search::filter_tickets;
 use crate::types::{TicketMetadata, TicketStatus};
 
-use super::super::BoardAction;
 use super::HandleResult;
 use super::context::BoardHandlerContext;
 
@@ -41,17 +43,22 @@ pub fn handle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult 
     }
 }
 
-/// Edit the selected ticket - sends action to the async queue
+/// Edit the selected ticket - reads body content synchronously
 fn handle_edit_ticket(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
 
     if let Some(ticket) = get_ticket_at(ctx, col, row)
-        && let Some(id) = &ticket.id
+        && let Some(ref file_path) = ticket.file_path
     {
-        _ = ctx
-            .action_tx
-            .send(BoardAction::LoadForEdit { id: id.clone() });
+        // Read body content synchronously from file
+        let body = fs::read_to_string(file_path)
+            .ok()
+            .map(|content| extract_body_for_edit(&content))
+            .unwrap_or_default();
+
+        // Set edit state directly (synchronous)
+        ctx.edit_state().start_edit(ticket, body);
     }
 }
 
@@ -61,7 +68,7 @@ fn handle_create_new(ctx: &mut BoardHandlerContext<'_>) {
 }
 
 /// Get the ticket at a specific column and row
-fn get_ticket_at(
+pub fn get_ticket_at(
     ctx: &BoardHandlerContext<'_>,
     column: usize,
     row: usize,
