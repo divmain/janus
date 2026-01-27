@@ -234,7 +234,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 if !errors.is_empty() {
                     let error_msgs: Vec<String> = errors
                         .iter()
-                        .map(|e| format!("{}: {}", e.ticket_id, e.error))
+                        .map(|e| format!("{}: {}", e.ticket_id(), e.error_message()))
                         .collect();
                     last_error_setter.set(Some(("Push Errors".to_string(), error_msgs.join("\n"))));
                 }
@@ -242,7 +242,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 if successes.is_empty() && !errors.is_empty() {
                     toast_setter.set(Some(Toast::error(format!(
                         "Push failed for {}: {}",
-                        errors[0].ticket_id, errors[0].error
+                        errors[0].ticket_id(),
+                        errors[0].error_message()
                     ))));
                 } else if errors.is_empty() {
                     // Show more detail for successful pushes
@@ -266,7 +267,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         success_ids.join(", "),
                         errors
                             .iter()
-                            .map(|e| e.ticket_id.as_str())
+                            .map(|e| e.ticket_id())
                             .collect::<Vec<_>>()
                             .join(", ")
                     ))));

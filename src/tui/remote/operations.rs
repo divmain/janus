@@ -6,6 +6,7 @@ use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef};
 use crate::ticket::TicketBuilder;
 use crate::types::TicketMetadata;
 use std::collections::HashSet;
+use thiserror::Error;
 use url::Url;
 
 use super::sync_preview::{SyncChange, SyncDirection};
@@ -600,10 +601,151 @@ pub struct PushResult {
 }
 
 /// Error info for push operation
-#[derive(Debug, Clone)]
-pub struct PushError {
-    pub ticket_id: String,
-    pub error: String,
+#[derive(Error, Debug)]
+pub enum PushError {
+    #[error("authentication failed for ticket '{ticket_id}': {message}")]
+    Auth {
+        ticket_id: String,
+        message: String,
+        #[source]
+        source: Option<JanusError>,
+    },
+
+    #[error("API error for ticket '{ticket_id}': {message}")]
+    Api {
+        ticket_id: String,
+        message: String,
+        #[source]
+        source: Option<JanusError>,
+    },
+
+    #[error("rate limit exceeded for ticket '{ticket_id}': retry after {retry_after_seconds}s")]
+    RateLimited {
+        ticket_id: String,
+        retry_after_seconds: u64,
+    },
+
+    #[error("network error for ticket '{ticket_id}': {message}")]
+    Network {
+        ticket_id: String,
+        message: String,
+        #[source]
+        source: Option<reqwest::Error>,
+    },
+
+    #[error("configuration error for ticket '{ticket_id}': {message}")]
+    Config {
+        ticket_id: String,
+        message: String,
+        #[source]
+        source: Option<JanusError>,
+    },
+
+    #[error("ticket '{ticket_id}' not found")]
+    TicketNotFound {
+        ticket_id: String,
+        #[source]
+        source: Option<JanusError>,
+    },
+
+    #[error("failed to read ticket '{ticket_id}': {message}")]
+    TicketReadError {
+        ticket_id: String,
+        message: String,
+        #[source]
+        source: Option<JanusError>,
+    },
+
+    #[error("failed to write ticket '{ticket_id}': {message}")]
+    TicketWriteError {
+        ticket_id: String,
+        message: String,
+        #[source]
+        source: Option<JanusError>,
+    },
+
+    #[error("ticket '{ticket_id}' is already linked to a remote issue")]
+    AlreadyLinked { ticket_id: String },
+}
+
+impl PushError {
+    /// Get the ticket ID associated with this error
+    pub fn ticket_id(&self) -> &str {
+        match self {
+            PushError::Auth { ticket_id, .. }
+            | PushError::Api { ticket_id, .. }
+            | PushError::RateLimited { ticket_id, .. }
+            | PushError::Network { ticket_id, .. }
+            | PushError::Config { ticket_id, .. }
+            | PushError::TicketNotFound { ticket_id, .. }
+            | PushError::TicketReadError { ticket_id, .. }
+            | PushError::TicketWriteError { ticket_id, .. }
+            | PushError::AlreadyLinked { ticket_id } => ticket_id,
+        }
+    }
+
+    /// Get the error message for display
+    pub fn error_message(&self) -> String {
+        match self {
+            PushError::Auth { message, .. } => message.clone(),
+            PushError::Api { message, .. } => message.clone(),
+            PushError::RateLimited {
+                retry_after_seconds,
+                ..
+            } => {
+                format!("rate limited, retry after {retry_after_seconds}s")
+            }
+            PushError::Network { message, .. } => message.clone(),
+            PushError::Config { message, .. } => message.clone(),
+            PushError::TicketNotFound { .. } => "ticket not found".to_string(),
+            PushError::TicketReadError { message, .. } => message.clone(),
+            PushError::TicketWriteError { message, .. } => message.clone(),
+            PushError::AlreadyLinked { .. } => "already linked to remote issue".to_string(),
+        }
+    }
+}
+
+impl From<(JanusError, String)> for PushError {
+    fn from((error, ticket_id): (JanusError, String)) -> Self {
+        match &error {
+            JanusError::Auth(msg) => PushError::Auth {
+                ticket_id,
+                message: msg.clone(),
+                source: Some(error),
+            },
+            JanusError::Api(msg) => PushError::Api {
+                ticket_id,
+                message: msg.clone(),
+                source: Some(error),
+            },
+            JanusError::RateLimited(seconds) => PushError::RateLimited {
+                ticket_id,
+                retry_after_seconds: *seconds,
+            },
+            JanusError::Http(_) => PushError::Network {
+                ticket_id,
+                message: error.to_string(),
+                source: None,
+            },
+            JanusError::Config(msg) => PushError::Config {
+                ticket_id,
+                message: msg.clone(),
+                source: Some(error),
+            },
+            JanusError::TicketNotFound(_) => PushError::TicketNotFound {
+                ticket_id,
+                source: Some(error),
+            },
+            JanusError::NotLinked | JanusError::AlreadyLinked(_) => {
+                PushError::AlreadyLinked { ticket_id }
+            }
+            _ => PushError::TicketReadError {
+                ticket_id,
+                message: error.to_string(),
+                source: Some(error),
+            },
+        }
+    }
 }
 
 /// Push a single local ticket to the remote platform
@@ -614,37 +756,45 @@ pub async fn push_ticket_to_remote(
     use crate::ticket::Ticket;
 
     // Load config
-    let config = crate::remote::config::Config::load().map_err(|e| PushError {
-        ticket_id: ticket_id.to_string(),
-        error: format!("Failed to load config: {}", e),
-    })?;
+    let config = crate::remote::config::Config::load()
+        .map_err(|e| PushError::from((e, ticket_id.to_string())))?;
 
     // Find and read the ticket
-    let ticket = Ticket::find(ticket_id).await.map_err(|e| PushError {
-        ticket_id: ticket_id.to_string(),
-        error: format!("Failed to find ticket: {}", e),
+    let ticket = Ticket::find(ticket_id).await.map_err(|e| match e {
+        JanusError::TicketNotFound(_) => PushError::TicketNotFound {
+            ticket_id: ticket_id.to_string(),
+            source: Some(e),
+        },
+        _ => PushError::TicketReadError {
+            ticket_id: ticket_id.to_string(),
+            message: e.to_string(),
+            source: Some(e),
+        },
     })?;
 
-    let metadata = ticket.read().map_err(|e| PushError {
+    let metadata = ticket.read().map_err(|e| PushError::TicketReadError {
         ticket_id: ticket_id.to_string(),
-        error: format!("Failed to read ticket: {}", e),
+        message: e.to_string(),
+        source: Some(e),
     })?;
 
     // Check if already linked
     if metadata.remote.is_some() {
-        return Err(PushError {
+        return Err(PushError::AlreadyLinked {
             ticket_id: ticket_id.to_string(),
-            error: "Ticket is already linked to a remote issue".to_string(),
         });
     }
 
     let title = metadata.title.unwrap_or_else(|| "Untitled".to_string());
 
     // Read raw content to extract body
-    let content = ticket.read_content().map_err(|e| PushError {
-        ticket_id: ticket_id.to_string(),
-        error: format!("Failed to read ticket content: {}", e),
-    })?;
+    let content = ticket
+        .read_content()
+        .map_err(|e| PushError::TicketReadError {
+            ticket_id: ticket_id.to_string(),
+            message: e.to_string(),
+            source: Some(e),
+        })?;
 
     use crate::parser;
     use crate::parser::TITLE_RE;
@@ -660,42 +810,39 @@ pub async fn push_ticket_to_remote(
         match platform {
             Platform::GitHub => {
                 let provider = crate::remote::github::GitHubProvider::from_config(&config)
-                    .map_err(|e| PushError {
+                    .map_err(|e| PushError::Config {
                         ticket_id: ticket_id.to_string(),
-                        error: format!("Failed to create GitHub provider: {}", e),
+                        message: format!("Failed to create GitHub provider: {}", e),
+                        source: Some(e),
                     })?;
 
                 provider
                     .create_issue(&title, &body)
                     .await
-                    .map_err(|e| PushError {
-                        ticket_id: ticket_id.to_string(),
-                        error: format!("Failed to create GitHub issue: {}", e),
-                    })?
+                    .map_err(|e| PushError::from((e, ticket_id.to_string())))?
             }
             Platform::Linear => {
                 let provider = crate::remote::linear::LinearProvider::from_config(&config)
-                    .map_err(|e| PushError {
+                    .map_err(|e| PushError::Config {
                         ticket_id: ticket_id.to_string(),
-                        error: format!("Failed to create Linear provider: {}", e),
+                        message: format!("Failed to create Linear provider: {}", e),
+                        source: Some(e),
                     })?;
 
                 provider
                     .create_issue(&title, &body)
                     .await
-                    .map_err(|e| PushError {
-                        ticket_id: ticket_id.to_string(),
-                        error: format!("Failed to create Linear issue: {}", e),
-                    })?
+                    .map_err(|e| PushError::from((e, ticket_id.to_string())))?
             }
         };
 
     // Update the local ticket with the remote reference
     ticket
         .update_field("remote", &remote_ref.to_string())
-        .map_err(|e| PushError {
+        .map_err(|e| PushError::TicketWriteError {
             ticket_id: ticket_id.to_string(),
-            error: format!("Failed to update ticket with remote ref: {}", e),
+            message: format!("Failed to update ticket with remote ref: {}", e),
+            source: Some(e),
         })?;
 
     Ok(PushResult {
