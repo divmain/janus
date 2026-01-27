@@ -18,8 +18,11 @@
 use reqwest::Client;
 use reqwest::header;
 use secrecy::{ExposeSecret, SecretBox};
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 
 use crate::error::{JanusError, Result};
 
@@ -358,6 +361,8 @@ pub struct LinearProvider {
     default_org: Option<String>,
     /// Default team ID for creating issues (fetched on first use)
     default_team_id: Option<String>,
+    /// Cache mapping external issue identifier (e.g., "ENG-123") to internal UUID for mutations
+    issue_id_cache: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl LinearProvider {
@@ -391,6 +396,7 @@ impl LinearProvider {
             api_key: SecretBox::new(Box::new(api_key)),
             default_org,
             default_team_id: None,
+            issue_id_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -411,6 +417,7 @@ impl LinearProvider {
             api_key: SecretBox::new(Box::new(api_key.to_string())),
             default_org: None,
             default_team_id: None,
+            issue_id_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -610,6 +617,12 @@ impl RemoteProvider for LinearProvider {
             }
         })?;
 
+        let internal_id = response.issue.id.clone().into_inner();
+        let external_id = response.issue.identifier.clone();
+
+        let mut cache = self.issue_id_cache.write().await;
+        cache.insert(external_id, internal_id);
+
         Ok(self.convert_linear_issue(response.issue))
     }
 
@@ -658,31 +671,44 @@ impl RemoteProvider for LinearProvider {
             }
         };
 
-        // First, get the internal UUID for this issue by fetching it
-        let fetch_operation = IssueQuery::build(IssueQueryVariables {
-            id: issue_id.clone(),
-        });
-
-        let fetch_response = self.execute(fetch_operation).await.map_err(|e| {
-            if Self::is_not_found_error(&e) {
-                JanusError::RemoteIssueNotFound(remote_ref.to_string())
-            } else {
-                e
-            }
-        })?;
-
-        let internal_id = fetch_response.issue.id.into_inner();
-
-        // Build update input
         let input = IssueUpdateInput {
             title: updates.title,
             description: updates.body,
         };
 
-        // Check if there's anything to update
         if input.title.is_none() && input.description.is_none() {
             return Ok(());
         }
+
+        let internal_id = {
+            let cache = self.issue_id_cache.read().await;
+            cache.get(issue_id).cloned()
+        };
+
+        let internal_id = match internal_id {
+            Some(id) => id,
+            None => {
+                let fetch_operation = IssueQuery::build(IssueQueryVariables {
+                    id: issue_id.clone(),
+                });
+
+                let fetch_response = self.execute(fetch_operation).await.map_err(|e| {
+                    if Self::is_not_found_error(&e) {
+                        JanusError::RemoteIssueNotFound(remote_ref.to_string())
+                    } else {
+                        e
+                    }
+                })?;
+
+                let id = fetch_response.issue.id.into_inner();
+                let external_id = fetch_response.issue.identifier.clone();
+
+                let mut cache = self.issue_id_cache.write().await;
+                cache.insert(external_id, id.clone());
+
+                id
+            }
+        };
 
         let operation = IssueUpdateMutation::build(IssueUpdateVariables {
             id: internal_id,
@@ -710,11 +736,17 @@ impl RemoteProvider for LinearProvider {
 
         let response = self.execute(operation).await?;
 
+        let mut cache = self.issue_id_cache.write().await;
         let issues: Vec<RemoteIssue> = response
             .issues
             .nodes
             .into_iter()
-            .map(|issue| self.convert_linear_issue(issue))
+            .map(|issue| {
+                let internal_id = issue.id.clone().into_inner();
+                let external_id = issue.identifier.clone();
+                cache.insert(external_id, internal_id);
+                self.convert_linear_issue(issue)
+            })
             .collect();
 
         Ok(issues)
@@ -759,11 +791,17 @@ impl RemoteProvider for LinearProvider {
 
         let response = self.execute(operation).await?;
 
+        let mut cache = self.issue_id_cache.write().await;
         let issues: Vec<RemoteIssue> = response
             .issues
             .nodes
             .into_iter()
-            .map(|issue| self.convert_linear_issue(issue))
+            .map(|issue| {
+                let internal_id = issue.id.clone().into_inner();
+                let external_id = issue.identifier.clone();
+                cache.insert(external_id, internal_id);
+                self.convert_linear_issue(issue)
+            })
             .collect();
 
         Ok(issues)
