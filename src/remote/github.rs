@@ -21,6 +21,9 @@ pub struct GitHubProvider {
 
 impl GitHubProvider {
     /// Create a new GitHub provider from configuration
+    ///
+    /// Note: Octocrab 0.48 does not support custom HTTP client timeout configuration.
+    /// This uses Octocrab's default HTTP client configuration.
     pub fn from_config(config: &Config) -> Result<Self> {
         let token = config.github_token().ok_or_else(|| {
             JanusError::Auth(
@@ -51,6 +54,9 @@ impl GitHubProvider {
     }
 
     /// Create a new GitHub provider with a token
+    ///
+    /// Note: Octocrab 0.48 does not support custom HTTP client timeout configuration.
+    /// This uses Octocrab's default HTTP client configuration.
     pub fn new(token: &str) -> Result<Self> {
         if token.trim().is_empty() {
             return Err(JanusError::Auth("GitHub token cannot be empty".to_string()));

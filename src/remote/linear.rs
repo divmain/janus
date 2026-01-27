@@ -362,6 +362,8 @@ pub struct LinearProvider {
 
 impl LinearProvider {
     /// Create a new Linear provider from configuration
+    ///
+    /// Configures HTTP client with 30s connect timeout and 60s total timeout.
     pub fn from_config(config: &Config) -> Result<Self> {
         let api_key = config.linear_api_key().ok_or_else(|| {
             JanusError::Auth(
@@ -380,6 +382,8 @@ impl LinearProvider {
         let client = Client::builder()
             .http1_title_case_headers()
             .http2_prior_knowledge()
+            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(30))
             .build()?;
 
         Ok(Self {
@@ -391,10 +395,14 @@ impl LinearProvider {
     }
 
     /// Create a new Linear provider with an API key
+    ///
+    /// Configures HTTP client with 30s connect timeout and 60s total timeout.
     pub fn new(api_key: &str) -> Self {
         let client = Client::builder()
             .http1_title_case_headers()
             .http2_prior_knowledge()
+            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client");
 
