@@ -147,6 +147,10 @@ impl TicketBuilder {
         utils::ensure_dir()?;
 
         let id = utils::generate_id_with_custom_prefix(self.prefix.as_deref())?;
+
+        // Validate that the generated ID is safe to use as a filename
+        utils::validate_filename(&id)?;
+
         let uuid = if self.include_uuid {
             Some(self.uuid.unwrap_or_else(utils::generate_uuid))
         } else {

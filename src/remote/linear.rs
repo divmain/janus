@@ -1,6 +1,22 @@
 //! Linear.app provider implementation using GraphQL API with type-safe cynic queries.
+//!
+//! # Security Note - Logging
+//!
+//! The Linear API key is protected from being logged through reqwest's request logging by using
+//! the `RedactedHeader` wrapper type, which implements `Display` and `Debug` to redact sensitive values.
+//!
+//! **Important:** Ensure reqwest logging is disabled in production environments:
+//!
+//! ```bash
+//! # Do NOT enable reqwest logging in production as it may still log other request details
+//! # RUST_LOG=reqwest=debug  <-- AVOID IN PRODUCTION
+//! ```
+//!
+//! The `RedactedHeader` wrapper ensures that even if debug logging is accidentally enabled,
+//! the Authorization header value will be displayed as `[REDACTED]` instead of the actual API key.
 
 use reqwest::Client;
+use reqwest::header;
 use secrecy::{ExposeSecret, SecretBox};
 use std::fmt;
 use std::time::Duration;
@@ -13,6 +29,40 @@ use super::{
 };
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
+
+/// Wrapper for sensitive header values that redacts the value when formatted.
+///
+/// This prevents API keys and other secrets from being leaked in logs when
+/// reqwest's logging is enabled (e.g., via RUST_LOG=reqwest=debug).
+struct RedactedHeader {
+    value: String,
+}
+
+impl RedactedHeader {
+    fn new(value: &str) -> Self {
+        Self {
+            value: value.to_string(),
+        }
+    }
+
+    fn as_header_value(&self) -> header::HeaderValue {
+        header::HeaderValue::from_str(&self.value).expect("Invalid header value")
+    }
+}
+
+impl fmt::Display for RedactedHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[REDACTED]")
+    }
+}
+
+impl fmt::Debug for RedactedHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RedactedHeader")
+            .field("value", &"[REDACTED]")
+            .finish()
+    }
+}
 
 mod graphql {
     // Re-export cynic types we need
@@ -327,7 +377,6 @@ impl LinearProvider {
             }
         });
 
-        // Configure client with sensitive header suppression and no error logging
         let client = Client::builder()
             .http1_title_case_headers()
             .http2_prior_knowledge()
@@ -343,7 +392,6 @@ impl LinearProvider {
 
     /// Create a new Linear provider with an API key
     pub fn new(api_key: &str) -> Self {
-        // Configure client with sensitive header suppression and no error logging
         let client = Client::builder()
             .http1_title_case_headers()
             .http2_prior_knowledge()
@@ -438,6 +486,9 @@ impl From<LinearError> for JanusError {
 
 impl LinearProvider {
     /// Execute a GraphQL operation (query or mutation) with retry logic
+    ///
+    /// Security: The Authorization header is wrapped in `RedactedHeader` to prevent
+    /// the API key from being logged if reqwest's debug logging is enabled.
     async fn execute<ResponseData, Vars>(
         &self,
         operation: cynic::Operation<ResponseData, Vars>,
@@ -447,11 +498,15 @@ impl LinearProvider {
         Vars: serde::Serialize + std::marker::Sync,
     {
         let response = super::execute_with_retry(|| async {
+            let auth_header = RedactedHeader::new(self.api_key.expose_secret());
             let response = self
                 .client
                 .post(LINEAR_API_URL)
-                .header("Authorization", self.api_key.expose_secret())
-                .header("Content-Type", "application/json")
+                .header(header::AUTHORIZATION, auth_header.as_header_value())
+                .header(
+                    header::CONTENT_TYPE,
+                    header::HeaderValue::from_static("application/json"),
+                )
                 .json(&operation)
                 .send()
                 .await?;
@@ -750,6 +805,27 @@ impl LinearProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_redacted_header_display() {
+        let header = RedactedHeader::new("secret-api-key-12345");
+        assert_eq!(format!("{}", header), "[REDACTED]");
+    }
+
+    #[test]
+    fn test_redacted_header_debug() {
+        let header = RedactedHeader::new("secret-api-key-12345");
+        let debug_str = format!("{:?}", header);
+        assert!(debug_str.contains("[REDACTED]"));
+        assert!(!debug_str.contains("secret-api-key"));
+    }
+
+    #[test]
+    fn test_redacted_header_as_header_value() {
+        let header = RedactedHeader::new("Bearer token123");
+        let header_value = header.as_header_value();
+        assert_eq!(header_value.to_str().unwrap(), "Bearer token123");
+    }
 
     #[test]
     fn test_priority_conversion() {

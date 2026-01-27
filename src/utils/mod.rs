@@ -154,6 +154,108 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
     Ok(())
 }
 
+/// Validate that a string is safe to use as a filename on the current OS
+///
+/// This function validates filename safety by checking:
+/// - No invalid characters for the target OS (Windows-specific on Windows, general on Unix)
+/// - No empty or whitespace-only names
+/// - Not a reserved device name (Windows only)
+/// - Within reasonable length limits
+/// - No path traversal patterns
+///
+/// # Arguments
+///
+/// * `name` - The filename to validate (without path)
+///
+/// # Returns
+///
+/// * `Ok(())` - If the filename is safe
+/// * `Err(JanusError::InvalidFormat)` - If the filename is unsafe
+pub fn validate_filename(name: &str) -> Result<()> {
+    let trimmed = name.trim();
+
+    if trimmed.is_empty() {
+        return Err(JanusError::InvalidFormat(
+            "Filename cannot be empty or only whitespace".to_string(),
+        ));
+    }
+
+    // Reject path traversal patterns
+    if trimmed.contains("..") || trimmed.starts_with('/') || trimmed.starts_with('\\') {
+        return Err(JanusError::InvalidFormat(
+            "Filename cannot contain path traversal patterns".to_string(),
+        ));
+    }
+
+    // OS-specific validation
+    #[cfg(target_os = "windows")]
+    {
+        // Windows reserved device names (case-insensitive)
+        const RESERVED_NAMES: &[&str] = &[
+            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+            "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        ];
+
+        let upper = trimmed.to_uppercase();
+        if RESERVED_NAMES.contains(&upper.as_str()) {
+            return Err(JanusError::InvalidFormat(format!(
+                "Filename '{}' is a reserved device name",
+                trimmed
+            )));
+        }
+
+        // Windows invalid characters
+        const INVALID_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+        if trimmed.chars().any(|c| INVALID_CHARS.contains(&c)) {
+            return Err(JanusError::InvalidFormat(format!(
+                "Filename '{}' contains invalid characters for Windows",
+                trimmed
+            )));
+        }
+
+        // Leading/trailing dots/spaces are problematic on Windows
+        if trimmed.starts_with('.')
+            || trimmed.starts_with(' ')
+            || trimmed.ends_with('.')
+            || trimmed.ends_with(' ')
+        {
+            return Err(JanusError::InvalidFormat(format!(
+                "Filename '{}' cannot start or end with a dot or space",
+                trimmed
+            )));
+        }
+
+        // Windows MAX_PATH is 260, but allow reasonable margin
+        if trimmed.len() > 255 {
+            return Err(JanusError::InvalidFormat(format!(
+                "Filename '{}' exceeds maximum length (255 characters)",
+                trimmed
+            )));
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix invalid characters (null and /)
+        if trimmed.contains('\0') || trimmed.contains('/') {
+            return Err(JanusError::InvalidFormat(format!(
+                "Filename '{}' contains invalid characters",
+                trimmed
+            )));
+        }
+
+        // Unix filename length limit (usually 255 bytes)
+        if trimmed.len() > 255 {
+            return Err(JanusError::InvalidFormat(format!(
+                "Filename '{}' exceeds maximum length (255 characters)",
+                trimmed
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 /// Generate a unique short ID with collision checking
 /// Returns a short ID that does not exist in the tickets directory
 pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
@@ -166,7 +268,8 @@ pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
             let candidate = format!("{}-{}", prefix, hash);
             let filename = format!("{}.md", candidate);
 
-            if !tickets_dir.join(&filename).exists() {
+            // Validate the ID is file-safe before checking for existence
+            if validate_filename(&candidate).is_ok() && !tickets_dir.join(&filename).exists() {
                 return candidate;
             }
         }
@@ -490,6 +593,171 @@ mod tests {
         if let Err(JanusError::InvalidFormat(msg)) = plan_result {
             assert!(msg.contains("plan"));
             assert!(!msg.contains("ticket"));
+        }
+    }
+
+    #[test]
+    fn test_validate_filename_valid_names() {
+        let valid_names = vec![
+            "task-a1b2",
+            "my-ticket-123",
+            "feature_xyz",
+            "bug-Test",
+            "a",
+            "abc123",
+            "my_file",
+        ];
+
+        for name in valid_names {
+            assert!(
+                validate_filename(name).is_ok(),
+                "Filename '{}' should be valid",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_filename_empty() {
+        let result = validate_filename("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_validate_filename_whitespace_only() {
+        let result = validate_filename("   ");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_filename_path_traversal() {
+        let invalid_names = vec!["../etc/passwd", "..", "../", "/etc/passwd", "dir/.."];
+
+        for name in invalid_names {
+            let result = validate_filename(name);
+            assert!(
+                result.is_err(),
+                "Filename '{}' should be rejected due to path traversal",
+                name
+            );
+            assert!(result.unwrap_err().to_string().contains("path traversal"));
+        }
+    }
+
+    #[test]
+    fn test_validate_filename_too_long() {
+        let long_name = "a".repeat(256);
+        let result = validate_filename(&long_name);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("maximum length"));
+    }
+
+    #[test]
+    fn test_validate_filename_max_length_boundary() {
+        let max_name = "a".repeat(255);
+        assert!(validate_filename(&max_name).is_ok());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_validate_filename_windows_invalid_chars() {
+        let invalid_names = vec![
+            "test<file",
+            "test>file",
+            "test:file",
+            "test\"file",
+            "test/file",
+            "test\\file",
+            "test|file",
+            "test?file",
+            "test*file",
+        ];
+
+        for name in invalid_names {
+            let result = validate_filename(name);
+            assert!(
+                result.is_err(),
+                "Filename '{}' should be rejected on Windows",
+                name
+            );
+            assert!(result.unwrap_err().to_string().contains("Windows"));
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_validate_filename_windows_reserved_names() {
+        let reserved_names = vec![
+            "CON", "con", "Con", "PRN", "prn", "AUX", "aux", "NUL", "nul", "COM1", "com1", "Com1",
+            "LPT1", "lpt1",
+        ];
+
+        for name in reserved_names {
+            let result = validate_filename(name);
+            assert!(
+                result.is_err(),
+                "Filename '{}' should be rejected as reserved",
+                name
+            );
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("reserved device name")
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_validate_filename_windows_leading_trailing_dots_spaces() {
+        let invalid_names = vec![".test", "test.", " test", "test ", ".", " "];
+
+        for name in invalid_names {
+            let result = validate_filename(name);
+            assert!(result.is_err(), "Filename '{}' should be rejected", name);
+        }
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn test_validate_filename_unix_invalid_chars() {
+        let invalid_names = vec!["test\0file", "test/file", "test\x00"];
+
+        for name in invalid_names {
+            let result = validate_filename(name);
+            assert!(
+                result.is_err(),
+                "Filename '{}' should be rejected on Unix",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_generated_id_is_file_safe() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_generated_id_safe");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        let prefixes = vec!["task", "bug", "feature", "my-prefix", "test_under"];
+
+        for prefix in prefixes {
+            let id = generate_unique_id_with_prefix(prefix);
+            assert!(
+                validate_filename(&id).is_ok(),
+                "Generated ID '{}' should be file-safe",
+                id
+            );
+            assert!(
+                id.starts_with(prefix),
+                "ID '{}' should start with prefix '{}'",
+                id,
+                prefix
+            );
+            assert!(id.contains('-'), "ID '{}' should contain a hyphen", id);
         }
     }
 }
