@@ -190,6 +190,15 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         .filter_map(|(i, &v)| if v { Some(i) } else { None })
         .collect();
 
+    // Calculate column width as equal percentage for all visible columns
+    let column_width_pct = 100.0 / visible_indices.len() as f32;
+
+    // Calculate card width in characters for multi-line title wrapping
+    // Terminal width minus overall padding (2 chars), divided by number of columns,
+    // then subtract column padding (2) and border (1)
+    let column_char_width = (width as u32).saturating_sub(2) / visible_indices.len() as u32;
+    let card_width = column_char_width.saturating_sub(5); // padding + borders
+
     // Calculate column heights
     let available_height = height.saturating_sub(6); // header + search + column headers + footer
     let cards_per_column = (available_height.saturating_sub(2) / 4).max(1) as usize; // Each card is ~3-4 lines, reserve 2 for indicators
@@ -382,8 +391,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
                                             element! {
                                                 View(
-                                                    flex_grow: 1.0,
-                                                    flex_shrink: 0.0,
+                                                    width: Size::Percent(column_width_pct),
                                                     flex_direction: FlexDirection::Column,
                                                     align_items: AlignItems::Center,
                                                     border_edges: Edges::Bottom,
@@ -431,8 +439,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
                                             element! {
                                                 View(
-                                                    flex_grow: 1.0,
-                                                    flex_shrink: 0.0,
+                                                    width: Size::Percent(column_width_pct),
                                                     height: 100pct,
                                                     flex_direction: FlexDirection::Column,
                                                     padding_left: 1,
@@ -466,6 +473,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                                 TicketCard(
                                                                     ticket: ft.ticket.as_ref().clone(),
                                                                     is_selected: is_selected,
+                                                                    width: Some(card_width),
                                                                 )
                                                             }
                                                         }

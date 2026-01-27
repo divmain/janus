@@ -7,7 +7,7 @@ use iocraft::prelude::*;
 
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketType};
-use crate::utils::truncate_string;
+use crate::utils::wrap_text_lines;
 
 /// Props for the TicketCard component
 #[derive(Default, Props)]
@@ -16,17 +16,21 @@ pub struct TicketCardProps {
     pub ticket: TicketMetadata,
     /// Whether this card is selected
     pub is_selected: bool,
+    /// Available width for the card content (in characters)
+    pub width: Option<u32>,
 }
 
 /// Compact ticket card for kanban board columns
 ///
 /// Layout:
 /// ```text
-/// +---------------+
-/// | j-a1b2        |
-/// | Fix bug in... |
-/// | P1  bug       |
-/// +---------------+
+/// +-------------------+
+/// | j-a1b2            |
+/// | Fix the login bug |
+/// | that prevents     |
+/// | users from...     |
+/// | P1  bug           |
+/// +-------------------+
 /// ```
 #[component]
 pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
@@ -72,9 +76,16 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
         theme.type_color(ticket_type)
     };
 
-    // Truncate title if needed (using char-safe truncation)
-    let max_title_len = 15;
-    let truncated_title = truncate_string(title, max_title_len);
+    // Calculate available width for title text
+    // Card has padding_left: 1, padding_right: 1, and border chars (2 total for round border)
+    // So available text width = card_width - 4
+    let default_width = 20u32; // Reasonable default if width not provided
+    let card_width = props.width.unwrap_or(default_width);
+    let title_width = card_width.saturating_sub(4) as usize;
+    let title_width = title_width.max(8); // Minimum 8 chars to be useful
+
+    // Wrap title to up to 3 lines
+    let title_lines = wrap_text_lines(title, title_width, 3);
 
     // Selection indicator character
     let indicator = if props.is_selected { ">" } else { " " };
@@ -103,11 +114,15 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
                     weight: Weight::Bold,
                 )
             }
-            // Title row
-            Text(
-                content: truncated_title,
-                color: text_color,
-            )
+            // Title rows (up to 3 lines)
+            #(title_lines.iter().map(|line| {
+                element! {
+                    Text(
+                        content: line.clone(),
+                        color: text_color,
+                    )
+                }
+            }))
             // Priority and type row
             View(flex_direction: FlexDirection::Row, gap: 1) {
                 Text(
