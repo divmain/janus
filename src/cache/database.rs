@@ -406,12 +406,12 @@ impl TicketCache {
             }
         }
 
-        let error_msg = last_error
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| "Unknown error".to_string());
-        Err(CacheError::CacheAccessFailed(
-            self.cache_db_path(),
-            error_msg,
-        ))
+        if let Some(turso_err) = last_error {
+            Err(CacheError::from(turso_err))
+        } else {
+            Err(CacheError::CacheOther(
+                "Unknown error creating cache connection".to_string(),
+            ))
+        }
     }
 }
