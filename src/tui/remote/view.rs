@@ -10,6 +10,7 @@
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
+use futures::stream::{self, StreamExt};
 use iocraft::prelude::*;
 
 use crate::remote::config::Platform;
@@ -302,12 +303,23 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             async move {
                 use super::sync_preview::SyncChangeWithContext;
 
+                let owned_ticket_ids: Vec<String> = ticket_ids.to_vec();
                 let mut all_changes: Vec<SyncChangeWithContext> = Vec::new();
+                let mut error_messages: Vec<String> = Vec::new();
 
-                for ticket_id in &ticket_ids {
-                    match super::operations::fetch_remote_issue_for_ticket(ticket_id, platform)
-                        .await
-                    {
+                let results: Vec<_> = stream::iter(owned_ticket_ids)
+                    .map(|ticket_id| async {
+                        let result =
+                            super::operations::fetch_remote_issue_for_ticket(&ticket_id, platform)
+                                .await;
+                        (ticket_id, result)
+                    })
+                    .buffer_unordered(5)
+                    .collect()
+                    .await;
+
+                for (ticket_id, fetch_result) in results {
+                    match fetch_result {
                         Ok((metadata, issue)) => {
                             match super::operations::build_sync_changes(&metadata, &issue) {
                                 Ok(changes) => {
@@ -323,23 +335,23 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                                     }
                                 }
                                 Err(e) => {
-                                    last_error_setter.set(Some((
-                                        "SyncError".to_string(),
-                                        format!(
-                                            "Failed to build sync changes for {}: {}",
-                                            ticket_id, e
-                                        ),
-                                    )));
+                                    error_messages.push(format!(
+                                        "Failed to build sync changes for {}: {}",
+                                        ticket_id, e
+                                    ));
                                 }
                             }
                         }
                         Err(e) => {
-                            last_error_setter.set(Some((
-                                "SyncError".to_string(),
-                                format!("Failed to fetch remote for {}: {}", ticket_id, e),
-                            )));
+                            error_messages
+                                .push(format!("Failed to fetch remote for {}: {}", ticket_id, e));
                         }
                     }
+                }
+
+                if !error_messages.is_empty() {
+                    last_error_setter
+                        .set(Some(("SyncError".to_string(), error_messages.join("\n"))));
                 }
 
                 if all_changes.is_empty() {
