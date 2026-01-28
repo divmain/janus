@@ -72,6 +72,10 @@ pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleR
             handle_create_new(ctx);
             HandleResult::Handled
         }
+        KeyCode::Char('s') => {
+            handle_cycle_status(ctx);
+            HandleResult::Handled
+        }
         _ => HandleResult::NotHandled,
     }
 }
