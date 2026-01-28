@@ -236,6 +236,10 @@ pub enum Commands {
         #[arg(long)]
         next_in_plan: Option<String>,
 
+        /// Filter by plan phase (cannot be used with --next-in-plan)
+        #[arg(long)]
+        phase: Option<u32>,
+
         /// Filter by triaged status (true or false)
         #[arg(long)]
         triaged: Option<String>,

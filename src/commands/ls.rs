@@ -32,6 +32,7 @@ pub async fn cmd_ls(
     depth: Option<u32>,
     max_depth: Option<u32>,
     next_in_plan: Option<&str>,
+    phase: Option<u32>,
     triaged: Option<&str>,
     limit: Option<usize>,
     sort_by: &str,
@@ -39,6 +40,12 @@ pub async fn cmd_ls(
 ) -> Result<()> {
     // Handle --next-in-plan filter specially as it uses different logic
     if let Some(plan_id) = next_in_plan {
+        // --phase cannot be used with --next-in-plan
+        if phase.is_some() {
+            return Err(JanusError::Other(
+                "--phase cannot be used with --next-in-plan".to_string(),
+            ));
+        }
         return cmd_ls_next_in_plan(plan_id, limit, sort_by, output_json).await;
     }
 
