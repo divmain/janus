@@ -1012,7 +1012,7 @@ fn normal_key_to_action(code: KeyCode, modifiers: KeyModifiers) -> Option<Remote
         (KeyCode::Char('?'), KeyModifiers::NONE) => Some(RemoteAction::ShowHelp),
 
         // App
-        (KeyCode::Char('q'), KeyModifiers::NONE) => Some(RemoteAction::Quit),
+        (KeyCode::Char('q') | KeyCode::Esc, KeyModifiers::NONE) => Some(RemoteAction::Quit),
 
         _ => None,
     }
@@ -1462,8 +1462,13 @@ mod tests {
             key_to_action(KeyCode::Char('?'), KeyModifiers::NONE, &state),
             Some(RemoteAction::ShowHelp)
         );
+        // 'q' and Esc both quit
         assert_eq!(
             key_to_action(KeyCode::Char('q'), KeyModifiers::NONE, &state),
+            Some(RemoteAction::Quit)
+        );
+        assert_eq!(
+            key_to_action(KeyCode::Esc, KeyModifiers::NONE, &state),
             Some(RemoteAction::Quit)
         );
     }

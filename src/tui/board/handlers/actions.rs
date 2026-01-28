@@ -23,7 +23,7 @@ const COLUMNS: [TicketStatus; 5] = [
 /// Handle action keys
 pub fn handle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
-        KeyCode::Char('q') => {
+        KeyCode::Char('q') | KeyCode::Esc => {
             ctx.should_exit.set(true);
             HandleResult::Handled
         }

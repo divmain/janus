@@ -17,7 +17,7 @@ pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleRes
     }
 
     match code {
-        KeyCode::Char('q') => {
+        KeyCode::Char('q') | KeyCode::Esc => {
             ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
@@ -52,11 +52,11 @@ pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleR
     }
 
     match code {
-        KeyCode::Char('q') => {
+        KeyCode::Char('q') | KeyCode::Esc => {
             ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
-        KeyCode::Tab | KeyCode::Esc => {
+        KeyCode::Tab => {
             ctx.app.active_pane.set(Pane::List);
             HandleResult::Handled
         }

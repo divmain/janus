@@ -96,7 +96,7 @@ pub fn key_to_action(
         KeyCode::Char('S') => Some(BoardAction::MoveTicketStatusLeft),
 
         // Actions
-        KeyCode::Char('q') => Some(BoardAction::Quit),
+        KeyCode::Char('q') | KeyCode::Esc => Some(BoardAction::Quit),
         KeyCode::Char('/') => Some(BoardAction::FocusSearch),
         KeyCode::Char('e') | KeyCode::Enter => Some(BoardAction::EditSelected),
         KeyCode::Char('n') => Some(BoardAction::CreateNew),
@@ -199,8 +199,13 @@ mod tests {
 
     #[test]
     fn test_key_to_action_app_actions() {
+        // 'q' and Esc both quit
         assert_eq!(
             key_to_action(KeyCode::Char('q'), KeyModifiers::NONE, false),
+            Some(BoardAction::Quit)
+        );
+        assert_eq!(
+            key_to_action(KeyCode::Esc, KeyModifiers::NONE, false),
             Some(BoardAction::Quit)
         );
         assert_eq!(

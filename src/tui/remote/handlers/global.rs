@@ -14,7 +14,7 @@ use super::sync;
 /// Handle global keys that work in most contexts
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
-        KeyCode::Char('q') => {
+        KeyCode::Char('q') | KeyCode::Esc => {
             ctx.view_state.should_exit.set(true);
             HandleResult::Handled
         }

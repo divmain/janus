@@ -424,8 +424,9 @@ pub fn key_to_action(
         KeyCode::Char('s') => Some(ViewAction::CycleStatus),
         KeyCode::Char('r') => Some(ViewAction::Reload),
 
-        // Escape goes back to list from detail
+        // Escape goes back to list from detail, otherwise quits
         KeyCode::Esc if active_pane == Pane::Detail => Some(ViewAction::CyclePaneBackward),
+        KeyCode::Esc => Some(ViewAction::Quit),
 
         _ => None,
     }

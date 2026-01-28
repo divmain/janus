@@ -514,8 +514,13 @@ fn test_key_to_action_pane_navigation() {
 
 #[test]
 fn test_key_to_action_app_commands() {
+    // 'q' and Esc both quit
     assert_eq!(
         key_to_action(KeyCode::Char('q'), KeyModifiers::NONE, Pane::List),
+        Some(ViewAction::Quit)
+    );
+    assert_eq!(
+        key_to_action(KeyCode::Esc, KeyModifiers::NONE, Pane::List),
         Some(ViewAction::Quit)
     );
     assert_eq!(
