@@ -10,6 +10,7 @@ use iocraft::prelude::{Handler, State};
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteQuery};
 use crate::tui::remote::link_mode::LinkSource;
+use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::types::TicketMetadata;
 
 use super::super::confirm_modal::ConfirmDialogState;
@@ -61,6 +62,8 @@ pub struct ViewState<'a> {
 pub struct SearchState<'a> {
     pub query: &'a mut State<String>,
     pub focused: &'a mut State<bool>,
+    /// Search orchestrator for Enter-triggered search
+    pub orchestrator: &'a mut SearchOrchestrator,
 }
 
 /// Modal and operation states

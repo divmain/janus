@@ -8,7 +8,6 @@
 #![allow(clippy::redundant_closure)]
 
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
 
 use futures::stream::{self, StreamExt};
 use iocraft::prelude::*;
@@ -18,38 +17,15 @@ use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::InlineSearchBox;
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
+use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
-
-/// Simple hash function for Vec<TicketMetadata> to detect changes
-fn hash_tickets(tickets: &[TicketMetadata]) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for ticket in tickets {
-        ticket.id.hash(&mut hasher);
-        ticket.title.hash(&mut hasher);
-        ticket.status.hash(&mut hasher);
-    }
-    hasher.finish()
-}
-
-/// Simple hash function for Vec<RemoteIssue> to detect changes
-fn hash_remote_issues(issues: &[RemoteIssue]) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for issue in issues {
-        issue.id.hash(&mut hasher);
-        issue.title.hash(&mut hasher);
-        issue.status.hash(&mut hasher);
-    }
-    hasher.finish()
-}
 
 use super::components::overlays::render_link_mode_banner;
 use super::components::{DetailPane, ListPane, ModalOverlays, SelectionBar, TabBar};
 use super::confirm_modal::ConfirmDialogState;
 use super::error_toast::Toast;
-use super::filter::{
-    FilteredLocalTicket, FilteredRemoteIssue, filter_local_tickets, filter_remote_issues,
-};
+use super::filter::{FilteredLocalTicket, FilteredRemoteIssue, filter_remote_issues};
 use super::filter_modal::FilterState;
 use super::handlers::{self, HandlerContext};
 use super::link_mode::LinkModeState;
@@ -143,8 +119,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Last error info (for error detail modal) - stores (type, message)
     let last_error: State<Option<(String, String)>> = hooks.use_state(|| None);
 
-    // Search state
+    // Search state - search is executed on Enter, not while typing
     let mut search_query = hooks.use_state(String::new);
+    let mut search_state = SearchState::use_state(&mut hooks);
     let mut search_focused = hooks.use_state(|| false);
 
     // Provider state (GitHub or Linear)
@@ -153,14 +130,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Filter state
     let mut filter_state: State<Option<FilterState>> = hooks.use_state(|| None);
     let mut active_filters = hooks.use_state(|| RemoteQuery::new());
-
-    // Cached filtered data (memoization)
-    let mut filtered_local_cache: State<(String, Vec<FilteredLocalTicket>)> =
-        hooks.use_state(|| (String::new(), Vec::new()));
-    let mut filtered_remote_cache: State<(String, Vec<FilteredRemoteIssue>)> =
-        hooks.use_state(|| (String::new(), Vec::new()));
-    let mut local_tickets_hash: State<u64> = hooks.use_state(|| 0);
-    let mut remote_issues_hash: State<u64> = hooks.use_state(|| 0);
 
     // Cached linked issue IDs (memoization)
     let mut linked_issue_ids_cache: State<(u64, HashSet<String>)> =
@@ -570,16 +539,13 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let local_selected_ref = local_selected_ids.read();
     let remote_selected_ref = remote_selected_ids.read();
 
-    // Compute data hashes for cache invalidation
-    let local_hash = hash_tickets(&local_tickets_ref);
-    let remote_hash = hash_remote_issues(&remote_issues_ref);
-
-    // Compute cached linked issue IDs
+    // Compute linked issue IDs (memoized by local tickets length)
     let linked_issue_ids = {
         use crate::tui::remote::operations::extract_issue_id_from_remote_ref;
-        let cached_hash = linked_issue_ids_cache.read().0;
+        let cached_len = linked_issue_ids_cache.read().0;
+        let current_len = local_tickets_ref.len() as u64;
 
-        if cached_hash == local_hash {
+        if cached_len == current_len {
             linked_issue_ids_cache.read().1.clone()
         } else {
             let linked: HashSet<String> = local_tickets_ref
@@ -587,46 +553,31 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 .filter_map(|ticket| ticket.remote.as_ref())
                 .filter_map(|remote_ref| extract_issue_id_from_remote_ref(remote_ref))
                 .collect();
-            linked_issue_ids_cache.set((local_hash, linked.clone()));
+            linked_issue_ids_cache.set((current_len, linked.clone()));
             linked
         }
     };
 
-    // Check if we need to update cached filtered data
-    let (query, filtered_local) = {
-        let cached_hash = local_tickets_hash.get();
-        let current_query = search_query.to_string();
-        let (cached_query, cached_filtered) = {
-            let r = filtered_local_cache.read();
-            (r.0.clone(), r.1.clone())
-        };
+    // Compute filtered tickets using SearchState (Enter-triggered search)
+    let query_str = search_query.to_string();
 
-        if cached_query == current_query && cached_hash == local_hash {
-            (current_query, cached_filtered)
-        } else {
-            local_tickets_hash.set(local_hash);
-            let filtered = filter_local_tickets(&local_tickets_ref, &current_query);
-            filtered_local_cache.set((current_query.clone(), filtered.clone()));
-            (current_query, filtered)
-        }
-    };
+    search_state.check_pending(query_str.clone());
+    search_state.clear_if_empty(&query_str);
 
-    let filtered_remote = {
-        let cached_hash = remote_issues_hash.get();
-        let (cached_query, cached_filtered) = {
-            let r = filtered_remote_cache.read();
-            (r.0.clone(), r.1.clone())
-        };
+    let filtered_tickets = compute_filtered_tickets(&local_tickets_ref, &search_state, &query_str);
 
-        if cached_query == query && cached_hash == remote_hash {
-            cached_filtered
-        } else {
-            remote_issues_hash.set(remote_hash);
-            let filtered = filter_remote_issues(&remote_issues_ref, &query);
-            filtered_remote_cache.set((query.clone(), filtered.clone()));
-            filtered
-        }
-    };
+    // Convert FilteredTicket to FilteredLocalTicket for compatibility
+    let filtered_local: Vec<super::filter::FilteredLocalTicket> = filtered_tickets
+        .iter()
+        .map(|ft| super::filter::FilteredLocalTicket {
+            ticket: ft.ticket.as_ref().clone(),
+            score: ft.score,
+            title_indices: ft.title_indices.clone(),
+        })
+        .collect();
+
+    // Remote issues still use client-side filtering (no cache search for remote)
+    let filtered_remote = filter_remote_issues(&remote_issues_ref, &query_str);
 
     let local_count = filtered_local.len();
     let remote_count = filtered_remote.len();
@@ -710,6 +661,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     search: SearchState {
                         query: &mut search_query,
                         focused: &mut search_focused,
+                        orchestrator: &mut search_state,
                     },
                     modals: ModalState {
                         toast: &mut toast,
@@ -751,14 +703,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         system.exit();
     }
 
-    // Get cached filtered data for selected items
-    let filtered_local_data = filtered_local_cache.read().1.clone();
-    let filtered_remote_data = filtered_remote_cache.read().1.clone();
-
-    let selected_local = filtered_local_data
+    // Get selected items from filtered data
+    let selected_local = filtered_local
         .get(local_selected_index.get())
         .map(|f| f.ticket.clone());
-    let selected_remote = filtered_remote_data
+    let selected_remote = filtered_remote
         .get(remote_selected_index.get())
         .map(|f| f.issue.clone());
 
@@ -801,7 +750,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             // Tab bar
             TabBar(
                 active_view: current_view,
-                filter_query: if query.is_empty() { None } else { Some(query.clone()) },
+                filter_query: if query_str.is_empty() { None } else { Some(query_str.clone()) },
             )
 
             // Search bar

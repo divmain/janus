@@ -16,6 +16,8 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
             HandleResult::Handled
         }
         SearchAction::Exit => {
+            // User pressed Enter - trigger search execution
+            ctx.search.orchestrator.trigger_pending();
             ctx.search.focused.set(false);
             HandleResult::Handled
         }
