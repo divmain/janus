@@ -111,7 +111,7 @@ pub async fn cmd_start(id: &str, output_json: bool) -> Result<()> {
     update_status(id, TicketStatus::InProgress, output_json).await
 }
 
-/// Set a ticket's status to "complete"
+/// Set a ticket's status to "complete" or "cancelled"
 ///
 /// Requires either a summary or explicit --no-summary flag.
 pub async fn cmd_close(

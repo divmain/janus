@@ -53,6 +53,26 @@ fn test_status_close_with_summary() {
 
 #[test]
 #[serial]
+fn test_status_close_cancel_with_summary() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    janus.run_success(&[
+        "close",
+        &id,
+        "--cancel",
+        "--summary",
+        "Cancelled due to changed requirements",
+    ]);
+
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("status: cancelled"));
+    assert!(output.contains("## Completion Summary"));
+    assert!(output.contains("Cancelled due to changed requirements"));
+}
+
+#[test]
+#[serial]
 fn test_status_close_requires_summary_flag() {
     let janus = JanusTest::new();
 
