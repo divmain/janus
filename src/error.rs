@@ -269,6 +269,11 @@ pub enum JanusError {
     #[error("--verbose-phase can only be used with phased plans")]
     VerbosePhaseRequiresPhasedPlan,
 
+    #[error(
+        "--raw cannot be used with other formatting flags (--json, --tickets-only, --phases-only)"
+    )]
+    RawWithOtherFlags,
+
     // Hook errors
     #[error("pre-hook '{hook_name}' failed with exit code {exit_code}: {message}")]
     PreHookFailed {

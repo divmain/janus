@@ -25,6 +25,11 @@ pub async fn cmd_plan_show(
     verbose_phases: &[String],
     output_json: bool,
 ) -> Result<()> {
+    // Validate conflicting flags
+    if raw && (output_json || tickets_only || phases_only) {
+        return Err(JanusError::RawWithOtherFlags);
+    }
+
     let plan = Plan::find(id).await?;
     let metadata = plan.read()?;
 
