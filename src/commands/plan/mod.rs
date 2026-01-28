@@ -108,16 +108,16 @@ pub(crate) fn print_ticket_line(
 
 /// Open content in an editor and return the edited content
 pub(crate) fn edit_in_editor(content: &str) -> Result<String> {
-    if !is_stdin_tty() {
-        return Err(JanusError::InteractiveTerminalRequired);
-    }
-
-    // Create a temp file
+    // Create a temp file first so we can include its path in error messages
     let mut temp_file = tempfile::NamedTempFile::new()?;
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
 
     let temp_path = temp_file.path().to_path_buf();
+
+    if !is_stdin_tty() {
+        return Err(JanusError::InteractiveTerminalRequired(temp_path));
+    }
 
     // Open in editor
     open_in_editor(&temp_path)?;

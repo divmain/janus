@@ -22,9 +22,9 @@ pub async fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
     if is_stdin_tty() {
         open_in_editor(&ticket.file_path)?;
     } else {
-        eprintln!("Error: Cannot open editor in non-interactive mode.");
-        eprintln!("File location: {}", ticket.file_path.display());
-        return Err(JanusError::InteractiveTerminalRequired);
+        return Err(JanusError::InteractiveTerminalRequired(
+            ticket.file_path.clone(),
+        ));
     }
 
     Ok(())

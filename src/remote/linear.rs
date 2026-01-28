@@ -546,22 +546,36 @@ impl LinearProvider {
 
         let result: GraphQlResponse<ResponseData, ErrorExtensions> = response.json().await?;
 
+        // Handle GraphQL errors - preserve individual error details
         if let Some(errors) = result.errors {
-            let error_msgs: Vec<String> = errors
+            let structured_errors: Vec<crate::error::GraphQlError> = errors
                 .iter()
                 .map(|e| {
-                    if let Some(ext) = &e.extensions
-                        && let Some(code) = &ext.code
-                    {
-                        return format!("[{}] {}", code, e.message);
+                    let code = e.extensions.as_ref().and_then(|ext| ext.code.clone());
+                    let path = e.path.as_ref().map(|p| {
+                        p.iter()
+                            .map(|segment| match segment {
+                                cynic::GraphQlErrorPathSegment::Field(name) => name.clone(),
+                                cynic::GraphQlErrorPathSegment::Index(idx) => idx.to_string(),
+                            })
+                            .collect::<Vec<_>>()
+                            .join(".")
+                    });
+                    crate::error::GraphQlError {
+                        message: e.message.clone(),
+                        code,
+                        path,
                     }
-                    e.message.clone()
                 })
                 .collect();
-            return Err(JanusError::Api(format!(
-                "Linear GraphQL errors: {}",
-                error_msgs.join(", ")
-            )));
+
+            // Check for partial success (data exists alongside errors)
+            let partial_data = result.data.is_some();
+
+            return Err(JanusError::GraphQlErrors {
+                errors: structured_errors,
+                partial_data,
+            });
         }
 
         result

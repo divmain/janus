@@ -101,6 +101,30 @@ fn format_retry_errors(attempts: &u32, errors: &[String]) -> String {
     msg
 }
 
+/// Format GraphQL errors with their details
+fn format_graphql_errors(errors: &[GraphQlError]) -> String {
+    let mut msg = "GraphQL errors:".to_string();
+    for (i, error) in errors.iter().enumerate() {
+        msg.push_str(&format!("\n  [{}] ", i + 1));
+        if let Some(code) = &error.code {
+            msg.push_str(&format!("[{}] ", code));
+        }
+        msg.push_str(&error.message);
+        if let Some(path) = &error.path {
+            msg.push_str(&format!(" (path: {})", path));
+        }
+    }
+    msg
+}
+
+/// Single GraphQL error with structured details
+#[derive(Debug, Clone)]
+pub struct GraphQlError {
+    pub message: String,
+    pub code: Option<String>,
+    pub path: Option<String>,
+}
+
 #[derive(Error, Debug)]
 pub enum JanusError {
     #[error("ticket '{0}' not found")]
@@ -194,6 +218,12 @@ pub enum JanusError {
 
     #[error("API error: {0}")]
     Api(String),
+
+    #[error("{}", format_graphql_errors(.errors))]
+    GraphQlErrors {
+        errors: Vec<GraphQlError>,
+        partial_data: bool,
+    },
 
     #[error("rate limit exceeded. Please wait {0} seconds before retrying.")]
     RateLimited(u64),
@@ -321,8 +351,8 @@ pub enum JanusError {
     #[error("reordered list must contain the same tickets")]
     ReorderTicketMismatch,
 
-    #[error("operation requires an interactive terminal")]
-    InteractiveTerminalRequired,
+    #[error("operation requires an interactive terminal. File location: {0}")]
+    InteractiveTerminalRequired(std::path::PathBuf),
 
     #[error(
         "Note text cannot be empty. Provide text as an argument or pipe from stdin: echo 'note text' | janus add-note <id>"
