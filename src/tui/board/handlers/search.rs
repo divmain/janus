@@ -13,7 +13,7 @@ pub fn handle(
     code: KeyCode,
     modifiers: KeyModifiers,
 ) -> HandleResult {
-    match handle_search_input(code, modifiers, true) {
+    match handle_search_input(code, modifiers) {
         SearchAction::ClearAndExit => {
             ctx.search_query.set(String::new());
             ctx.search_focused.set(false);

@@ -108,7 +108,7 @@ pub fn key_to_action(
 
 /// Convert a key event in search mode to a BoardAction
 fn search_key_to_action(code: KeyCode, modifiers: KeyModifiers) -> Option<BoardAction> {
-    match handle_search_input(code, modifiers, true) {
+    match handle_search_input(code, modifiers) {
         SearchAction::ClearAndExit => Some(BoardAction::ClearSearchAndExit),
         SearchAction::Exit => Some(BoardAction::ExitSearch),
         SearchAction::Quit => Some(BoardAction::Quit),

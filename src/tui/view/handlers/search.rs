@@ -14,7 +14,7 @@ pub fn handle(
     code: KeyCode,
     modifiers: KeyModifiers,
 ) -> HandleResult {
-    match handle_search_input(code, modifiers, true) {
+    match handle_search_input(code, modifiers) {
         SearchAction::ClearAndExit => {
             ctx.search.query.set(String::new());
             ctx.app.active_pane.set(Pane::List);

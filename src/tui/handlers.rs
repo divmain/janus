@@ -24,13 +24,11 @@ pub enum SearchAction {
 /// all TUI views:
 /// - Esc: Clear search query and exit search mode
 /// - Enter/Tab: Exit search mode (keep query)
-/// - Ctrl+Q: Exit application (if enabled)
-/// - Other keys: Allow the search box component to handle them
+/// - Ctrl+Q: Exit application
 ///
 /// # Parameters
 /// - `key_code`: The key that was pressed
 /// - `modifiers`: Keyboard modifiers (Ctrl, Shift, etc.)
-/// - `handle_ctrl_q`: Whether to handle Ctrl+Q for application exit
 ///
 /// # Returns
 /// A `SearchAction` indicating what action to take
@@ -38,7 +36,7 @@ pub enum SearchAction {
 /// # Examples
 /// ```ignore
 /// // In board search handler
-/// match handle_search_input(code, modifiers, true) {
+/// match handle_search_input(code, modifiers) {
 ///     SearchAction::ClearAndExit => {
 ///         ctx.search_query.set(String::new());
 ///         ctx.search_focused.set(false);
@@ -57,17 +55,11 @@ pub enum SearchAction {
 ///     }
 /// }
 /// ```
-pub fn handle_search_input(
-    key_code: KeyCode,
-    modifiers: KeyModifiers,
-    handle_ctrl_q: bool,
-) -> SearchAction {
+pub fn handle_search_input(key_code: KeyCode, modifiers: KeyModifiers) -> SearchAction {
     match key_code {
         KeyCode::Esc => SearchAction::ClearAndExit,
         KeyCode::Enter | KeyCode::Tab => SearchAction::Exit,
-        KeyCode::Char('q') if handle_ctrl_q && modifiers.contains(KeyModifiers::CONTROL) => {
-            SearchAction::Quit
-        }
+        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => SearchAction::Quit,
         _ => SearchAction::Continue,
     }
 }
@@ -78,43 +70,37 @@ mod tests {
 
     #[test]
     fn test_handle_search_input_esc() {
-        let action = handle_search_input(KeyCode::Esc, KeyModifiers::NONE, true);
+        let action = handle_search_input(KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!(action, SearchAction::ClearAndExit);
     }
 
     #[test]
     fn test_handle_search_input_enter() {
-        let action = handle_search_input(KeyCode::Enter, KeyModifiers::NONE, true);
+        let action = handle_search_input(KeyCode::Enter, KeyModifiers::NONE);
         assert_eq!(action, SearchAction::Exit);
     }
 
     #[test]
     fn test_handle_search_input_tab() {
-        let action = handle_search_input(KeyCode::Tab, KeyModifiers::NONE, true);
+        let action = handle_search_input(KeyCode::Tab, KeyModifiers::NONE);
         assert_eq!(action, SearchAction::Exit);
     }
 
     #[test]
-    fn test_handle_search_input_ctrl_q_enabled() {
-        let action = handle_search_input(KeyCode::Char('q'), KeyModifiers::CONTROL, true);
+    fn test_handle_search_input_ctrl_q() {
+        let action = handle_search_input(KeyCode::Char('q'), KeyModifiers::CONTROL);
         assert_eq!(action, SearchAction::Quit);
     }
 
     #[test]
-    fn test_handle_search_input_ctrl_q_disabled() {
-        let action = handle_search_input(KeyCode::Char('q'), KeyModifiers::CONTROL, false);
-        assert_eq!(action, SearchAction::Continue);
-    }
-
-    #[test]
     fn test_handle_search_input_other_key() {
-        let action = handle_search_input(KeyCode::Char('a'), KeyModifiers::NONE, true);
+        let action = handle_search_input(KeyCode::Char('a'), KeyModifiers::NONE);
         assert_eq!(action, SearchAction::Continue);
     }
 
     #[test]
     fn test_handle_search_input_regular_q() {
-        let action = handle_search_input(KeyCode::Char('q'), KeyModifiers::NONE, true);
+        let action = handle_search_input(KeyCode::Char('q'), KeyModifiers::NONE);
         assert_eq!(action, SearchAction::Continue);
     }
 }
