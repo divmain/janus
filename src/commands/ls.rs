@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::{
     CommandOutput, FormatOptions, format_deps, format_ticket_line, get_next_items_phased,
@@ -18,6 +18,55 @@ struct SpawningFilters<'a> {
     depth: Option<u32>,
     /// Filter by maximum depth
     max_depth: Option<u32>,
+}
+
+/// Engine for filtering tickets based on dependency status
+struct TicketFilterEngine<'a> {
+    ticket_map: &'a HashMap<String, TicketMetadata>,
+}
+
+impl<'a> TicketFilterEngine<'a> {
+    fn new(ticket_map: &'a HashMap<String, TicketMetadata>) -> Self {
+        Self { ticket_map }
+    }
+
+    /// Check if a ticket is "ready" - has New/Next status and all deps are complete
+    fn is_ready(&self, ticket: &TicketMetadata) -> bool {
+        if !matches!(
+            ticket.status,
+            Some(TicketStatus::New) | Some(TicketStatus::Next)
+        ) {
+            return false;
+        }
+        // All deps must be complete
+        ticket.deps.iter().all(|dep_id| {
+            self.ticket_map
+                .get(dep_id)
+                .map(|dep| dep.status == Some(TicketStatus::Complete))
+                .unwrap_or(false)
+        })
+    }
+
+    /// Check if a ticket is "blocked" - has New/Next status, has deps, and any dep is incomplete
+    fn is_blocked(&self, ticket: &TicketMetadata) -> bool {
+        if !matches!(
+            ticket.status,
+            Some(TicketStatus::New) | Some(TicketStatus::Next)
+        ) {
+            return false;
+        }
+        // Must have deps
+        if ticket.deps.is_empty() {
+            return false;
+        }
+        // Check if any dep is incomplete
+        ticket.deps.iter().any(|dep_id| {
+            self.ticket_map
+                .get(dep_id)
+                .map(|dep| dep.status != Some(TicketStatus::Complete))
+                .unwrap_or(true)
+        })
+    }
 }
 
 /// List all tickets, optionally filtered by status or other criteria
@@ -72,6 +121,9 @@ pub async fn cmd_ls(
         max_depth,
     };
 
+    // Create filter engine for dependency-based filtering
+    let filter_engine = TicketFilterEngine::new(&ticket_map);
+
     let filtered: Vec<TicketMetadata> = tickets
         .iter()
         .filter(|t| {
@@ -112,43 +164,9 @@ pub async fn cmd_ls(
                 return ticket_status == filter;
             }
 
-            // Calculate individual filter results
-            let is_ready = if filter_ready {
-                if matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
-                    // All deps must be complete
-                    t.deps.iter().all(|dep_id| {
-                        ticket_map
-                            .get(dep_id)
-                            .map(|dep| dep.status == Some(TicketStatus::Complete))
-                            .unwrap_or(false)
-                    })
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            let is_blocked = if filter_blocked {
-                if matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
-                    // Must have deps
-                    if !t.deps.is_empty() {
-                        // Check if any dep is incomplete
-                        t.deps.iter().any(|dep_id| {
-                            ticket_map
-                                .get(dep_id)
-                                .map(|dep| dep.status != Some(TicketStatus::Complete))
-                                .unwrap_or(true)
-                        })
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
+            // Calculate individual filter results using the filter engine
+            let is_ready = filter_ready && filter_engine.is_ready(t);
+            let is_blocked = filter_blocked && filter_engine.is_blocked(t);
 
             // Calculate final result based on filter combination
             if filter_ready || filter_blocked || filter_closed {
