@@ -135,6 +135,7 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
         "action": "cache_cleared",
         "database_path": db_path.to_string_lossy(),
         "success": true,
+        "message": format!("Cache database deleted: {}", db_path.display()),
     }))
     .with_text("Cache cleared successfully.\n\nNote: The cache will be rebuilt automatically on the next janus command.")
     .print(output_json)

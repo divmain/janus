@@ -164,7 +164,11 @@ async fn main() -> ExitCode {
 
         Commands::Hook { action } => match action {
             HookAction::List { json } => cmd_hook_list(json),
-            HookAction::Install { recipe } => cmd_hook_install(&recipe).await,
+            HookAction::Install {
+                recipe,
+                force,
+                json,
+            } => cmd_hook_install(&recipe, force, json).await,
             HookAction::Run { event, id } => cmd_hook_run(&event, id.as_deref()).await,
             HookAction::Enable { json } => cmd_hook_enable(json),
             HookAction::Disable { json } => cmd_hook_disable(json),

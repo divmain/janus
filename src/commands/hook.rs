@@ -100,8 +100,10 @@ pub fn cmd_hook_list(output_json: bool) -> Result<()> {
 }
 
 /// Install a hook recipe from GitHub
-pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
-    println!("Fetching recipe '{}'...", recipe.cyan());
+pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> Result<()> {
+    if !output_json {
+        println!("Fetching recipe '{}'...", recipe.cyan());
+    }
 
     let client = reqwest::Client::new();
 
@@ -160,32 +162,43 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
         )));
     };
 
-    // Check for conflicts and prompt user
+    // Check for conflicts and handle based on mode
     let janus_dir = janus_root();
     let mut files_to_write: Vec<(PathBuf, String, bool)> = Vec::new(); // (path, content, is_executable)
+    let mut files_skipped: Vec<String> = Vec::new();
 
     for (relative_path, content) in &files_to_install {
         let target_path = janus_dir.join(relative_path);
         let is_hook_script = relative_path.starts_with("hooks/");
 
         if target_path.exists() {
-            let choices = [("r", "Replace"), ("a", "Abort"), ("s", "Skip")];
-            let idx = interactive::prompt_choice(
-                &format!("File {} already exists", relative_path.yellow()),
-                &choices,
-                Some("s"),
-            )?;
+            if output_json && !force {
+                // In JSON mode without force, skip existing files
+                files_skipped.push(relative_path.clone());
+            } else if output_json && force {
+                // In JSON mode with force, overwrite
+                files_to_write.push((target_path, content.clone(), is_hook_script));
+            } else {
+                // Interactive mode - prompt user
+                let choices = [("r", "Replace"), ("a", "Abort"), ("s", "Skip")];
+                let idx = interactive::prompt_choice(
+                    &format!("File {} already exists", relative_path.yellow()),
+                    &choices,
+                    Some("s"),
+                )?;
 
-            match idx {
-                0 => {
-                    files_to_write.push((target_path, content.clone(), is_hook_script));
-                }
-                1 => {
-                    println!("Installation aborted.");
-                    return Ok(());
-                }
-                _ => {
-                    println!("  Skipping {}", relative_path);
+                match idx {
+                    0 => {
+                        files_to_write.push((target_path, content.clone(), is_hook_script));
+                    }
+                    1 => {
+                        println!("Installation aborted.");
+                        return Ok(());
+                    }
+                    _ => {
+                        println!("  Skipping {}", relative_path);
+                        files_skipped.push(relative_path.clone());
+                    }
                 }
             }
         } else {
@@ -241,10 +254,13 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
             })?;
         }
 
-        println!("  Installed {}", path.display().to_string().green());
+        if !output_json {
+            println!("  Installed {}", path.display().to_string().green());
+        }
     }
 
     // Merge config into .janus/config.yaml
+    let mut config_updated = false;
     if let Some(hooks_config) = recipe_config.hooks
         && let Some(scripts) = hooks_config.scripts
     {
@@ -253,15 +269,40 @@ pub async fn cmd_hook_install(recipe: &str) -> Result<()> {
             config.hooks.scripts.insert(event, script);
         }
         config.save()?;
-        println!("  Updated {}", "config.yaml".green());
+        config_updated = true;
+        if !output_json {
+            println!("  Updated {}", "config.yaml".green());
+        }
     }
 
-    println!();
-    println!(
-        "{} Recipe '{}' installed successfully!",
-        "✓".green(),
-        recipe
-    );
+    if output_json {
+        let installed_files: Vec<String> = files_to_write
+            .iter()
+            .map(|(path, _, _)| {
+                path.file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            })
+            .collect();
+
+        CommandOutput::new(json!({
+            "action": "hook_install",
+            "recipe": recipe,
+            "success": true,
+            "installed_files": installed_files,
+            "skipped_files": files_skipped,
+            "config_updated": config_updated,
+        }))
+        .with_text(format!("Recipe '{}' installed successfully", recipe))
+        .print(output_json)?;
+    } else {
+        println!();
+        println!(
+            "{} Recipe '{}' installed successfully!",
+            "✓".green(),
+            recipe
+        );
+    }
 
     Ok(())
 }

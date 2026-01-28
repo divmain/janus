@@ -477,6 +477,14 @@ pub enum HookAction {
     Install {
         /// Recipe name (e.g., "git-sync")
         recipe: String,
+
+        /// Force overwrite of existing files without prompting
+        #[arg(long)]
+        force: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Run a hook manually for testing
     Run {
