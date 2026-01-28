@@ -89,6 +89,14 @@ impl Ticket {
         self.editor.remove_from_array_field(field, value)
     }
 
+    /// Write a completion summary section to the ticket file
+    ///
+    /// If a "## Completion Summary" section already exists, it will be updated.
+    /// Otherwise, a new section will be appended to the end of the file.
+    pub fn write_completion_summary(&self, summary: &str) -> Result<()> {
+        self.editor.write_completion_summary(summary)
+    }
+
     /// Build a hook context for this ticket.
     ///
     /// This is a convenience method to avoid repeating the same hook context

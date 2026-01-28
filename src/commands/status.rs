@@ -26,7 +26,7 @@ async fn update_status_with_summary(
 
     // Write completion summary if provided
     if let Some(summary_text) = summary {
-        write_completion_summary(&ticket, summary_text)?;
+        ticket.write_completion_summary(summary_text)?;
     }
 
     // Get completion summary for event logging (either provided or from file)
@@ -55,55 +55,6 @@ async fn update_status_with_summary(
     }))
     .with_text(format!("Updated {} -> {}", ticket.id, new_status))
     .print(output_json)
-}
-
-/// Write a completion summary section to a ticket file
-fn write_completion_summary(ticket: &Ticket, summary: &str) -> Result<()> {
-    let content = ticket.read_content()?;
-
-    let section_start = find_completion_summary_section(&content);
-
-    let new_content = if let Some(start_idx) = section_start {
-        let after_header = &content[start_idx..];
-        let header_end = after_header
-            .find('\n')
-            .ok_or_else(|| {
-                JanusError::Other(
-                    "Invalid ticket file structure: '## Completion Summary' header found but missing newline"
-                        .to_string(),
-                )
-            })?;
-        let section_content_start = start_idx + header_end;
-
-        let section_content = &content[section_content_start..];
-        let next_h2_re = regex::Regex::new(r"(?m)^## ").expect("regex should compile");
-        let section_end = next_h2_re
-            .find(section_content)
-            .map(|m| section_content_start + m.start())
-            .unwrap_or(content.len());
-
-        let before = &content[..start_idx];
-        let after = &content[section_end..];
-
-        format!(
-            "{}## Completion Summary\n\n{}\n{}",
-            before,
-            summary,
-            if after.is_empty() { "" } else { "\n" }.to_owned() + after.trim_start_matches('\n')
-        )
-    } else {
-        let trimmed = content.trim_end();
-        format!("{}\n\n## Completion Summary\n\n{}\n", trimmed, summary)
-    };
-
-    ticket.write(&new_content)
-}
-
-/// Find the start position of the Completion Summary section (case-insensitive)
-fn find_completion_summary_section(content: &str) -> Option<usize> {
-    let section_pattern =
-        regex::Regex::new(r"(?mi)^## completion summary\s*$").expect("regex should compile");
-    section_pattern.find(content).map(|m| m.start())
 }
 
 /// Set a ticket's status to "in_progress" (start working on it)
