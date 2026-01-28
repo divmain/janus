@@ -27,6 +27,7 @@ pub struct NavigationState<'a> {
 }
 
 /// Data and navigation state for both local and remote views
+#[allow(dead_code)] // Fields are cloned for future handler use
 pub struct ViewData<'a> {
     pub local_tickets: &'a mut State<Vec<TicketMetadata>>,
     pub remote_issues: &'a mut State<Vec<RemoteIssue>>,
@@ -42,6 +43,10 @@ pub struct ViewData<'a> {
     pub local_detail_scroll_offset: &'a mut State<usize>,
     /// Scroll offset for remote detail pane
     pub remote_detail_scroll_offset: &'a mut State<usize>,
+    /// Cloned local tickets data (avoids complex re-read patterns)
+    pub local_tickets_data: Vec<TicketMetadata>,
+    /// Cloned remote issues data (avoids complex re-read patterns)
+    pub remote_issues_data: Vec<RemoteIssue>,
 }
 
 /// Global view state (which view is active, exit flag, etc.)

@@ -127,10 +127,10 @@ fn handle_refresh(ctx: &mut HandlerContext<'_>) {
 }
 
 fn handle_open_filter(ctx: &mut HandlerContext<'_>) {
-    if ctx.filters.filter_modal.read().is_none() {
-        let current_query = ctx.filters.active_filters.read().clone();
-        ctx.filters
-            .filter_modal
-            .set(Some(FilterState::from_query(&current_query)));
-    }
+    // Always derive modal state from active_filters when opening
+    // This ensures consistency even if modal was previously cancelled
+    let current_query = ctx.filters.active_filters.read().clone();
+    ctx.filters
+        .filter_modal
+        .set(Some(FilterState::from_query(&current_query)));
 }
