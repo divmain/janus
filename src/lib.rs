@@ -5,6 +5,7 @@ pub mod cache;
 pub mod cli;
 pub mod commands;
 pub mod display;
+pub mod entity;
 pub mod error;
 pub mod events;
 pub mod finder;
@@ -23,6 +24,7 @@ pub mod tui;
 pub mod types;
 pub mod utils;
 
+pub use entity::Entity;
 pub use error::{JanusError, Result};
 pub use hooks::{HookContext, HookEvent, context_to_env, run_post_hooks, run_pre_hooks};
 pub use plan::parser::parse_plan_content;

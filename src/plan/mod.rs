@@ -24,6 +24,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 
 use crate::cache;
+use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
@@ -285,6 +286,60 @@ impl Plan {
     ) -> Result<Vec<PhaseStatus>> {
         let metadata = self.read()?;
         Ok(compute_all_phase_statuses(&metadata, ticket_map))
+    }
+}
+
+impl Entity for Plan {
+    type Metadata = PlanMetadata;
+
+    async fn find(partial_id: &str) -> Result<Self> {
+        let locator = PlanLocator::find(partial_id).await?;
+        Ok(Self::from_locator(locator))
+    }
+
+    fn read(&self) -> Result<PlanMetadata> {
+        let content = self.file.read_raw()?;
+        let mut metadata = parse_plan_content(&content)?;
+        metadata.file_path = Some(self.file_path.clone());
+        Ok(metadata)
+    }
+
+    fn write(&self, content: &str) -> Result<()> {
+        self.editor.write(content)
+    }
+
+    fn delete(&self) -> Result<()> {
+        if !self.file_path.exists() {
+            return Ok(());
+        }
+
+        // Build hook context
+        let context = self.hook_context();
+
+        // Run pre-delete hook (can abort)
+        run_pre_hooks(HookEvent::PreDelete, &context)?;
+
+        // Perform the delete
+        fs::remove_file(&self.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to delete plan at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
+            ))
+        })?;
+
+        // Run post-delete hooks (fire-and-forget)
+        run_post_hooks(HookEvent::PostDelete, &context);
+        run_post_hooks(HookEvent::PlanDeleted, &context);
+
+        Ok(())
+    }
+
+    fn exists(&self) -> bool {
+        self.file_path.exists()
     }
 }
 

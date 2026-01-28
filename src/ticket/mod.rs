@@ -17,6 +17,7 @@ pub use repository::{
     get_all_tickets_with_map, get_children_count, get_file_mtime,
 };
 
+use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::HookContext;
 use crate::storage::StorageHandle;
@@ -97,6 +98,71 @@ impl Ticket {
             .with_item_type(EntityType::Ticket)
             .with_item_id(&self.id)
             .with_file_path(&self.file_path)
+    }
+
+    /// Check if the ticket file exists
+    pub fn exists(&self) -> bool {
+        self.file_path.exists()
+    }
+}
+
+impl Entity for Ticket {
+    type Metadata = TicketMetadata;
+
+    async fn find(partial_id: &str) -> Result<Self> {
+        let locator = TicketLocator::find(partial_id).await?;
+        let file = TicketFile::new(locator.clone());
+        let editor = TicketEditor::new(file.clone());
+        Ok(Ticket {
+            file_path: locator.file_path.clone(),
+            id: locator.id.clone(),
+            file,
+            editor,
+        })
+    }
+
+    fn read(&self) -> Result<TicketMetadata> {
+        let raw_content = self.file.read_raw()?;
+        let mut metadata = parse(&raw_content)?;
+        metadata.file_path = Some(self.file.file_path().to_path_buf());
+        Ok(metadata)
+    }
+
+    fn write(&self, content: &str) -> Result<()> {
+        self.editor.write(content)
+    }
+
+    fn delete(&self) -> Result<()> {
+        if !self.file_path.exists() {
+            return Ok(());
+        }
+
+        // Build hook context
+        let context = self.hook_context();
+
+        // Run pre-delete hook (can abort)
+        crate::hooks::run_pre_hooks(crate::hooks::HookEvent::PreDelete, &context)?;
+
+        // Perform the delete
+        std::fs::remove_file(&self.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to delete ticket at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
+            ))
+        })?;
+
+        // Run post-delete hooks (fire-and-forget)
+        crate::hooks::run_post_hooks(crate::hooks::HookEvent::PostDelete, &context);
+
+        Ok(())
+    }
+
+    fn exists(&self) -> bool {
+        self.file_path.exists()
     }
 }
 

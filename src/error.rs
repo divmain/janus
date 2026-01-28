@@ -356,7 +356,7 @@ pub enum JanusError {
     #[error("reordered list must contain the same tickets")]
     ReorderTicketMismatch,
 
-    #[error("operation requires an interactive terminal. File location: {0}")]
+    #[error("Cannot open editor in non-interactive mode: {0}")]
     InteractiveTerminalRequired(std::path::PathBuf),
 
     #[error(
