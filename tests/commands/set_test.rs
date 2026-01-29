@@ -173,7 +173,7 @@ fn test_set_invalid_field() {
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     let stderr = janus.run_failure(&["set", &id, "invalid_field", "value"]);
     assert!(stderr.contains("invalid field"));
-    assert!(stderr.contains("must be one of"));
+    assert!(stderr.contains("Must be one of"));
 }
 
 #[test]
