@@ -1,126 +1,53 @@
-//! Generic storage abstractions for file-based entities
+//! Simple file I/O utilities with hook support
 
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
-use crate::types::EntityType;
 use std::path::Path;
 
-/// Generic trait for file-based storage with hook support
-pub trait StorageHandle {
-    /// Get the file path for this storage item
-    fn file_path(&self) -> &Path;
-
-    /// Get the item ID
-    fn id(&self) -> &str;
-
-    /// Get the item type for hooks
-    fn item_type(&self) -> EntityType;
+/// Read file content with error handling
+pub fn read_file(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path).map_err(|e| {
+        JanusError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to read file at {}: {}", path.display(), e),
+        ))
+    })
 }
 
-/// Common file I/O operations applicable to both tickets and plans
-pub trait FileStorage: StorageHandle {
-    /// Read raw content with context-aware error handling
-    fn read_content(&self) -> Result<String> {
-        std::fs::read_to_string(self.file_path()).map_err(|e| {
+/// Write file content with error handling
+pub fn write_file(path: &Path, content: &str) -> Result<()> {
+    ensure_parent_dir(path)?;
+    std::fs::write(path, content).map_err(|e| {
+        JanusError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to write file at {}: {}", path.display(), e),
+        ))
+    })
+}
+
+/// Ensure parent directory exists
+pub fn ensure_parent_dir(path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!(
-                    "Failed to read {} at {}: {}",
-                    match self.item_type() {
-                        EntityType::Ticket => "ticket",
-                        EntityType::Plan => "plan",
-                    },
-                    self.file_path().display(),
-                    e
-                ),
+                format!("Failed to create directory at {}: {}", parent.display(), e),
             ))
-        })
+        })?;
     }
+    Ok(())
+}
 
-    /// Write content with hooks, directory creation, and error handling
-    fn write_with_hooks(&self, content: &str, with_hooks: bool) -> Result<()> {
-        if with_hooks {
-            let context = self.hook_context();
-            run_pre_hooks(HookEvent::PreWrite, &context)?;
-        }
-
-        self.write_raw(content)?;
-
-        if with_hooks {
-            let context = self.hook_context();
-            run_post_hooks(HookEvent::PostWrite, &context);
-        }
-
-        Ok(())
-    }
-
-    /// Write raw content without hooks
-    fn write_raw(&self, content: &str) -> Result<()> {
-        self.ensure_parent_dir()?;
-        std::fs::write(self.file_path(), content).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to write {} at {}: {}",
-                    match self.item_type() {
-                        EntityType::Ticket => "ticket",
-                        EntityType::Plan => "plan",
-                    },
-                    self.file_path().display(),
-                    e
-                ),
-            ))
-        })
-    }
-
-    /// Ensure parent directory exists
-    fn ensure_parent_dir(&self) -> Result<()> {
-        if let Some(parent) = self.file_path().parent()
-            && !parent.exists()
-        {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to create directory for {} at {}: {}",
-                        match self.item_type() {
-                            EntityType::Ticket => "ticket",
-                            EntityType::Plan => "plan",
-                        },
-                        parent.display(),
-                        e
-                    ),
-                ))
-            })?;
-        }
-        Ok(())
-    }
-
-    /// Build a hook context for this item
-    fn hook_context(&self) -> HookContext {
-        HookContext::new()
-            .with_item_type(self.item_type())
-            .with_item_id(self.id())
-            .with_file_path(self.file_path())
-    }
-
-    /// Delete the file with context-aware error handling
-    fn delete(&self) -> Result<()> {
-        std::fs::remove_file(self.file_path()).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to delete {} at {}: {}",
-                    match self.item_type() {
-                        EntityType::Ticket => "ticket",
-                        EntityType::Plan => "plan",
-                    },
-                    self.file_path().display(),
-                    e
-                ),
-            ))
-        })
-    }
+/// Delete a file with error handling
+pub fn delete_file(path: &Path) -> Result<()> {
+    std::fs::remove_file(path).map_err(|e| {
+        JanusError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to delete file at {}: {}", path.display(), e),
+        ))
+    })
 }
 
 /// Execute an operation with standard write hooks.
