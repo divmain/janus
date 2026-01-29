@@ -3,27 +3,6 @@ use std::path::PathBuf;
 
 use crate::types::TicketStatus;
 
-/// Trait for phase identity (number and name)
-pub trait HasPhaseIdentity {
-    fn number(&self) -> &str;
-    fn name(&self) -> &str;
-}
-
-/// Trait for phase content (tickets list)
-pub trait HasPhaseContent {
-    fn tickets(&self) -> &[String];
-}
-
-/// Get phase tickets from any phase type that implements HasPhaseContent
-pub fn get_phase_tickets<P: HasPhaseContent>(phase: &P) -> &[String] {
-    phase.tickets()
-}
-
-/// Get phase identity from any phase type that implements HasPhaseIdentity
-pub fn get_phase_identity<P: HasPhaseIdentity>(phase: &P) -> (&str, &str) {
-    (phase.number(), phase.name())
-}
-
 /// Trait for tracking and calculating progress
 pub trait ProgressTracking {
     fn completed_count(&self) -> usize;
@@ -291,6 +270,21 @@ impl Phase {
         }
     }
 
+    /// Get the phase number
+    pub fn number(&self) -> &str {
+        &self.number
+    }
+
+    /// Get the phase name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the tickets in this phase
+    pub fn tickets(&self) -> &[String] {
+        &self.tickets
+    }
+
     /// Check if a ticket ID is in this phase
     pub fn contains_ticket(&self, ticket_id: &str) -> bool {
         self.tickets.iter().any(|t| t == ticket_id)
@@ -331,22 +325,6 @@ impl Phase {
         } else {
             false
         }
-    }
-}
-
-impl HasPhaseIdentity for Phase {
-    fn number(&self) -> &str {
-        &self.number
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl HasPhaseContent for Phase {
-    fn tickets(&self) -> &[String] {
-        &self.tickets
     }
 }
 
@@ -521,13 +499,20 @@ pub struct ImportablePhase {
     pub tasks: Vec<ImportableTask>,
 }
 
-impl HasPhaseIdentity for ImportablePhase {
-    fn number(&self) -> &str {
+impl ImportablePhase {
+    /// Get the phase number
+    pub fn number(&self) -> &str {
         &self.number
     }
 
-    fn name(&self) -> &str {
+    /// Get the phase name
+    pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Get the tasks in this phase
+    pub fn tasks(&self) -> &[ImportableTask] {
+        &self.tasks
     }
 }
 
@@ -1023,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn test_importable_phase_has_phase_identity() {
+    fn test_importable_phase_inherent_methods() {
         let phase = ImportablePhase {
             number: "2a".to_string(),
             name: "Sync Part A".to_string(),
@@ -1033,34 +1018,5 @@ mod tests {
 
         assert_eq!(phase.number(), "2a");
         assert_eq!(phase.name(), "Sync Part A");
-    }
-
-    #[test]
-    fn test_get_phase_identity_generic() {
-        let phase1 = Phase::new("1", "Infrastructure");
-        let phase2 = ImportablePhase {
-            number: "2".to_string(),
-            name: "Implementation".to_string(),
-            description: None,
-            tasks: vec![],
-        };
-
-        let (num1, name1) = get_phase_identity(&phase1);
-        assert_eq!(num1, "1");
-        assert_eq!(name1, "Infrastructure");
-
-        let (num2, name2) = get_phase_identity(&phase2);
-        assert_eq!(num2, "2");
-        assert_eq!(name2, "Implementation");
-    }
-
-    #[test]
-    fn test_get_phase_tickets_generic() {
-        let mut phase = Phase::new("1", "Test");
-        phase.add_ticket("j-a1b2");
-        phase.add_ticket("j-c3d4");
-
-        let tickets = get_phase_tickets(&phase);
-        assert_eq!(tickets, &["j-a1b2", "j-c3d4"]);
     }
 }
