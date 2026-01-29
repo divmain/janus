@@ -123,7 +123,7 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
                 println!("Set {}", "linear.api_key".cyan());
             }
         }
-        "default_remote" => {
+        "default.remote" | "default_remote" => {
             // Format: "platform:org" or "platform:org/repo"
             let (platform, rest) = parse_default_remote(value)?;
             let (org, repo) = if let Some(idx) = rest.find('/') {
@@ -156,7 +156,7 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
         }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default_remote",
+                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote",
                 key
             )));
         }
@@ -233,7 +233,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                 return Err(JanusError::Config("linear.api_key not set".to_string()));
             }
         }
-        "default_remote" => {
+        "default.remote" | "default_remote" => {
             if let Some(ref default) = config.default_remote {
                 let value = if let Some(ref repo) = default.repo {
                     format!("{}:{}/{}", default.platform, default.org, repo)
@@ -255,7 +255,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
         }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default_remote",
+                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote",
                 key
             )));
         }
