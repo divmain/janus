@@ -27,6 +27,7 @@ fn compute_depth(spawned_from: Option<&str>) -> Option<u32> {
 }
 
 /// Create a new ticket and print its ID
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_create(
     title: String,
     description: Option<String>,

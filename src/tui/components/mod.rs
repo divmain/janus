@@ -31,7 +31,7 @@ pub use modal_container::{
     ModalBorderColor, ModalContainer, ModalContainerProps, ModalHeight, ModalWidth,
 };
 pub use modal_overlay::{MODAL_BACKDROP, ModalOverlay, ModalOverlayProps};
-pub use modal_state::{ModalState, NoteModalData, TicketModalData};
+pub use modal_state::{CacheErrorModalData, ModalState, NoteModalData, TicketModalData};
 pub use search_box::{InlineSearchBox, InlineSearchBoxProps, SearchBox, SearchBoxProps};
 pub use select::{Select, SelectProps, Selectable, options_for};
 pub use shortcuts::ShortcutsBuilder;

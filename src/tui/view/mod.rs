@@ -12,10 +12,10 @@ use iocraft::prelude::*;
 use crate::formatting::extract_ticket_body;
 use crate::ticket::Ticket;
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox, TicketDetail, TicketList,
-    TicketModalData, Toast, browser_shortcuts, cancel_confirm_modal_shortcuts, compute_empty_state,
-    edit_shortcuts, empty_shortcuts, note_input_modal_shortcuts, search_shortcuts,
-    triage_shortcuts,
+    CacheErrorModalData, EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox,
+    TicketDetail, TicketList, TicketModalData, Toast, browser_shortcuts,
+    cancel_confirm_modal_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
+    error_modal_shortcuts, note_input_modal_shortcuts, search_shortcuts, triage_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::{EditFormState, EditMode};
@@ -27,7 +27,7 @@ use crate::tui::services::TicketService;
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 
-use modals::{CancelConfirmModal, NoteInputModal};
+use modals::{CacheErrorModal, CancelConfirmModal, NoteInputModal};
 
 /// Props for the IssueBrowser component
 #[derive(Default, Props)]
@@ -77,6 +77,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // Modal state for triage mode using generic ModalState
     let note_modal = ModalState::<NoteModalData>::use_state(&mut hooks);
     let cancel_confirm_modal = ModalState::<TicketModalData>::use_state(&mut hooks);
+    let cache_error_modal = ModalState::<CacheErrorModalData>::use_state(&mut hooks);
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
     let load_handler: Handler<()> =
@@ -99,9 +100,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let cycle_status_handler: Handler<String> = hooks.use_async_handler({
         let toast_setter = toast;
         let all_tickets_setter = all_tickets;
+        let cache_error_modal_setter = cache_error_modal;
         move |ticket_id: String| {
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
+            let cache_error_modal_setter = cache_error_modal_setter;
             async move {
                 match TicketService::cycle_status(&ticket_id).await {
                     Ok(_) => {
@@ -110,7 +113,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             ticket_id
                         ))));
                         // Sync cache and reload tickets
-                        let _ = crate::cache::sync_cache().await;
+                        if let Err(e) = crate::cache::sync_cache().await {
+                            cache_error_modal_setter
+                                .open(CacheErrorModalData::new(format!("{}", e)));
+                            return;
+                        }
                         let tickets =
                             crate::tui::repository::TicketRepository::load_tickets().await;
                         all_tickets_setter.set(tickets);
@@ -128,9 +135,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mark_triaged_handler: Handler<(String, bool)> = hooks.use_async_handler({
         let toast_setter = toast;
         let all_tickets_setter = all_tickets;
+        let cache_error_modal_setter = cache_error_modal;
         move |(ticket_id, triaged): (String, bool)| {
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
+            let cache_error_modal_setter = cache_error_modal_setter;
             async move {
                 match TicketService::mark_triaged(&ticket_id, triaged).await {
                     Ok(_) => {
@@ -141,7 +150,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         };
                         toast_setter.set(Some(Toast::success(msg)));
                         // Sync cache and reload tickets
-                        let _ = crate::cache::sync_cache().await;
+                        if let Err(e) = crate::cache::sync_cache().await {
+                            cache_error_modal_setter
+                                .open(CacheErrorModalData::new(format!("{}", e)));
+                            return;
+                        }
                         let tickets =
                             crate::tui::repository::TicketRepository::load_tickets().await;
                         all_tickets_setter.set(tickets);
@@ -161,9 +174,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let cancel_ticket_handler: Handler<String> = hooks.use_async_handler({
         let toast_setter = toast;
         let all_tickets_setter = all_tickets;
+        let cache_error_modal_setter = cache_error_modal;
         move |ticket_id: String| {
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
+            let cache_error_modal_setter = cache_error_modal_setter;
             async move {
                 match TicketService::set_status(&ticket_id, crate::types::TicketStatus::Cancelled)
                     .await
@@ -171,7 +186,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     Ok(_) => {
                         toast_setter.set(Some(Toast::success(format!("Cancelled {}", ticket_id))));
                         // Sync cache and reload tickets
-                        let _ = crate::cache::sync_cache().await;
+                        if let Err(e) = crate::cache::sync_cache().await {
+                            cache_error_modal_setter
+                                .open(CacheErrorModalData::new(format!("{}", e)));
+                            return;
+                        }
                         let tickets =
                             crate::tui::repository::TicketRepository::load_tickets().await;
                         all_tickets_setter.set(tickets);
@@ -191,16 +210,22 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let add_note_handler: Handler<(String, String)> = hooks.use_async_handler({
         let toast_setter = toast;
         let all_tickets_setter = all_tickets;
+        let cache_error_modal_setter = cache_error_modal;
         move |(ticket_id, note): (String, String)| {
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
+            let cache_error_modal_setter = cache_error_modal_setter;
             async move {
                 match TicketService::add_note(&ticket_id, &note).await {
                     Ok(_) => {
                         toast_setter
                             .set(Some(Toast::success(format!("Added note to {}", ticket_id))));
                         // Sync cache and reload tickets
-                        let _ = crate::cache::sync_cache().await;
+                        if let Err(e) = crate::cache::sync_cache().await {
+                            cache_error_modal_setter
+                                .open(CacheErrorModalData::new(format!("{}", e)));
+                            return;
+                        }
                         let tickets =
                             crate::tui::repository::TicketRepository::load_tickets().await;
                         all_tickets_setter.set(tickets);
@@ -300,7 +325,9 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         let edit_mode_for_events = edit_mode;
         let note_modal_open = note_modal.is_open();
         let cancel_confirm_open = cancel_confirm_modal.is_open();
+        let cache_error_open = cache_error_modal.is_open();
         let mut is_triage_mode_mut = is_triage_mode;
+        let mut should_exit_for_events = should_exit;
         move |event| {
             // Skip if edit form is open (it handles its own events)
             if !matches!(*edit_mode_for_events.read(), EditMode::None) {
@@ -314,6 +341,13 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     modifiers,
                     ..
                 }) if should_process_key_event(kind) => {
+                    // Handle cache error modal events - any key closes and exits
+                    if cache_error_open {
+                        cache_error_modal.close();
+                        should_exit_for_events.set(true);
+                        return;
+                    }
+
                     // Handle note input modal events
                     if note_modal_open {
                         match code {
@@ -468,7 +502,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     );
 
     // Determine shortcuts to show - check modals first, then normal modes
-    let shortcuts = if note_modal.is_open() {
+    let shortcuts = if cache_error_modal.is_open() {
+        // Cache error modal is open
+        error_modal_shortcuts()
+    } else if note_modal.is_open() {
         // Triage mode: note input modal is open
         note_input_modal_shortcuts()
     } else if cancel_confirm_modal.is_open() {
@@ -614,6 +651,18 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     CancelConfirmModal(
                         ticket_id: data.ticket_id.clone(),
                         ticket_title: data.ticket_title.clone(),
+                    )
+                })
+            } else {
+                None
+            })
+
+            // Cache error modal
+            #(if cache_error_modal.is_open() {
+                let data = cache_error_modal.data();
+                Some(element! {
+                    CacheErrorModal(
+                        error_message: data.error_message.clone(),
                     )
                 })
             } else {

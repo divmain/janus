@@ -151,6 +151,70 @@ pub fn CancelConfirmModal<'a>(
     }
 }
 
+// =============================================================================
+// Cache Error Modal
+// =============================================================================
+
+/// Props for the CacheErrorModal component
+#[derive(Default, Props)]
+pub struct CacheErrorModalProps {
+    /// The error message to display
+    pub error_message: String,
+}
+
+/// Modal dialog for displaying cache sync errors
+///
+/// Displays a critical error message when cache synchronization fails.
+/// The application will exit after this modal is closed.
+/// - Press any key to close and exit
+#[component]
+pub fn CacheErrorModal<'a>(
+    props: &CacheErrorModalProps,
+    _hooks: Hooks,
+) -> impl Into<AnyElement<'a>> {
+    let theme = theme();
+
+    element! {
+        ModalOverlay() {
+            ModalContainer(
+                width: Some(ModalWidth::Fixed(60)),
+                height: Some(ModalHeight::Fixed(12)),
+                border_color: Some(ModalBorderColor::Error),
+                title: Some("Cache Sync Error".to_string()),
+                title_color: Some(Color::Red),
+                footer_text: Some("Press any key to exit".to_string()),
+            ) {
+                // Error content
+                View(
+                    flex_direction: FlexDirection::Column,
+                    margin_top: 1,
+                ) {
+                    Text(
+                        content: "Failed to synchronize cache:",
+                        color: theme.text,
+                    )
+                    Text(
+                        content: "",
+                        color: theme.text,
+                    )
+                    Text(
+                        content: &props.error_message,
+                        color: Color::Red,
+                    )
+                    Text(
+                        content: "",
+                        color: theme.text,
+                    )
+                    Text(
+                        content: "The application will now exit for safety.",
+                        color: theme.text_dimmed,
+                    )
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -179,6 +179,22 @@ impl NoteModalData {
     }
 }
 
+/// Data for the cache error modal
+#[derive(Default, Clone)]
+pub struct CacheErrorModalData {
+    /// The error message to display
+    pub error_message: String,
+}
+
+impl CacheErrorModalData {
+    /// Create new cache error modal data
+    pub fn new(error_message: impl Into<String>) -> Self {
+        Self {
+            error_message: error_message.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
