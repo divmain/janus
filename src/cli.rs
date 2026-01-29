@@ -832,7 +832,9 @@ pub enum PlanAction {
         /// File path (use "-" for stdin)
         file: String,
 
-        /// Validate and show what would be created without creating anything
+        /// Validate and show what would be created without creating anything.
+        /// When combined with --json, outputs a structured summary with "dry_run": true
+        /// including the planned plan, tickets, and task counts.
         #[arg(long)]
         dry_run: bool,
 

@@ -226,17 +226,35 @@ pub async fn cmd_plan_import(
     // 5. If dry-run, print summary and return
     if dry_run {
         if output_json {
+            let new_count = plan.all_tasks().iter().filter(|t| !t.is_complete).count();
+            let complete_count = plan.all_tasks().iter().filter(|t| t.is_complete).count();
+
             print_json(&json!({
                 "dry_run": true,
+                "valid": true,
                 "title": plan.title,
                 "description": plan.description,
+                "acceptance_criteria": plan.acceptance_criteria,
                 "acceptance_criteria_count": plan.acceptance_criteria.len(),
                 "is_phased": plan.is_phased(),
                 "phase_count": plan.phases.len(),
                 "task_count": plan.task_count(),
+                "phases": plan.phases.iter().map(|p| json!({
+                    "number": p.number,
+                    "name": p.name,
+                    "tasks": p.tasks.iter().map(|t| json!({
+                        "title": t.title,
+                        "is_complete": t.is_complete,
+                    })).collect::<Vec<_>>(),
+                })).collect::<Vec<_>>(),
                 "would_create": {
                     "plans": 1,
-                    "tickets": plan.task_count() + if !plan.acceptance_criteria.is_empty() { 1 } else { 0 },
+                    "tickets": {
+                        "total": plan.task_count() + if !plan.acceptance_criteria.is_empty() { 1 } else { 0 },
+                        "new": new_count,
+                        "complete": complete_count,
+                        "verification": !plan.acceptance_criteria.is_empty(),
+                    }
                 }
             }))?;
         } else {
