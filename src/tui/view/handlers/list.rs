@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use iocraft::prelude::KeyCode;
+use iocraft::prelude::{KeyCode, KeyModifiers};
 
 use crate::tui::edit::extract_body_for_edit;
 use crate::tui::state::Pane;
@@ -11,13 +11,21 @@ use super::HandleResult;
 use super::context::ViewHandlerContext;
 
 /// Handle events when list pane is active
-pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+pub fn handle_list(
+    ctx: &mut ViewHandlerContext<'_>,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> HandleResult {
     if ctx.app.is_triage_mode {
-        return handle_list_triage(ctx, code);
+        return handle_list_triage(ctx, code, modifiers);
     }
 
     match code {
-        KeyCode::Char('q') | KeyCode::Esc => {
+        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => {
+            ctx.app.should_exit.set(true);
+            HandleResult::Handled
+        }
+        KeyCode::Esc => {
             ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
@@ -46,13 +54,21 @@ pub fn handle_list(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleRes
 }
 
 /// Handle events when detail pane is active
-pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+pub fn handle_detail(
+    ctx: &mut ViewHandlerContext<'_>,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> HandleResult {
     if ctx.app.is_triage_mode {
-        return handle_detail_triage(ctx, code);
+        return handle_detail_triage(ctx, code, modifiers);
     }
 
     match code {
-        KeyCode::Char('q') | KeyCode::Esc => {
+        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => {
+            ctx.app.should_exit.set(true);
+            HandleResult::Handled
+        }
+        KeyCode::Esc => {
             ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
@@ -84,9 +100,17 @@ pub fn handle_detail(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleR
 ///
 /// Note: `n` (note) and `c` (cancel) keys are handled at the component level
 /// to show modals before executing actions.
-fn handle_list_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+fn handle_list_triage(
+    ctx: &mut ViewHandlerContext<'_>,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> HandleResult {
     match code {
-        KeyCode::Char('q') | KeyCode::Esc => {
+        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => {
+            ctx.app.should_exit.set(true);
+            HandleResult::Handled
+        }
+        KeyCode::Esc => {
             ctx.app.should_exit.set(true);
             HandleResult::Handled
         }
@@ -112,9 +136,17 @@ fn handle_list_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> Handle
 ///
 /// Note: `n` (note) and `c` (cancel) keys are handled at the component level
 /// to show modals before executing actions.
-fn handle_detail_triage(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
+fn handle_detail_triage(
+    ctx: &mut ViewHandlerContext<'_>,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> HandleResult {
     match code {
-        KeyCode::Char('q') | KeyCode::Esc => {
+        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => {
+            ctx.app.should_exit.set(true);
+            HandleResult::Handled
+        }
+        KeyCode::Esc => {
             ctx.app.should_exit.set(true);
             HandleResult::Handled
         }

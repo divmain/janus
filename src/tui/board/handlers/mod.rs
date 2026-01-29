@@ -55,7 +55,7 @@ pub fn handle_key_event(ctx: &mut BoardHandlerContext<'_>, code: KeyCode, modifi
     }
 
     // 5. Actions (e, n, q, /)
-    actions::handle(ctx, code);
+    actions::handle(ctx, code, modifiers);
 }
 
 /// Convert a key event to a BoardAction (pure function)
@@ -96,7 +96,8 @@ pub fn key_to_action(
         KeyCode::Char('S') => Some(BoardAction::MoveTicketStatusLeft),
 
         // Actions
-        KeyCode::Char('q') | KeyCode::Esc => Some(BoardAction::Quit),
+        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => Some(BoardAction::Quit),
+        KeyCode::Esc => Some(BoardAction::Quit),
         KeyCode::Char('/') => Some(BoardAction::FocusSearch),
         KeyCode::Char('e') | KeyCode::Enter => Some(BoardAction::EditSelected),
         KeyCode::Char('n') => Some(BoardAction::CreateNew),
@@ -199,14 +200,19 @@ mod tests {
 
     #[test]
     fn test_key_to_action_app_actions() {
-        // 'q' and Esc both quit
+        // Ctrl+Q and Esc both quit
         assert_eq!(
-            key_to_action(KeyCode::Char('q'), KeyModifiers::NONE, false),
+            key_to_action(KeyCode::Char('q'), KeyModifiers::CONTROL, false),
             Some(BoardAction::Quit)
         );
         assert_eq!(
             key_to_action(KeyCode::Esc, KeyModifiers::NONE, false),
             Some(BoardAction::Quit)
+        );
+        // Plain 'q' should not quit
+        assert_eq!(
+            key_to_action(KeyCode::Char('q'), KeyModifiers::NONE, false),
+            None
         );
         assert_eq!(
             key_to_action(KeyCode::Char('/'), KeyModifiers::NONE, false),

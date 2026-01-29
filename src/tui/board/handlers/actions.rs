@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use iocraft::prelude::KeyCode;
+use iocraft::prelude::{KeyCode, KeyModifiers};
 
 use crate::tui::edit::extract_body_for_edit;
 use crate::tui::search::filter_tickets;
@@ -21,9 +21,17 @@ const COLUMNS: [TicketStatus; 5] = [
 ];
 
 /// Handle action keys
-pub fn handle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult {
+pub fn handle(
+    ctx: &mut BoardHandlerContext<'_>,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> HandleResult {
     match code {
-        KeyCode::Char('q') | KeyCode::Esc => {
+        KeyCode::Char('q') if modifiers.contains(KeyModifiers::CONTROL) => {
+            ctx.should_exit.set(true);
+            HandleResult::Handled
+        }
+        KeyCode::Esc => {
             ctx.should_exit.set(true);
             HandleResult::Handled
         }

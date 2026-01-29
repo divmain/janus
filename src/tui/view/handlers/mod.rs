@@ -60,10 +60,10 @@ pub fn handle_key_event(ctx: &mut ViewHandlerContext<'_>, code: KeyCode, modifie
     // 3. Mode-specific operations
     match ctx.app.active_pane.get() {
         Pane::List => {
-            list::handle_list(ctx, code);
+            list::handle_list(ctx, code, modifiers);
         }
         Pane::Detail => {
-            list::handle_detail(ctx, code);
+            list::handle_detail(ctx, code, modifiers);
         }
         Pane::Search => {
             // Already handled above
