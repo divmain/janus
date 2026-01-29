@@ -372,6 +372,22 @@ impl TicketMetadata {
     pub fn priority_num(&self) -> u8 {
         self.priority.map(|p| p.as_num()).unwrap_or(2)
     }
+
+    /// Compute the effective depth of this ticket.
+    ///
+    /// Returns the explicit depth if set, otherwise infers from spawned_from:
+    /// - No spawned_from -> depth 0 (root)
+    /// - Has spawned_from -> depth 1 (child, unless parent depth is known)
+    pub fn compute_depth(&self) -> u32 {
+        self.depth.unwrap_or_else(|| {
+            // If no explicit depth, infer: if no spawned_from, it's depth 0
+            if self.spawned_from.is_none() {
+                0
+            } else {
+                1
+            }
+        })
+    }
 }
 
 impl crate::repository::HasId for TicketMetadata {

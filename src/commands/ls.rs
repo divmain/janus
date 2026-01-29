@@ -223,25 +223,13 @@ fn matches_spawning_filters(ticket: &TicketMetadata, filters: &SpawningFilters) 
     }
 
     // Filter by exact depth
-    if let Some(target_depth) = filters.depth {
-        // depth 0 means root tickets (no spawned_from OR explicit depth: 0)
-        let ticket_depth = ticket.depth.unwrap_or_else(|| {
-            // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if ticket.spawned_from.is_none() { 0 } else { 1 }
-        });
-        if ticket_depth != target_depth {
-            return false;
-        }
+    if let Some(target_depth) = filters.depth && ticket.compute_depth() != target_depth {
+        return false;
     }
 
     // Filter by max depth
-    if let Some(max) = filters.max_depth {
-        let ticket_depth = ticket
-            .depth
-            .unwrap_or_else(|| if ticket.spawned_from.is_none() { 0 } else { 1 });
-        if ticket_depth > max {
-            return false;
-        }
+    if let Some(max) = filters.max_depth && ticket.compute_depth() > max {
+        return false;
     }
 
     true
