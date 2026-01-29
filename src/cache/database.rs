@@ -50,7 +50,7 @@ const MAX_RETRIES: u32 = 3;
 const BASE_RETRY_DELAY_MS: u64 = 50;
 
 pub struct TicketCache {
-    pub(crate) db: Arc<Database>,
+    pub(crate) db: Database,
     #[allow(dead_code)]
     pub(crate) repo_path: PathBuf,
     pub(crate) repo_hash: String,
@@ -70,7 +70,7 @@ impl TicketCache {
         }
 
         let db_path_str = db_path.to_string_lossy();
-        let db = Arc::new(Builder::new_local(&db_path_str).build().await?);
+        let db = Builder::new_local(&db_path_str).build().await?;
 
         let conn = db.connect()?;
 
