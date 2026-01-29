@@ -609,216 +609,242 @@ impl LinearProvider {
 }
 
 impl RemoteProvider for LinearProvider {
-    async fn fetch_issue(&self, remote_ref: &RemoteRef) -> Result<RemoteIssue> {
-        let issue_id = match remote_ref {
-            RemoteRef::Linear { issue_id, .. } => issue_id,
-            _ => {
-                return Err(JanusError::Api(
-                    "LinearProvider can only fetch Linear issues".to_string(),
-                ));
-            }
-        };
+    fn fetch_issue<'a>(
+        &'a self,
+        remote_ref: &'a RemoteRef,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RemoteIssue>> + Send + 'a>> {
+        Box::pin(async move {
+            let issue_id = match remote_ref {
+                RemoteRef::Linear { issue_id, .. } => issue_id,
+                _ => {
+                    return Err(JanusError::Api(
+                        "LinearProvider can only fetch Linear issues".to_string(),
+                    ));
+                }
+            };
 
-        let operation = IssueQuery::build(IssueQueryVariables {
-            id: issue_id.clone(),
-        });
+            let operation = IssueQuery::build(IssueQueryVariables {
+                id: issue_id.clone(),
+            });
 
-        let response = self.execute(operation).await.map_err(|e| {
-            if Self::is_not_found_error(&e) {
-                JanusError::RemoteIssueNotFound(remote_ref.to_string())
-            } else {
-                e
-            }
-        })?;
+            let response = self.execute(operation).await.map_err(|e| {
+                if Self::is_not_found_error(&e) {
+                    JanusError::RemoteIssueNotFound(remote_ref.to_string())
+                } else {
+                    e
+                }
+            })?;
 
-        let internal_id = response.issue.id.clone().into_inner();
-        let external_id = response.issue.identifier.clone();
+            let internal_id = response.issue.id.clone().into_inner();
+            let external_id = response.issue.identifier.clone();
 
-        let mut cache = self.issue_id_cache.write().await;
-        cache.insert(external_id, internal_id);
+            let mut cache = self.issue_id_cache.write().await;
+            cache.insert(external_id, internal_id);
 
-        Ok(self.convert_linear_issue(response.issue))
-    }
-
-    async fn create_issue(&self, title: &str, body: &str) -> Result<RemoteRef> {
-        let team_id = match &self.default_team_id {
-            Some(id) => id.clone(),
-            None => self.fetch_default_team_id().await?,
-        };
-
-        let operation = IssueCreateMutation::build(IssueCreateVariables {
-            input: IssueCreateInput {
-                title: Some(title.to_string()),
-                description: Some(body.to_string()),
-                team_id,
-            },
-        });
-
-        let response = self.execute(operation).await?;
-
-        if !response.issue_create.success {
-            return Err(JanusError::Api("Failed to create Linear issue".to_string()));
-        }
-
-        let issue = response
-            .issue_create
-            .issue
-            .ok_or_else(|| JanusError::Api("No issue returned from Linear".to_string()))?;
-
-        let org = self.default_org.as_ref().ok_or_else(|| {
-            JanusError::Config("No default Linear organization configured".to_string())
-        })?;
-
-        Ok(RemoteRef::Linear {
-            org: org.clone(),
-            issue_id: issue.identifier,
+            Ok(self.convert_linear_issue(response.issue))
         })
     }
 
-    async fn update_issue(&self, remote_ref: &RemoteRef, updates: IssueUpdates) -> Result<()> {
-        let issue_id = match remote_ref {
-            RemoteRef::Linear { issue_id, .. } => issue_id,
-            _ => {
-                return Err(JanusError::Api(
-                    "LinearProvider can only update Linear issues".to_string(),
-                ));
+    fn create_issue<'a>(
+        &'a self,
+        title: &str,
+        body: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RemoteRef>> + Send + 'a>> {
+        let title = title.to_string();
+        let body = body.to_string();
+        Box::pin(async move {
+            let team_id = match &self.default_team_id {
+                Some(id) => id.clone(),
+                None => self.fetch_default_team_id().await?,
+            };
+
+            let operation = IssueCreateMutation::build(IssueCreateVariables {
+                input: IssueCreateInput {
+                    title: Some(title),
+                    description: Some(body),
+                    team_id,
+                },
+            });
+
+            let response = self.execute(operation).await?;
+
+            if !response.issue_create.success {
+                return Err(JanusError::Api("Failed to create Linear issue".to_string()));
             }
-        };
 
-        let input = IssueUpdateInput {
-            title: updates.title,
-            description: updates.body,
-        };
+            let issue = response
+                .issue_create
+                .issue
+                .ok_or_else(|| JanusError::Api("No issue returned from Linear".to_string()))?;
 
-        if input.title.is_none() && input.description.is_none() {
-            return Ok(());
-        }
+            let org = self.default_org.as_ref().ok_or_else(|| {
+                JanusError::Config("No default Linear organization configured".to_string())
+            })?;
 
-        let internal_id = {
-            let cache = self.issue_id_cache.read().await;
-            cache.get(issue_id).cloned()
-        };
-
-        let internal_id = match internal_id {
-            Some(id) => id,
-            None => {
-                let fetch_operation = IssueQuery::build(IssueQueryVariables {
-                    id: issue_id.clone(),
-                });
-
-                let fetch_response = self.execute(fetch_operation).await.map_err(|e| {
-                    if Self::is_not_found_error(&e) {
-                        JanusError::RemoteIssueNotFound(remote_ref.to_string())
-                    } else {
-                        e
-                    }
-                })?;
-
-                let id = fetch_response.issue.id.into_inner();
-                let external_id = fetch_response.issue.identifier.clone();
-
-                let mut cache = self.issue_id_cache.write().await;
-                cache.insert(external_id, id.clone());
-
-                id
-            }
-        };
-
-        let operation = IssueUpdateMutation::build(IssueUpdateVariables {
-            id: internal_id,
-            input,
-        });
-
-        let response = self.execute(operation).await?;
-
-        if !response.issue_update.success {
-            return Err(JanusError::Api("Failed to update Linear issue".to_string()));
-        }
-
-        Ok(())
-    }
-
-    async fn list_issues(
-        &self,
-        query: &RemoteQuery,
-    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
-        let operation = IssuesQuery::build(IssuesQueryVariables {
-            first: Some(query.limit as i32),
-            after: query.cursor.clone(),
-            filter: None,
-        });
-
-        let response = self.execute(operation).await?;
-
-        let mut cache = self.issue_id_cache.write().await;
-        let issues: Vec<RemoteIssue> = response
-            .issues
-            .nodes
-            .into_iter()
-            .map(|issue| {
-                let internal_id = issue.id.clone().into_inner();
-                let external_id = issue.identifier.clone();
-                cache.insert(external_id, internal_id);
-                self.convert_linear_issue(issue)
+            Ok(RemoteRef::Linear {
+                org: org.clone(),
+                issue_id: issue.identifier,
             })
-            .collect();
-
-        Ok(issues)
+        })
     }
 
-    async fn search_issues(
-        &self,
+    fn update_issue<'a>(
+        &'a self,
+        remote_ref: &'a RemoteRef,
+        updates: IssueUpdates,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            let issue_id = match remote_ref {
+                RemoteRef::Linear { issue_id, .. } => issue_id,
+                _ => {
+                    return Err(JanusError::Api(
+                        "LinearProvider can only update Linear issues".to_string(),
+                    ));
+                }
+            };
+
+            let input = IssueUpdateInput {
+                title: updates.title,
+                description: updates.body,
+            };
+
+            if input.title.is_none() && input.description.is_none() {
+                return Ok(());
+            }
+
+            let internal_id = {
+                let cache = self.issue_id_cache.read().await;
+                cache.get(issue_id).cloned()
+            };
+
+            let internal_id = match internal_id {
+                Some(id) => id,
+                None => {
+                    let fetch_operation = IssueQuery::build(IssueQueryVariables {
+                        id: issue_id.clone(),
+                    });
+
+                    let fetch_response = self.execute(fetch_operation).await.map_err(|e| {
+                        if Self::is_not_found_error(&e) {
+                            JanusError::RemoteIssueNotFound(remote_ref.to_string())
+                        } else {
+                            e
+                        }
+                    })?;
+
+                    let id = fetch_response.issue.id.into_inner();
+                    let external_id = fetch_response.issue.identifier.clone();
+
+                    let mut cache = self.issue_id_cache.write().await;
+                    cache.insert(external_id, id.clone());
+
+                    id
+                }
+            };
+
+            let operation = IssueUpdateMutation::build(IssueUpdateVariables {
+                id: internal_id,
+                input,
+            });
+
+            let response = self.execute(operation).await?;
+
+            if !response.issue_update.success {
+                return Err(JanusError::Api("Failed to update Linear issue".to_string()));
+            }
+
+            Ok(())
+        })
+    }
+
+    fn list_issues<'a>(
+        &'a self,
+        query: &'a RemoteQuery,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let operation = IssuesQuery::build(IssuesQueryVariables {
+                first: Some(query.limit as i32),
+                after: query.cursor.clone(),
+                filter: None,
+            });
+
+            let response = self.execute(operation).await?;
+
+            let mut cache = self.issue_id_cache.write().await;
+            let issues: Vec<RemoteIssue> = response
+                .issues
+                .nodes
+                .into_iter()
+                .map(|issue| {
+                    let internal_id = issue.id.clone().into_inner();
+                    let external_id = issue.identifier.clone();
+                    cache.insert(external_id, internal_id);
+                    self.convert_linear_issue(issue)
+                })
+                .collect();
+
+            Ok(issues)
+        })
+    }
+
+    fn search_issues<'a>(
+        &'a self,
         text: &str,
         limit: u32,
-    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
-        // Use Linear's server-side filtering with IssueFilter.
-        // We search title, description, and identifier using case-insensitive contains.
-        // The filter uses OR logic: match if any of the fields contain the search text.
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
+    {
+        let text = text.to_string();
+        Box::pin(async move {
+            // Use Linear's server-side filtering with IssueFilter.
+            // We search title, description, and identifier using case-insensitive contains.
+            // The filter uses OR logic: match if any of the fields contain the search text.
 
-        let title_filter = IssueFilter {
-            title: Some(StringComparator {
-                contains_ignore_case: Some(text.to_string()),
+            let title_filter = IssueFilter {
+                title: Some(StringComparator {
+                    contains_ignore_case: Some(text.clone()),
+                    ..Default::default()
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        };
+            };
 
-        let description_filter = IssueFilter {
-            description: Some(NullableStringComparator {
-                contains_ignore_case: Some(text.to_string()),
+            let description_filter = IssueFilter {
+                description: Some(NullableStringComparator {
+                    contains_ignore_case: Some(text),
+                    ..Default::default()
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        };
+            };
 
-        // Combine filters with OR logic: match title OR description
-        let filter = IssueFilter {
-            or: Some(vec![title_filter, description_filter]),
-            ..Default::default()
-        };
+            // Combine filters with OR logic: match title OR description
+            let filter = IssueFilter {
+                or: Some(vec![title_filter, description_filter]),
+                ..Default::default()
+            };
 
-        let operation = IssuesQuery::build(IssuesQueryVariables {
-            first: Some(limit as i32),
-            after: None,
-            filter: Some(filter),
-        });
+            let operation = IssuesQuery::build(IssuesQueryVariables {
+                first: Some(limit as i32),
+                after: None,
+                filter: Some(filter),
+            });
 
-        let response = self.execute(operation).await?;
+            let response = self.execute(operation).await?;
 
-        let mut cache = self.issue_id_cache.write().await;
-        let issues: Vec<RemoteIssue> = response
-            .issues
-            .nodes
-            .into_iter()
-            .map(|issue| {
-                let internal_id = issue.id.clone().into_inner();
-                let external_id = issue.identifier.clone();
-                cache.insert(external_id, internal_id);
-                self.convert_linear_issue(issue)
-            })
-            .collect();
+            let mut cache = self.issue_id_cache.write().await;
+            let issues: Vec<RemoteIssue> = response
+                .issues
+                .nodes
+                .into_iter()
+                .map(|issue| {
+                    let internal_id = issue.id.clone().into_inner();
+                    let external_id = issue.identifier.clone();
+                    cache.insert(external_id, internal_id);
+                    self.convert_linear_issue(issue)
+                })
+                .collect();
 
-        Ok(issues)
+            Ok(issues)
+        })
     }
 }
 

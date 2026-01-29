@@ -10,6 +10,7 @@ pub mod linear;
 use std::fmt;
 use std::str::FromStr;
 
+use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{JanusError, Result};
@@ -449,111 +450,47 @@ where
 }
 
 /// Common interface for remote providers
+#[enum_dispatch]
 pub trait RemoteProvider: Send + Sync {
     /// Fetch an issue from the remote platform
-    fn fetch_issue(
-        &self,
-        remote_ref: &RemoteRef,
-    ) -> impl std::future::Future<Output = Result<RemoteIssue>> + Send;
+    fn fetch_issue<'a>(
+        &'a self,
+        remote_ref: &'a RemoteRef,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RemoteIssue>> + Send + 'a>>;
 
     /// Create a new issue on the remote platform
-    fn create_issue(
-        &self,
+    fn create_issue<'a>(
+        &'a self,
         title: &str,
         body: &str,
-    ) -> impl std::future::Future<Output = Result<RemoteRef>> + Send;
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RemoteRef>> + Send + 'a>>;
 
     /// Update an existing issue on the remote platform
-    fn update_issue(
-        &self,
-        remote_ref: &RemoteRef,
+    fn update_issue<'a>(
+        &'a self,
+        remote_ref: &'a RemoteRef,
         updates: IssueUpdates,
-    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>>;
 
     /// List issues from the remote platform with filtering
-    fn list_issues(
-        &self,
-        query: &RemoteQuery,
-    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send;
+    fn list_issues<'a>(
+        &'a self,
+        query: &'a RemoteQuery,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>;
 
     /// Search for issues by text
-    fn search_issues(
-        &self,
+    fn search_issues<'a>(
+        &'a self,
         text: &str,
         limit: u32,
-    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send;
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>;
 }
 
 /// Enum wrapping all remote provider implementations
+#[enum_dispatch(RemoteProvider)]
 pub enum Provider {
     GitHub(GitHubProvider),
     Linear(LinearProvider),
-}
-
-#[allow(clippy::manual_async_fn)]
-impl RemoteProvider for Provider {
-    fn fetch_issue(
-        &self,
-        remote_ref: &RemoteRef,
-    ) -> impl std::future::Future<Output = Result<RemoteIssue>> + Send {
-        async move {
-            match self {
-                Provider::GitHub(p) => p.fetch_issue(remote_ref).await,
-                Provider::Linear(p) => p.fetch_issue(remote_ref).await,
-            }
-        }
-    }
-
-    fn create_issue(
-        &self,
-        title: &str,
-        body: &str,
-    ) -> impl std::future::Future<Output = Result<RemoteRef>> + Send {
-        async move {
-            match self {
-                Provider::GitHub(p) => p.create_issue(title, body).await,
-                Provider::Linear(p) => p.create_issue(title, body).await,
-            }
-        }
-    }
-
-    fn update_issue(
-        &self,
-        remote_ref: &RemoteRef,
-        updates: IssueUpdates,
-    ) -> impl std::future::Future<Output = Result<()>> + Send {
-        async move {
-            match self {
-                Provider::GitHub(p) => p.update_issue(remote_ref, updates).await,
-                Provider::Linear(p) => p.update_issue(remote_ref, updates).await,
-            }
-        }
-    }
-
-    fn list_issues(
-        &self,
-        query: &RemoteQuery,
-    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send {
-        async move {
-            match self {
-                Provider::GitHub(p) => p.list_issues(query).await,
-                Provider::Linear(p) => p.list_issues(query).await,
-            }
-        }
-    }
-
-    fn search_issues(
-        &self,
-        text: &str,
-        limit: u32,
-    ) -> impl std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send {
-        async move {
-            match self {
-                Provider::GitHub(p) => p.search_issues(text, limit).await,
-                Provider::Linear(p) => p.search_issues(text, limit).await,
-            }
-        }
-    }
 }
 
 /// Create a remote provider instance for the given platform

@@ -63,6 +63,9 @@ directories = "5"
 # Secret handling for credentials
 secrecy = "0.10"
 
+# Enum dispatch for trait objects
+enum_dispatch = "0.3"
+
 # Markdown parsing (AST-based, CommonMark + GFM compliant)
 comrak = "0.34"
 

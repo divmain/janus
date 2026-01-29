@@ -242,212 +242,61 @@ impl GitHubProvider {
 }
 
 impl RemoteProvider for GitHubProvider {
-    async fn fetch_issue(&self, remote_ref: &RemoteRef) -> Result<RemoteIssue> {
-        let (owner, repo, issue_number) = match remote_ref {
-            RemoteRef::GitHub {
-                owner,
-                repo,
-                issue_number,
-            } => (owner.as_str(), repo.as_str(), *issue_number),
-            _ => {
-                return Err(JanusError::Api(
-                    "GitHubProvider can only fetch GitHub issues".to_string(),
-                ));
-            }
-        };
+    fn fetch_issue<'a>(
+        &'a self,
+        remote_ref: &'a RemoteRef,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RemoteIssue>> + Send + 'a>> {
+        Box::pin(async move {
+            let (owner, repo, issue_number) = match remote_ref {
+                RemoteRef::GitHub {
+                    owner,
+                    repo,
+                    issue_number,
+                } => (owner.as_str(), repo.as_str(), *issue_number),
+                _ => {
+                    return Err(JanusError::Api(
+                        "GitHubProvider can only fetch GitHub issues".to_string(),
+                    ));
+                }
+            };
 
-        let client = self.client.clone();
-        let issue = super::execute_with_retry(|| async {
-            client
-                .issues(owner, repo)
-                .get(issue_number)
-                .await
-                .map_err(GitHubError::from)
-        })
-        .await
-        .map_err(|e| {
-            if let JanusError::Api(msg) = &e
-                && msg.contains("404")
-            {
-                JanusError::RemoteIssueNotFound(remote_ref.to_string())
-            } else {
-                e
-            }
-        })?;
+            let client = self.client.clone();
+            let issue = super::execute_with_retry(|| async {
+                client
+                    .issues(owner, repo)
+                    .get(issue_number)
+                    .await
+                    .map_err(GitHubError::from)
+            })
+            .await
+            .map_err(|e| {
+                if let JanusError::Api(msg) = &e
+                    && msg.contains("404")
+                {
+                    JanusError::RemoteIssueNotFound(remote_ref.to_string())
+                } else {
+                    e
+                }
+            })?;
 
-        let status = match issue.state {
-            octocrab::models::IssueState::Open => RemoteStatus::Open,
-            octocrab::models::IssueState::Closed => RemoteStatus::Closed,
-            _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
-        };
+            let status = match issue.state {
+                octocrab::models::IssueState::Open => RemoteStatus::Open,
+                octocrab::models::IssueState::Closed => RemoteStatus::Closed,
+                _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
+            };
 
-        let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
+            let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
 
-        Ok(RemoteIssue {
-            id: issue.number.to_string(),
-            title: issue.title.clone(),
-            body: issue.body.clone().unwrap_or_default(),
-            status,
-            priority: None,
-            assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
-            updated_at: issue.updated_at.to_rfc3339(),
-            url: issue.html_url.to_string(),
-            labels,
-            team: None,
-            project: None,
-            milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
-            due_date: None,
-            created_at: issue.created_at.to_rfc3339(),
-            creator: Some(issue.user.login.clone()),
-        })
-    }
-
-    async fn create_issue(&self, title: &str, body: &str) -> Result<RemoteRef> {
-        let (owner, repo) = self.get_default_owner_repo()?;
-        let owner = owner.to_string();
-        let repo = repo.to_string();
-        let title = title.to_string();
-        let body = body.to_string();
-
-        let client = self.client.clone();
-        let issue = super::execute_with_retry(|| async {
-            client
-                .issues(&owner, &repo)
-                .create(&title)
-                .body(&body)
-                .send()
-                .await
-                .map_err(GitHubError::from)
-        })
-        .await?;
-
-        Ok(RemoteRef::GitHub {
-            owner,
-            repo,
-            issue_number: issue.number,
-        })
-    }
-
-    async fn update_issue(&self, remote_ref: &RemoteRef, updates: IssueUpdates) -> Result<()> {
-        let (owner, repo, issue_number) = match remote_ref {
-            RemoteRef::GitHub {
-                owner,
-                repo,
-                issue_number,
-            } => (owner.as_str(), repo.as_str(), *issue_number),
-            _ => {
-                return Err(JanusError::Api(
-                    "GitHubProvider can only update GitHub issues".to_string(),
-                ));
-            }
-        };
-
-        let title = updates.title.clone();
-        let body = updates.body.clone();
-        let status = updates.status.clone();
-
-        let state = status.map(|s| match s {
-            RemoteStatus::Open => octocrab::models::IssueState::Open,
-            RemoteStatus::Closed | RemoteStatus::Custom(_) => octocrab::models::IssueState::Closed,
-        });
-
-        if title.is_none() && body.is_none() && state.is_none() {
-            return Ok(());
-        }
-
-        let client = self.client.clone();
-        let owner = owner.to_string();
-        let repo = repo.to_string();
-
-        let _ = super::execute_with_retry(|| async {
-            let issues = client.issues(&owner, &repo);
-            let mut builder = issues.update(issue_number);
-            if let Some(t) = &title {
-                builder = builder.title(t);
-            }
-            if let Some(b) = &body {
-                builder = builder.body(b);
-            }
-            if let Some(s) = &state {
-                builder = builder.state(s.clone());
-            }
-            builder.send().await.map_err(GitHubError::from)
-        })
-        .await?;
-
-        Ok(())
-    }
-
-    async fn list_issues(
-        &self,
-        query: &RemoteQuery,
-    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
-        let (owner, repo) = self.get_default_owner_repo()?;
-        let client = self.client.clone();
-        let owner = owner.to_string();
-        let repo = repo.to_string();
-
-        let result = super::execute_with_retry(|| async {
-            client
-                .issues(&owner, &repo)
-                .list()
-                .per_page(query.limit.min(100) as u8)
-                .send()
-                .await
-                .map_err(GitHubError::from)
-        })
-        .await?;
-
-        let issues: Vec<RemoteIssue> = result
-            .items
-            .into_iter()
-            .filter(|issue| issue.pull_request.is_none())
-            .map(|issue| self.convert_github_issue(&issue))
-            .collect();
-
-        Ok(issues)
-    }
-
-    async fn search_issues(
-        &self,
-        text: &str,
-        limit: u32,
-    ) -> std::result::Result<Vec<RemoteIssue>, crate::error::JanusError> {
-        let (owner, repo) = self.get_default_owner_repo()?;
-        let client = self.client.clone();
-        let owner = owner.to_string();
-        let repo = repo.to_string();
-        let query_str = format!("repo:{}/{} is:issue {}", owner, repo, text);
-
-        let result = super::execute_with_retry(|| async {
-            client
-                .search()
-                .issues_and_pull_requests(&query_str)
-                .per_page(limit.min(100) as u8)
-                .send()
-                .await
-                .map_err(GitHubError::from)
-        })
-        .await?;
-
-        let issues: Vec<RemoteIssue> = result
-            .items
-            .into_iter()
-            .filter(|item| item.pull_request.is_none())
-            .map(|issue| RemoteIssue {
+            Ok(RemoteIssue {
                 id: issue.number.to_string(),
                 title: issue.title.clone(),
                 body: issue.body.clone().unwrap_or_default(),
-                status: match issue.state {
-                    octocrab::models::IssueState::Open => RemoteStatus::Open,
-                    octocrab::models::IssueState::Closed => RemoteStatus::Closed,
-                    _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
-                },
+                status,
                 priority: None,
                 assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
                 updated_at: issue.updated_at.to_rfc3339(),
                 url: issue.html_url.to_string(),
-                labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
+                labels,
                 team: None,
                 project: None,
                 milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
@@ -455,9 +304,186 @@ impl RemoteProvider for GitHubProvider {
                 created_at: issue.created_at.to_rfc3339(),
                 creator: Some(issue.user.login.clone()),
             })
-            .collect();
+        })
+    }
 
-        Ok(issues)
+    fn create_issue<'a>(
+        &'a self,
+        title: &str,
+        body: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<RemoteRef>> + Send + 'a>> {
+        let title = title.to_string();
+        let body = body.to_string();
+        Box::pin(async move {
+            let (owner, repo) = self.get_default_owner_repo()?;
+            let owner = owner.to_string();
+            let repo = repo.to_string();
+
+            let client = self.client.clone();
+            let issue = super::execute_with_retry(|| async {
+                client
+                    .issues(&owner, &repo)
+                    .create(&title)
+                    .body(&body)
+                    .send()
+                    .await
+                    .map_err(GitHubError::from)
+            })
+            .await?;
+
+            Ok(RemoteRef::GitHub {
+                owner,
+                repo,
+                issue_number: issue.number,
+            })
+        })
+    }
+
+    fn update_issue<'a>(
+        &'a self,
+        remote_ref: &'a RemoteRef,
+        updates: IssueUpdates,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            let (owner, repo, issue_number) = match remote_ref {
+                RemoteRef::GitHub {
+                    owner,
+                    repo,
+                    issue_number,
+                } => (owner.as_str(), repo.as_str(), *issue_number),
+                _ => {
+                    return Err(JanusError::Api(
+                        "GitHubProvider can only update GitHub issues".to_string(),
+                    ));
+                }
+            };
+
+            let title = updates.title.clone();
+            let body = updates.body.clone();
+            let status = updates.status.clone();
+
+            let state = status.map(|s| match s {
+                RemoteStatus::Open => octocrab::models::IssueState::Open,
+                RemoteStatus::Closed | RemoteStatus::Custom(_) => {
+                    octocrab::models::IssueState::Closed
+                }
+            });
+
+            if title.is_none() && body.is_none() && state.is_none() {
+                return Ok(());
+            }
+
+            let client = self.client.clone();
+            let owner = owner.to_string();
+            let repo = repo.to_string();
+
+            let _ = super::execute_with_retry(|| async {
+                let issues = client.issues(&owner, &repo);
+                let mut builder = issues.update(issue_number);
+                if let Some(t) = &title {
+                    builder = builder.title(t);
+                }
+                if let Some(b) = &body {
+                    builder = builder.body(b);
+                }
+                if let Some(s) = &state {
+                    builder = builder.state(s.clone());
+                }
+                builder.send().await.map_err(GitHubError::from)
+            })
+            .await?;
+
+            Ok(())
+        })
+    }
+
+    fn list_issues<'a>(
+        &'a self,
+        query: &'a RemoteQuery,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let (owner, repo) = self.get_default_owner_repo()?;
+            let client = self.client.clone();
+            let owner = owner.to_string();
+            let repo = repo.to_string();
+
+            let result = super::execute_with_retry(|| async {
+                client
+                    .issues(&owner, &repo)
+                    .list()
+                    .per_page(query.limit.min(100) as u8)
+                    .send()
+                    .await
+                    .map_err(GitHubError::from)
+            })
+            .await?;
+
+            let issues: Vec<RemoteIssue> = result
+                .items
+                .into_iter()
+                .filter(|issue| issue.pull_request.is_none())
+                .map(|issue| self.convert_github_issue(&issue))
+                .collect();
+
+            Ok(issues)
+        })
+    }
+
+    fn search_issues<'a>(
+        &'a self,
+        text: &str,
+        limit: u32,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
+    {
+        let text = text.to_string();
+        Box::pin(async move {
+            let (owner, repo) = self.get_default_owner_repo()?;
+            let client = self.client.clone();
+            let owner = owner.to_string();
+            let repo = repo.to_string();
+            let query_str = format!("repo:{}/{} is:issue {}", owner, repo, text);
+
+            let result = super::execute_with_retry(|| async {
+                client
+                    .search()
+                    .issues_and_pull_requests(&query_str)
+                    .per_page(limit.min(100) as u8)
+                    .send()
+                    .await
+                    .map_err(GitHubError::from)
+            })
+            .await?;
+
+            let issues: Vec<RemoteIssue> = result
+                .items
+                .into_iter()
+                .filter(|item| item.pull_request.is_none())
+                .map(|issue| RemoteIssue {
+                    id: issue.number.to_string(),
+                    title: issue.title.clone(),
+                    body: issue.body.clone().unwrap_or_default(),
+                    status: match issue.state {
+                        octocrab::models::IssueState::Open => RemoteStatus::Open,
+                        octocrab::models::IssueState::Closed => RemoteStatus::Closed,
+                        _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
+                    },
+                    priority: None,
+                    assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
+                    updated_at: issue.updated_at.to_rfc3339(),
+                    url: issue.html_url.to_string(),
+                    labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
+                    team: None,
+                    project: None,
+                    milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
+                    due_date: None,
+                    created_at: issue.created_at.to_rfc3339(),
+                    creator: Some(issue.user.login.clone()),
+                })
+                .collect();
+
+            Ok(issues)
+        })
     }
 }
 
