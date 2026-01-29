@@ -176,7 +176,6 @@ impl JsonFormatter {
         metadata: &PlanMetadata,
         ticket_map: &HashMap<String, TicketMetadata>,
     ) -> Result<()> {
-        use crate::plan::types::ProgressTracking;
         let plan_status = compute_plan_status(metadata, ticket_map);
         let phase_statuses = compute_all_phase_statuses(metadata, ticket_map);
 

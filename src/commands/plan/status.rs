@@ -6,7 +6,7 @@ use serde_json::json;
 use crate::commands::CommandOutput;
 use crate::display::format_status_colored;
 use crate::error::Result;
-use crate::plan::types::ProgressTracking;
+
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::ticket::build_ticket_map;
 
