@@ -176,27 +176,48 @@ impl PlanMetadata {
             _ => None,
         })
     }
-}
 
-impl crate::types::ItemMetadata for PlanMetadata {
-    fn id(&self) -> Option<&str> {
+    /// Get the item ID
+    pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
-    fn uuid(&self) -> Option<&str> {
+    /// Get the item UUID
+    pub fn uuid(&self) -> Option<&str> {
         self.uuid.as_deref()
     }
 
-    fn title(&self) -> Option<&str> {
+    /// Get the item title
+    pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
 
-    fn file_path(&self) -> Option<&PathBuf> {
+    /// Get the file path
+    pub fn file_path(&self) -> Option<&PathBuf> {
         self.file_path.as_ref()
     }
 
-    fn item_type(&self) -> crate::types::EntityType {
+    /// Get the item type
+    pub fn item_type(&self) -> crate::types::EntityType {
         crate::types::EntityType::Plan
+    }
+
+    /// Build a hook context from this metadata
+    pub fn hook_context(&self) -> crate::hooks::HookContext {
+        use crate::hooks::HookContext;
+        use crate::types::EntityType;
+
+        let mut ctx = HookContext::new().with_item_type(EntityType::Plan);
+
+        if let Some(id) = self.id() {
+            ctx = ctx.with_item_id(id);
+        }
+
+        if let Some(fp) = self.file_path() {
+            ctx = ctx.with_file_path(fp);
+        }
+
+        ctx
     }
 }
 

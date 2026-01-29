@@ -384,49 +384,34 @@ impl TicketMetadata {
             if self.spawned_from.is_none() { 0 } else { 1 }
         })
     }
-}
 
-impl ItemMetadata for TicketMetadata {
-    fn id(&self) -> Option<&str> {
+    /// Get the item ID
+    pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
-    fn uuid(&self) -> Option<&str> {
+    /// Get the item UUID
+    pub fn uuid(&self) -> Option<&str> {
         self.uuid.as_deref()
     }
 
-    fn title(&self) -> Option<&str> {
+    /// Get the item title
+    pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
 
-    fn file_path(&self) -> Option<&PathBuf> {
+    /// Get the file path
+    pub fn file_path(&self) -> Option<&PathBuf> {
         self.file_path.as_ref()
     }
 
-    fn item_type(&self) -> EntityType {
+    /// Get the item type
+    pub fn item_type(&self) -> EntityType {
         EntityType::Ticket
     }
-}
-
-/// Common metadata fields for item types (tickets and plans)
-pub trait ItemMetadata {
-    /// Get the item ID
-    fn id(&self) -> Option<&str>;
-
-    /// Get the item UUID
-    fn uuid(&self) -> Option<&str>;
-
-    /// Get the item title
-    fn title(&self) -> Option<&str>;
-
-    /// Get the file path
-    fn file_path(&self) -> Option<&PathBuf>;
-
-    /// Get the item type
-    fn item_type(&self) -> EntityType;
 
     /// Build a hook context from this metadata
-    fn hook_context(&self) -> HookContext {
+    pub fn hook_context(&self) -> HookContext {
         let mut ctx = HookContext::new().with_item_type(self.item_type());
 
         if let Some(id) = self.id() {
