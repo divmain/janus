@@ -1,5 +1,6 @@
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent};
+use crate::parser::parse_document;
 use crate::storage::{FileStorage, with_write_hooks};
 use crate::ticket::content::validate_field_name;
 use crate::ticket::file::TicketFile;
@@ -8,7 +9,6 @@ use crate::ticket::manipulator::{
     update_field as update_field_in_content,
 };
 use crate::ticket::parser::parse;
-use regex::Regex;
 use serde_json;
 
 pub struct TicketEditor {
@@ -170,49 +170,13 @@ impl TicketEditor {
     pub fn write_completion_summary(&self, summary: &str) -> Result<()> {
         let content = self.file.read_raw()?;
 
-        let section_start = Self::find_completion_summary_section(&content);
+        // Parse the document and use the centralized update_section method
+        let doc = parse_document(&content)?;
+        let updated_body = doc.update_section("Completion Summary", summary);
 
-        let new_content = if let Some(start_idx) = section_start {
-            let after_header = &content[start_idx..];
-            let header_end = after_header
-                .find('\n')
-                .ok_or_else(|| {
-                    JanusError::Other(
-                        "Invalid ticket file structure: '## Completion Summary' header found but missing newline"
-                            .to_string(),
-                    )
-                })?;
-            let section_content_start = start_idx + header_end;
-
-            let section_content = &content[section_content_start..];
-            let next_h2_re = Regex::new(r"(?m)^## ").expect("regex should compile");
-            let section_end = next_h2_re
-                .find(section_content)
-                .map(|m| section_content_start + m.start())
-                .unwrap_or(content.len());
-
-            let before = &content[..start_idx];
-            let after = &content[section_end..];
-
-            format!(
-                "{}## Completion Summary\n\n{}\n{}",
-                before,
-                summary,
-                if after.is_empty() { "" } else { "\n" }.to_owned()
-                    + after.trim_start_matches('\n')
-            )
-        } else {
-            let trimmed = content.trim_end();
-            format!("{}\n\n## Completion Summary\n\n{}\n", trimmed, summary)
-        };
+        // Reconstruct the full document with frontmatter
+        let new_content = format!("---\n{}---\n{}", doc.frontmatter_raw, updated_body);
 
         self.write(&new_content)
-    }
-
-    /// Find the start position of the Completion Summary section (case-insensitive)
-    fn find_completion_summary_section(content: &str) -> Option<usize> {
-        let section_pattern =
-            Regex::new(r"(?mi)^## completion summary\s*$").expect("regex should compile");
-        section_pattern.find(content).map(|m| m.start())
     }
 }

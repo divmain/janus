@@ -140,6 +140,54 @@ impl ParsedDocument {
         })
     }
 
+    /// Update or add a section in the document body.
+    ///
+    /// If the section exists, its content is replaced. If it doesn't exist,
+    /// the section is appended to the end of the body.
+    ///
+    /// # Arguments
+    /// * `section_name` - The name of the section to update (case-insensitive)
+    /// * `section_content` - The new content for the section (without the header)
+    ///
+    /// # Returns
+    /// The full updated document content (frontmatter + body)
+    pub fn update_section(&self, section_name: &str, section_content: &str) -> String {
+        let pattern = format!(
+            r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
+            regex::escape(section_name)
+        );
+        let section_re = Regex::new(&pattern).expect("section regex should be valid");
+
+        if let Some(caps) = section_re.captures(&self.body) {
+            // Section exists - replace its content
+            let full_match = caps.get(0).expect("full match should exist");
+            let content_match = caps.get(1).expect("content group should exist");
+
+            let before = &self.body[..full_match.start()];
+            let after = &self.body[content_match.end()..];
+
+            // Build the new section
+            let new_section = format!("## {}\n\n{}", section_name, section_content);
+
+            // Handle spacing after the section
+            let after_trimmed = after.trim_start_matches('\n');
+            let separator = if after_trimmed.is_empty() {
+                "\n".to_string()
+            } else {
+                format!("\n\n{}", after_trimmed)
+            };
+
+            format!("{}{}{}", before, new_section, separator)
+        } else {
+            // Section doesn't exist - append it
+            let trimmed_body = self.body.trim_end();
+            format!(
+                "{}\n\n## {}\n\n{}\n",
+                trimmed_body, section_name, section_content
+            )
+        }
+    }
+
     /// Deserialize the frontmatter into a specific type.
     ///
     /// This uses the raw YAML string for proper type conversion via serde.
@@ -322,6 +370,110 @@ Content.
         let doc = parse_document(content).unwrap();
         assert!(doc.extract_section("uppercase section").is_some());
         assert!(doc.extract_section("UPPERCASE SECTION").is_some());
+    }
+
+    #[test]
+    fn test_parsed_document_update_section_existing() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## My Section
+
+Old content here.
+
+## Another Section
+
+More content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let updated = doc.update_section("My Section", "New content here.");
+
+        assert!(updated.contains("## My Section\n\nNew content here."));
+        assert!(!updated.contains("Old content here."));
+        assert!(updated.contains("## Another Section"));
+    }
+
+    #[test]
+    fn test_parsed_document_update_section_at_end() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## Final Section
+
+Old final content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let updated = doc.update_section("Final Section", "Updated final content.");
+
+        assert!(updated.contains("## Final Section\n\nUpdated final content."));
+        assert!(!updated.contains("Old final content."));
+    }
+
+    #[test]
+    fn test_parsed_document_update_section_add_new() {
+        let content = r#"---
+id: test
+---
+# Title
+
+Body content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let updated = doc.update_section("New Section", "New section content.");
+
+        assert!(updated.contains("## New Section\n\nNew section content."));
+        assert!(updated.contains("Body content."));
+    }
+
+    #[test]
+    fn test_parsed_document_update_section_case_insensitive() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## UPPERCASE SECTION
+
+Content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let updated = doc.update_section("uppercase section", "Updated content.");
+
+        assert!(updated.contains("## uppercase section\n\nUpdated content."));
+    }
+
+    #[test]
+    fn test_parsed_document_update_section_preserves_other_sections() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## First Section
+
+First content.
+
+## Middle Section
+
+Middle content.
+
+## Last Section
+
+Last content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let updated = doc.update_section("Middle Section", "Updated middle.");
+
+        assert!(updated.contains("## First Section"));
+        assert!(updated.contains("First content."));
+        assert!(updated.contains("## Middle Section\n\nUpdated middle."));
+        assert!(!updated.contains("Middle content."));
+        assert!(updated.contains("## Last Section"));
+        assert!(updated.contains("Last content."));
     }
 
     #[test]
