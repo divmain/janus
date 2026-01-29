@@ -41,12 +41,13 @@ pub fn Footer(props: &FooterProps) -> impl Into<AnyElement<'static>> {
     element! {
         View(
             width: 100pct,
-            height: 1,
+            min_height: 1,
             flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
             flex_shrink: 0.0,
             padding_left: 1,
             padding_right: 1,
-            gap: 2,
+            column_gap: 2,
             background_color: theme.border,
         ) {
             #(props.shortcuts.iter().map(|shortcut| {
