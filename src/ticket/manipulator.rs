@@ -81,6 +81,7 @@ pub fn extract_body(raw_content: &str) -> Result<String> {
 ///
 /// Uses proper YAML deserialization to handle quoted values, block scalars, and other
 /// YAML syntax correctly.
+#[cfg(test)]
 pub fn extract_field_value(raw_content: &str, field: &str) -> Result<Option<String>> {
     use serde_yaml_ng::Value;
 

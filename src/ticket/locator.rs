@@ -50,6 +50,7 @@ impl TicketLocator {
     /// Create a locator for a new ticket with the given ID
     ///
     /// This is used when creating new tickets. The file does not need to exist.
+    #[allow(dead_code)]
     pub fn with_id(id: &str) -> Self {
         TicketLocator {
             file_path: ticket_path(id),
@@ -60,6 +61,7 @@ impl TicketLocator {
     /// Get the file path for a given ticket ID
     ///
     /// Does not verify that the file exists.
+    #[allow(dead_code)]
     pub fn file_path_for_id(id: &str) -> PathBuf {
         ticket_path(id)
     }
