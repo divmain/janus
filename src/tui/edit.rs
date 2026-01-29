@@ -303,7 +303,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                             ) {
                                 Text(
                                     content: error_text.to_string(),
-                                    color: Color::Red,
+                                    color: theme.error,
                                 )
                             }
                         })

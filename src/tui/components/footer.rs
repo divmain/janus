@@ -57,7 +57,7 @@ pub fn Footer(props: &FooterProps) -> impl Into<AnyElement<'static>> {
                     View(flex_direction: FlexDirection::Row) {
                         Text(
                             content: format!("[{}]", key),
-                            color: theme.highlight,
+                            color: theme.text_dimmed,
                             weight: Weight::Bold,
                         )
                         Text(

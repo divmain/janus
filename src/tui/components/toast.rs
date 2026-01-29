@@ -5,6 +5,8 @@
 use iocraft::prelude::*;
 use std::time::Instant;
 
+use crate::tui::theme::theme;
+
 /// A toast notification message
 #[derive(Debug, Clone)]
 pub struct Toast {
@@ -61,11 +63,12 @@ impl Toast {
 
     /// Get the color associated with this toast's level
     pub fn color(&self) -> Color {
+        let theme = theme();
         match self.level {
-            ToastLevel::Info => Color::Cyan,
-            ToastLevel::Warning => Color::Yellow,
-            ToastLevel::Error => Color::Red,
-            ToastLevel::Success => Color::Green,
+            ToastLevel::Info => theme.id_color,
+            ToastLevel::Warning => theme.status_new,
+            ToastLevel::Error => theme.error,
+            ToastLevel::Success => theme.status_complete,
         }
     }
 }
@@ -83,6 +86,7 @@ pub struct ToastNotificationProps {
 /// The toast is styled based on its level (info, warning, error, success).
 #[component]
 pub fn ToastNotification(props: &ToastNotificationProps) -> impl Into<AnyElement<'static>> {
+    let theme = theme();
     element! {
         View() {
             #(props.toast.as_ref().map(|t| {
@@ -92,7 +96,7 @@ pub fn ToastNotification(props: &ToastNotificationProps) -> impl Into<AnyElement
                         height: 3,
                         align_items: AlignItems::Center,
                         justify_content: JustifyContent::Center,
-                        background_color: Color::Black,
+                        background_color: theme.background,
                         border_edges: Edges::Top,
                         border_style: BorderStyle::Single,
                         border_color: t.color(),
@@ -110,6 +114,7 @@ pub fn ToastNotification(props: &ToastNotificationProps) -> impl Into<AnyElement
 /// This is a convenience function for use in element! macros where you need
 /// to conditionally render a toast.
 pub fn render_toast(toast: &Option<Toast>) -> Option<AnyElement<'static>> {
+    let theme = theme();
     toast.as_ref().map(|t| {
         element! {
             View(
@@ -117,7 +122,7 @@ pub fn render_toast(toast: &Option<Toast>) -> Option<AnyElement<'static>> {
                 height: 3,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                background_color: Color::Black,
+                background_color: theme.background,
                 border_edges: Edges::Top,
                 border_style: BorderStyle::Single,
                 border_color: t.color(),

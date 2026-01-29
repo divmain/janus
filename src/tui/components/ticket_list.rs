@@ -171,7 +171,7 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
         None
     };
     let text_color = if props.is_selected {
-        Color::White
+        theme.highlight_text
     } else {
         theme.text
     };
@@ -206,7 +206,7 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
             View(width: 9, flex_shrink: 0.0) {
                 Text(
                     content: format!("{:<8}", id),
-                    color: if props.is_selected { Color::White } else { theme.id_color },
+                    color: if props.is_selected { theme.highlight_text } else { theme.id_color },
                 )
             }
 
@@ -214,7 +214,7 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
             View(width: 6, flex_shrink: 0.0) {
                 Text(
                     content: format!("[{}]", status_str),
-                    color: if props.is_selected { Color::White } else { status_color },
+                    color: if props.is_selected { theme.highlight_text } else { status_color },
                 )
             }
 

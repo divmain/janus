@@ -1,6 +1,4 @@
 //! Theme system for TUI colors and styles
-//!
-//! Defines color constants consistent with the existing CLI output (commands/mod.rs).
 
 use iocraft::prelude::Color;
 
@@ -35,8 +33,10 @@ pub struct Theme {
     pub text: Color,
     pub text_dimmed: Color,
     pub highlight: Color,
+    pub highlight_text: Color,
     pub search_match: Color,
     pub id_color: Color,
+    pub error: Color,
 }
 
 impl Default for Theme {
@@ -71,21 +71,27 @@ impl Default for Theme {
 
             // UI colors
             border: Color::Rgb {
-                r: 120,
-                g: 120,
-                b: 120,
+                r: 72,
+                g: 72,
+                b: 72,
             },
             border_focused: Color::Blue,
             background: Color::Reset,
             text: Color::White,
             text_dimmed: Color::Rgb {
-                r: 120,
-                g: 120,
-                b: 120,
+                r: 200,
+                g: 210,
+                b: 210,
             },
-            highlight: Color::Blue,
+            highlight: Color::Rgb {
+                r: 38,
+                g: 120,
+                b: 158,
+            },
+            highlight_text: Color::White,
             search_match: Color::Yellow,
             id_color: Color::Cyan,
+            error: Color::Red,
         }
     }
 }

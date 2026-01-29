@@ -55,7 +55,7 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
         None
     };
     let text_color = if props.is_selected {
-        Color::White
+        theme.highlight_text
     } else {
         theme.text
     };
@@ -63,7 +63,7 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
     // Priority indicator
     let priority_str = format!("P{}", priority.as_num());
     let priority_color = if props.is_selected {
-        Color::White
+        theme.highlight_text
     } else {
         theme.priority_color(priority)
     };
@@ -71,7 +71,7 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
     // Type indicator
     let type_str = ticket_type.to_string();
     let type_color = if props.is_selected {
-        Color::White
+        theme.highlight_text
     } else {
         theme.type_color(ticket_type)
     };
@@ -110,7 +110,7 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
                 )
                 Text(
                     content: id,
-                    color: if props.is_selected { Color::White } else { theme.id_color },
+                    color: if props.is_selected { theme.highlight_text } else { theme.id_color },
                     weight: Weight::Bold,
                 )
             }
