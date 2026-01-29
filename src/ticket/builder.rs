@@ -1,9 +1,6 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
-use crate::storage::FileStorage;
-use crate::ticket::file::TicketFile;
-use crate::ticket::locator::TicketLocator;
-use crate::types::{TicketPriority, TicketStatus, TicketType, tickets_items_dir};
+use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::types::{EntityType, TicketPriority, TicketStatus, TicketType, tickets_items_dir};
 use crate::utils;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -230,23 +227,44 @@ impl TicketBuilder {
         let items_dir = tickets_items_dir();
         let file_path = items_dir.join(format!("{}.md", id));
 
-        // Create a TicketFile for standardized file operations
-        let locator = TicketLocator::new(file_path.clone())?;
-        let ticket_file = TicketFile::new(locator);
+        // Ensure parent directory exists
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create directory for ticket at {}: {}",
+                        parent.display(),
+                        e
+                    ),
+                ))
+            })?;
+        }
 
         if self.run_hooks {
-            let context = ticket_file.hook_context();
+            let context = HookContext::new()
+                .with_item_type(EntityType::Ticket)
+                .with_item_id(&id)
+                .with_file_path(&file_path);
 
             run_pre_hooks(HookEvent::PreWrite, &context)?;
 
-            // Use FileStorage trait method for consistent error handling
-            ticket_file.write_raw(&content)?;
+            std::fs::write(&file_path, &content).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to write ticket at {}: {}", file_path.display(), e),
+                ))
+            })?;
 
             run_post_hooks(HookEvent::PostWrite, &context);
             run_post_hooks(HookEvent::TicketCreated, &context);
         } else {
-            // Use FileStorage trait method for consistent error handling
-            ticket_file.write_raw(&content)?;
+            std::fs::write(&file_path, &content).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to write ticket at {}: {}", file_path.display(), e),
+                ))
+            })?;
         }
 
         Ok((id, file_path))

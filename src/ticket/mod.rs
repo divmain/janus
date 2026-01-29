@@ -1,7 +1,5 @@
 mod builder;
 mod content;
-mod editor;
-mod file;
 mod locator;
 mod manipulator;
 mod parser;
@@ -9,9 +7,7 @@ mod repository;
 
 pub use builder::TicketBuilder;
 pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
-pub use editor::TicketEditor;
-pub use file::TicketFile;
-pub use locator::{TicketLocator, find_ticket_by_id};
+pub use locator::find_ticket_by_id;
 pub use repository::{
     TicketRepository, build_ticket_map, find_tickets, get_all_tickets, get_all_tickets_from_disk,
     get_all_tickets_with_map, get_children_count, get_file_mtime,
@@ -19,88 +15,252 @@ pub use repository::{
 
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
-use crate::hooks::HookContext;
-use crate::storage::{FileStorage, StorageHandle};
+use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::parser::parse_document;
+use crate::ticket::content::validate_field_name;
+use crate::ticket::locator::TicketLocator;
+use crate::ticket::manipulator::{
+    remove_field as remove_field_from_content, update_field as update_field_in_content,
+};
 use crate::ticket::parser::parse;
 use crate::types::EntityType;
 use crate::types::TicketMetadata;
+use crate::utils::extract_id_from_path;
+use serde_json;
 use std::path::PathBuf;
 
+/// A ticket represents a task, bug, feature, or chore stored as a markdown file.
+///
+/// This struct provides direct file I/O operations for reading and writing ticket files,
+/// with built-in support for hooks and field manipulation.
+#[derive(Debug, Clone)]
 pub struct Ticket {
     pub file_path: PathBuf,
     pub id: String,
-    file: TicketFile,
-    editor: TicketEditor,
 }
 
 impl Ticket {
+    /// Find a ticket by its partial ID.
+    ///
+    /// Searches for a ticket matching the given partial ID and returns a Ticket
+    /// if found uniquely.
     pub async fn find(partial_id: &str) -> Result<Self> {
         let locator = TicketLocator::find(partial_id).await?;
-        let file = TicketFile::new(locator.clone());
-        let editor = TicketEditor::new(file.clone());
         Ok(Ticket {
-            file_path: locator.file_path.clone(),
-            id: locator.id.clone(),
-            file,
-            editor,
+            file_path: locator.file_path,
+            id: locator.id,
         })
     }
 
+    /// Create a Ticket from an existing file path.
+    ///
+    /// Extracts the ticket ID from the file path's stem.
     pub fn new(file_path: PathBuf) -> Result<Self> {
-        let locator = TicketLocator::new(file_path.clone())?;
-        let file = TicketFile::new(locator.clone());
-        let editor = TicketEditor::new(file.clone());
-        Ok(Ticket {
-            file_path: locator.file_path.clone(),
-            id: locator.id.clone(),
-            file,
-            editor,
-        })
+        let id = extract_id_from_path(&file_path, "ticket")?;
+        Ok(Ticket { file_path, id })
     }
 
+    /// Read and parse the ticket's metadata.
     pub fn read(&self) -> Result<TicketMetadata> {
-        let raw_content = self.file.read_raw()?;
+        let raw_content = self.read_content()?;
         let mut metadata = parse(&raw_content)?;
-        metadata.file_path = Some(self.file.file_path().to_path_buf());
+        metadata.file_path = Some(self.file_path.clone());
         Ok(metadata)
     }
 
+    /// Read the raw content of the ticket file.
     pub fn read_content(&self) -> Result<String> {
-        self.file.read_raw()
+        std::fs::read_to_string(&self.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to read ticket at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
+            ))
+        })
     }
 
+    /// Write content to the ticket file with hooks.
     pub fn write(&self, content: &str) -> Result<()> {
-        self.editor.write(content)
+        crate::storage::with_write_hooks(
+            self.hook_context(),
+            || self.write_raw(content),
+            Some(HookEvent::TicketUpdated),
+        )
     }
 
+    /// Write raw content without hooks.
+    fn write_raw(&self, content: &str) -> Result<()> {
+        self.ensure_parent_dir()?;
+        std::fs::write(&self.file_path, content).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to write ticket at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
+            ))
+        })
+    }
+
+    /// Ensure the parent directory exists.
+    fn ensure_parent_dir(&self) -> Result<()> {
+        if let Some(parent) = self.file_path.parent()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create directory for ticket at {}: {}",
+                        parent.display(),
+                        e
+                    ),
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Update a field in the ticket's frontmatter.
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
-        self.editor.update_field(field, value)
+        validate_field_name(field, "update")?;
+
+        let raw_content = self.read_content()?;
+
+        let context = self
+            .hook_context()
+            .with_field_name(field)
+            .with_new_value(value);
+
+        crate::storage::with_write_hooks(
+            context,
+            || {
+                let new_content = update_field_in_content(&raw_content, field, value)?;
+                self.write_raw(&new_content)
+            },
+            Some(HookEvent::TicketUpdated),
+        )
     }
 
+    /// Remove a field from the ticket's frontmatter.
     pub fn remove_field(&self, field: &str) -> Result<()> {
-        self.editor.remove_field(field)
+        validate_field_name(field, "remove")?;
+
+        let raw_content = self.read_content()?;
+
+        let context = self.hook_context().with_field_name(field);
+
+        crate::storage::with_write_hooks(
+            context,
+            || {
+                let new_content = remove_field_from_content(&raw_content, field)?;
+                self.write_raw(&new_content)
+            },
+            Some(HookEvent::TicketUpdated),
+        )
     }
 
+    /// Add a value to an array field (deps or links).
     pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        self.editor.add_to_array_field(field, value)
+        self.mutate_array_field(
+            field,
+            value,
+            |current| !current.contains(&value.to_string()),
+            |current| {
+                let mut new_array = current.clone();
+                new_array.push(value.to_string());
+                new_array
+            },
+        )
     }
 
+    /// Remove a value from an array field (deps or links).
     pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        self.editor.remove_from_array_field(field, value)
+        self.mutate_array_field(
+            field,
+            value,
+            |current| current.contains(&value.to_string()),
+            |current| {
+                current
+                    .iter()
+                    .filter(|v| v.as_str() != value)
+                    .cloned()
+                    .collect()
+            },
+        )
     }
 
-    /// Write a completion summary section to the ticket file
+    /// Generic helper for mutating array fields (deps, links).
+    fn mutate_array_field<F>(
+        &self,
+        field: &str,
+        _value: &str,
+        should_mutate: impl Fn(&Vec<String>) -> bool,
+        mutate: F,
+    ) -> Result<bool>
+    where
+        F: FnOnce(&Vec<String>) -> Vec<String>,
+    {
+        let raw_content = self.read_content()?;
+        let metadata = parse(&raw_content)?;
+        let current_array = Self::get_array_field(&metadata, field)?;
+
+        if !should_mutate(current_array) {
+            return Ok(false);
+        }
+
+        let new_array = mutate(current_array);
+        let json_value = if new_array.is_empty() {
+            "[]".to_string()
+        } else {
+            serde_json::to_string(&new_array)?
+        };
+
+        let context = self
+            .hook_context()
+            .with_field_name(field)
+            .with_new_value(&json_value);
+
+        crate::storage::with_write_hooks(
+            context,
+            || {
+                let new_content = update_field_in_content(&raw_content, field, &json_value)?;
+                self.write_raw(&new_content)
+            },
+            Some(HookEvent::TicketUpdated),
+        )?;
+
+        Ok(true)
+    }
+
+    fn get_array_field<'a>(metadata: &'a TicketMetadata, field: &str) -> Result<&'a Vec<String>> {
+        match field {
+            "deps" => Ok(&metadata.deps),
+            "links" => Ok(&metadata.links),
+            _ => Err(JanusError::UnknownArrayField(field.to_string())),
+        }
+    }
+
+    /// Write a completion summary section to the ticket file.
     ///
     /// If a "## Completion Summary" section already exists, it will be updated.
     /// Otherwise, a new section will be appended to the end of the file.
     pub fn write_completion_summary(&self, summary: &str) -> Result<()> {
-        self.editor.write_completion_summary(summary)
+        let content = self.read_content()?;
+
+        let doc = parse_document(&content)?;
+        let updated_body = doc.update_section("Completion Summary", summary);
+
+        let new_content = format!("---\n{}\n---\n{}", doc.frontmatter_raw, updated_body);
+
+        self.write(&new_content)
     }
 
     /// Build a hook context for this ticket.
-    ///
-    /// This is a convenience method to avoid repeating the same hook context
-    /// construction pattern throughout the codebase.
     pub fn hook_context(&self) -> HookContext {
         HookContext::new()
             .with_item_type(EntityType::Ticket)
@@ -108,7 +268,7 @@ impl Ticket {
             .with_file_path(&self.file_path)
     }
 
-    /// Check if the ticket file exists
+    /// Check if the ticket file exists.
     pub fn exists(&self) -> bool {
         self.file_path.exists()
     }
@@ -118,26 +278,15 @@ impl Entity for Ticket {
     type Metadata = TicketMetadata;
 
     async fn find(partial_id: &str) -> Result<Self> {
-        let locator = TicketLocator::find(partial_id).await?;
-        let file = TicketFile::new(locator.clone());
-        let editor = TicketEditor::new(file.clone());
-        Ok(Ticket {
-            file_path: locator.file_path.clone(),
-            id: locator.id.clone(),
-            file,
-            editor,
-        })
+        Ticket::find(partial_id).await
     }
 
     fn read(&self) -> Result<TicketMetadata> {
-        let raw_content = self.file.read_raw()?;
-        let mut metadata = parse(&raw_content)?;
-        metadata.file_path = Some(self.file.file_path().to_path_buf());
-        Ok(metadata)
+        self.read()
     }
 
     fn write(&self, content: &str) -> Result<()> {
-        self.editor.write(content)
+        self.write(content)
     }
 
     fn delete(&self) -> Result<()> {
@@ -145,23 +294,28 @@ impl Entity for Ticket {
             return Ok(());
         }
 
-        // Build hook context
         let context = self.hook_context();
 
-        // Run pre-delete hook (can abort)
-        crate::hooks::run_pre_hooks(crate::hooks::HookEvent::PreDelete, &context)?;
+        run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        // Perform the delete using FileStorage trait
-        self.file.delete()?;
+        std::fs::remove_file(&self.file_path).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to delete ticket at {}: {}",
+                    self.file_path.display(),
+                    e
+                ),
+            ))
+        })?;
 
-        // Run post-delete hooks (fire-and-forget)
-        crate::hooks::run_post_hooks(crate::hooks::HookEvent::PostDelete, &context);
+        run_post_hooks(HookEvent::PostDelete, &context);
 
         Ok(())
     }
 
     fn exists(&self) -> bool {
-        self.file_path.exists()
+        self.exists()
     }
 }
 
