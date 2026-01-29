@@ -46,8 +46,8 @@ reqwest = { version = "0.12", features = ["json"] }
 cynic = "3"
 
 # TUI Framework (React-like declarative API)
-# Using fork with cursor navigation fix (https://github.com/ccbrown/iocraft/pull/XXX)
-iocraft = { git = "https://github.com/divmain/iocraft", branch = "fix-cursor-boundary" }
+# Using fork with cursor navigation fixes including UTF-8 character handling
+iocraft = { git = "https://github.com/divmain/iocraft", rev = "1f8a363" }
 
 # Fuzzy search for filtering
 fuzzy-matcher = "0.3"

@@ -31,7 +31,8 @@ pub struct TextEditorProps {
 pub fn TextEditor(props: &TextEditorProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = theme();
 
-    let Some(mut external_value) = props.value else {
+    let Some(mut text_input_value) = props.value else {
+    // let Some(mut external_value) = props.value else {
         return element! {
             View(
                 width: 100pct,
@@ -50,9 +51,6 @@ pub fn TextEditor(props: &TextEditorProps, mut hooks: Hooks) -> impl Into<AnyEle
     // Note: () as dependency means "run once after first render" per iocraft docs
     hooks.use_effect(move || handle.write().set_cursor_offset(0), ());
 
-    // Get current value directly from external state
-    let text_input_value = external_value.to_string();
-
     element! {
         View(
             width: 100pct,
@@ -61,9 +59,9 @@ pub fn TextEditor(props: &TextEditorProps, mut hooks: Hooks) -> impl Into<AnyEle
         ) {
             TextInput(
                 has_focus: props.has_focus,
-                value: text_input_value,
+                value: text_input_value.to_string(),
                 on_change: move |new_value: String| {
-                    external_value.set(new_value);
+                    text_input_value.set(new_value);
                 },
                 multiline: true,
                 cursor_color: props.cursor_color.or_else(|| Some(theme.highlight)),
