@@ -657,11 +657,11 @@ pub enum PlanAction {
         phase: Option<String>,
 
         /// Insert after specific ticket
-        #[arg(long)]
+        #[arg(long, conflicts_with = "position")]
         after: Option<String>,
 
         /// Insert at position (1-indexed)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "after")]
         position: Option<usize>,
 
         /// Output as JSON
@@ -697,11 +697,11 @@ pub enum PlanAction {
         to_phase: String,
 
         /// Insert after specific ticket in target phase
-        #[arg(long)]
+        #[arg(long, conflicts_with = "position")]
         after: Option<String>,
 
         /// Insert at position in target phase (1-indexed)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "after")]
         position: Option<usize>,
 
         /// Output as JSON
