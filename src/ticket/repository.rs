@@ -1,3 +1,17 @@
+//! Ticket repository module.
+//!
+//! This module provides the `TicketRepository` struct which implements the
+//! `ItemRepository` trait for ticket operations. The architecture follows
+//! a pattern where:
+//!
+//! - The `ItemRepository` trait provides the public API with default implementations
+//! - `TicketRepository` provides cache-aware overrides of trait methods
+//! - Internal helper methods (like `get_all_from_disk_internal`) are private
+//!   implementation details used as fallbacks when cache operations fail
+//!
+//! This design allows for efficient caching while maintaining the trait's
+//! contract and providing graceful degradation when the cache is unavailable.
+
 use crate::repository::ItemRepository;
 use crate::ticket::content;
 use crate::utils::DirScanner;
@@ -33,7 +47,13 @@ impl ItemRepository for TicketRepository {
 }
 
 impl TicketRepository {
-    fn get_all_from_disk() -> Result<Vec<TicketMetadata>, std::io::Error> {
+    /// Internal implementation helper for reading all tickets from disk.
+    ///
+    /// This is a private implementation detail, not part of the public API.
+    /// The `ItemRepository` trait provides the public interface, while
+    /// `TicketRepository` provides cache-aware overrides. This method is
+    /// used as a fallback when cache operations fail.
+    fn get_all_from_disk_internal() -> Result<Vec<TicketMetadata>, std::io::Error> {
         use crate::types::tickets_items_dir;
 
         let files = find_tickets()?;
@@ -87,7 +107,7 @@ pub async fn get_all_tickets() -> Result<Vec<TicketMetadata>, crate::error::Janu
 }
 
 pub fn get_all_tickets_from_disk() -> Result<Vec<TicketMetadata>, std::io::Error> {
-    TicketRepository::get_all_from_disk()
+    TicketRepository::get_all_from_disk_internal()
 }
 
 pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError>
