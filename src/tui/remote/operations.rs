@@ -802,8 +802,7 @@ pub async fn push_ticket_to_remote(
     let (_, body_with_title) =
         parser::split_frontmatter(&content).unwrap_or_else(|_| (String::new(), content.clone()));
 
-    let title_re = TITLE_RE.clone();
-    let body = title_re.replace(&body_with_title, "").to_string();
+    let body = TITLE_RE.replace(&body_with_title, "").to_string();
 
     // Create the remote issue
     let remote_ref =
@@ -995,12 +994,15 @@ pub async fn apply_sync_change_to_local(ticket_id: &str, change: &SyncChange) ->
     Ok(())
 }
 
+use regex::Regex;
+use std::sync::LazyLock;
+
+static UPDATE_TITLE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^#\s+.*$").expect("valid regex"));
+
 /// Update the title in ticket content
 fn update_title_in_content(content: &str, new_title: &str) -> String {
-    use regex::Regex;
-
-    let title_re = Regex::new(r"(?m)^#\s+.*$").expect("title regex should be valid");
-    title_re
+    UPDATE_TITLE_RE
         .replace(content, format!("# {}", new_title))
         .to_string()
 }
