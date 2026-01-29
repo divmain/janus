@@ -19,7 +19,6 @@ use std::path::PathBuf;
 use crate::cache;
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
-use crate::finder::Findable;
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
 use crate::types::{EntityType, TicketMetadata, plans_dir};
@@ -37,30 +36,6 @@ pub use crate::plan::parser::{
     is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
 };
 
-/// Plan-specific implementation of the Findable trait
-struct PlanFinder;
-
-impl Findable for PlanFinder {
-    fn directory() -> PathBuf {
-        plans_dir()
-    }
-
-    fn cache_find_by_partial_id(
-        cache: &cache::TicketCache,
-        partial_id: &str,
-    ) -> impl std::future::Future<Output = Result<Vec<String>>> + Send {
-        cache.find_plan_by_partial_id(partial_id)
-    }
-
-    fn not_found_error(partial_id: String) -> JanusError {
-        JanusError::PlanNotFound(partial_id)
-    }
-
-    fn ambiguous_id_error(partial_id: String, matches: Vec<String>) -> JanusError {
-        JanusError::AmbiguousPlanId(partial_id, matches)
-    }
-}
-
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
     DirScanner::find_markdown_files(plans_dir()).unwrap_or_else(|e| {
@@ -71,7 +46,7 @@ fn find_plans() -> Vec<String> {
 
 /// Find a plan file by partial ID
 pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
-    crate::finder::find_by_partial_id::<PlanFinder>(partial_id).await
+    crate::finder::find_plan_by_id(partial_id).await
 }
 
 /// A plan handle for reading and writing plan files.

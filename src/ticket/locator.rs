@@ -1,34 +1,7 @@
-use crate::cache;
 use crate::error::{JanusError, Result};
-use crate::finder::Findable;
 use crate::locator::ticket_path;
-use crate::types::tickets_items_dir;
 use crate::utils::{extract_id_from_path, validate_identifier};
 use std::path::PathBuf;
-
-/// Ticket-specific implementation of the Findable trait
-struct TicketFinder;
-
-impl Findable for TicketFinder {
-    fn directory() -> PathBuf {
-        tickets_items_dir()
-    }
-
-    fn cache_find_by_partial_id(
-        cache: &cache::TicketCache,
-        partial_id: &str,
-    ) -> impl std::future::Future<Output = Result<Vec<String>>> + Send {
-        cache.find_by_partial_id(partial_id)
-    }
-
-    fn not_found_error(partial_id: String) -> JanusError {
-        JanusError::TicketNotFound(partial_id)
-    }
-
-    fn ambiguous_id_error(partial_id: String, matches: Vec<String>) -> JanusError {
-        JanusError::AmbiguousId(partial_id, matches)
-    }
-}
 
 fn validate_partial_id(id: &str) -> Result<String> {
     // Use the generic identifier validator and convert errors to ticket-specific types
@@ -45,7 +18,7 @@ fn validate_partial_id(id: &str) -> Result<String> {
 
 pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     let partial_id = validate_partial_id(partial_id)?;
-    crate::finder::find_by_partial_id::<TicketFinder>(&partial_id).await
+    crate::finder::find_ticket_by_id(&partial_id).await
 }
 
 /// Simple locator for ticket files
