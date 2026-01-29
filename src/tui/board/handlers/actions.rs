@@ -87,12 +87,11 @@ fn handle_copy_ticket_id(ctx: &mut BoardHandlerContext<'_>) {
 
     if let Some(ticket) = get_ticket_at(ctx, col, row)
         && let Some(id) = &ticket.id
-    {
-        if let Err(_) = clipboard_rs::ClipboardContext::new()
+        && clipboard_rs::ClipboardContext::new()
             .and_then(|ctx| ctx.set_text(id.clone()))
-        {
-            // Silently fail if clipboard operations don't work
-        }
+            .is_err()
+    {
+        // Silently fail if clipboard operations don't work
     }
 }
 

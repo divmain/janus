@@ -235,11 +235,10 @@ fn handle_copy_ticket_id(ctx: &mut ViewHandlerContext<'_>) {
         .filtered_tickets
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
-    {
-        if let Err(_) = clipboard_rs::ClipboardContext::new()
+        && clipboard_rs::ClipboardContext::new()
             .and_then(|ctx| ctx.set_text(id.clone()))
-        {
-            // Silently fail if clipboard operations don't work
-        }
+            .is_err()
+    {
+        // Silently fail if clipboard operations don't work
     }
 }
