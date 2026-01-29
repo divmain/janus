@@ -386,12 +386,6 @@ impl TicketMetadata {
     }
 }
 
-impl crate::repository::HasId for TicketMetadata {
-    fn get_id(&self) -> Option<String> {
-        self.id.clone()
-    }
-}
-
 impl ItemMetadata for TicketMetadata {
     fn id(&self) -> Option<&str> {
         self.id.as_deref()

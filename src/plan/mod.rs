@@ -16,15 +16,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use async_trait::async_trait;
-
 use crate::cache;
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::finder::Findable;
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::parse_plan_content;
-use crate::repository::ItemRepository;
 use crate::types::{EntityType, TicketMetadata, plans_dir};
 use crate::utils::{DirScanner, extract_id_from_path};
 
@@ -70,35 +67,6 @@ fn find_plans() -> Vec<String> {
         eprintln!("Warning: failed to read plans directory: {}", e);
         Vec::new()
     })
-}
-
-pub struct PlanRepository;
-
-#[async_trait]
-impl ItemRepository for PlanRepository {
-    type Item = Plan;
-    type Metadata = PlanMetadata;
-
-    async fn get_all() -> Result<Vec<PlanMetadata>> {
-        get_all_plans().await
-    }
-}
-
-impl PlanRepository {
-    /// Get all plans from the module-level function (compatibility method)
-    pub async fn get_all_plans_compat() -> Result<Vec<PlanMetadata>> {
-        get_all_plans().await
-    }
-
-    /// Build a HashMap by ID
-    pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
-        <Self as ItemRepository>::build_map().await
-    }
-
-    /// Get all plans and the map together (efficient single call)
-    pub async fn get_all_with_map() -> Result<(Vec<PlanMetadata>, HashMap<String, PlanMetadata>)> {
-        <Self as ItemRepository>::get_all_with_map().await
-    }
 }
 
 /// Find a plan file by partial ID
@@ -352,6 +320,27 @@ pub async fn get_all_plans() -> Result<Vec<PlanMetadata>> {
     }
 
     Ok(get_all_plans_from_disk())
+}
+
+/// Build a HashMap by ID from all plans
+pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
+    let plans = get_all_plans().await?;
+    let map: HashMap<_, _> = plans
+        .into_iter()
+        .filter_map(|m| m.id.clone().map(|id| (id, m)))
+        .collect();
+    Ok(map)
+}
+
+/// Get all plans and the map together (efficient single call)
+pub async fn get_all_plans_with_map() -> Result<(Vec<PlanMetadata>, HashMap<String, PlanMetadata>)>
+{
+    let plans = get_all_plans().await?;
+    let map: HashMap<_, _> = plans
+        .iter()
+        .filter_map(|m| m.id.clone().map(|id| (id, m.clone())))
+        .collect();
+    Ok((plans, map))
 }
 
 /// Get all plans from disk (fallback implementation)

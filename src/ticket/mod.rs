@@ -9,7 +9,7 @@ pub use builder::TicketBuilder;
 pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
 pub use locator::find_ticket_by_id;
 pub use repository::{
-    TicketRepository, build_ticket_map, find_tickets, get_all_tickets, get_all_tickets_from_disk,
+    build_ticket_map, find_tickets, get_all_tickets, get_all_tickets_from_disk,
     get_all_tickets_with_map, get_children_count, get_file_mtime,
 };
 

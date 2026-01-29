@@ -224,12 +224,6 @@ impl PlanMetadata {
     }
 }
 
-impl crate::repository::HasId for PlanMetadata {
-    fn get_id(&self) -> Option<String> {
-        self.id.clone()
-    }
-}
-
 impl crate::types::ItemMetadata for PlanMetadata {
     fn id(&self) -> Option<&str> {
         self.id.as_deref()

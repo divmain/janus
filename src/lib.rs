@@ -16,7 +16,6 @@ pub mod mcp;
 pub mod parser;
 pub mod plan;
 pub mod remote;
-pub mod repository;
 pub mod status;
 pub mod storage;
 pub mod ticket;
@@ -30,8 +29,8 @@ pub use hooks::{HookContext, HookEvent, context_to_env, run_post_hooks, run_pre_
 pub use plan::parser::parse_plan_content;
 pub use plan::types::{FreeFormSection, Phase, PhaseStatus, PlanMetadata, PlanSection, PlanStatus};
 pub use plan::{
-    Plan, compute_all_phase_statuses, compute_plan_status, ensure_plans_dir, generate_plan_id,
-    get_all_plans,
+    Plan, build_plan_map, compute_all_phase_statuses, compute_plan_status, ensure_plans_dir,
+    generate_plan_id, get_all_plans, get_all_plans_with_map,
 };
 pub use remote::{Config, Platform, RemoteIssue, RemoteRef, RemoteStatus};
 pub use ticket::{

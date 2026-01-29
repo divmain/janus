@@ -1,125 +1,95 @@
 //! Ticket repository module.
 //!
-//! This module provides the `TicketRepository` struct which implements the
-//! `ItemRepository` trait for ticket operations. The architecture follows
-//! a pattern where:
-//!
-//! - The `ItemRepository` trait provides the public API with default implementations
-//! - `TicketRepository` provides cache-aware overrides of trait methods
-//! - Internal helper methods (like `get_all_from_disk_internal`) are private
-//!   implementation details used as fallbacks when cache operations fail
-//!
-//! This design allows for efficient caching while maintaining the trait's
-//! contract and providing graceful degradation when the cache is unavailable.
+//! This module provides functions for querying and retrieving tickets.
+//! All functions are async and support caching when available.
 
-use crate::repository::ItemRepository;
 use crate::ticket::content;
 use crate::utils::DirScanner;
-use crate::{Ticket, TicketMetadata, cache};
-use async_trait::async_trait;
+use crate::{TicketMetadata, cache};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+/// Find all ticket files in the tickets directory
 pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
     use crate::types::tickets_items_dir;
 
     DirScanner::find_markdown_files(tickets_items_dir())
 }
 
-pub struct TicketRepository;
-
-#[async_trait]
-impl ItemRepository for TicketRepository {
-    type Item = Ticket;
-    type Metadata = TicketMetadata;
-
-    async fn get_all() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
-        if let Some(cache) = cache::get_or_init_cache().await {
-            if let Ok(tickets) = cache.get_all_tickets().await {
-                return Ok(tickets);
-            }
-            eprintln!("Warning: cache read failed, falling back to file reads");
-        }
-
-        get_all_tickets_from_disk().map_err(crate::error::JanusError::Io)
-    }
-}
-
-impl TicketRepository {
-    /// Internal implementation helper for reading all tickets from disk.
-    ///
-    /// This is a private implementation detail, not part of the public API.
-    /// The `ItemRepository` trait provides the public interface, while
-    /// `TicketRepository` provides cache-aware overrides. This method is
-    /// used as a fallback when cache operations fail.
-    fn get_all_from_disk_internal() -> Result<Vec<TicketMetadata>, std::io::Error> {
-        use crate::types::tickets_items_dir;
-
-        let files = find_tickets()?;
-        let mut tickets = Vec::new();
-        let items_dir = tickets_items_dir();
-
-        for file in files {
-            let file_path = items_dir.join(&file);
-            match fs::read_to_string(&file_path) {
-                Ok(content_str) => match content::parse(&content_str) {
-                    Ok(mut metadata) => {
-                        metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
-                        metadata.file_path = Some(file_path);
-                        tickets.push(metadata);
-                    }
-                    Err(e) => {
-                        eprintln!("Warning: failed to parse {}: {}", file, e);
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Warning: failed to read {}: {}", file, e);
-                }
-            }
-        }
-
-        Ok(tickets)
-    }
-
-    pub async fn build_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError> {
-        if let Some(cache) = cache::get_or_init_cache().await {
-            if let Ok(map) = cache.build_ticket_map().await {
-                return Ok(map);
-            }
-            eprintln!("Warning: cache read failed, falling back to file reads");
-        }
-
-        // Use the trait method for consistency
-        <Self as ItemRepository>::build_map().await
-    }
-
-    pub async fn get_all_with_map()
-    -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError>
-    {
-        // Use the trait method for efficiency
-        <Self as ItemRepository>::get_all_with_map().await
-    }
-}
-
+/// Get all tickets from cache or disk
 pub async fn get_all_tickets() -> Result<Vec<TicketMetadata>, crate::error::JanusError> {
-    TicketRepository::get_all().await
+    if let Some(cache) = cache::get_or_init_cache().await {
+        if let Ok(tickets) = cache.get_all_tickets().await {
+            return Ok(tickets);
+        }
+        eprintln!("Warning: cache read failed, falling back to file reads");
+    }
+
+    get_all_tickets_from_disk().map_err(crate::error::JanusError::Io)
 }
 
+/// Get all tickets from disk (fallback when cache is unavailable)
 pub fn get_all_tickets_from_disk() -> Result<Vec<TicketMetadata>, std::io::Error> {
-    TicketRepository::get_all_from_disk_internal()
+    use crate::types::tickets_items_dir;
+
+    let files = find_tickets()?;
+    let mut tickets = Vec::new();
+    let items_dir = tickets_items_dir();
+
+    for file in files {
+        let file_path = items_dir.join(&file);
+        match fs::read_to_string(&file_path) {
+            Ok(content_str) => match content::parse(&content_str) {
+                Ok(mut metadata) => {
+                    metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
+                    metadata.file_path = Some(file_path);
+                    tickets.push(metadata);
+                }
+                Err(e) => {
+                    eprintln!("Warning: failed to parse {}: {}", file, e);
+                }
+            },
+            Err(e) => {
+                eprintln!("Warning: failed to read {}: {}", file, e);
+            }
+        }
+    }
+
+    Ok(tickets)
 }
 
+/// Build a HashMap by ID from all tickets
 pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError>
 {
-    TicketRepository::build_map().await
+    if let Some(cache) = cache::get_or_init_cache().await {
+        if let Ok(map) = cache.build_ticket_map().await {
+            return Ok(map);
+        }
+        eprintln!("Warning: cache read failed, falling back to file reads");
+    }
+
+    // Fallback: get all tickets and build map
+    let tickets = get_all_tickets().await?;
+    let map: HashMap<_, _> = tickets
+        .into_iter()
+        .filter_map(|m| m.id.clone().map(|id| (id, m)))
+        .collect();
+    Ok(map)
 }
 
+/// Get all tickets and the map together (efficient single call)
 pub async fn get_all_tickets_with_map()
 -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError> {
-    TicketRepository::get_all_with_map().await
+    let tickets = get_all_tickets().await?;
+    let map: HashMap<_, _> = tickets
+        .iter()
+        .filter_map(|m| m.id.clone().map(|id| (id, m.clone())))
+        .collect();
+    Ok((tickets, map))
 }
 
+/// Get file modification time
 pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
     DirScanner::get_file_mtime(path)
 }
