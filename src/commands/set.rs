@@ -4,10 +4,14 @@ use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::log_field_updated;
 use crate::ticket::Ticket;
-use crate::types::{TicketPriority, TicketType, VALID_PRIORITIES, VALID_TYPES};
+use std::str::FromStr;
+
+use crate::types::{
+    TicketPriority, TicketStatus, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES,
+};
 
 /// Supported fields for the set command
-const SUPPORTED_FIELDS: &[&str] = &["priority", "type", "parent"];
+const SUPPORTED_FIELDS: &[&str] = &["priority", "type", "parent", "status", "external_ref"];
 
 /// Set a field on a ticket
 pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bool) -> Result<()> {
@@ -74,6 +78,34 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
             } else {
                 // Clear parent
                 ticket.remove_field("parent")?;
+                new_value = String::new();
+            }
+        }
+        "status" => {
+            previous_value = metadata.status.map(|s| s.to_string());
+            let value = value.ok_or_else(|| JanusError::InvalidFieldValue {
+                field: field.to_string(),
+                value: "(none)".to_string(),
+                valid_values: VALID_STATUSES.iter().map(|s| s.to_string()).collect(),
+            })?;
+            // Validate status
+            let _parsed: TicketStatus =
+                TicketStatus::from_str(value).map_err(|_| JanusError::InvalidFieldValue {
+                    field: field.to_string(),
+                    value: value.to_string(),
+                    valid_values: VALID_STATUSES.iter().map(|s| s.to_string()).collect(),
+                })?;
+            new_value = value.to_string();
+            ticket.update_field("status", value)?;
+        }
+        "external_ref" => {
+            previous_value = metadata.external_ref.clone();
+            if let Some(value) = value {
+                new_value = value.to_string();
+                ticket.update_field("external_ref", value)?;
+            } else {
+                // Clear external_ref
+                ticket.remove_field("external_ref")?;
                 new_value = String::new();
             }
         }
