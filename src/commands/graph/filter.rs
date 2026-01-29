@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::error::Result;
 use crate::plan::Plan;
-use crate::ticket::resolve_id_partial;
+use crate::ticket::resolve_id_from_map;
 use crate::types::TicketMetadata;
 
 use super::types::RelationshipFilter;
@@ -15,7 +15,7 @@ pub fn get_reachable_tickets(
     ticket_map: &HashMap<String, TicketMetadata>,
     filter: RelationshipFilter,
 ) -> Result<HashSet<String>> {
-    let root = resolve_id_partial(root_id, ticket_map)?;
+    let root = resolve_id_from_map(root_id, ticket_map)?;
 
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();

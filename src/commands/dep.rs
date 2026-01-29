@@ -6,7 +6,7 @@ use super::CommandOutput;
 use crate::commands::dep_tree::{DepthCalculator, TreeBuilder, TreeFormatter};
 use crate::error::{JanusError, Result};
 use crate::events::{log_dependency_added, log_dependency_removed};
-use crate::ticket::{Ticket, build_ticket_map, resolve_id_partial};
+use crate::ticket::{Ticket, build_ticket_map, resolve_id_from_map};
 use crate::types::TicketMetadata;
 
 /// Check if adding a dependency would create a circular dependency.
@@ -148,7 +148,7 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result
 pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Result<()> {
     let ticket_map = build_ticket_map().await?;
 
-    let root = resolve_id_partial(id, &ticket_map)?;
+    let root = resolve_id_from_map(id, &ticket_map)?;
 
     let mut json_path = HashSet::new();
     let tree = TreeBuilder::build_json_tree(

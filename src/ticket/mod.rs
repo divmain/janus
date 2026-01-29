@@ -165,7 +165,10 @@ impl Entity for Ticket {
     }
 }
 
-/// Resolve a partial ID to a full ID using a ticket map
+/// Resolve a partial ID to a full ID using an in-memory HashMap
+///
+/// This function works on an in-memory HashMap (useful for cached data),
+/// while `find_by_partial_id()` in finder.rs works on the filesystem/cache.
 ///
 /// # Arguments
 ///
@@ -178,7 +181,7 @@ impl Entity for Ticket {
 /// - `Other` with "No tickets loaded" if map is empty
 /// - `TicketNotFound` if no matches
 /// - `AmbiguousId` if multiple matches
-pub fn resolve_id_partial<T>(
+pub fn resolve_id_from_map<T>(
     partial_id: &str,
     map: &std::collections::HashMap<String, T>,
 ) -> Result<String> {
@@ -212,7 +215,7 @@ mod tests {
         let mut map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
         map.insert("j-a1b2".to_string(), ());
 
-        let result = resolve_id_partial("j-a1b2", &map).unwrap();
+        let result = resolve_id_from_map("j-a1b2", &map).unwrap();
         assert_eq!(result, "j-a1b2");
     }
 
@@ -222,7 +225,7 @@ mod tests {
         map.insert("j-a1b2".to_string(), ());
         map.insert("k-c3d4".to_string(), ());
 
-        let result = resolve_id_partial("j-a1", &map).unwrap();
+        let result = resolve_id_from_map("j-a1", &map).unwrap();
         assert_eq!(result, "j-a1b2");
     }
 
@@ -232,7 +235,7 @@ mod tests {
         map.insert("j-a1b2".to_string(), ());
         map.insert("j-a1c3".to_string(), ());
 
-        let result = resolve_id_partial("j-a1", &map);
+        let result = resolve_id_from_map("j-a1", &map);
         assert!(matches!(result, Err(JanusError::AmbiguousId(_, _))));
     }
 
@@ -240,7 +243,7 @@ mod tests {
     fn test_resolve_no_match() {
         let map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
 
-        let result = resolve_id_partial("x-y-z", &map);
+        let result = resolve_id_from_map("x-y-z", &map);
         assert!(matches!(result, Err(JanusError::Other(_))));
     }
 
@@ -248,7 +251,7 @@ mod tests {
     fn test_resolve_empty_map() {
         let map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
 
-        let result = resolve_id_partial("j-a1b2", &map);
+        let result = resolve_id_from_map("j-a1b2", &map);
         assert!(matches!(result, Err(JanusError::Other(msg)) if msg.contains("No tickets loaded")));
     }
 }

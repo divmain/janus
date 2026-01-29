@@ -223,12 +223,16 @@ fn matches_spawning_filters(ticket: &TicketMetadata, filters: &SpawningFilters) 
     }
 
     // Filter by exact depth
-    if let Some(target_depth) = filters.depth && ticket.compute_depth() != target_depth {
+    if let Some(target_depth) = filters.depth
+        && ticket.compute_depth() != target_depth
+    {
         return false;
     }
 
     // Filter by max depth
-    if let Some(max) = filters.max_depth && ticket.compute_depth() > max {
+    if let Some(max) = filters.max_depth
+        && ticket.compute_depth() > max
+    {
         return false;
     }
 
