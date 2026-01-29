@@ -43,10 +43,10 @@ impl ShortcutsBuilder {
         self
     }
 
-    /// Add q for quit
+    /// Add Ctrl+q for quit
     pub fn with_quit(mut self) -> Self {
         self.has_quit = true;
-        self.shortcuts.push(Shortcut::new("q", "Quit"));
+        self.shortcuts.push(Shortcut::new("C-q", "Quit"));
         self
     }
 
@@ -100,7 +100,7 @@ mod tests {
         assert!(shortcuts.iter().any(|s| s.key == "j/k"));
         assert!(shortcuts.iter().any(|s| s.key == "/"));
         assert!(shortcuts.iter().any(|s| s.key == "e"));
-        assert!(shortcuts.iter().any(|s| s.key == "q"));
+        assert!(shortcuts.iter().any(|s| s.key == "C-q"));
         assert!(shortcuts.iter().any(|s| s.key == "s"));
         assert!(shortcuts.iter().any(|s| s.key == "Tab"));
         assert!(shortcuts.iter().any(|s| s.key == "C-t"));

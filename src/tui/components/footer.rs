@@ -123,7 +123,7 @@ pub fn search_shortcuts() -> Vec<Shortcut> {
 pub fn empty_shortcuts() -> Vec<Shortcut> {
     ShortcutsBuilder::new()
         .add("n", "New Ticket")
-        .add("q", "Quit")
+        .add("C-q", "Quit")
         .build()
 }
 
@@ -136,7 +136,7 @@ pub fn triage_shortcuts() -> Vec<Shortcut> {
         .add("n", "Add Note")
         .add("c", "Cancel")
         .add("C-t", "Exit Triage")
-        .add("q", "Quit")
+        .add("C-q", "Quit")
         .build()
 }
 

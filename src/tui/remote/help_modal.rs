@@ -96,7 +96,7 @@ fn build_help_text() -> String {
             vec![
                 ("P", "Switch provider (GitHub ↔ Linear)"),
                 ("?", "Show this help"),
-                ("q", "Quit"),
+                ("Ctrl+q", "Quit"),
                 ("Esc", "Close modal / cancel"),
             ],
         ),

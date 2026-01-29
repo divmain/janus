@@ -1673,7 +1673,7 @@ mod tests {
     fn test_compute_shortcuts_normal() {
         let shortcuts = compute_shortcuts(&ModalVisibility::new(), ViewMode::Local);
         assert!(!shortcuts.is_empty());
-        assert!(shortcuts.iter().any(|s| s.key == "q"));
+        assert!(shortcuts.iter().any(|s| s.key == "C-q"));
         assert!(shortcuts.iter().any(|s| s.key == "Tab"));
     }
 
