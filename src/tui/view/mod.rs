@@ -532,6 +532,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             header_ticket_count: Some(ticket_count),
             shortcuts: shortcuts,
             toast: toast.read().clone(),
+            triage_mode: is_triage_mode.get(),
         ) {
             #(if show_full_empty_state {
                 // Show full-screen empty state

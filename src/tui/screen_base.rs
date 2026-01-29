@@ -150,6 +150,9 @@ pub struct ScreenLayoutProps<'a> {
     /// Toast notification to display
     pub toast: Option<crate::tui::components::Toast>,
 
+    /// Whether triage mode is active
+    pub triage_mode: bool,
+
     /// The main content of the screen
     pub children: Vec<AnyElement<'a>>,
 }
@@ -189,6 +192,7 @@ pub fn ScreenLayout<'a>(props: &mut ScreenLayoutProps<'a>) -> impl Into<AnyEleme
                 ticket_count: props.header_ticket_count,
                 extra: header_extra,
                 provider: props.header_provider.clone(),
+                triage_mode: props.triage_mode,
             )
 
             // Main content area

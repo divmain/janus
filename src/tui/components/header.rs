@@ -26,6 +26,9 @@ pub struct HeaderProps<'a> {
 
     /// Custom prefix before title
     pub prefix: Option<&'a str>,
+
+    /// Whether triage mode is active
+    pub triage_mode: bool,
 }
 
 /// App header bar showing title and ticket count
@@ -70,9 +73,22 @@ pub fn Header<'a>(props: &mut HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
             justify_content: JustifyContent::SpaceBetween,
             padding_left: 1,
             padding_right: 1,
-            background_color: theme.highlight,
+            background_color: if props.triage_mode { theme.status_next } else { theme.highlight },
         ) {
-            View {
+            View(flex_direction: FlexDirection::Row, gap: 1) {
+                // Triage mode indicator
+                #(if props.triage_mode {
+                    Some(element! {
+                        Text(
+                            content: "[TRIAGE]",
+                            color: theme.text,
+                            weight: Weight::Bold,
+                        )
+                    })
+                } else {
+                    None
+                })
+
                 Text(
                     content: left_text,
                     color: theme.text,
