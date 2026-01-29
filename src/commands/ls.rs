@@ -75,7 +75,8 @@ pub async fn cmd_ls(
     filter_ready: bool,
     filter_blocked: bool,
     filter_closed: bool,
-    include_all: bool,
+    filter_active: bool,
+    _include_all: bool,
     status_filter: Option<&str>,
     spawned_from: Option<&str>,
     depth: Option<u32>,
@@ -169,13 +170,15 @@ pub async fn cmd_ls(
             let is_blocked = filter_blocked && filter_engine.is_blocked(t);
 
             // Calculate final result based on filter combination
-            if filter_ready || filter_blocked || filter_closed {
+            if filter_ready || filter_blocked || filter_closed || filter_active {
                 // At least one special filter is active - use union behavior
-                is_ready || is_blocked || is_closed
+                is_ready
+                    || is_blocked
+                    || (filter_closed && is_closed)
+                    || (filter_active && !is_closed)
             } else {
-                // No special filters - apply default behavior
-                // Exclude closed tickets unless --all is set
-                !is_closed || include_all
+                // No special filters - show ALL tickets by default (POLA compliance)
+                true
             }
         })
         .cloned()
