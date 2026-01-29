@@ -229,17 +229,8 @@ impl Plan {
         // Run pre-delete hook (can abort)
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        // Perform the delete
-        fs::remove_file(&self.file_path).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to delete plan at {}: {}",
-                    self.file_path.display(),
-                    e
-                ),
-            ))
-        })?;
+        // Perform the delete using FileStorage trait
+        self.file.delete()?;
 
         // Run post-delete hooks (fire-and-forget)
         run_post_hooks(HookEvent::PostDelete, &context);
@@ -319,17 +310,8 @@ impl Entity for Plan {
         // Run pre-delete hook (can abort)
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        // Perform the delete
-        fs::remove_file(&self.file_path).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to delete plan at {}: {}",
-                    self.file_path.display(),
-                    e
-                ),
-            ))
-        })?;
+        // Perform the delete using FileStorage trait
+        self.file.delete()?;
 
         // Run post-delete hooks (fire-and-forget)
         run_post_hooks(HookEvent::PostDelete, &context);

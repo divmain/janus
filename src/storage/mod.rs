@@ -103,6 +103,24 @@ pub trait FileStorage: StorageHandle {
             .with_item_id(self.id())
             .with_file_path(self.file_path())
     }
+
+    /// Delete the file with context-aware error handling
+    fn delete(&self) -> Result<()> {
+        std::fs::remove_file(self.file_path()).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to delete {} at {}: {}",
+                    match self.item_type() {
+                        EntityType::Ticket => "ticket",
+                        EntityType::Plan => "plan",
+                    },
+                    self.file_path().display(),
+                    e
+                ),
+            ))
+        })
+    }
 }
 
 /// Execute an operation with standard write hooks.

@@ -20,7 +20,7 @@ pub use repository::{
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::HookContext;
-use crate::storage::StorageHandle;
+use crate::storage::{FileStorage, StorageHandle};
 use crate::ticket::parser::parse;
 use crate::types::EntityType;
 use crate::types::TicketMetadata;
@@ -151,17 +151,8 @@ impl Entity for Ticket {
         // Run pre-delete hook (can abort)
         crate::hooks::run_pre_hooks(crate::hooks::HookEvent::PreDelete, &context)?;
 
-        // Perform the delete
-        std::fs::remove_file(&self.file_path).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to delete ticket at {}: {}",
-                    self.file_path.display(),
-                    e
-                ),
-            ))
-        })?;
+        // Perform the delete using FileStorage trait
+        self.file.delete()?;
 
         // Run post-delete hooks (fire-and-forget)
         crate::hooks::run_post_hooks(crate::hooks::HookEvent::PostDelete, &context);

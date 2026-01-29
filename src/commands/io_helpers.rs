@@ -6,6 +6,23 @@ use std::fs;
 use std::path::Path;
 
 /// Wrapper for ticket file operations with consistent error handling
+///
+/// # Deprecated
+/// This struct is deprecated in favor of using the `FileStorage` trait methods
+/// directly. Use `TicketFile` which implements `FileStorage` instead.
+///
+/// Example migration:
+/// ```rust,ignore
+/// // Old way (deprecated):
+/// let content = TicketFileOps::read_to_string(&ticket)?;
+///
+/// // New way:
+/// let content = ticket.read_content()?;
+/// ```
+#[deprecated(
+    since = "0.1.0",
+    note = "Use FileStorage trait methods via TicketFile instead"
+)]
 pub struct TicketFileOps;
 
 impl TicketFileOps {
