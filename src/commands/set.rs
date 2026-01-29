@@ -16,10 +16,11 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
 
     // Validate field name
     if !SUPPORTED_FIELDS.contains(&field) {
-        return Err(JanusError::InvalidField {
-            field: field.to_string(),
-            valid_fields: SUPPORTED_FIELDS.iter().map(|s| s.to_string()).collect(),
-        });
+        return Err(JanusError::Other(format!(
+            "invalid field '{}'. Must be one of: {}",
+            field,
+            SUPPORTED_FIELDS.join(", ")
+        )));
     }
 
     // Get previous value and validate/update based on field type

@@ -66,11 +66,6 @@ fn format_import_failed(message: &str, issues: &[String]) -> String {
     }
 }
 
-/// Format the InvalidField error message
-fn format_invalid_field(field: &str, valid_fields: &[String]) -> String {
-    format_error_with_list("invalid field", field, "must be one of:", valid_fields)
-}
-
 /// Format the InvalidFieldValue error message
 fn format_invalid_field_value(field: &str, value: &str, valid_values: &[String]) -> String {
     format_error_double_key(
@@ -169,11 +164,8 @@ pub enum JanusError {
     #[error("invalid status '{0}'")]
     InvalidStatus(String),
 
-    #[error("{}", format_invalid_field(.field, .valid_fields))]
-    InvalidField {
-        field: String,
-        valid_fields: Vec<String>,
-    },
+    #[error("invalid field name: '{0}'")]
+    InvalidFieldName(String),
 
     #[error("{}", format_invalid_field_value(.field, .value, .valid_values))]
     InvalidFieldValue {

@@ -252,52 +252,13 @@ impl std::str::FromStr for TicketField {
     type Err = crate::error::JanusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "id" => Ok(TicketField::Id),
-            "uuid" => Ok(TicketField::Uuid),
-            "status" => Ok(TicketField::Status),
-            "deps" => Ok(TicketField::Deps),
-            "links" => Ok(TicketField::Links),
-            "created" => Ok(TicketField::Created),
-            "type" => Ok(TicketField::Type),
-            "priority" => Ok(TicketField::Priority),
-            "external-ref" => Ok(TicketField::ExternalRef),
-            "remote" => Ok(TicketField::Remote),
-            "parent" => Ok(TicketField::Parent),
-            "spawned-from" => Ok(TicketField::SpawnedFrom),
-            "spawn-context" => Ok(TicketField::SpawnContext),
-            "depth" => Ok(TicketField::Depth),
-            "triaged" => Ok(TicketField::Triaged),
-            _ => Err(JanusError::InvalidField {
-                field: s.to_string(),
-                valid_fields: TicketField::all()
-                    .iter()
-                    .map(|f| f.as_str().to_string())
-                    .collect(),
-            }),
-        }
+        TicketField::all()
+            .iter()
+            .find(|f| f.as_str() == s)
+            .copied()
+            .ok_or_else(|| JanusError::InvalidFieldName(s.to_string()))
     }
 }
-
-pub const VALID_TICKET_FIELDS: &[&str] = &[
-    "id",
-    "uuid",
-    "status",
-    "deps",
-    "links",
-    "created",
-    "type",
-    "priority",
-    "external-ref",
-    "remote",
-    "parent",
-    "spawned-from",
-    "spawn-context",
-    "depth",
-    "triaged",
-];
-
-pub const IMMUTABLE_TICKET_FIELDS: &[&str] = &["id", "uuid"];
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TicketMetadata {
@@ -618,11 +579,11 @@ mod tests {
     }
 
     #[test]
-    fn test_spawning_metadata_fields_in_valid_fields() {
-        // Verify spawning metadata fields are in VALID_TICKET_FIELDS
-        assert!(VALID_TICKET_FIELDS.contains(&"spawned-from"));
-        assert!(VALID_TICKET_FIELDS.contains(&"spawn-context"));
-        assert!(VALID_TICKET_FIELDS.contains(&"depth"));
+    fn test_spawning_metadata_fields_exist() {
+        // Verify spawning metadata fields are valid TicketField variants
+        assert!("spawned-from".parse::<TicketField>().is_ok());
+        assert!("spawn-context".parse::<TicketField>().is_ok());
+        assert!("depth".parse::<TicketField>().is_ok());
     }
 
     #[test]
@@ -718,13 +679,10 @@ status: new
         let result = validate_field_name("unknown_field", "update");
         assert!(result.is_err());
         match result.unwrap_err() {
-            JanusError::InvalidField {
-                field,
-                valid_fields: _,
-            } => {
+            JanusError::InvalidFieldName(field) => {
                 assert_eq!(field, "unknown_field");
             }
-            _ => panic!("Expected InvalidField error"),
+            _ => panic!("Expected InvalidFieldName error"),
         }
     }
 
