@@ -1,6 +1,7 @@
-use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
+
+use tokio::fs;
 
 use serde_json;
 use turso::params;
@@ -34,7 +35,8 @@ pub trait CacheableItem: Sized {
 
     /// Parse an item from its file on disk.
     /// Returns the parsed item and the file's mtime in nanoseconds.
-    fn parse_from_file(id: &str) -> Result<(Self, i64)>;
+    #[allow(clippy::manual_async_fn)]
+    fn parse_from_file(id: &str) -> impl std::future::Future<Output = Result<(Self, i64)>> + Send;
 
     /// Insert or replace this item in the database within a transaction.
     fn insert_into_cache<'a>(
@@ -65,31 +67,36 @@ impl CacheableItem for TicketMetadata {
         "ticket"
     }
 
-    fn parse_from_file(id: &str) -> Result<(Self, i64)> {
-        let path = Self::directory().join(format!("{}.md", id));
+    #[allow(clippy::manual_async_fn)]
+    fn parse_from_file(id: &str) -> impl std::future::Future<Output = Result<(Self, i64)>> + Send {
+        async move {
+            let path = Self::directory().join(format!("{}.md", id));
 
-        let content = fs::read_to_string(&path).map_err(JanusError::Io)?;
+            let content = fs::read_to_string(&path).await.map_err(JanusError::Io)?;
 
-        let mut metadata = parse_ticket(&content)
-            .map_err(|e| JanusError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+            let mut metadata = parse_ticket(&content).map_err(|e| {
+                JanusError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            })?;
 
-        // Extract body for caching
-        metadata.body = extract_ticket_body(&content);
+            // Extract body for caching
+            metadata.body = extract_ticket_body(&content);
 
-        // Set the file_path so it gets cached
-        metadata.file_path = Some(path.clone());
+            // Set the file_path so it gets cached
+            metadata.file_path = Some(path.clone());
 
-        let file_mtime = fs::metadata(&path)
-            .map_err(JanusError::Io)?
-            .modified()
-            .map_err(JanusError::Io)?;
+            let file_mtime = fs::metadata(&path)
+                .await
+                .map_err(JanusError::Io)?
+                .modified()
+                .map_err(JanusError::Io)?;
 
-        let mtime_ns = file_mtime
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| JanusError::Io(std::io::Error::other(e)))?
-            .as_nanos() as i64;
+            let mtime_ns = file_mtime
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|e| JanusError::Io(std::io::Error::other(e)))?
+                .as_nanos() as i64;
 
-        Ok((metadata, mtime_ns))
+            Ok((metadata, mtime_ns))
+        }
     }
 
     fn insert_into_cache<'a>(
@@ -193,25 +200,30 @@ impl CacheableItem for PlanMetadata {
         "plan"
     }
 
-    fn parse_from_file(id: &str) -> Result<(Self, i64)> {
-        let path = Self::directory().join(format!("{}.md", id));
+    #[allow(clippy::manual_async_fn)]
+    fn parse_from_file(id: &str) -> impl std::future::Future<Output = Result<(Self, i64)>> + Send {
+        async move {
+            let path = Self::directory().join(format!("{}.md", id));
 
-        let content = fs::read_to_string(&path).map_err(JanusError::Io)?;
+            let content = fs::read_to_string(&path).await.map_err(JanusError::Io)?;
 
-        let metadata = parse_plan_content(&content)
-            .map_err(|e| JanusError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))?;
+            let metadata = parse_plan_content(&content).map_err(|e| {
+                JanusError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            })?;
 
-        let file_mtime = fs::metadata(&path)
-            .map_err(JanusError::Io)?
-            .modified()
-            .map_err(JanusError::Io)?;
+            let file_mtime = fs::metadata(&path)
+                .await
+                .map_err(JanusError::Io)?
+                .modified()
+                .map_err(JanusError::Io)?;
 
-        let mtime_ns = file_mtime
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| JanusError::Io(std::io::Error::other(e)))?
-            .as_nanos() as i64;
+            let mtime_ns = file_mtime
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|e| JanusError::Io(std::io::Error::other(e)))?
+                .as_nanos() as i64;
 
-        Ok((metadata, mtime_ns))
+            Ok((metadata, mtime_ns))
+        }
     }
 
     fn insert_into_cache<'a>(

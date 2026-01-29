@@ -83,7 +83,7 @@ impl TicketCache {
         // Read and parse items before starting the transaction
         let mut items_to_upsert = Vec::new();
         for id in &added {
-            match T::parse_from_file(id) {
+            match T::parse_from_file(id).await {
                 Ok((metadata, mtime_ns)) => {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
@@ -98,7 +98,7 @@ impl TicketCache {
             }
         }
         for id in &modified {
-            match T::parse_from_file(id) {
+            match T::parse_from_file(id).await {
                 Ok((metadata, mtime_ns)) => {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
