@@ -9,7 +9,7 @@ pub mod types;
 
 pub use types::{
     ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask, Phase, PhaseStatus,
-    PlanMetadata, PlanStatus, PlanSection,
+    PlanMetadata, PlanSection, PlanStatus,
 };
 
 use std::collections::HashMap;
@@ -163,11 +163,7 @@ impl Plan {
         fs::read_to_string(&self.file_path).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!(
-                    "Failed to read plan at {}: {}",
-                    self.file_path.display(),
-                    e
-                ),
+                format!("Failed to read plan at {}: {}", self.file_path.display(), e),
             ))
         })
     }

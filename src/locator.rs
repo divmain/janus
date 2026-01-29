@@ -1,188 +1,62 @@
-//! Generic entity locator for tickets and plans
+//! Simple path utilities for tickets and plans
 //!
-//! This module provides a `Locator<T>` that works with any entity type (ticket, plan)
-//! using a marker trait pattern to eliminate duplication between `TicketLocator` and
-//! `PlanLocator`.
+//! This module provides simple functions for constructing file paths
+//! from entity IDs. For finding entities by partial ID, use the
+//! entity-specific find functions (e.g., `find_ticket_by_id`).
 
 use std::path::PathBuf;
 
-use crate::error::Result;
-use crate::utils::extract_id_from_path;
+use crate::types::{plans_dir, tickets_items_dir};
 
-/// Marker trait for entity types that can be located
-pub trait LocatableEntity: Send + Sync {
-    /// The human-readable entity type name (e.g., "ticket", "plan")
-    fn entity_type_name() -> &'static str;
-
-    /// The directory where entity files are stored
-    fn directory() -> PathBuf;
-
-    /// Construct the file path for a given entity ID
-    fn file_path_for_id(id: &str) -> PathBuf {
-        Self::directory().join(format!("{}.md", id))
-    }
-
-    /// Find an entity by partial ID
-    #[allow(clippy::manual_async_fn)]
-    fn find_by_partial_id(
-        partial_id: &str,
-    ) -> impl std::future::Future<Output = Result<PathBuf>> + Send;
-}
-
-/// Marker type for tickets
-#[derive(Debug, Clone)]
-pub struct TicketEntity;
-
-impl LocatableEntity for TicketEntity {
-    fn entity_type_name() -> &'static str {
-        "ticket"
-    }
-
-    fn directory() -> PathBuf {
-        crate::types::tickets_items_dir()
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    fn find_by_partial_id(
-        partial_id: &str,
-    ) -> impl std::future::Future<Output = Result<PathBuf>> + Send {
-        async move { crate::ticket::find_ticket_by_id(partial_id).await }
-    }
-}
-
-/// Marker type for plans
-#[derive(Debug, Clone)]
-pub struct PlanEntity;
-
-impl LocatableEntity for PlanEntity {
-    fn entity_type_name() -> &'static str {
-        "plan"
-    }
-
-    fn directory() -> PathBuf {
-        crate::types::plans_dir()
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    fn find_by_partial_id(
-        partial_id: &str,
-    ) -> impl std::future::Future<Output = Result<PathBuf>> + Send {
-        async move { crate::plan::find_plan_by_id(partial_id).await }
-    }
-}
-
-/// Generic locator for entity files
+/// Returns the file path for a ticket with the given ID.
 ///
-/// `Locator<T>` encapsulates the relationship between an entity's ID and its
-/// file path on disk. The generic parameter `T` is the entity type marker
-/// (e.g., `TicketEntity`, `PlanEntity`).
-#[derive(Debug, Clone)]
-pub struct Locator<T: LocatableEntity> {
-    pub file_path: PathBuf,
-    pub id: String,
-    _marker: std::marker::PhantomData<T>,
+/// The path is constructed as `<tickets_dir>/<id>.md`.
+/// This function does not verify that the file exists.
+pub fn ticket_path(id: &str) -> PathBuf {
+    tickets_items_dir().join(format!("{}.md", id))
 }
 
-impl<T: LocatableEntity> Locator<T> {
-    /// Create a locator from an existing file path
-    ///
-    /// Extracts the entity ID from the file path's stem.
-    pub fn new(file_path: PathBuf) -> Result<Self> {
-        let id = extract_id_from_path(&file_path, T::entity_type_name())?;
-        Ok(Locator {
-            file_path,
-            id,
-            _marker: std::marker::PhantomData,
-        })
-    }
-
-    /// Find an entity by its (partial) ID
-    ///
-    /// Searches for an entity matching the given partial ID.
-    pub async fn find(partial_id: &str) -> Result<Self> {
-        let file_path = T::find_by_partial_id(partial_id).await?;
-        Locator::new(file_path)
-    }
-
-    /// Create a locator for a new entity with the given ID
-    ///
-    /// This is used when creating new entities. The file does not need to exist.
-    pub fn with_id(id: &str) -> Self {
-        Locator {
-            file_path: T::file_path_for_id(id),
-            id: id.to_string(),
-            _marker: std::marker::PhantomData,
-        }
-    }
-
-    /// Get the file path for a given entity ID
-    ///
-    /// Does not verify that the file exists.
-    pub fn file_path_for_id(id: &str) -> PathBuf {
-        T::file_path_for_id(id)
-    }
+/// Returns the file path for a plan with the given ID.
+///
+/// The path is constructed as `<plans_dir>/<id>.md`.
+/// This function does not verify that the file exists.
+pub fn plan_path(id: &str) -> PathBuf {
+    plans_dir().join(format!("{}.md", id))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::JanusError;
+    use serial_test::serial;
 
     #[test]
-    fn test_ticket_locator_new_valid_path() {
-        let path = PathBuf::from("/path/to/j-a1b2.md");
-        let result = Locator::<TicketEntity>::new(path.clone());
-        assert!(result.is_ok());
-        let locator = result.unwrap();
-        assert_eq!(locator.id, "j-a1b2");
-        assert_eq!(locator.file_path, path);
+    #[serial]
+    fn test_ticket_path() {
+        // SAFETY: We use #[serial] to ensure single-threaded access
+        unsafe { std::env::remove_var("JANUS_ROOT") };
+        let path = ticket_path("j-a1b2");
+        assert!(path.to_string_lossy().contains(".janus/items"));
+        assert!(path.to_string_lossy().contains("j-a1b2.md"));
     }
 
     #[test]
-    fn test_ticket_locator_new_invalid_empty_path() {
-        let path = PathBuf::from("");
-        let result = Locator::<TicketEntity>::new(path);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            JanusError::InvalidFormat(msg) => {
-                assert!(msg.contains("Invalid ticket file path"));
-            }
-            _ => panic!("Expected InvalidFormat error"),
-        }
+    #[serial]
+    fn test_plan_path() {
+        // SAFETY: We use #[serial] to ensure single-threaded access
+        unsafe { std::env::remove_var("JANUS_ROOT") };
+        let path = plan_path("plan-a1b2");
+        assert!(path.to_string_lossy().contains(".janus/plans"));
+        assert!(path.to_string_lossy().contains("plan-a1b2.md"));
     }
 
     #[test]
-    fn test_plan_locator_new_valid_path() {
-        let path = PathBuf::from("/path/to/plan-a1b2.md");
-        let result = Locator::<PlanEntity>::new(path.clone());
-        assert!(result.is_ok());
-        let locator = result.unwrap();
-        assert_eq!(locator.id, "plan-a1b2");
-        assert_eq!(locator.file_path, path);
-    }
-
-    #[test]
-    fn test_plan_locator_new_invalid_empty_path() {
-        let path = PathBuf::from("");
-        let result = Locator::<PlanEntity>::new(path);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_locator_with_id() {
-        let ticket_locator = Locator::<TicketEntity>::with_id("j-test");
-        assert_eq!(ticket_locator.id, "j-test");
-        assert!(ticket_locator.file_path.ends_with("j-test.md"));
-
-        let plan_locator = Locator::<PlanEntity>::with_id("plan-test");
-        assert_eq!(plan_locator.id, "plan-test");
-        assert!(plan_locator.file_path.ends_with("plan-test.md"));
-    }
-
-    #[test]
-    fn test_locator_file_path_for_id() {
-        let path = Locator::<PlanEntity>::file_path_for_id("plan-test");
-        assert!(path.ends_with("plan-test.md"));
-        assert!(path.to_string_lossy().contains("plans"));
+    #[serial]
+    fn test_ticket_path_with_env_var() {
+        // SAFETY: We use #[serial] to ensure single-threaded access
+        unsafe { std::env::set_var("JANUS_ROOT", "/custom/path/.janus") };
+        let path = ticket_path("j-test");
+        assert!(path.to_string_lossy().contains("/custom/path/.janus/items"));
+        assert!(path.to_string_lossy().contains("j-test.md"));
+        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 }
