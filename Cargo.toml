@@ -75,6 +75,9 @@ tempfile = "3"
 # Timeout support for child processes
 wait-timeout = "0.2"
 
+# Clipboard support
+clipboard-rs = "0.3.2"
+
 # URL parsing
 url = "2.5"
 

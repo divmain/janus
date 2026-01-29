@@ -101,6 +101,7 @@ pub fn key_to_action(
         KeyCode::Char('/') => Some(BoardAction::FocusSearch),
         KeyCode::Char('e') | KeyCode::Enter => Some(BoardAction::EditSelected),
         KeyCode::Char('n') => Some(BoardAction::CreateNew),
+        KeyCode::Char('y') => Some(BoardAction::CopyTicketId),
         KeyCode::Char('r') => Some(BoardAction::Reload),
 
         _ => None,
@@ -233,6 +234,10 @@ mod tests {
         assert_eq!(
             key_to_action(KeyCode::Char('r'), KeyModifiers::NONE, false),
             Some(BoardAction::Reload)
+        );
+        assert_eq!(
+            key_to_action(KeyCode::Char('y'), KeyModifiers::NONE, false),
+            Some(BoardAction::CopyTicketId)
         );
     }
 

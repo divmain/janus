@@ -2,6 +2,7 @@
 
 use std::fs;
 
+use clipboard_rs::Clipboard;
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
 use crate::tui::edit::extract_body_for_edit;
@@ -49,6 +50,10 @@ pub fn handle_list(
             handle_create_new(ctx);
             HandleResult::Handled
         }
+        KeyCode::Char('y') => {
+            handle_copy_ticket_id(ctx);
+            HandleResult::Handled
+        }
         _ => HandleResult::NotHandled,
     }
 }
@@ -90,6 +95,10 @@ pub fn handle_detail(
         }
         KeyCode::Char('s') => {
             handle_cycle_status(ctx);
+            HandleResult::Handled
+        }
+        KeyCode::Char('y') => {
+            handle_copy_ticket_id(ctx);
             HandleResult::Handled
         }
         _ => HandleResult::NotHandled,
@@ -216,5 +225,21 @@ fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
         && let Some(id) = &ft.ticket.id
     {
         ctx.handlers.mark_triaged.clone()((id.clone(), true));
+    }
+}
+
+/// Copy the ticket ID to clipboard
+fn handle_copy_ticket_id(ctx: &mut ViewHandlerContext<'_>) {
+    if let Some(ft) = ctx
+        .data
+        .filtered_tickets
+        .get(ctx.data.list_nav.selected_index.get())
+        && let Some(id) = &ft.ticket.id
+    {
+        if let Err(_) = clipboard_rs::ClipboardContext::new()
+            .and_then(|ctx| ctx.set_text(id.clone()))
+        {
+            // Silently fail if clipboard operations don't work
+        }
     }
 }

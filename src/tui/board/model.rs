@@ -123,6 +123,10 @@ pub enum BoardAction {
     /// Cancel the current edit operation
     CancelEdit,
 
+    // Actions
+    /// Copy the selected ticket's ID to clipboard
+    CopyTicketId,
+
     // App
     /// Quit the application
     Quit,
@@ -481,6 +485,7 @@ pub fn reduce_board_state(
         BoardAction::EditSelected
         | BoardAction::MoveTicketStatusRight
         | BoardAction::MoveTicketStatusLeft
+        | BoardAction::CopyTicketId
         | BoardAction::Quit
         | BoardAction::Reload => {
             // These require async I/O or system context, handled externally
