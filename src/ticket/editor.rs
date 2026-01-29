@@ -1,5 +1,5 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::HookEvent;
+use crate::hooks::{HookContext, HookEvent};
 use crate::storage::{FileStorage, with_write_hooks};
 use crate::ticket::content::validate_field_name;
 use crate::ticket::file::TicketFile;
@@ -79,24 +79,34 @@ impl TicketEditor {
         }
     }
 
-    pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
+    /// Generic helper for mutating array fields (deps, links)
+    fn mutate_array_field<F>(
+        &self,
+        field: &str,
+        value: &str,
+        should_mutate: impl Fn(&Vec<String>) -> bool,
+        mutate: F,
+        build_context: impl Fn(HookContext, &str) -> HookContext,
+    ) -> Result<bool>
+    where
+        F: FnOnce(&Vec<String>) -> Vec<String>,
+    {
         let raw_content = self.file.read_raw()?;
         let metadata = parse(&raw_content)?;
         let current_array = Self::get_array_field(&metadata, field)?;
 
-        if current_array.contains(&value.to_string()) {
+        if !should_mutate(current_array) {
             return Ok(false);
         }
 
-        let mut new_array = current_array.clone();
-        new_array.push(value.to_string());
-        let json_value = serde_json::to_string(&new_array)?;
+        let new_array = mutate(current_array);
+        let json_value = if new_array.is_empty() {
+            "[]".to_string()
+        } else {
+            serde_json::to_string(&new_array)?
+        };
 
-        let context = self
-            .file
-            .hook_context()
-            .with_field_name(field)
-            .with_new_value(value);
+        let context = build_context(self.file.hook_context().with_field_name(field), value);
 
         with_write_hooks(
             context,
@@ -110,41 +120,34 @@ impl TicketEditor {
         Ok(true)
     }
 
-    pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        let raw_content = self.file.read_raw()?;
-        let metadata = parse(&raw_content)?;
-        let current_array = Self::get_array_field(&metadata, field)?;
-
-        if !current_array.contains(&value.to_string()) {
-            return Ok(false);
-        }
-
-        let new_array: Vec<_> = current_array
-            .iter()
-            .filter(|v: &&String| v.as_str() != value)
-            .collect();
-        let json_value = if new_array.is_empty() {
-            "[]".to_string()
-        } else {
-            serde_json::to_string(&new_array)?
-        };
-
-        let context = self
-            .file
-            .hook_context()
-            .with_field_name(field)
-            .with_old_value(value);
-
-        with_write_hooks(
-            context,
-            || {
-                let new_content = update_field_in_content(&raw_content, field, &json_value)?;
-                self.file.write_raw(&new_content)
+    pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        self.mutate_array_field(
+            field,
+            value,
+            |current| !current.contains(&value.to_string()),
+            |current| {
+                let mut new_array = current.clone();
+                new_array.push(value.to_string());
+                new_array
             },
-            Some(HookEvent::TicketUpdated),
-        )?;
+            |ctx, val| ctx.with_new_value(val),
+        )
+    }
 
-        Ok(true)
+    pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        self.mutate_array_field(
+            field,
+            value,
+            |current| current.contains(&value.to_string()),
+            |current| {
+                current
+                    .iter()
+                    .filter(|v| v.as_str() != value)
+                    .cloned()
+                    .collect()
+            },
+            |ctx, val| ctx.with_old_value(val),
+        )
     }
 
     pub fn write_validated(&self, content: &str) -> Result<()> {

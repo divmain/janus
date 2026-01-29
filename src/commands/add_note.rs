@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::{CommandOutput, TicketFileOps};
+use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::log_note_added;
 use crate::ticket::Ticket;
@@ -26,12 +26,13 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
 
     let timestamp = iso_date();
 
-    TicketFileOps::modify(&ticket, |content| {
-        if !content.contains("## Notes") {
-            content.push_str("\n## Notes");
-        }
-        content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
-    })?;
+    let content = ticket.read_content()?;
+    let mut new_content = content;
+    if !new_content.contains("## Notes") {
+        new_content.push_str("\n## Notes");
+    }
+    new_content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
+    ticket.write(&new_content)?;
 
     log_note_added(&ticket.id, &note);
 

@@ -1,5 +1,5 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::storage::FileStorage;
 use crate::ticket::file::TicketFile;
 use crate::ticket::locator::TicketLocator;
