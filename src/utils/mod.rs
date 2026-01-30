@@ -73,20 +73,17 @@ pub fn validate_identifier(s: &str, name: &str) -> Result<String> {
     let trimmed = s.trim();
 
     if trimmed.is_empty() {
-        return Err(JanusError::InvalidFormat(format!(
-            "{} cannot be empty",
-            name
-        )));
+        return Err(JanusError::ValidationEmpty(name.to_string()));
     }
 
     if !trimmed
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(JanusError::InvalidFormat(format!(
-            "{} '{}' contains invalid characters. Use only letters, numbers, hyphens, and underscores",
-            name, trimmed
-        )));
+        return Err(JanusError::ValidationInvalidCharacters(
+            name.to_string(),
+            trimmed.to_string(),
+        ));
     }
 
     Ok(trimmed.to_string())

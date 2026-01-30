@@ -311,6 +311,14 @@ pub enum JanusError {
     HookSecurity(String),
 
     // Validation errors
+    #[error("{0} cannot be empty")]
+    ValidationEmpty(String), // field name
+
+    #[error(
+        "{0} '{1}' contains invalid characters. Use only letters, numbers, hyphens, and underscores"
+    )]
+    ValidationInvalidCharacters(String, String), // field name, value
+
     #[error("ticket ID cannot be empty")]
     EmptyTicketId,
 

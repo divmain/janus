@@ -4,15 +4,10 @@ use crate::utils::{extract_id_from_path, validate_identifier};
 use std::path::PathBuf;
 
 fn validate_partial_id(id: &str) -> Result<String> {
-    // Use the generic identifier validator and convert errors to ticket-specific types
-    validate_identifier(id, "Ticket ID").map_err(|e| {
-        // Map generic errors to specific ticket errors
-        let msg = e.to_string();
-        if msg.contains("cannot be empty") {
-            JanusError::EmptyTicketId
-        } else {
-            JanusError::InvalidTicketIdCharacters
-        }
+    validate_identifier(id, "Ticket ID").map_err(|e| match e {
+        JanusError::ValidationEmpty(_) => JanusError::EmptyTicketId,
+        JanusError::ValidationInvalidCharacters(_, _) => JanusError::InvalidTicketIdCharacters,
+        _ => e,
     })
 }
 
