@@ -75,18 +75,37 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
     let ticket2 = Ticket::find(id2).await?;
 
     let mut removed_count = 0;
+    let mut removed_1_to_2 = false;
+    let mut removed_2_to_1 = false;
 
     if ticket1.remove_from_array_field("links", &ticket2.id)? {
         removed_count += 1;
+        removed_1_to_2 = true;
         log_link_removed(&ticket1.id, &ticket2.id);
     }
     if ticket2.remove_from_array_field("links", &ticket1.id)? {
         removed_count += 1;
+        removed_2_to_1 = true;
         log_link_removed(&ticket2.id, &ticket1.id);
     }
 
     if removed_count == 0 {
         return Err(JanusError::LinkNotFound);
+    }
+
+    // Warn about partial removal (only one direction succeeded)
+    if removed_count == 1 {
+        if removed_1_to_2 && !removed_2_to_1 {
+            eprintln!(
+                "Warning: Removed link from {} -> {} but not vice versa. Link state may be asymmetric.",
+                ticket1.id, ticket2.id
+            );
+        } else if removed_2_to_1 && !removed_1_to_2 {
+            eprintln!(
+                "Warning: Removed link from {} -> {} but not vice versa. Link state may be asymmetric.",
+                ticket2.id, ticket1.id
+            );
+        }
     }
 
     let metadata1 = ticket1.read()?;
