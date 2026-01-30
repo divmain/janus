@@ -32,7 +32,7 @@ pub fn TextEditor(props: &TextEditorProps, mut hooks: Hooks) -> impl Into<AnyEle
     let theme = theme();
 
     let Some(mut text_input_value) = props.value else {
-    // let Some(mut external_value) = props.value else {
+        // let Some(mut external_value) = props.value else {
         return element! {
             View(
                 width: 100pct,

@@ -334,6 +334,18 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Show next ticket(s) to work on (dependency-aware)
+    #[command(visible_alias = "n")]
+    Next {
+        /// Maximum number of tickets to show (default: 5)
+        #[arg(short, long, default_value = "5")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Generate shell completions
     Completions {
         /// Shell to generate completions for [possible values: bash, zsh, fish, powershell, elvish]

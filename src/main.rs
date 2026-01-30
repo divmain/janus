@@ -11,7 +11,7 @@ use janus::commands::{
     cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create,
     cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_edit, cmd_graph, cmd_hook_disable,
     cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add,
-    cmd_link_remove, cmd_ls, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
+    cmd_link_remove, cmd_ls, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
     cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket,
     cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
     cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_remote_browse,
@@ -307,6 +307,8 @@ async fn main() -> ExitCode {
             )
             .await
         }
+
+        Commands::Next { limit, json } => cmd_next(limit, json).await,
 
         Commands::Completions { shell } => {
             generate_completions(shell);

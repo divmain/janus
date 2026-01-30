@@ -19,6 +19,7 @@
 //! | `add_ticket_to_plan` | Add a ticket to a plan |
 //! | `get_plan_status` | Get plan progress information |
 //! | `get_children` | Get tickets spawned from a parent |
+//! | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
 
 use rmcp::{
     handler::server::{tool::ToolRouter, wrapper::Parameters},
@@ -32,6 +33,7 @@ use std::fs;
 use std::str::FromStr;
 
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
+use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
@@ -203,6 +205,14 @@ pub struct GetChildrenRequest {
     /// Ticket ID (can be partial)
     #[schemars(description = "ID of the parent ticket")]
     pub ticket_id: String,
+}
+
+/// Request parameters for getting next available ticket(s)
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, Default)]
+pub struct GetNextAvailableTicketRequest {
+    /// Maximum number of tickets to return (default: 5)
+    #[schemars(description = "Maximum number of tickets to return")]
+    pub limit: Option<usize>,
 }
 
 // ============================================================================
@@ -855,6 +865,47 @@ impl JanusTools {
             &children,
         ))
     }
+
+    /// Query the Janus ticket backlog for the next ticket(s) to work on.
+    #[tool(
+        name = "get_next_available_ticket",
+        description = "Query the Janus ticket backlog for the next ticket(s) to work on, based on priority and dependency resolution. Returns tickets in optimal order (dependencies before dependents). Use this if you've been instructed to work on tickets on the backlog. Do NOT use this for guidance on your current task."
+    )]
+    async fn get_next_available_ticket(
+        &self,
+        Parameters(request): Parameters<GetNextAvailableTicketRequest>,
+    ) -> Result<String, String> {
+        let limit = request.limit.unwrap_or(5);
+
+        let ticket_map = build_ticket_map()
+            .await
+            .map_err(|e| format!("failed to load tickets: {}", e))?;
+
+        if ticket_map.is_empty() {
+            return Ok("No tickets found in the repository.".to_string());
+        }
+
+        // Check if all tickets are complete or cancelled
+        let all_complete = ticket_map.values().all(|t| {
+            matches!(
+                t.status,
+                Some(TicketStatus::Complete) | Some(TicketStatus::Cancelled)
+            )
+        });
+
+        if all_complete {
+            return Ok("All tickets are complete. Nothing to work on.".to_string());
+        }
+
+        let finder = NextWorkFinder::new(&ticket_map);
+        let work_items = finder.get_next_work(limit).map_err(|e| e.to_string())?;
+
+        if work_items.is_empty() {
+            return Ok("No tickets ready to work on.".to_string());
+        }
+
+        Ok(format_next_work_as_markdown(&work_items, &ticket_map))
+    }
 }
 
 // ============================================================================
@@ -1312,6 +1363,103 @@ fn format_ticket_line(
         // Ticket not found
         (' ', "Unknown ticket".to_string(), "\n".to_string())
     }
+}
+
+/// Format next work items as markdown for LLM consumption
+fn format_next_work_as_markdown(
+    work_items: &[WorkItem],
+    ticket_map: &HashMap<String, TicketMetadata>,
+) -> String {
+    let mut output = String::new();
+
+    // Header
+    output.push_str("## Next Work Items\n\n");
+
+    // Numbered list of work items
+    for (idx, item) in work_items.iter().enumerate() {
+        let ticket_id = &item.ticket_id;
+        let priority = item.metadata.priority_num();
+        let title = item.metadata.title.as_deref().unwrap_or("Untitled");
+        let priority_badge = format!("[P{}]", priority);
+
+        // Format the main line with context
+        let context = match &item.reason {
+            InclusionReason::Blocking(target_id) => {
+                format!(" *(blocks {})*", target_id)
+            }
+            InclusionReason::TargetBlocked => " *(currently blocked)*".to_string(),
+            InclusionReason::Ready => String::new(),
+        };
+
+        output.push_str(&format!(
+            "{}. **{}** {} {}{}\n",
+            idx + 1,
+            ticket_id,
+            priority_badge,
+            title,
+            context
+        ));
+
+        // Status line
+        let status = match &item.reason {
+            InclusionReason::Ready | InclusionReason::Blocking(_) => "ready",
+            InclusionReason::TargetBlocked => "blocked",
+        };
+        output.push_str(&format!("   - Status: {}\n", status));
+
+        // Additional context for blocked tickets
+        if matches!(item.reason, InclusionReason::TargetBlocked) {
+            let incomplete_deps: Vec<&String> = item
+                .metadata
+                .deps
+                .iter()
+                .filter(|dep_id| {
+                    ticket_map
+                        .get(*dep_id)
+                        .map(|dep| dep.status != Some(TicketStatus::Complete))
+                        .unwrap_or(false)
+                })
+                .collect();
+
+            if !incomplete_deps.is_empty() {
+                let dep_list: Vec<&str> = incomplete_deps.iter().map(|s| s.as_str()).collect();
+                output.push_str(&format!("   - Waiting on: {}\n", dep_list.join(", ")));
+            }
+        }
+
+        // Context about what this ticket blocks
+        if let Some(blocks) = &item.blocks {
+            output.push_str(&format!(
+                "   - This ticket must be completed before {} can be worked on\n",
+                blocks
+            ));
+        }
+
+        output.push('\n');
+    }
+
+    // Find the first ready ticket for recommended action
+    let first_ready = work_items.iter().find(|item| {
+        matches!(
+            item.reason,
+            InclusionReason::Ready | InclusionReason::Blocking(_)
+        )
+    });
+
+    if let Some(ready_item) = first_ready {
+        let ready_title = ready_item.metadata.title.as_deref().unwrap_or("Untitled");
+        output.push_str("### Recommended Action\n\n");
+        output.push_str(&format!(
+            "Start with **{}**: {}\n",
+            ready_item.ticket_id, ready_title
+        ));
+    } else {
+        // All items are blocked
+        output.push_str("### Note\n\n");
+        output.push_str("All listed tickets are currently blocked by dependencies. Consider working on the dependencies first or reviewing the dependency chain.\n");
+    }
+
+    output
 }
 
 #[cfg(test)]

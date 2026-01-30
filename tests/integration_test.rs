@@ -6842,3 +6842,164 @@ created: 2024-01-01T00:00:00Z
     let output = janus.run_failure(&["plan", "show", "plan-nonexistent"]);
     assert!(output.contains("not found"));
 }
+
+// ============================================================================
+// Next command tests
+// ============================================================================
+
+#[test]
+fn test_next_empty_repo() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["next"]);
+    assert!(output.contains("No tickets found"));
+}
+
+#[test]
+fn test_next_single_ticket() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["next"]);
+    assert!(output.contains(&id));
+    assert!(output.contains("Test ticket"));
+    assert!(output.contains("ready"));
+}
+
+#[test]
+fn test_next_with_dependency() {
+    let janus = JanusTest::new();
+
+    // Create dependency chain: dep -> main (P0)
+    let dep_id = janus
+        .run_success(&["create", "Dependency ticket"])
+        .trim()
+        .to_string();
+    let main_id = janus
+        .run_success(&["create", "Main ticket", "-p", "0"])
+        .trim()
+        .to_string();
+
+    // Add dependency
+    janus.run_success(&["dep", "add", &main_id, &dep_id]);
+
+    let output = janus.run_success(&["next"]);
+
+    // Dependency should appear first (it blocks the P0 ticket)
+    assert!(output.contains(&dep_id));
+    assert!(output.contains(&main_id));
+    assert!(output.contains("blocks"));
+    assert!(output.contains("blocked"));
+}
+
+#[test]
+fn test_next_all_complete() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["close", &id, "--no-summary"]);
+
+    let output = janus.run_success(&["next"]);
+    assert!(output.contains("All tickets are complete"));
+}
+
+#[test]
+fn test_next_limit() {
+    let janus = JanusTest::new();
+
+    // Create 5 tickets
+    for i in 0..5 {
+        janus.run_success(&["create", &format!("Ticket {}", i)]);
+    }
+
+    let output = janus.run_success(&["next", "--limit", "2"]);
+    let lines: Vec<&str> = output.lines().collect();
+    // Header + separator + 2 data lines = 4 lines
+    assert_eq!(lines.len(), 4);
+}
+
+#[test]
+fn test_next_json_output() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["next", "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).expect("Should be valid JSON");
+
+    assert!(json.is_array());
+    assert_eq!(json.as_array().unwrap().len(), 1);
+    assert_eq!(json[0]["id"], id);
+    assert_eq!(json[0]["title"], "Test ticket");
+    assert_eq!(json[0]["status"], "ready");
+    assert_eq!(json[0]["reason"], "ready");
+}
+
+#[test]
+fn test_next_json_with_dependency() {
+    let janus = JanusTest::new();
+
+    let dep_id = janus
+        .run_success(&["create", "Dependency"])
+        .trim()
+        .to_string();
+    let main_id = janus
+        .run_success(&["create", "Main ticket", "-p", "0"])
+        .trim()
+        .to_string();
+
+    janus.run_success(&["dep", "add", &main_id, &dep_id]);
+
+    let output = janus.run_success(&["next", "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).expect("Should be valid JSON");
+
+    assert!(json.is_array());
+    assert_eq!(json.as_array().unwrap().len(), 2);
+
+    // First item should be the dependency with "blocks" field
+    assert_eq!(json[0]["id"], dep_id);
+    assert_eq!(json[0]["reason"], "blocking");
+    assert_eq!(json[0]["blocks"], main_id);
+
+    // Second item should be the blocked ticket with "blocked_by" field
+    assert_eq!(json[1]["id"], main_id);
+    assert_eq!(json[1]["reason"], "target");
+    assert!(json[1]["blocked_by"].is_array());
+    assert_eq!(json[1]["blocked_by"][0], dep_id);
+}
+
+#[test]
+fn test_next_priority_ordering() {
+    let janus = JanusTest::new();
+
+    // Create P2 ticket first, then P0 ticket
+    let p2_id = janus
+        .run_success(&["create", "P2 ticket", "-p", "2"])
+        .trim()
+        .to_string();
+    let p0_id = janus
+        .run_success(&["create", "P0 ticket", "-p", "0"])
+        .trim()
+        .to_string();
+
+    let output = janus.run_success(&["next"]);
+    let lines: Vec<&str> = output.lines().collect();
+
+    // Skip header lines to find first data line
+    let first_data_line = lines
+        .iter()
+        .find(|l| l.contains(&p0_id) || l.contains(&p2_id));
+    assert!(first_data_line.is_some());
+    // P0 should appear before P2
+    assert!(first_data_line.unwrap().contains(&p0_id));
+}

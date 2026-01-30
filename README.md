@@ -405,7 +405,40 @@ janus ls --blocked
 janus ls --ready
 ```
 
-### 8. Query and Export
+### 8. Find Next Work (Dependency-Aware)
+
+Get a prioritized list of tickets to work on next, with dependency resolution:
+
+```bash
+# Show next 5 tickets to work on (default)
+janus next
+
+# Show next 10 tickets
+janus next --limit 10
+
+# Output as JSON for scripting
+janus next --json
+```
+
+The `janus next` command is dependency-aware - it analyzes the dependency graph and returns tickets in the optimal order:
+
+1. **Ready tickets** with no incomplete dependencies appear first
+2. **Blocking dependencies** are shown before the tickets that depend on them
+3. **Blocked tickets** are included with context about what's blocking them
+
+Example output:
+
+```
+ID          Priority  Status     Title                          Reason
+────────    ────────  ───────    ─────────────────────────────  ─────────────────
+j-abc1      P0        ready      Fix critical bug               ready
+j-def2      P1        ready      Design OAuth flow              blocking j-ghi3
+j-ghi3      P1        blocked    Implement OAuth flow           target (1 dep)
+```
+
+This helps you prioritize work by showing what needs to be done first to unblock other tickets.
+
+### 9. Query and Export
 
 Get insights with JSON queries:
 
@@ -420,7 +453,7 @@ janus query '.priority <= 1 and .type == "bug"'
 janus query 'group_by(.status) | {status: .[0], count: length}'
 ```
 
-### 9. Related Tickets
+### 10. Related Tickets
 
 Link related tickets that don't have dependency relationships:
 
@@ -602,6 +635,59 @@ janus ls --triaged false              # Untriaged tickets (status=new|next, tria
 janus ls --triaged true               # Triaged tickets
 janus ls --ready --blocked            # Show union of ready AND blocked tickets
 janus ls --limit 10                   # Any tickets (limit 10)
+```
+
+#### `janus next` / `janus n`
+
+Show next ticket(s) to work on with dependency-aware prioritization.
+
+```bash
+janus next [OPTIONS]
+
+Options:
+  -l, --limit <N>    Maximum tickets to show (default: 5)
+      --json         Output as JSON
+```
+
+The `next` command analyzes dependencies and returns tickets in optimal work order:
+
+- **Ready tickets** (no incomplete deps) sorted by priority
+- **Blocking dependencies** shown before their dependents
+- **Blocked tickets** included with blocking context
+
+Examples:
+
+```bash
+# Show default 5 next tickets
+janus next
+
+# Show 10 next tickets
+janus next --limit 10
+
+# JSON output for scripting
+janus next --json
+```
+
+Example JSON output:
+
+```json
+[
+  {
+    "id": "j-abc1",
+    "priority": 0,
+    "status": "ready",
+    "title": "Fix critical bug",
+    "reason": "ready"
+  },
+  {
+    "id": "j-def2",
+    "priority": 1,
+    "status": "ready",
+    "title": "Design OAuth flow",
+    "reason": "blocking",
+    "blocks": "j-ghi3"
+  }
+]
 ```
 
 #### `janus query`

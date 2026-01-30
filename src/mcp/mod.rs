@@ -33,6 +33,7 @@
 //! | `add_ticket_to_plan` | Add a ticket to a plan |
 //! | `get_plan_status` | Get plan progress information |
 //! | `get_children` | Get tickets spawned from a parent |
+//! | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
 
 pub mod resources;
 pub mod tools;
@@ -262,8 +263,8 @@ mod tests {
     fn test_tools_router_has_tools() {
         let server = JanusMcpServer::new();
         let tools = server.tools.router().list_all();
-        // We should have 11 tools
-        assert_eq!(tools.len(), 11);
+        // We should have 12 tools
+        assert_eq!(tools.len(), 12);
 
         // Verify tool names
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
@@ -278,6 +279,7 @@ mod tests {
         assert!(tool_names.contains(&"add_ticket_to_plan"));
         assert!(tool_names.contains(&"get_plan_status"));
         assert!(tool_names.contains(&"get_children"));
+        assert!(tool_names.contains(&"get_next_available_ticket"));
     }
 
     #[test]
