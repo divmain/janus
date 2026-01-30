@@ -42,6 +42,6 @@ pub use ticket::{
     get_all_tickets_from_disk, resolve_id_from_map,
 };
 pub use types::{
-    EntityType, PLANS_DIR, TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata, TicketPriority,
-    TicketStatus, TicketType, janus_root, plans_dir, tickets_items_dir,
+    ArrayField, EntityType, PLANS_DIR, TICKETS_DIR, TICKETS_ITEMS_DIR, TicketMetadata,
+    TicketPriority, TicketStatus, TicketType, janus_root, plans_dir, tickets_items_dir,
 };

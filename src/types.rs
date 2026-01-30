@@ -255,6 +255,34 @@ pub enum TicketField {
     Triaged,
 }
 
+/// Enum for array field names to provide compile-time type safety.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrayField {
+    Deps,
+    Links,
+}
+
+impl ArrayField {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ArrayField::Deps => "deps",
+            ArrayField::Links => "links",
+        }
+    }
+}
+
+impl std::str::FromStr for ArrayField {
+    type Err = JanusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "deps" => Ok(ArrayField::Deps),
+            "links" => Ok(ArrayField::Links),
+            _ => Err(JanusError::UnknownArrayField(s.to_string())),
+        }
+    }
+}
+
 impl TicketField {
     pub fn is_immutable(&self) -> bool {
         matches!(self, TicketField::Id | TicketField::Uuid)

@@ -6,6 +6,7 @@ mod manipulator;
 mod parser;
 mod repository;
 
+pub use crate::types::ArrayField;
 pub use builder::TicketBuilder;
 pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
 pub use editor::TicketEditor;
@@ -207,9 +208,10 @@ impl Ticket {
     where
         F: FnOnce(&Vec<String>) -> Vec<String>,
     {
+        let field_enum: ArrayField = field.parse()?;
         let raw_content = self.read_content()?;
         let metadata = parse(&raw_content)?;
-        let current_array = Self::get_array_field(&metadata, field)?;
+        let current_array = Self::get_array_field(&metadata, field_enum)?;
 
         if !should_mutate(current_array) {
             return Ok(false);
@@ -239,11 +241,10 @@ impl Ticket {
         Ok(true)
     }
 
-    fn get_array_field<'a>(metadata: &'a TicketMetadata, field: &str) -> Result<&'a Vec<String>> {
+    fn get_array_field(metadata: &TicketMetadata, field: ArrayField) -> Result<&Vec<String>> {
         match field {
-            "deps" => Ok(&metadata.deps),
-            "links" => Ok(&metadata.links),
-            _ => Err(JanusError::UnknownArrayField(field.to_string())),
+            ArrayField::Deps => Ok(&metadata.deps),
+            ArrayField::Links => Ok(&metadata.links),
         }
     }
 
