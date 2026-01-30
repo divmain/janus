@@ -344,6 +344,75 @@ impl FreeFormSection {
     }
 }
 
+/// Result of loading plans from disk, including both successes and failures
+#[derive(Debug, Clone)]
+pub struct PlanLoadResult {
+    /// Successfully loaded plans
+    pub plans: Vec<PlanMetadata>,
+    /// Failed files with their error messages (filename, error)
+    pub failed: Vec<(String, String)>,
+}
+
+impl PlanLoadResult {
+    /// Create a new empty result
+    pub fn new() -> Self {
+        PlanLoadResult {
+            plans: Vec::new(),
+            failed: Vec::new(),
+        }
+    }
+
+    /// Add a successfully loaded plan
+    pub fn add_plan(&mut self, plan: PlanMetadata) {
+        self.plans.push(plan);
+    }
+
+    /// Add a failed file with its error
+    pub fn add_failure(&mut self, filename: impl Into<String>, error: impl Into<String>) {
+        self.failed.push((filename.into(), error.into()));
+    }
+
+    /// Check if any failures occurred
+    pub fn has_failures(&self) -> bool {
+        !self.failed.is_empty()
+    }
+
+    /// Get the number of successfully loaded plans
+    pub fn success_count(&self) -> usize {
+        self.plans.len()
+    }
+
+    /// Get the number of failed files
+    pub fn failure_count(&self) -> usize {
+        self.failed.len()
+    }
+
+    /// Convert to a Result, returning Err if there are failures
+    pub fn into_result(self) -> crate::error::Result<Vec<PlanMetadata>> {
+        if self.has_failures() {
+            let failure_msgs: Vec<String> = self
+                .failed
+                .iter()
+                .map(|(f, e)| format!("  - {}: {}", f, e))
+                .collect();
+            Err(crate::error::JanusError::PlanLoadFailed(failure_msgs))
+        } else {
+            Ok(self.plans)
+        }
+    }
+
+    /// Get just the plans, ignoring failures
+    pub fn into_plans(self) -> Vec<PlanMetadata> {
+        self.plans
+    }
+}
+
+impl Default for PlanLoadResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Computed status for an entire plan
 #[derive(Debug, Clone)]
 pub struct PlanStatus {

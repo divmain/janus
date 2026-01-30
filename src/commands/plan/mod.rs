@@ -30,6 +30,7 @@ mod reorder;
 mod show;
 mod status;
 mod tickets;
+mod verify;
 
 pub use create::cmd_plan_create;
 pub use delete::{cmd_plan_delete, cmd_plan_rename};
@@ -42,6 +43,7 @@ pub use reorder::cmd_plan_reorder;
 pub use show::cmd_plan_show;
 pub use status::cmd_plan_status;
 pub use tickets::{cmd_plan_add_ticket, cmd_plan_move_ticket, cmd_plan_remove_ticket};
+pub use verify::cmd_plan_verify;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};

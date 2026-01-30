@@ -261,6 +261,9 @@ pub enum JanusError {
     #[error("plan with title '{0}' already exists ({1})")]
     DuplicatePlanTitle(String, String), // title, existing plan ID
 
+    #[error("failed to load {} plan file(s):\n{}", .0.len(), .0.join("\n"))]
+    PlanLoadFailed(Vec<String>),
+
     #[error("--verbose-phase can only be used with phased plans")]
     VerbosePhaseRequiresPhasedPlan,
 

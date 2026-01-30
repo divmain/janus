@@ -42,7 +42,7 @@ pub use plan::{
     NextItemResult, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete,
     cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next,
     cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder,
-    cmd_plan_show, cmd_plan_status, cmd_show_import_spec, get_next_items_phased,
+    cmd_plan_show, cmd_plan_status, cmd_plan_verify, cmd_show_import_spec, get_next_items_phased,
     get_next_items_simple,
 };
 pub use query::cmd_query;

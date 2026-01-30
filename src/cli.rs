@@ -896,6 +896,12 @@ pub enum PlanAction {
     },
     /// Show the importable plan format specification
     ImportSpec,
+    /// Verify all plan files and report any errors
+    Verify {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn parse_priority(s: &str) -> Result<TicketPriority, String> {

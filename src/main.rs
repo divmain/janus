@@ -16,9 +16,9 @@ use janus::commands::{
     cmd_link_remove, cmd_ls, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
     cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket,
     cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
-    cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_push, cmd_query, cmd_remote_browse,
-    cmd_remote_link, cmd_reopen, cmd_set, cmd_show, cmd_show_import_spec, cmd_start, cmd_status,
-    cmd_sync, cmd_view,
+    cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_plan_verify, cmd_push, cmd_query,
+    cmd_remote_browse, cmd_remote_link, cmd_reopen, cmd_set, cmd_show, cmd_show_import_spec,
+    cmd_start, cmd_status, cmd_sync, cmd_view,
 };
 
 #[tokio::main]
@@ -291,6 +291,21 @@ async fn main() -> ExitCode {
                 .await
             }
             PlanAction::ImportSpec => cmd_show_import_spec(),
+            PlanAction::Verify { json } => {
+                match cmd_plan_verify(json) {
+                    Ok((valid, _)) => {
+                        if valid {
+                            Ok(())
+                        } else {
+                            // Return error for verification failures
+                            Err(janus::error::JanusError::Other(
+                                "Plan verification failed - some files have errors".to_string(),
+                            ))
+                        }
+                    }
+                    Err(e) => Err(e),
+                }
+            }
         },
 
         Commands::Graph {

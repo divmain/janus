@@ -9,7 +9,7 @@ pub mod types;
 
 pub use types::{
     ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask, Phase, PhaseStatus,
-    PlanMetadata, PlanSection, PlanStatus,
+    PlanLoadResult, PlanMetadata, PlanSection, PlanStatus,
 };
 
 use std::collections::HashMap;
@@ -264,32 +264,47 @@ impl Entity for Plan {
 }
 
 /// Get all plans from the plans directory
-pub async fn get_all_plans() -> Result<Vec<PlanMetadata>> {
+pub async fn get_all_plans() -> Result<PlanLoadResult> {
     // Try cache first
     if let Some(cache) = cache::get_or_init_cache().await {
         if let Ok(cached_plans) = cache.get_all_plans().await {
-            let mut plans = Vec::new();
+            let mut result = PlanLoadResult::new();
             let p_dir = plans_dir();
             for cached in cached_plans {
                 if let Some(id) = &cached.id {
                     let file_path = p_dir.join(format!("{}.md", id));
-                    if file_path.exists()
-                        && let Ok(content) = fs::read_to_string(&file_path)
-                        && let Ok(mut metadata) = parse_plan_content(&content)
-                    {
-                        if metadata.id.is_none() {
-                            metadata.id = Some(id.clone());
+                    if file_path.exists() {
+                        match fs::read_to_string(&file_path) {
+                            Ok(content) => match parse_plan_content(&content) {
+                                Ok(mut metadata) => {
+                                    if metadata.id.is_none() {
+                                        metadata.id = Some(id.clone());
+                                    }
+                                    metadata.file_path = Some(file_path);
+                                    result.add_plan(metadata);
+                                }
+                                Err(e) => {
+                                    result.add_failure(
+                                        file_path.to_string_lossy().into_owned(),
+                                        e.to_string(),
+                                    );
+                                }
+                            },
+                            Err(e) => {
+                                result.add_failure(
+                                    file_path.to_string_lossy().into_owned(),
+                                    e.to_string(),
+                                );
+                            }
                         }
-                        metadata.file_path = Some(file_path);
-                        plans.push(metadata);
                     }
                 }
             }
-            if plans.is_empty() {
-                eprintln!("Warning: cache read failed, falling back to file reads");
+            if result.success_count() == 0 && result.failure_count() > 0 {
+                eprintln!("Warning: cache read had failures, falling back to file reads");
                 return Ok(get_all_plans_from_disk());
             }
-            return Ok(plans);
+            return Ok(result);
         }
         eprintln!("Warning: cache read failed, falling back to file reads");
     }
@@ -299,8 +314,9 @@ pub async fn get_all_plans() -> Result<Vec<PlanMetadata>> {
 
 /// Build a HashMap by ID from all plans
 pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
-    let plans = get_all_plans().await?;
-    let map: HashMap<_, _> = plans
+    let result = get_all_plans().await?;
+    let map: HashMap<_, _> = result
+        .plans
         .into_iter()
         .filter_map(|m| m.id.clone().map(|id| (id, m)))
         .collect();
@@ -308,20 +324,20 @@ pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
 }
 
 /// Get all plans and the map together (efficient single call)
-pub async fn get_all_plans_with_map() -> Result<(Vec<PlanMetadata>, HashMap<String, PlanMetadata>)>
-{
-    let plans = get_all_plans().await?;
-    let map: HashMap<_, _> = plans
+pub async fn get_all_plans_with_map() -> Result<(PlanLoadResult, HashMap<String, PlanMetadata>)> {
+    let result = get_all_plans().await?;
+    let map: HashMap<_, _> = result
+        .plans
         .iter()
         .filter_map(|m| m.id.clone().map(|id| (id, m.clone())))
         .collect();
-    Ok((plans, map))
+    Ok((result, map))
 }
 
 /// Get all plans from disk (fallback implementation)
-pub fn get_all_plans_from_disk() -> Vec<PlanMetadata> {
+pub fn get_all_plans_from_disk() -> PlanLoadResult {
     let files = find_plans();
-    let mut plans = Vec::new();
+    let mut result = PlanLoadResult::new();
     let p_dir = plans_dir();
 
     for file in files {
@@ -333,19 +349,19 @@ pub fn get_all_plans_from_disk() -> Vec<PlanMetadata> {
                         metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
                     }
                     metadata.file_path = Some(file_path);
-                    plans.push(metadata);
+                    result.add_plan(metadata);
                 }
                 Err(e) => {
-                    eprintln!("Warning: failed to parse plan {}: {}", file, e);
+                    result.add_failure(&file, format!("parse error: {}", e));
                 }
             },
             Err(e) => {
-                eprintln!("Warning: failed to read plan {}: {}", file, e);
+                result.add_failure(&file, format!("read error: {}", e));
             }
         }
     }
 
-    plans
+    result
 }
 
 /// Ensure the plans directory exists
