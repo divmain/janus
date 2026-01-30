@@ -367,6 +367,25 @@ pub enum Commands {
         #[arg(long)]
         version: bool,
     },
+
+    /// Search tickets using semantic similarity (requires semantic-search feature)
+    #[cfg(feature = "semantic-search")]
+    Search {
+        /// Natural language search query (e.g., "authentication problems")
+        query: String,
+
+        /// Maximum number of results to return
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+
+        /// Minimum similarity threshold (0.0-1.0, where 1.0 = identical)
+        #[arg(long)]
+        threshold: Option<f32>,
+
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]

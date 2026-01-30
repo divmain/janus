@@ -9,6 +9,10 @@ description = "Plain-text issue tracking"
 license = "MIT"
 repository = "https://github.com/divmain/janus"
 
+[features]
+default = []
+semantic-search = ["fastembed"]
+
 [[bin]]
 name = "janus"
 path = "src/main.rs"
@@ -83,6 +87,9 @@ url = "2.5"
 
 # MCP (Model Context Protocol) server
 rmcp = { version = "0.13", features = ["server", "macros", "transport-io"] }
+
+# Semantic search (optional - enabled via feature flag)
+fastembed = { version = "5", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

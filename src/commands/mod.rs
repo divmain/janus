@@ -16,6 +16,8 @@ mod next;
 mod plan;
 mod query;
 mod remote_browse;
+#[cfg(feature = "semantic-search")]
+pub mod search;
 mod set;
 mod show;
 mod status;
@@ -45,6 +47,8 @@ pub use plan::{
 };
 pub use query::cmd_query;
 pub use remote_browse::cmd_remote_browse;
+#[cfg(feature = "semantic-search")]
+pub use search::cmd_search;
 pub use set::cmd_set;
 pub use show::cmd_show;
 pub use status::{cmd_close, cmd_reopen, cmd_start, cmd_status};

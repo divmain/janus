@@ -15,6 +15,9 @@ use crate::ticket::parse_ticket;
 use crate::types::{TicketMetadata, plans_dir, tickets_items_dir};
 use crate::utils::generate_uuid;
 
+#[cfg(feature = "semantic-search")]
+use crate::embedding::model::generate_ticket_embedding;
+
 /// Trait for items that can be cached in the SQLite database.
 ///
 /// This trait abstracts over the common caching operations for both
@@ -142,39 +145,98 @@ impl CacheableItem for TicketMetadata {
         let body = self.body.clone();
         let size = self.size.map(|s| s.to_string());
 
+        // Generate embedding when semantic-search feature is enabled
+        #[cfg(feature = "semantic-search")]
+        let embedding_blob = {
+            let title_ref = title.as_deref().unwrap_or("");
+            let body_ref = body.as_deref();
+            match generate_ticket_embedding(title_ref, body_ref) {
+                Ok(embedding) => Some(embedding_to_blob(&embedding)),
+                Err(e) => {
+                    eprintln!("Warning: failed to generate embedding for ticket: {}", e);
+                    None
+                }
+            }
+        };
+
+        #[cfg(not(feature = "semantic-search"))]
+        let _embedding_blob: Option<Vec<u8>> = None;
+
         async move {
             let ticket_id = ticket_id?;
-            tx.execute(
-                "INSERT OR REPLACE INTO tickets (
-                    ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
-                    deps, links, parent, created, external_ref, remote, completion_summary,
-                    spawned_from, spawn_context, depth, file_path, triaged, body, size
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
-                params![
-                    ticket_id,
-                    uuid,
-                    mtime_ns,
-                    status,
-                    title,
-                    priority,
-                    ticket_type,
-                    deps_json,
-                    links_json,
-                    parent,
-                    created,
-                    external_ref,
-                    remote,
-                    completion_summary,
-                    spawned_from,
-                    spawn_context,
-                    depth,
-                    file_path,
-                    triaged,
-                    body,
-                    size,
-                ],
-            )
-            .await?;
+
+            #[cfg(feature = "semantic-search")]
+            {
+                // Include embedding column when feature is enabled
+                tx.execute(
+                    "INSERT OR REPLACE INTO tickets (
+                        ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
+                        deps, links, parent, created, external_ref, remote, completion_summary,
+                        spawned_from, spawn_context, depth, file_path, triaged, body, size, embedding
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+                    params![
+                        ticket_id,
+                        uuid,
+                        mtime_ns,
+                        status,
+                        title,
+                        priority,
+                        ticket_type,
+                        deps_json,
+                        links_json,
+                        parent,
+                        created,
+                        external_ref,
+                        remote,
+                        completion_summary,
+                        spawned_from,
+                        spawn_context,
+                        depth,
+                        file_path,
+                        triaged,
+                        body,
+                        size,
+                        embedding_blob,
+                    ],
+                )
+                .await?;
+            }
+
+            #[cfg(not(feature = "semantic-search"))]
+            {
+                // Standard insert without embedding column
+                tx.execute(
+                    "INSERT OR REPLACE INTO tickets (
+                        ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
+                        deps, links, parent, created, external_ref, remote, completion_summary,
+                        spawned_from, spawn_context, depth, file_path, triaged, body, size
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                    params![
+                        ticket_id,
+                        uuid,
+                        mtime_ns,
+                        status,
+                        title,
+                        priority,
+                        ticket_type,
+                        deps_json,
+                        links_json,
+                        parent,
+                        created,
+                        external_ref,
+                        remote,
+                        completion_summary,
+                        spawned_from,
+                        spawn_context,
+                        depth,
+                        file_path,
+                        triaged,
+                        body,
+                        size,
+                    ],
+                )
+                .await?;
+            }
 
             Ok(())
         }
@@ -311,4 +373,21 @@ fn serialize_array(arr: &[String]) -> String {
     } else {
         serde_json::to_string(arr).unwrap_or_else(|_| "[]".to_string())
     }
+}
+
+/// Convert embedding vector to byte blob for storage.
+/// Each f32 is serialized as 4 little-endian bytes.
+#[cfg(feature = "semantic-search")]
+fn embedding_to_blob(embedding: &[f32]) -> Vec<u8> {
+    embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
+}
+
+/// Convert byte blob back to embedding vector.
+/// Each 4-byte chunk is deserialized as a little-endian f32.
+#[cfg(feature = "semantic-search")]
+#[allow(dead_code)]
+fn blob_to_embedding(blob: &[u8]) -> Vec<f32> {
+    blob.chunks_exact(4)
+        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+        .collect()
 }

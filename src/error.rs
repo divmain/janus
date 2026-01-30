@@ -245,6 +245,9 @@ pub enum JanusError {
     #[error("cache operation failed: {0}")]
     CacheOther(String),
 
+    #[error("ticket cache is not available")]
+    CacheNotAvailable,
+
     // Plan import errors
     #[error("{}", format_import_failed(.message, .issues))]
     ImportFailed {
@@ -375,6 +378,14 @@ pub enum JanusError {
 
     #[error("failed to extract column {column} from database row: {error}")]
     CacheColumnExtraction { column: usize, error: String },
+
+    #[cfg(feature = "semantic-search")]
+    #[error("embedding model error: {0}")]
+    EmbeddingModel(String),
+
+    #[cfg(feature = "semantic-search")]
+    #[error("semantic search not available: embeddings not generated")]
+    EmbeddingsNotAvailable,
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;

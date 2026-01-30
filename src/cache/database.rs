@@ -21,7 +21,11 @@ use super::paths::{cache_db_path, cache_dir, repo_hash};
 const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Current cache schema version. Increment when schema changes.
-pub(crate) const CACHE_VERSION: &str = "11";
+/// This includes feature flags to ensure caches with different features are isolated.
+#[cfg(feature = "semantic-search")]
+pub(crate) const CACHE_VERSION: &str = "12-semantic";
+#[cfg(not(feature = "semantic-search"))]
+pub(crate) const CACHE_VERSION: &str = "12";
 
 /// Maximum number of retry attempts when creating database connections.
 ///
@@ -209,6 +213,23 @@ impl TicketCache {
         )
         .await?;
 
+        #[cfg(feature = "semantic-search")]
+        {
+            // Add embedding column for semantic search (F32_BLOB with 384 dimensions)
+            // Note: This is a no-op if the column already exists due to IF NOT EXISTS
+            conn.execute("ALTER TABLE tickets ADD COLUMN embedding F32_BLOB(384)", ())
+                .await
+                .ok(); // Ignore errors if column already exists
+
+            // Create DiskANN vector index for fast similarity search
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_embedding ON tickets(libsql_vector_idx(embedding, 'metric=cosine'))",
+                (),
+            )
+            .await
+            .ok(); // Ignore errors if index already exists
+        }
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS plans (
                 plan_id TEXT PRIMARY KEY,
@@ -246,6 +267,16 @@ impl TicketCache {
             [CACHE_VERSION],
         )
         .await?;
+
+        #[cfg(feature = "semantic-search")]
+        {
+            // Track the embedding model version
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('embedding_model', 'AllMiniLML6V2')",
+                (),
+            )
+            .await?;
+        }
 
         Ok(())
     }
@@ -370,6 +401,22 @@ impl TicketCache {
         )
         .await?;
 
+        #[cfg(feature = "semantic-search")]
+        {
+            // Add embedding column for semantic search (F32_BLOB with 384 dimensions)
+            conn.execute("ALTER TABLE tickets ADD COLUMN embedding F32_BLOB(384)", ())
+                .await
+                .ok(); // Ignore errors if column already exists
+
+            // Create DiskANN vector index for fast similarity search
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_embedding ON tickets(libsql_vector_idx(embedding, 'metric=cosine'))",
+                (),
+            )
+            .await
+            .ok(); // Ignore errors if index already exists
+        }
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS plans (
                 plan_id TEXT PRIMARY KEY,
@@ -428,4 +475,31 @@ impl TicketCache {
             ))
         }
     }
+
+    /// Update the embedding for a specific ticket.
+    ///
+    /// This method updates the embedding column for a ticket in the cache.
+    /// It's used during embedding regeneration when model versions change.
+    ///
+    /// # Arguments
+    /// * `ticket_id` - The ID of the ticket to update
+    /// * `embedding` - The embedding vector to store
+    #[cfg(feature = "semantic-search")]
+    pub async fn update_ticket_embedding(&self, ticket_id: &str, embedding: &[f32]) -> Result<()> {
+        let blob = embedding_to_blob(embedding);
+        let conn = self.create_connection().await?;
+        conn.execute(
+            "UPDATE tickets SET embedding = ?1 WHERE ticket_id = ?2",
+            (blob, ticket_id),
+        )
+        .await?;
+        Ok(())
+    }
+}
+
+/// Convert embedding vector to byte blob for storage.
+/// Each f32 is serialized as 4 little-endian bytes.
+#[cfg(feature = "semantic-search")]
+fn embedding_to_blob(embedding: &[f32]) -> Vec<u8> {
+    embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
 }

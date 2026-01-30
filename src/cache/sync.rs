@@ -17,6 +17,9 @@ use crate::types::TicketMetadata;
 use super::database::TicketCache;
 use super::traits::CacheableItem;
 
+#[cfg(feature = "semantic-search")]
+use crate::embedding::model::{EMBEDDING_MODEL_NAME, generate_ticket_embedding};
+
 impl TicketCache {
     /// Sync both tickets and plans from disk to cache.
     ///
@@ -196,5 +199,104 @@ impl TicketCache {
         }
 
         Ok(mtimes)
+    }
+
+    /// Check if embeddings need to be regenerated due to model version mismatch.
+    ///
+    /// This method checks the stored embedding model version in the cache metadata
+    /// against the current model version. Returns true if they don't match or if
+    /// no model version is stored.
+    #[cfg(feature = "semantic-search")]
+    pub async fn needs_reembedding(&self) -> Result<bool> {
+        let stored_model = self.get_meta("embedding_model").await?;
+
+        match stored_model {
+            Some(model) => Ok(model != EMBEDDING_MODEL_NAME),
+            None => Ok(true), // No model tracked, needs reembedding
+        }
+    }
+
+    /// Regenerate embeddings for all tickets in the cache.
+    ///
+    /// This method is called during cache rebuild when a model version mismatch
+    /// is detected. It regenerates embeddings for all tickets and updates the
+    /// cache with the new embeddings.
+    ///
+    /// # Arguments
+    /// * `output_json` - If true, suppresses progress output
+    #[cfg(feature = "semantic-search")]
+    pub async fn regenerate_all_embeddings(&self, output_json: bool) -> Result<()> {
+        // Get all tickets
+        let tickets = self.get_all_tickets().await?;
+        let total = tickets.len();
+
+        if total == 0 {
+            if !output_json {
+                println!("No tickets to regenerate embeddings for.");
+            }
+            return Ok(());
+        }
+
+        if !output_json {
+            println!("Regenerating embeddings for {} tickets...", total);
+        }
+
+        let mut success_count = 0;
+        let mut error_count = 0;
+
+        for (i, ticket) in tickets.iter().enumerate() {
+            let ticket_id = ticket
+                .id
+                .as_ref()
+                .ok_or_else(|| CacheError::CacheDataIntegrity("Ticket missing ID".to_string()))?;
+
+            // Generate embedding for this ticket
+            let title = ticket.title.as_deref().unwrap_or("");
+            let body = ticket.body.as_deref();
+
+            match generate_ticket_embedding(title, body) {
+                Ok(embedding) => {
+                    // Update the embedding in the cache
+                    if let Err(e) = self.update_ticket_embedding(ticket_id, &embedding).await {
+                        eprintln!(
+                            "Warning: failed to update embedding for {}: {}",
+                            ticket_id, e
+                        );
+                        error_count += 1;
+                    } else {
+                        success_count += 1;
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: failed to generate embedding for {}: {}",
+                        ticket_id, e
+                    );
+                    error_count += 1;
+                }
+            }
+
+            // Show progress every 10 tickets or at end
+            if !output_json && ((i + 1) % 10 == 0 || i == total - 1) {
+                println!("  Progress: {}/{}", i + 1, total);
+            }
+        }
+
+        // Update model version in meta table
+        let conn = self.create_connection().await?;
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('embedding_model', ?1)",
+            (EMBEDDING_MODEL_NAME,),
+        )
+        .await?;
+
+        if !output_json {
+            println!(
+                "Embeddings regenerated successfully ({} succeeded, {} failed).",
+                success_count, error_count
+            );
+        }
+
+        Ok(())
     }
 }

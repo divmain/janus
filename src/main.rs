@@ -6,6 +6,8 @@ use janus::cli::{
     generate_completions,
 };
 use janus::cli::{Cli, Commands};
+#[cfg(feature = "semantic-search")]
+use janus::commands::cmd_search;
 use janus::commands::{
     cmd_add_note, cmd_adopt, cmd_board, cmd_cache_clear, cmd_cache_path, cmd_cache_rebuild,
     cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create,
@@ -326,6 +328,14 @@ async fn main() -> ExitCode {
                 janus::mcp::cmd_mcp().await
             }
         }
+
+        #[cfg(feature = "semantic-search")]
+        Commands::Search {
+            query,
+            limit,
+            threshold,
+            json,
+        } => cmd_search(&query, limit, threshold, json).await,
     };
 
     match result {

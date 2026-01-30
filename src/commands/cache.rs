@@ -5,6 +5,9 @@ use super::CommandOutput;
 use crate::cache::TicketCache;
 use crate::error::{Result, is_corruption_error, is_permission_error};
 
+#[cfg(feature = "semantic-search")]
+use crate::embedding::model::EMBEDDING_MODEL_NAME;
+
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     match TicketCache::open().await {
         Ok(cache) => {
@@ -24,6 +27,33 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 "status": "healthy",
             });
 
+            // Add embedding status for semantic-search feature
+            #[cfg(feature = "semantic-search")]
+            let embedding_info = match cache.embedding_coverage().await {
+                Ok((with_embedding, total)) => {
+                    let percentage = if total > 0 {
+                        (with_embedding as f64 / total as f64 * 100.0) as u32
+                    } else {
+                        0
+                    };
+
+                    // Check model version
+                    let model_version_ok = match cache.get_meta("embedding_model").await {
+                        Ok(Some(stored_model)) => stored_model == EMBEDDING_MODEL_NAME,
+                        _ => false,
+                    };
+
+                    Some((with_embedding, total, percentage, model_version_ok))
+                }
+                Err(e) => {
+                    eprintln!("Warning: failed to get embedding coverage: {}", e);
+                    None
+                }
+            };
+
+            #[cfg(not(feature = "semantic-search"))]
+            let _embedding_info: Option<(usize, usize, u32, bool)> = None;
+
             let text = if let Ok(meta) = fs::metadata(&db_path) {
                 let size = meta.len();
                 let modified_text = if let Ok(modified) = meta.modified() {
@@ -31,19 +61,77 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 } else {
                     String::new()
                 };
-                format!(
+
+                #[allow(unused_mut)]
+                let mut text = format!(
                     "Cache status:\n  Database path: {}\n  Cached tickets: {}\n  Database size: {} bytes\n{}",
                     db_path.display(),
                     tickets.len(),
                     size,
                     modified_text
-                )
+                );
+
+                // Add embedding status to text output
+                #[cfg(feature = "semantic-search")]
+                if let Some((with_embedding, total, percentage, _model_version_ok)) = embedding_info
+                {
+                    text.push_str(&format!(
+                        "\n\nEmbedding Coverage: {}/{} ({}%)\n",
+                        with_embedding, total, percentage
+                    ));
+                    text.push_str(&format!("Embedding Model: {}\n", EMBEDDING_MODEL_NAME));
+
+                    // Get stored model version from cache
+                    let stored_model = cache.get_meta("embedding_model").await.ok().flatten();
+
+                    match stored_model {
+                        Some(model) if model == EMBEDDING_MODEL_NAME => {
+                            text.push_str(&format!("Model Version: {} ✓", model));
+                        }
+                        Some(model) => {
+                            text.push_str(&format!(
+                                "Model Version: {} ⚠ (current: {})\n",
+                                model, EMBEDDING_MODEL_NAME
+                            ));
+                            text.push_str("  Run 'janus cache rebuild' to update embeddings");
+                        }
+                        None => {
+                            text.push_str("Model Version: Not tracked");
+                        }
+                    }
+                }
+
+                text
             } else {
-                format!(
+                #[allow(unused_mut)]
+                let mut text = format!(
                     "Cache status:\n  Database path: {}\n  Cached tickets: {}",
                     db_path.display(),
                     tickets.len()
-                )
+                );
+
+                // Add embedding status to text output
+                #[cfg(feature = "semantic-search")]
+                if let Some((with_embedding, total, percentage, model_version_ok)) = embedding_info
+                {
+                    text.push_str(&format!(
+                        "\n\nEmbedding Coverage: {}/{} ({}%)\n",
+                        with_embedding, total, percentage
+                    ));
+                    text.push_str(&format!("Embedding Model: {}\n", EMBEDDING_MODEL_NAME));
+
+                    if model_version_ok {
+                        text.push_str("Model Version: ✓");
+                    } else {
+                        text.push_str(&format!(
+                            "Model Version: ⚠ (expected: {})\n",
+                            EMBEDDING_MODEL_NAME
+                        ));
+                        text.push_str("  Run 'janus cache rebuild' to update embeddings");
+                    }
+                }
+
+                text
             };
 
             if let Ok(meta) = fs::metadata(&db_path) {
@@ -51,6 +139,18 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 if let Ok(modified) = meta.modified() {
                     output["last_modified"] = json!(format!("{:?}", modified));
                 }
+            }
+
+            // Add embedding info to JSON output
+            #[cfg(feature = "semantic-search")]
+            if let Some((with_embedding, total, percentage, model_version_ok)) = embedding_info {
+                output["embedding_coverage"] = json!({
+                    "with_embedding": with_embedding,
+                    "total": total,
+                    "percentage": percentage
+                });
+                output["embedding_model"] = json!(EMBEDDING_MODEL_NAME);
+                output["model_version_ok"] = json!(model_version_ok);
             }
 
             CommandOutput::new(output)
@@ -180,20 +280,58 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
                     let ticket_count = cache.get_all_tickets().await?.len();
 
+                    // Check if we need to regenerate embeddings due to model version mismatch
+                    #[cfg(feature = "semantic-search")]
+                    let needs_reemb = cache.needs_reembedding().await.unwrap_or(true);
+
+                    #[cfg(not(feature = "semantic-search"))]
+                    let _needs_reemb = false;
+
+                    // Regenerate embeddings if needed (model version mismatch)
+                    #[cfg(feature = "semantic-search")]
+                    if needs_reemb && !output_json {
+                        println!("\nEmbedding model version mismatch detected.");
+                        println!("Regenerating embeddings for all tickets...");
+                    }
+
+                    #[cfg(feature = "semantic-search")]
+                    if needs_reemb {
+                        cache.regenerate_all_embeddings(output_json).await?;
+                    }
+
                     let total_duration = start_total.elapsed();
 
-                    CommandOutput::new(json!({
+                    // Update model version in meta table after successful rebuild
+                    #[cfg(feature = "semantic-search")]
+                    {
+                        let conn = cache.create_connection().await?;
+                        conn.execute(
+                            "INSERT OR REPLACE INTO meta (key, value) VALUES ('embedding_model', ?1)",
+                            (EMBEDDING_MODEL_NAME,)
+                        ).await?;
+                    }
+
+                    #[allow(unused_mut)]
+                    let mut output = json!({
                         "action": "cache_rebuilt",
                         "ticket_count": ticket_count,
                         "sync_time_ms": sync_duration.as_millis(),
                         "total_time_ms": total_duration.as_millis(),
                         "success": true,
-                    }))
-                    .with_text(format!(
-                        "Cache rebuilt successfully:\n  Tickets cached: {}\n  Sync time: {:?}\n  Total time: {:?}",
-                        ticket_count, sync_duration, total_duration
-                    ))
-                    .print(output_json)?;
+                    });
+
+                    #[cfg(feature = "semantic-search")]
+                    {
+                        output["embeddings_regenerated"] = json!(needs_reemb);
+                        output["embedding_model"] = json!(EMBEDDING_MODEL_NAME);
+                    }
+
+                    CommandOutput::new(output)
+                        .with_text(format!(
+                            "Cache rebuilt successfully:\n  Tickets cached: {}\n  Sync time: {:?}\n  Total time: {:?}",
+                            ticket_count, sync_duration, total_duration
+                        ))
+                        .print(output_json)?;
                 }
                 Err(e) => {
                     if !output_json {

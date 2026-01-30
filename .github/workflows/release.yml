@@ -27,7 +27,7 @@ jobs:
         
       - name: Build binary
         run: |
-          cargo build --release --target ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }} --features semantic-search
           strip target/${{ matrix.target }}/release/janus || true
           
       - name: Prepare release archive

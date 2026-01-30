@@ -109,6 +109,18 @@ pub async fn sync_cache() -> crate::error::Result<bool> {
     }
 }
 
+/// Get the ticket cache, returning an error if unavailable.
+///
+/// This is a convenience wrapper around `get_or_init_cache()` that returns
+/// a Result instead of Option, making it easier to use in contexts where
+/// you want to propagate errors.
+pub async fn get_ticket_cache() -> crate::error::Result<&'static TicketCache> {
+    match get_or_init_cache().await {
+        Some(cache) => Ok(cache),
+        None => Err(crate::error::JanusError::CacheNotAvailable),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,7 +337,10 @@ Description of the plan.
         let stored_version: Option<String> =
             rows.next().await.unwrap().map(|row| row.get(0).unwrap());
 
-        assert_eq!(stored_version, Some("11".to_string()));
+        #[cfg(feature = "semantic-search")]
+        assert_eq!(stored_version, Some("12-semantic".to_string()));
+        #[cfg(not(feature = "semantic-search"))]
+        assert_eq!(stored_version, Some("12".to_string()));
 
         let db_path = cache.cache_db_path();
         drop(cache);
@@ -2377,7 +2392,10 @@ size: {}
 
         // Verify cache version was updated
         let version = cache.get_meta("cache_version").await.unwrap();
-        assert_eq!(version, Some("11".to_string()));
+        #[cfg(feature = "semantic-search")]
+        assert_eq!(version, Some("12-semantic".to_string()));
+        #[cfg(not(feature = "semantic-search"))]
+        assert_eq!(version, Some("12".to_string()));
 
         drop(cache);
         fs::remove_file(&db_path).ok();

@@ -24,6 +24,9 @@ pub mod tui;
 pub mod types;
 pub mod utils;
 
+#[cfg(feature = "semantic-search")]
+pub mod embedding;
+
 pub use entity::Entity;
 pub use error::{JanusError, Result};
 pub use hooks::{HookContext, HookEvent, context_to_env, run_post_hooks, run_pre_hooks};

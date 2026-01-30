@@ -88,17 +88,18 @@ impl ServerHandler for JanusMcpServer {
                 "Janus MCP server provides access to plain-text issue tracking. \
                  Use tools to create, query, and manage tickets and plans. \
                  \n\nAvailable tools:\n\
-                 - create_ticket: Create a new ticket\n\
-                 - spawn_subtask: Create a child ticket with spawning metadata\n\
-                 - update_status: Change ticket status (new/next/in_progress/complete/cancelled)\n\
-                 - add_note: Add a timestamped note to a ticket\n\
-                 - list_tickets: Query tickets with filters\n\
-                 - show_ticket: Get full ticket content and relationships\n\
-                 - add_dependency: Add a blocking dependency between tickets\n\
-                 - remove_dependency: Remove a dependency\n\
-                 - add_ticket_to_plan: Add a ticket to a plan\n\
-                 - get_plan_status: Get plan progress and phase status\n\
-                 - get_children: Get tickets spawned from a parent"
+                  - create_ticket: Create a new ticket\n\
+                  - spawn_subtask: Create a child ticket with spawning metadata\n\
+                  - update_status: Change ticket status (new/next/in_progress/complete/cancelled)\n\
+                  - add_note: Add a timestamped note to a ticket\n\
+                  - list_tickets: Query tickets with filters\n\
+                  - show_ticket: Get full ticket content and relationships\n\
+                  - add_dependency: Add a blocking dependency between tickets\n\
+                  - remove_dependency: Remove a dependency\n\
+                  - add_ticket_to_plan: Add a ticket to a plan\n\
+                  - get_plan_status: Get plan progress and phase status\n\
+                  - get_children: Get tickets spawned from a parent\n\
+                  - semantic_search: Find tickets semantically similar to a query"
                     .to_string(),
             ),
             capabilities: ServerCapabilities::builder()
@@ -263,8 +264,8 @@ mod tests {
     fn test_tools_router_has_tools() {
         let server = JanusMcpServer::new();
         let tools = server.tools.router().list_all();
-        // We should have 12 tools
-        assert_eq!(tools.len(), 12);
+        // We should have 13 tools (including semantic_search)
+        assert_eq!(tools.len(), 13);
 
         // Verify tool names
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
@@ -280,6 +281,7 @@ mod tests {
         assert!(tool_names.contains(&"get_plan_status"));
         assert!(tool_names.contains(&"get_children"));
         assert!(tool_names.contains(&"get_next_available_ticket"));
+        assert!(tool_names.contains(&"semantic_search"));
     }
 
     #[test]
