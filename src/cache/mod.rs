@@ -325,7 +325,7 @@ Description of the plan.
         let stored_version: Option<String> =
             rows.next().await.unwrap().map(|row| row.get(0).unwrap());
 
-        assert_eq!(stored_version, Some(database::CACHE_VERSION.to_string()));
+        assert_eq!(stored_version, Some("11".to_string()));
 
         let db_path = cache.cache_db_path();
         drop(cache);
@@ -2148,5 +2148,239 @@ triaged: true
             "",
             "Empty string should remain empty"
         );
+    }
+
+    // =========================================================================
+    // Size field tests
+    // =========================================================================
+
+    fn create_test_ticket_with_size(
+        dir: &std::path::Path,
+        ticket_id: &str,
+        title: &str,
+        size: &str,
+    ) -> std::path::PathBuf {
+        let tickets_dir = dir.join(".janus/items");
+        fs::create_dir_all(&tickets_dir).unwrap();
+
+        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let content = format!(
+            r#"---
+id: {}
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: []
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+size: {}
+---
+# {}
+"#,
+            ticket_id, size, title
+        );
+        fs::write(&ticket_path, content).unwrap();
+        ticket_path
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_stores_size() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_cache_stores_size");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_size(&repo_path, "j-a1b2", "Small Ticket", "small");
+
+        let cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Verify size was stored in database
+        let mut rows = cache
+            .create_connection()
+            .await
+            .unwrap()
+            .query("SELECT size FROM tickets WHERE ticket_id = ?1", ["j-a1b2"])
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let size: Option<String> = row.get(0).ok();
+        assert_eq!(size, Some("small".to_string()));
+
+        // Verify size is returned when getting ticket
+        let ticket = cache.get_ticket("j-a1b2").await.unwrap().unwrap();
+        assert_eq!(ticket.size, Some(crate::types::TicketSize::Small));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_size_null() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_cache_size_null");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create ticket without size field
+        create_test_ticket(&repo_path, "j-no-size", "No Size Ticket");
+
+        let cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Verify size is NULL in database
+        let mut rows = cache
+            .create_connection()
+            .await
+            .unwrap()
+            .query(
+                "SELECT size FROM tickets WHERE ticket_id = ?1",
+                ["j-no-size"],
+            )
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let size: Option<String> = row.get(0).ok();
+        assert_eq!(size, None);
+
+        // Verify size is None when getting ticket
+        let ticket = cache.get_ticket("j-no-size").await.unwrap().unwrap();
+        assert_eq!(ticket.size, None);
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_filter_by_size_single() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_cache_filter_by_size_single");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_size(&repo_path, "j-small", "Small Ticket", "small");
+        create_test_ticket_with_size(&repo_path, "j-medium", "Medium Ticket", "medium");
+        create_test_ticket_with_size(&repo_path, "j-large", "Large Ticket", "large");
+        create_test_ticket(&repo_path, "j-no-size", "No Size Ticket");
+
+        let cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Filter by single size
+        let small_tickets = cache
+            .get_tickets_by_size(&[crate::types::TicketSize::Small])
+            .await
+            .unwrap();
+        assert_eq!(small_tickets.len(), 1);
+        assert_eq!(small_tickets[0].id, Some("j-small".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_filter_by_size_multiple() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_cache_filter_by_size_multiple");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        create_test_ticket_with_size(&repo_path, "j-xs", "XS Ticket", "xsmall");
+        create_test_ticket_with_size(&repo_path, "j-small", "Small Ticket", "small");
+        create_test_ticket_with_size(&repo_path, "j-medium", "Medium Ticket", "medium");
+        create_test_ticket_with_size(&repo_path, "j-large", "Large Ticket", "large");
+        create_test_ticket_with_size(&repo_path, "j-xl", "XL Ticket", "xlarge");
+
+        let cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+
+        // Filter by multiple sizes
+        let tickets = cache
+            .get_tickets_by_size(&[
+                crate::types::TicketSize::Small,
+                crate::types::TicketSize::Medium,
+            ])
+            .await
+            .unwrap();
+        assert_eq!(tickets.len(), 2);
+
+        let ids: Vec<String> = tickets.iter().filter_map(|t| t.id.clone()).collect();
+        assert!(ids.contains(&"j-small".to_string()));
+        assert!(ids.contains(&"j-medium".to_string()));
+
+        let db_path = cache.cache_db_path();
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_cache_migration_adds_size_column() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_cache_migration_adds_size_column");
+        fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create a ticket first
+        create_test_ticket(&repo_path, "j-a1b2", "Test Ticket");
+
+        // Open cache and sync with current version
+        let cache = TicketCache::open().await.unwrap();
+        cache.sync().await.unwrap();
+        let db_path = cache.cache_db_path();
+        drop(cache);
+
+        // Manually set cache version to old version to simulate outdated cache
+        let conn = turso::Builder::new_local(&db_path.to_string_lossy())
+            .build()
+            .await
+            .unwrap()
+            .connect()
+            .unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('cache_version', '10')",
+            (),
+        )
+        .await
+        .unwrap();
+        drop(conn);
+
+        // Reopen cache - should trigger rebuild with size column
+        let cache = TicketCache::open().await.unwrap();
+
+        // After rebuild, data is lost - need to re-sync
+        cache.sync().await.unwrap();
+
+        // Verify the size column exists by querying it
+        let mut rows = cache
+            .create_connection()
+            .await
+            .unwrap()
+            .query("SELECT size FROM tickets WHERE ticket_id = ?1", ["j-a1b2"])
+            .await
+            .unwrap();
+        let row = get_first_row(&mut rows).await;
+        let size: Option<String> = row.get(0).ok();
+        assert_eq!(size, None); // Should be NULL (not error)
+
+        // Verify cache version was updated
+        let version = cache.get_meta("cache_version").await.unwrap();
+        assert_eq!(version, Some("11".to_string()));
+
+        drop(cache);
+        fs::remove_file(&db_path).ok();
+        fs::remove_dir_all(&repo_path).ok();
     }
 }

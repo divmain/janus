@@ -7003,3 +7003,220 @@ fn test_next_priority_ordering() {
     // P0 should appear before P2
     assert!(first_data_line.unwrap().contains(&p0_id));
 }
+
+// ============================================================================
+// Size field tests
+// ============================================================================
+
+#[test]
+fn test_create_with_size() {
+    let janus = JanusTest::new();
+
+    let output = janus.run_success(&["create", "Test ticket", "--size", "medium"]);
+    let id = output.trim();
+
+    assert!(janus.ticket_exists(id), "Ticket file should exist");
+
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        output.contains("size: medium"),
+        "Ticket should have size: medium"
+    );
+}
+
+#[test]
+fn test_create_with_size_alias() {
+    let janus = JanusTest::new();
+
+    // Test 'm' alias for medium
+    let output = janus.run_success(&["create", "Test ticket with alias", "--size", "m"]);
+    let id = output.trim();
+
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        output.contains("size: medium"),
+        "Ticket should have size: medium when using alias 'm'"
+    );
+}
+
+#[test]
+fn test_create_with_all_size_aliases() {
+    let janus = JanusTest::new();
+
+    // Test all size aliases
+    let test_cases = vec![
+        ("xs", "xsmall"),
+        ("s", "small"),
+        ("m", "medium"),
+        ("l", "large"),
+        ("xl", "xlarge"),
+    ];
+
+    for (alias, expected) in test_cases {
+        let output = janus.run_success(&["create", "Test", "--size", alias]);
+        let id = output.trim();
+
+        let output = janus.run_success(&["show", &id]);
+        assert!(
+            output.contains(&format!("size: {}", expected)),
+            "Alias '{}' should result in size: {}",
+            alias,
+            expected
+        );
+    }
+}
+
+#[test]
+fn test_ls_filter_size_single() {
+    let janus = JanusTest::new();
+
+    // Create tickets with different sizes
+    let small_id = janus
+        .run_success(&["create", "Small ticket", "--size", "small"])
+        .trim()
+        .to_string();
+    let medium_id = janus
+        .run_success(&["create", "Medium ticket", "--size", "medium"])
+        .trim()
+        .to_string();
+    let _large_id = janus
+        .run_success(&["create", "Large ticket", "--size", "large"])
+        .trim()
+        .to_string();
+
+    // Filter by small size only
+    let output = janus.run_success(&["ls", "--size", "small"]);
+    assert!(output.contains(&small_id), "Should show small ticket");
+    assert!(
+        !output.contains(&medium_id),
+        "Should not show medium ticket"
+    );
+}
+
+#[test]
+fn test_ls_filter_size_multiple() {
+    let janus = JanusTest::new();
+
+    // Create tickets with different sizes
+    let small_id = janus
+        .run_success(&["create", "Small ticket", "--size", "small"])
+        .trim()
+        .to_string();
+    let medium_id = janus
+        .run_success(&["create", "Medium ticket", "--size", "medium"])
+        .trim()
+        .to_string();
+    let large_id = janus
+        .run_success(&["create", "Large ticket", "--size", "large"])
+        .trim()
+        .to_string();
+
+    // Filter by multiple sizes (small and medium)
+    let output = janus.run_success(&["ls", "--size", "small,medium"]);
+    assert!(output.contains(&small_id), "Should show small ticket");
+    assert!(output.contains(&medium_id), "Should show medium ticket");
+    assert!(!output.contains(&large_id), "Should not show large ticket");
+}
+
+#[test]
+fn test_set_size() {
+    let janus = JanusTest::new();
+
+    // Create a ticket without size
+    let id = janus
+        .run_success(&["create", "Test ticket"])
+        .trim()
+        .to_string();
+
+    // Verify no size initially
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        !output.contains("size:"),
+        "Ticket should not have size initially"
+    );
+
+    // Set size to large
+    janus.run_success(&["set", &id, "size", "large"]);
+
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        output.contains("size: large"),
+        "Ticket should have size: large"
+    );
+}
+
+#[test]
+fn test_set_size_clear() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with size
+    let id = janus
+        .run_success(&["create", "Test ticket", "--size", "medium"])
+        .trim()
+        .to_string();
+
+    // Verify size is set
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        output.contains("size: medium"),
+        "Ticket should have size: medium"
+    );
+
+    // Clear size by not providing a value
+    janus.run_success(&["set", &id, "size"]);
+
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        !output.contains("size:"),
+        "Ticket should not have size after clearing"
+    );
+}
+
+#[test]
+fn test_show_displays_size() {
+    let janus = JanusTest::new();
+
+    // Create a ticket with size
+    let id = janus
+        .run_success(&["create", "Test ticket", "--size", "xlarge"])
+        .trim()
+        .to_string();
+
+    // Check text output
+    let output = janus.run_success(&["show", &id]);
+    assert!(
+        output.contains("size: xlarge"),
+        "Show output should contain size"
+    );
+
+    // Check JSON output
+    let json_output = janus.run_success(&["show", &id, "--json"]);
+    assert!(
+        json_output.contains("\"size\":") || json_output.contains("'size':"),
+        "JSON output should contain size field"
+    );
+}
+
+#[test]
+fn test_create_invalid_size() {
+    let janus = JanusTest::new();
+
+    let stderr = janus.run_failure(&["create", "Test", "--size", "invalid"]);
+    assert!(
+        stderr.contains("Invalid") && stderr.contains("size"),
+        "Error should indicate invalid size input"
+    );
+}
+
+#[test]
+fn test_set_invalid_size() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+
+    let stderr = janus.run_failure(&["set", &id, "size", "huge"]);
+    assert!(
+        stderr.contains("Invalid") || stderr.contains("invalid"),
+        "Error should indicate invalid size value"
+    );
+}

@@ -7,11 +7,19 @@ use crate::ticket::Ticket;
 use std::str::FromStr;
 
 use crate::types::{
-    TicketPriority, TicketStatus, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES,
+    TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES, VALID_SIZES,
+    VALID_STATUSES, VALID_TYPES,
 };
 
 /// Supported fields for the set command
-const SUPPORTED_FIELDS: &[&str] = &["priority", "type", "parent", "status", "external_ref"];
+const SUPPORTED_FIELDS: &[&str] = &[
+    "priority",
+    "type",
+    "parent",
+    "status",
+    "external_ref",
+    "size",
+];
 
 /// Set a field on a ticket
 pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bool) -> Result<()> {
@@ -106,6 +114,24 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
             } else {
                 // Clear external_ref
                 ticket.remove_field("external_ref")?;
+                new_value = String::new();
+            }
+        }
+        "size" => {
+            previous_value = metadata.size.map(|s| s.to_string());
+            if let Some(value) = value {
+                // Validate size
+                let _parsed: TicketSize =
+                    value.parse().map_err(|_| JanusError::InvalidFieldValue {
+                        field: field.to_string(),
+                        value: value.to_string(),
+                        valid_values: VALID_SIZES.iter().map(|s| s.to_string()).collect(),
+                    })?;
+                new_value = value.to_string();
+                ticket.update_field("size", value)?;
+            } else {
+                // Clear size
+                ticket.remove_field("size")?;
                 new_value = String::new();
             }
         }

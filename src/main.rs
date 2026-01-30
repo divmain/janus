@@ -36,6 +36,7 @@ async fn main() -> ExitCode {
             prefix,
             spawned_from,
             spawn_context,
+            size,
             json,
         } => cmd_create(
             title,
@@ -49,6 +50,7 @@ async fn main() -> ExitCode {
             prefix,
             spawned_from,
             spawn_context,
+            size,
             json,
         ),
 
@@ -104,6 +106,7 @@ async fn main() -> ExitCode {
             next_in_plan,
             phase,
             triaged,
+            size,
             limit,
             sort_by,
             json,
@@ -121,6 +124,7 @@ async fn main() -> ExitCode {
                 next_in_plan.as_deref(),
                 phase,
                 triaged.as_deref(),
+                size,
                 limit,
                 sort_by.as_str(),
                 json,

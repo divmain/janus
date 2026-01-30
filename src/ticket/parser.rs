@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 use crate::error::Result;
 use crate::parser::{ParsedDocument, parse_document};
-use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
+use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
 
 /// Strict frontmatter struct for YAML deserialization with required fields.
 #[derive(Debug, Deserialize)]
@@ -22,6 +22,8 @@ struct TicketFrontmatter {
     ticket_type: Option<TicketType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     priority: Option<TicketPriority>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<TicketSize>,
     #[serde(rename = "external-ref", skip_serializing_if = "Option::is_none")]
     external_ref: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,6 +69,7 @@ fn ticket_metadata_from_document(doc: ParsedDocument) -> Result<TicketMetadata> 
         created: frontmatter.created,
         ticket_type: frontmatter.ticket_type,
         priority: frontmatter.priority,
+        size: frontmatter.size,
         external_ref: frontmatter.external_ref,
         remote: frontmatter.remote,
         parent: frontmatter.parent,

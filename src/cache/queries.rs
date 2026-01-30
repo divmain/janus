@@ -57,7 +57,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth, file_path, triaged, body
+                spawned_from, spawn_context, depth, file_path, triaged, body, size
          FROM tickets",
                 (),
             )
@@ -78,7 +78,7 @@ impl TicketCache {
             .query(
                 "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                 deps, links, parent, created, external_ref, remote, completion_summary,
-                spawned_from, spawn_context, depth, file_path, triaged, body
+                spawned_from, spawn_context, depth, file_path, triaged, body, size
          FROM tickets WHERE ticket_id = ?1",
                 [id],
             )
@@ -235,7 +235,7 @@ impl TicketCache {
                 .query(
                     "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                      deps, links, parent, created, external_ref, remote, completion_summary,
-                     spawned_from, spawn_context, depth, file_path, triaged, body
+                     spawned_from, spawn_context, depth, file_path, triaged, body, size
                      FROM tickets WHERE priority = ?1",
                     [priority_filter.unwrap() as i64],
                 )
@@ -253,7 +253,7 @@ impl TicketCache {
                 .query(
                     "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                      deps, links, parent, created, external_ref, remote, completion_summary,
-                     spawned_from, spawn_context, depth, file_path, triaged, body
+                     spawned_from, spawn_context, depth, file_path, triaged, body, size
                      FROM tickets
                      WHERE priority = ?1
                        AND (ticket_id LIKE ?2 ESCAPE '\\'
@@ -276,7 +276,7 @@ impl TicketCache {
                 .query(
                     "SELECT ticket_id, uuid, status, title, priority, ticket_type,
                      deps, links, parent, created, external_ref, remote, completion_summary,
-                     spawned_from, spawn_context, depth, file_path, triaged, body
+                     spawned_from, spawn_context, depth, file_path, triaged, body, size
                      FROM tickets
                      WHERE ticket_id LIKE ?1 ESCAPE '\\'
                         OR title LIKE ?1 ESCAPE '\\'
@@ -295,6 +295,44 @@ impl TicketCache {
         };
 
         Ok(results)
+    }
+
+    /// Get tickets filtered by size.
+    ///
+    /// Returns tickets matching any of the provided sizes.
+    pub async fn get_tickets_by_size(
+        &self,
+        sizes: &[crate::types::TicketSize],
+    ) -> Result<Vec<TicketMetadata>> {
+        if sizes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.create_connection().await?;
+
+        // Build IN clause with placeholders
+        let placeholders: Vec<String> = (1..=sizes.len()).map(|i| format!("?{}", i)).collect();
+        let in_clause = placeholders.join(", ");
+
+        let query = format!(
+            "SELECT ticket_id, uuid, status, title, priority, ticket_type,
+             deps, links, parent, created, external_ref, remote, completion_summary,
+             spawned_from, spawn_context, depth, file_path, triaged, body, size
+             FROM tickets WHERE size IN ({})",
+            in_clause
+        );
+
+        // Convert sizes to strings for the query
+        let size_params: Vec<String> = sizes.iter().map(|s| s.to_string()).collect();
+        let mut rows = conn.query(&query, size_params).await?;
+
+        let mut tickets = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let metadata = Self::row_to_ticket_metadata(&row)?;
+            tickets.push(metadata);
+        }
+
+        Ok(tickets)
     }
 
     // =========================================================================
@@ -351,6 +389,8 @@ impl TicketCache {
 
         let body: Option<String> = get_column!(row, 18, Option<String>)?;
 
+        let size_str: Option<String> = get_column!(row, 19, Option<String>)?;
+
         // Parse ticket_type (optional domain field)
         let ticket_type: Option<crate::types::TicketType> = if let Some(s) = type_str {
             Some(s.parse::<crate::types::TicketType>().map_err(|e| {
@@ -404,12 +444,27 @@ impl TicketCache {
 
         let triaged = triaged_num.map(|n| n != 0);
 
+        // Parse size (optional domain field)
+        let size: Option<crate::types::TicketSize> = if let Some(s) = size_str {
+            Some(s.parse::<crate::types::TicketSize>().map_err(|e| {
+                CacheError::CacheDataIntegrity(format!(
+                    "failed to parse size '{}' for ticket '{:?}': {}",
+                    s,
+                    id.as_deref().unwrap_or("unknown"),
+                    e
+                ))
+            })?)
+        } else {
+            None
+        };
+
         let metadata = TicketMetadata {
             id,
             uuid,
             title,
             status,
             priority,
+            size,
             ticket_type,
             deps,
             links,

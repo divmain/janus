@@ -176,6 +176,65 @@ enum_display_fromstr!(
 
 pub const VALID_PRIORITIES: &[&str] = &["0", "1", "2", "3", "4"];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TicketSize {
+    XSmall,
+    Small,
+    Medium,
+    Large,
+    XLarge,
+}
+
+impl TicketSize {
+    pub fn ordinal(&self) -> u8 {
+        match self {
+            Self::XSmall => 0,
+            Self::Small => 1,
+            Self::Medium => 2,
+            Self::Large => 3,
+            Self::XLarge => 4,
+        }
+    }
+
+    pub const ALL: &'static [TicketSize] = &[
+        Self::XSmall,
+        Self::Small,
+        Self::Medium,
+        Self::Large,
+        Self::XLarge,
+    ];
+}
+
+impl std::fmt::Display for TicketSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::XSmall => write!(f, "xsmall"),
+            Self::Small => write!(f, "small"),
+            Self::Medium => write!(f, "medium"),
+            Self::Large => write!(f, "large"),
+            Self::XLarge => write!(f, "xlarge"),
+        }
+    }
+}
+
+impl FromStr for TicketSize {
+    type Err = JanusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "xsmall" | "xs" => Ok(TicketSize::XSmall),
+            "small" | "s" => Ok(TicketSize::Small),
+            "medium" | "m" => Ok(TicketSize::Medium),
+            "large" | "l" => Ok(TicketSize::Large),
+            "xlarge" | "xl" => Ok(TicketSize::XLarge),
+            _ => Err(JanusError::InvalidSize(s.to_string())),
+        }
+    }
+}
+
+pub const VALID_SIZES: &[&str] = &["xsmall", "small", "medium", "large", "xlarge"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TicketField {
     Id,
@@ -186,6 +245,7 @@ pub enum TicketField {
     Created,
     Type,
     Priority,
+    Size,
     ExternalRef,
     Remote,
     Parent,
@@ -210,6 +270,7 @@ impl TicketField {
             TicketField::Created => "created",
             TicketField::Type => "type",
             TicketField::Priority => "priority",
+            TicketField::Size => "size",
             TicketField::ExternalRef => "external-ref",
             TicketField::Remote => "remote",
             TicketField::Parent => "parent",
@@ -231,6 +292,7 @@ impl TicketField {
             Created,
             Type,
             Priority,
+            Size,
             ExternalRef,
             Remote,
             Parent,
@@ -288,6 +350,9 @@ pub struct TicketMetadata {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<TicketPriority>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<TicketSize>,
 
     #[serde(rename = "external-ref", skip_serializing_if = "Option::is_none")]
     pub external_ref: Option<String>,
@@ -794,5 +859,152 @@ status: new
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_ticket_size_display() {
+        assert_eq!(TicketSize::XSmall.to_string(), "xsmall");
+        assert_eq!(TicketSize::Small.to_string(), "small");
+        assert_eq!(TicketSize::Medium.to_string(), "medium");
+        assert_eq!(TicketSize::Large.to_string(), "large");
+        assert_eq!(TicketSize::XLarge.to_string(), "xlarge");
+    }
+
+    #[test]
+    fn test_ticket_size_from_str() {
+        // Full names (lowercase)
+        assert_eq!("xsmall".parse::<TicketSize>().unwrap(), TicketSize::XSmall);
+        assert_eq!("small".parse::<TicketSize>().unwrap(), TicketSize::Small);
+        assert_eq!("medium".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("large".parse::<TicketSize>().unwrap(), TicketSize::Large);
+        assert_eq!("xlarge".parse::<TicketSize>().unwrap(), TicketSize::XLarge);
+
+        // Full names (uppercase)
+        assert_eq!("XSMALL".parse::<TicketSize>().unwrap(), TicketSize::XSmall);
+        assert_eq!("SMALL".parse::<TicketSize>().unwrap(), TicketSize::Small);
+        assert_eq!("MEDIUM".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("LARGE".parse::<TicketSize>().unwrap(), TicketSize::Large);
+        assert_eq!("XLARGE".parse::<TicketSize>().unwrap(), TicketSize::XLarge);
+
+        // Full names (mixed case)
+        assert_eq!("XSmall".parse::<TicketSize>().unwrap(), TicketSize::XSmall);
+        assert_eq!("Small".parse::<TicketSize>().unwrap(), TicketSize::Small);
+        assert_eq!("Medium".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+
+        // Aliases
+        assert_eq!("xs".parse::<TicketSize>().unwrap(), TicketSize::XSmall);
+        assert_eq!("s".parse::<TicketSize>().unwrap(), TicketSize::Small);
+        assert_eq!("m".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("l".parse::<TicketSize>().unwrap(), TicketSize::Large);
+        assert_eq!("xl".parse::<TicketSize>().unwrap(), TicketSize::XLarge);
+
+        // Aliases (uppercase)
+        assert_eq!("XS".parse::<TicketSize>().unwrap(), TicketSize::XSmall);
+        assert_eq!("S".parse::<TicketSize>().unwrap(), TicketSize::Small);
+        assert_eq!("M".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("L".parse::<TicketSize>().unwrap(), TicketSize::Large);
+        assert_eq!("XL".parse::<TicketSize>().unwrap(), TicketSize::XLarge);
+
+        // Invalid values
+        assert!("invalid".parse::<TicketSize>().is_err());
+        assert!("tiny".parse::<TicketSize>().is_err());
+        assert!("huge".parse::<TicketSize>().is_err());
+        assert!("".parse::<TicketSize>().is_err());
+    }
+
+    #[test]
+    fn test_ticket_size_ordering() {
+        // Verify ordinal values are in correct order
+        assert!(TicketSize::XSmall.ordinal() < TicketSize::Small.ordinal());
+        assert!(TicketSize::Small.ordinal() < TicketSize::Medium.ordinal());
+        assert!(TicketSize::Medium.ordinal() < TicketSize::Large.ordinal());
+        assert!(TicketSize::Large.ordinal() < TicketSize::XLarge.ordinal());
+
+        // Verify exact ordinal values
+        assert_eq!(TicketSize::XSmall.ordinal(), 0);
+        assert_eq!(TicketSize::Small.ordinal(), 1);
+        assert_eq!(TicketSize::Medium.ordinal(), 2);
+        assert_eq!(TicketSize::Large.ordinal(), 3);
+        assert_eq!(TicketSize::XLarge.ordinal(), 4);
+    }
+
+    #[test]
+    fn test_ticket_size_serde_json() {
+        // Test JSON serialization
+        let size = TicketSize::Medium;
+        let json = serde_json::to_string(&size).unwrap();
+        assert_eq!(json, "\"medium\"");
+
+        // Test JSON deserialization
+        let deserialized: TicketSize = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, size);
+
+        // Test all variants roundtrip
+        for size in TicketSize::ALL {
+            let json = serde_json::to_string(size).unwrap();
+            let deserialized: TicketSize = serde_json::from_str(&json).unwrap();
+            assert_eq!(*size, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_ticket_size_serde_yaml() {
+        use serde_yaml_ng as yaml;
+
+        // Test YAML serialization
+        let size = TicketSize::Large;
+        let yaml_str = yaml::to_string(&size).unwrap();
+        assert!(yaml_str.contains("large"));
+
+        // Test YAML deserialization
+        let deserialized: TicketSize = yaml::from_str(&yaml_str).unwrap();
+        assert_eq!(deserialized, size);
+
+        // Test all variants roundtrip
+        for size in TicketSize::ALL {
+            let yaml_str = yaml::to_string(size).unwrap();
+            let deserialized: TicketSize = yaml::from_str(&yaml_str).unwrap();
+            assert_eq!(*size, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_ticket_size_in_metadata() {
+        use serde_yaml_ng as yaml;
+
+        // Test that size field serializes correctly when present
+        let metadata = TicketMetadata {
+            id: Some("j-test".to_string()),
+            size: Some(TicketSize::Medium),
+            ..Default::default()
+        };
+
+        let yaml_str = yaml::to_string(&metadata).unwrap();
+        assert!(yaml_str.contains("size: medium"));
+
+        // Test that size field is skipped when None
+        let metadata_no_size = TicketMetadata {
+            id: Some("j-test".to_string()),
+            size: None,
+            ..Default::default()
+        };
+
+        let yaml_str = yaml::to_string(&metadata_no_size).unwrap();
+        assert!(!yaml_str.contains("size"));
+
+        // Test deserialization
+        let yaml_input = r#"
+id: j-test
+size: large
+"#;
+        let metadata: TicketMetadata = yaml::from_str(yaml_input).unwrap();
+        assert_eq!(metadata.size, Some(TicketSize::Large));
+    }
+
+    #[test]
+    fn test_ticket_field_size() {
+        assert_eq!(TicketField::Size.as_str(), "size");
+        assert!(TicketField::all().contains(&TicketField::Size));
+        assert!(!TicketField::Size.is_immutable());
     }
 }

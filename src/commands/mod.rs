@@ -52,8 +52,14 @@ pub use sync::{cmd_adopt, cmd_push, cmd_remote_link, cmd_sync};
 pub use view::cmd_view;
 
 use crate::error::Result;
-use crate::types::TicketMetadata;
+use crate::types::{TicketMetadata, TicketSize};
 use serde_json::json;
+
+/// Format a size value for display
+/// Returns the size string if present, "-" if None
+pub fn format_size(size: Option<TicketSize>) -> String {
+    size.map(|s| s.to_string()).unwrap_or_else(|| "-".into())
+}
 
 /// Unified output abstraction for commands that support both JSON and text output.
 ///
@@ -137,6 +143,7 @@ pub fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
         "created": ticket.created,
         "type": ticket.ticket_type.map(|t| t.to_string()),
         "priority": ticket.priority.map(|p| p.to_string()),
+        "size": ticket.size.map(|s| s.to_string()),
         "external-ref": ticket.external_ref,
         "parent": ticket.parent,
         "filePath": ticket.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
@@ -170,4 +177,23 @@ pub fn ticket_minimal_json_with_exists(
         "title": ticket.and_then(|t| t.title.clone()),
         "exists": ticket.is_some(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_size_with_value() {
+        assert_eq!(format_size(Some(TicketSize::XSmall)), "xsmall");
+        assert_eq!(format_size(Some(TicketSize::Small)), "small");
+        assert_eq!(format_size(Some(TicketSize::Medium)), "medium");
+        assert_eq!(format_size(Some(TicketSize::Large)), "large");
+        assert_eq!(format_size(Some(TicketSize::XLarge)), "xlarge");
+    }
+
+    #[test]
+    fn test_format_size_with_none() {
+        assert_eq!(format_size(None), "-");
+    }
 }

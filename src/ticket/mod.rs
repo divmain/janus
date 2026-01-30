@@ -1,5 +1,6 @@
 mod builder;
 mod content;
+mod editor;
 mod locator;
 mod manipulator;
 mod parser;
@@ -7,6 +8,7 @@ mod repository;
 
 pub use builder::TicketBuilder;
 pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
+pub use editor::TicketEditor;
 pub use locator::find_ticket_by_id;
 pub use repository::{
     build_ticket_map, find_tickets, get_all_tickets, get_all_tickets_from_disk,

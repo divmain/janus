@@ -237,6 +237,7 @@ All cache operations are async and use `tokio` runtime.
 - **Ticket statuses**: `new`, `next`, `in_progress`, `complete`, `cancelled`
 - **Ticket types**: `bug`, `feature`, `task`, `epic`, `chore`
 - **Priorities**: 0-4 (P0 highest, P4 lowest, default P2)
+- **Sizes**: `xsmall`, `small`, `medium`, `large`, `xlarge` (for complexity estimation)
 - **Dependencies**: Tickets can depend on other tickets (blocks/blocked-by)
 - **Links**: Bidirectional relationships between tickets
 - **Parent/Child**: Hierarchical ticket organization
@@ -257,6 +258,7 @@ links: []
 created: 2024-01-01T00:00:00Z
 type: task
 priority: 2
+size: medium
 ---
 # Ticket Title
 

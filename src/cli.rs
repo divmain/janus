@@ -4,7 +4,8 @@ use std::io;
 use std::str::FromStr;
 
 use crate::types::{
-    TicketPriority, TicketStatus, TicketType, VALID_PRIORITIES, VALID_STATUSES, VALID_TYPES,
+    TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES, VALID_SIZES,
+    VALID_STATUSES, VALID_TYPES,
 };
 
 #[derive(Parser)]
@@ -63,6 +64,10 @@ pub enum Commands {
         /// Context explaining why this ticket was spawned
         #[arg(long)]
         spawn_context: Option<String>,
+
+        /// Size: xsmall, small, medium, large, xlarge (aliases: xs, s, m, l, xl)
+        #[arg(long, value_parser = parse_size)]
+        size: Option<TicketSize>,
 
         /// Output as JSON
         #[arg(long)]
@@ -247,6 +252,10 @@ pub enum Commands {
         /// Filter by triaged status (true or false)
         #[arg(long)]
         triaged: Option<String>,
+
+        /// Filter by size (can specify multiple: --size small,medium)
+        #[arg(long, value_delimiter = ',', value_parser = parse_size)]
+        size: Option<Vec<TicketSize>>,
 
         /// Maximum tickets to show (unlimited if not specified)
         #[arg(long)]
@@ -914,6 +923,15 @@ fn parse_ticket_id(s: &str) -> Result<String, String> {
     }
 
     Ok(s.to_string())
+}
+
+fn parse_size(s: &str) -> Result<TicketSize, String> {
+    s.parse().map_err(|_| {
+        format!(
+            "Invalid size. Must be one of: {} (or aliases: xs, s, m, l, xl)",
+            VALID_SIZES.join(", ")
+        )
+    })
 }
 
 pub fn generate_completions(shell: Shell) {

@@ -383,6 +383,7 @@ mod tests {
             created: Some(created.to_string()),
             ticket_type: Some(crate::types::TicketType::Task),
             priority: Some(ticket_priority),
+            size: None,
             external_ref: None,
             remote: None,
             parent: None,

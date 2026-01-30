@@ -7,7 +7,7 @@ use super::{
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 use crate::ticket::{build_ticket_map, find_ticket_by_id, get_all_tickets_with_map};
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::{TicketMetadata, TicketSize, TicketStatus};
 
 /// Options for spawning-related filters
 #[derive(Default)]
@@ -84,6 +84,7 @@ pub async fn cmd_ls(
     next_in_plan: Option<&str>,
     phase: Option<u32>,
     triaged: Option<&str>,
+    size_filter: Option<Vec<TicketSize>>,
     limit: Option<usize>,
     sort_by: &str,
     output_json: bool,
@@ -139,6 +140,17 @@ pub async fn cmd_ls(
                 let ticket_triaged = t.triaged.unwrap_or(false);
                 let filter_value = filter_triaged == "true";
                 if ticket_triaged != filter_value {
+                    return false;
+                }
+            }
+
+            // Filter by size if specified (OR logic - match any of the specified sizes)
+            if let Some(ref sizes) = size_filter {
+                let ticket_size = t.size;
+                let matches_size = sizes
+                    .iter()
+                    .any(|filter_size| ticket_size == Some(*filter_size));
+                if !matches_size {
                     return false;
                 }
             }

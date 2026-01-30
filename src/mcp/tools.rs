@@ -38,7 +38,7 @@ use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map};
-use crate::types::{TicketMetadata, TicketStatus, TicketType};
+use crate::types::{TicketMetadata, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
 
 // ============================================================================
@@ -64,6 +64,12 @@ pub struct CreateTicketRequest {
     /// Description/body content for the ticket
     #[schemars(description = "Optional description text for the ticket body")]
     pub description: Option<String>,
+
+    /// Size estimate: xsmall, small, medium, large, xlarge (or aliases: xs, s, m, l, xl)
+    #[schemars(
+        description = "Size estimate for the ticket. Valid values: xsmall/xs, small/s, medium/m, large/l, xlarge/xl"
+    )]
+    pub size: Option<String>,
 }
 
 /// Request parameters for spawning a subtask
@@ -141,6 +147,12 @@ pub struct ListTicketsRequest {
     /// Filter by exact decomposition depth
     #[schemars(description = "Filter by exact decomposition depth (0 = root tickets)")]
     pub depth: Option<u32>,
+
+    /// Filter by size (comma-separated list of sizes: xsmall, small, medium, large, xlarge)
+    #[schemars(
+        description = "Filter by size. Comma-separated list of: xsmall/xs, small/s, medium/m, large/l, xlarge/xl"
+    )]
+    pub size: Option<String>,
 }
 
 /// Request parameters for showing a ticket
@@ -276,11 +288,25 @@ impl JanusTools {
             builder = builder.priority(p.to_string());
         }
 
+        // Parse and set size if provided
+        let size = if let Some(ref s) = request.size {
+            Some(TicketSize::from_str(s).map_err(|_| {
+                format!(
+                    "Invalid size: {}. Valid values: xsmall/xs, small/s, medium/m, large/l, xlarge/xl",
+                    s
+                )
+            })?)
+        } else {
+            None
+        };
+        builder = builder.size(size);
+
         let (id, _file_path) = builder.build().map_err(|e| e.to_string())?;
 
         // Log the event with MCP actor
         let ticket_type = request.ticket_type.as_deref().unwrap_or("task");
         let priority = request.priority.unwrap_or(2);
+        let size_str = size.map(|s| s.to_string());
         log_event(
             Event::new(
                 EventType::TicketCreated,
@@ -290,6 +316,7 @@ impl JanusTools {
                     "title": request.title,
                     "type": ticket_type,
                     "priority": priority,
+                    "size": size_str,
                 }),
             )
             .with_actor(Actor::Mcp),
@@ -481,6 +508,24 @@ impl JanusTools {
             None
         };
 
+        // Parse size filter if provided
+        let size_filter: Option<Vec<TicketSize>> = if let Some(ref s) = request.size {
+            let sizes: Result<Vec<TicketSize>, String> = s
+                .split(',')
+                .map(|size_str| {
+                    TicketSize::from_str(size_str.trim()).map_err(|_| {
+                        format!(
+                            "Invalid size: {}. Valid values: xsmall/xs, small/s, medium/m, large/l, xlarge/xl",
+                            size_str.trim()
+                        )
+                    })
+                })
+                .collect();
+            Some(sizes?)
+        } else {
+            None
+        };
+
         let filtered: Vec<&TicketMetadata> = tickets
             .iter()
             .filter(|t| {
@@ -520,6 +565,18 @@ impl JanusTools {
                         .map(|tt| tt.to_string())
                         .unwrap_or_else(|| "task".to_string());
                     if ticket_type != *type_filter {
+                        return false;
+                    }
+                }
+
+                // Filter by size
+                if let Some(ref sizes) = size_filter {
+                    if let Some(ticket_size) = t.size {
+                        if !sizes.contains(&ticket_size) {
+                            return false;
+                        }
+                    } else {
+                        // Ticket has no size, exclude it when filtering by size
                         return false;
                     }
                 }
@@ -983,6 +1040,9 @@ fn format_ticket_as_markdown(
     if let Some(priority) = metadata.priority {
         output.push_str(&format!("| Priority | P{} |\n", priority.as_num()));
     }
+    if let Some(size) = metadata.size {
+        output.push_str(&format!("| Size | {} |\n", size));
+    }
     if let Some(ref created) = metadata.created {
         // Extract just the date portion (YYYY-MM-DD) from the ISO timestamp
         let date = created.split('T').next().unwrap_or(created);
@@ -1104,6 +1164,9 @@ fn build_filter_summary(request: &ListTicketsRequest) -> String {
     if let Some(depth) = request.depth {
         filters.push(format!("depth={}", depth));
     }
+    if let Some(ref size) = request.size {
+        filters.push(format!("size={}", size));
+    }
 
     if filters.is_empty() {
         String::new()
@@ -1131,8 +1194,8 @@ fn format_ticket_list_as_markdown(tickets: &[&TicketMetadata], filter_summary: &
     }
 
     // Table header
-    output.push_str("| ID | Title | Status | Type | Priority |\n");
-    output.push_str("|----|-------|--------|------|----------|\n");
+    output.push_str("| ID | Title | Status | Type | Priority | Size |\n");
+    output.push_str("|----|-------|--------|------|----------|------|\n");
 
     // Table rows
     for ticket in tickets {
@@ -1150,10 +1213,14 @@ fn format_ticket_list_as_markdown(tickets: &[&TicketMetadata], filter_summary: &
             .priority
             .map(|p| format!("P{}", p.as_num()))
             .unwrap_or_else(|| "P2".to_string());
+        let size = ticket
+            .size
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "-".to_string());
 
         output.push_str(&format!(
-            "| {} | {} | {} | {} | {} |\n",
-            id, title, status, ticket_type, priority
+            "| {} | {} | {} | {} | {} | {} |\n",
+            id, title, status, ticket_type, priority, size
         ));
     }
 
@@ -1978,5 +2045,118 @@ mod tests {
 
         // Should NOT contain spawn contexts section
         assert!(!output.contains("**Spawn contexts:**"));
+    }
+
+    #[test]
+    fn test_create_ticket_request_schema_includes_size() {
+        // Verify the request type schema includes size field
+        let schema = schemars::schema_for!(CreateTicketRequest);
+        let json = serde_json::to_string(&schema).unwrap();
+        assert!(json.contains("size"));
+        assert!(json.contains("xsmall") || json.contains("xs"));
+    }
+
+    #[test]
+    fn test_list_tickets_request_schema_includes_size() {
+        // Verify the request type schema includes size field
+        let schema = schemars::schema_for!(ListTicketsRequest);
+        let json = serde_json::to_string(&schema).unwrap();
+        assert!(json.contains("size"));
+    }
+
+    #[test]
+    fn test_format_ticket_list_includes_size() {
+        use crate::types::{TicketPriority, TicketSize, TicketStatus, TicketType};
+
+        let ticket1 = TicketMetadata {
+            id: Some("j-a1b2".to_string()),
+            title: Some("Add authentication".to_string()),
+            status: Some(TicketStatus::New),
+            ticket_type: Some(TicketType::Feature),
+            priority: Some(TicketPriority::P1),
+            size: Some(TicketSize::Medium),
+            ..Default::default()
+        };
+        let ticket2 = TicketMetadata {
+            id: Some("j-c3d4".to_string()),
+            title: Some("Fix login bug".to_string()),
+            status: Some(TicketStatus::InProgress),
+            ticket_type: Some(TicketType::Bug),
+            priority: Some(TicketPriority::P2),
+            size: Some(TicketSize::Small),
+            ..Default::default()
+        };
+        let ticket3 = TicketMetadata {
+            id: Some("j-e5f6".to_string()),
+            title: Some("Update docs".to_string()),
+            status: Some(TicketStatus::New),
+            ticket_type: Some(TicketType::Task),
+            priority: Some(TicketPriority::P3),
+            // No size set
+            ..Default::default()
+        };
+        let tickets = vec![&ticket1, &ticket2, &ticket3];
+        let output = format_ticket_list_as_markdown(&tickets, "");
+
+        // Check table header includes Size column
+        assert!(output.contains("| ID | Title | Status | Type | Priority | Size |"));
+        // Check rows include size values
+        assert!(output.contains("| j-a1b2 | Add authentication | new | feature | P1 | medium |"));
+        assert!(output.contains("| j-c3d4 | Fix login bug | in_progress | bug | P2 | small |"));
+        assert!(output.contains("| j-e5f6 | Update docs | new | task | P3 | - |"));
+    }
+
+    #[test]
+    fn test_format_ticket_as_markdown_includes_size() {
+        use crate::types::{TicketSize, TicketStatus};
+
+        let metadata = TicketMetadata {
+            id: Some("j-test".to_string()),
+            title: Some("Test ticket".to_string()),
+            status: Some(TicketStatus::New),
+            size: Some(TicketSize::Large),
+            ..Default::default()
+        };
+
+        let output = format_ticket_as_markdown(&metadata, "Test content", &[], &[], &[]);
+
+        // Check size is in the metadata table
+        assert!(output.contains("| Size | large |"));
+    }
+
+    #[test]
+    fn test_build_filter_summary_includes_size() {
+        let request = ListTicketsRequest {
+            size: Some("medium,large".to_string()),
+            ..Default::default()
+        };
+        let summary = build_filter_summary(&request);
+        assert_eq!(summary, "**Showing:** size=medium,large\n\n");
+    }
+
+    #[test]
+    fn test_ticket_size_parsing_for_mcp() {
+        // Test full names
+        assert_eq!("xsmall".parse::<TicketSize>().unwrap(), TicketSize::XSmall);
+        assert_eq!("small".parse::<TicketSize>().unwrap(), TicketSize::Small);
+        assert_eq!("medium".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("large".parse::<TicketSize>().unwrap(), TicketSize::Large);
+        assert_eq!("xlarge".parse::<TicketSize>().unwrap(), TicketSize::XLarge);
+
+        // Test aliases
+        assert_eq!("xs".parse::<TicketSize>().unwrap(), TicketSize::XSmall);
+        assert_eq!("s".parse::<TicketSize>().unwrap(), TicketSize::Small);
+        assert_eq!("m".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("l".parse::<TicketSize>().unwrap(), TicketSize::Large);
+        assert_eq!("xl".parse::<TicketSize>().unwrap(), TicketSize::XLarge);
+
+        // Test case insensitivity
+        assert_eq!("MEDIUM".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("M".parse::<TicketSize>().unwrap(), TicketSize::Medium);
+        assert_eq!("XLarge".parse::<TicketSize>().unwrap(), TicketSize::XLarge);
+
+        // Test invalid size
+        assert!("invalid".parse::<TicketSize>().is_err());
+        assert!("tiny".parse::<TicketSize>().is_err());
     }
 }

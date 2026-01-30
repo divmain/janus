@@ -339,6 +339,11 @@ pub enum JanusError {
     #[error("invalid priority: {0}")]
     InvalidPriority(String),
 
+    #[error(
+        "invalid size: {0}. Must be one of: xsmall (xs), small (s), medium (m), large (l), xlarge (xl)"
+    )]
+    InvalidSize(String),
+
     #[error("plan has no tickets section")]
     PlanNoTicketsSection,
 
@@ -557,5 +562,23 @@ mod tests {
         assert!(msg.contains("plan-alpha"));
         assert!(msg.contains("plan-beta"));
         assert!(msg.contains("ambiguous plan ID"));
+    }
+
+    #[test]
+    fn test_invalid_size_error_message() {
+        let error = JanusError::InvalidSize("huge".to_string());
+        let msg = error.to_string();
+        assert!(msg.contains("invalid size"));
+        assert!(msg.contains("huge"));
+        assert!(msg.contains("xsmall"));
+        assert!(msg.contains("xs"));
+        assert!(msg.contains("small"));
+        assert!(msg.contains("s"));
+        assert!(msg.contains("medium"));
+        assert!(msg.contains("m"));
+        assert!(msg.contains("large"));
+        assert!(msg.contains("l"));
+        assert!(msg.contains("xlarge"));
+        assert!(msg.contains("xl"));
     }
 }

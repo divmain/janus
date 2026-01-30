@@ -1,6 +1,8 @@
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
-use crate::types::{EntityType, TicketPriority, TicketStatus, TicketType, tickets_items_dir};
+use crate::types::{
+    EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
+};
 use crate::utils;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -25,6 +27,7 @@ pub struct TicketBuilder {
     spawn_context: Option<String>,
     depth: Option<u32>,
     triaged: Option<bool>,
+    size: Option<TicketSize>,
 }
 
 impl TicketBuilder {
@@ -49,6 +52,7 @@ impl TicketBuilder {
             spawn_context: None,
             depth: None,
             triaged: None,
+            size: None,
         }
     }
 
@@ -142,6 +146,11 @@ impl TicketBuilder {
         self
     }
 
+    pub fn size(mut self, size: Option<TicketSize>) -> Self {
+        self.size = size;
+        self
+    }
+
     pub fn build(self) -> Result<(String, PathBuf)> {
         utils::ensure_dir()?;
 
@@ -203,6 +212,9 @@ impl TicketBuilder {
             frontmatter_lines.push(format!("triaged: {}", triaged));
         } else {
             frontmatter_lines.push("triaged: false".to_string());
+        }
+        if let Some(size) = self.size {
+            frontmatter_lines.push(format!("size: {}", size));
         }
 
         frontmatter_lines.push("---".to_string());

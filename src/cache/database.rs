@@ -21,7 +21,7 @@ use super::paths::{cache_db_path, cache_dir, repo_hash};
 const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Current cache schema version. Increment when schema changes.
-pub(crate) const CACHE_VERSION: &str = "9";
+pub(crate) const CACHE_VERSION: &str = "11";
 
 /// Maximum number of retry attempts when creating database connections.
 ///
@@ -160,7 +160,8 @@ impl TicketCache {
                 depth INTEGER,
                 file_path TEXT,
                 triaged INTEGER,
-                body TEXT
+                body TEXT,
+                size TEXT
             )",
             (),
         )
@@ -198,6 +199,12 @@ impl TicketCache {
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_tickets_depth ON tickets(depth)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_size ON tickets(size)",
             (),
         )
         .await?;
@@ -314,7 +321,8 @@ impl TicketCache {
                 depth INTEGER,
                 file_path TEXT,
                 triaged INTEGER,
-                body TEXT
+                body TEXT,
+                size TEXT
             )",
             (),
         )
@@ -352,6 +360,12 @@ impl TicketCache {
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_tickets_depth ON tickets(depth)",
+            (),
+        )
+        .await?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tickets_size ON tickets(size)",
             (),
         )
         .await?;

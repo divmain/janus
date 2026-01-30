@@ -140,6 +140,7 @@ impl CacheableItem for TicketMetadata {
             .as_ref()
             .map(|p| p.to_string_lossy().to_string());
         let body = self.body.clone();
+        let size = self.size.map(|s| s.to_string());
 
         async move {
             let ticket_id = ticket_id?;
@@ -147,8 +148,8 @@ impl CacheableItem for TicketMetadata {
                 "INSERT OR REPLACE INTO tickets (
                     ticket_id, uuid, mtime_ns, status, title, priority, ticket_type,
                     deps, links, parent, created, external_ref, remote, completion_summary,
-                    spawned_from, spawn_context, depth, file_path, triaged, body
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                    spawned_from, spawn_context, depth, file_path, triaged, body, size
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
                 params![
                     ticket_id,
                     uuid,
@@ -170,6 +171,7 @@ impl CacheableItem for TicketMetadata {
                     file_path,
                     triaged,
                     body,
+                    size,
                 ],
             )
             .await?;

@@ -107,6 +107,7 @@ cargo build --release
 janus create "Fix login bug" \
   --type bug \
   --priority 1 \
+  --size small \
   --description "Users cannot login after password reset"
 
 # View ticket details
@@ -484,6 +485,7 @@ Options:
       --acceptance <TEXT>     Acceptance criteria
   -p, --priority <0-4>        Priority level (default: 2, 0 = highest)
   -t, --type <TYPE>           Type: bug, feature, task, epic, chore (default: task)
+      --size <SIZE>           Size estimate: xsmall, small, medium, large, xlarge (or xs, s, m, l, xl)
       --external-ref <REF>    External reference (e.g., gh-123)
       --parent <ID>           Parent ticket ID
       --prefix <PREFIX>       Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
@@ -621,6 +623,7 @@ Options:
       --all            Include closed/cancelled tickets in output
       --status <STATUS> Filter by specific status
       --triaged <BOOL> Filter by triage status (true|false)
+      --size <SIZE>    Filter by size (can specify multiple: --size small,medium)
       --limit <N>      Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
       --json           Output as JSON
 
@@ -912,6 +915,16 @@ Invoke-Expression (& janus completions powershell | Out-String)
 - **P3**: Low priority
 - **P4**: Nice to have
 
+## Ticket Sizes
+
+Size estimates for ticket complexity (optional field):
+
+- **xsmall** (xs): Trivial change, minutes to complete
+- **small** (s): Quick task, a few hours
+- **medium** (m): Standard task, 1-2 days
+- **large** (l): Significant effort, 3-5 days
+- **xlarge** (xl): Major undertaking, a week or more
+
 ## Ticket File Format
 
 Tickets are stored as Markdown files in `.janus/` with YAML frontmatter:
@@ -922,6 +935,7 @@ id: j-a1b2
 status: new
 type: feature
 priority: 1
+size: medium
 created: 2024-01-01T00:00:00Z
 deps: []
 links: []

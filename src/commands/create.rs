@@ -4,7 +4,7 @@ use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::log_ticket_created;
 use crate::ticket::{TicketBuilder, parse_ticket};
-use crate::types::{TicketPriority, TicketType, tickets_items_dir};
+use crate::types::{TicketPriority, TicketSize, TicketType, tickets_items_dir};
 
 /// Compute the depth for a spawned ticket based on the parent's depth.
 /// Returns None if no spawned_from is provided, or parent.depth + 1 otherwise.
@@ -40,6 +40,7 @@ pub fn cmd_create(
     prefix: Option<String>,
     spawned_from: Option<String>,
     spawn_context: Option<String>,
+    size: Option<TicketSize>,
     output_json: bool,
 ) -> Result<()> {
     // Validate that title is not empty or only whitespace
@@ -62,6 +63,7 @@ pub fn cmd_create(
         .spawned_from(spawned_from.as_deref())
         .spawn_context(spawn_context.as_deref())
         .depth(depth)
+        .size(size)
         .run_hooks(true)
         .build()?;
 
