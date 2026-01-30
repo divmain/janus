@@ -30,6 +30,9 @@ pub fn is_permission_error(error: &JanusError) -> bool {
         }
         JanusError::CacheAccessDenied(_) => true,
         JanusError::Io(io_err) => io_err.kind() == std::io::ErrorKind::PermissionDenied,
+        JanusError::StorageError { source, .. } => {
+            source.kind() == std::io::ErrorKind::PermissionDenied
+        }
         _ => false,
     }
 }
@@ -179,6 +182,15 @@ pub enum JanusError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Failed to {operation} {item_type} at {path}: {source}")]
+    StorageError {
+        operation: &'static str,
+        item_type: &'static str,
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 
     #[error("YAML parse error: {0}")]
     YamlParse(#[from] serde_yaml_ng::Error),

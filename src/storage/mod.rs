@@ -6,22 +6,22 @@ use std::path::Path;
 
 /// Read file content with error handling
 pub fn read_file(path: &Path) -> Result<String> {
-    std::fs::read_to_string(path).map_err(|e| {
-        JanusError::Io(std::io::Error::new(
-            e.kind(),
-            format!("Failed to read file at {}: {}", path.display(), e),
-        ))
+    std::fs::read_to_string(path).map_err(|e| JanusError::StorageError {
+        operation: "read",
+        item_type: "file",
+        path: path.to_path_buf(),
+        source: e,
     })
 }
 
 /// Write file content with error handling
 pub fn write_file(path: &Path, content: &str) -> Result<()> {
     ensure_parent_dir(path)?;
-    std::fs::write(path, content).map_err(|e| {
-        JanusError::Io(std::io::Error::new(
-            e.kind(),
-            format!("Failed to write file at {}: {}", path.display(), e),
-        ))
+    std::fs::write(path, content).map_err(|e| JanusError::StorageError {
+        operation: "write",
+        item_type: "file",
+        path: path.to_path_buf(),
+        source: e,
     })
 }
 
@@ -30,11 +30,11 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!("Failed to create directory at {}: {}", parent.display(), e),
-            ))
+        std::fs::create_dir_all(parent).map_err(|e| JanusError::StorageError {
+            operation: "create",
+            item_type: "directory",
+            path: parent.to_path_buf(),
+            source: e,
         })?;
     }
     Ok(())
@@ -42,11 +42,11 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
 
 /// Delete a file with error handling
 pub fn delete_file(path: &Path) -> Result<()> {
-    std::fs::remove_file(path).map_err(|e| {
-        JanusError::Io(std::io::Error::new(
-            e.kind(),
-            format!("Failed to delete file at {}: {}", path.display(), e),
-        ))
+    std::fs::remove_file(path).map_err(|e| JanusError::StorageError {
+        operation: "delete",
+        item_type: "file",
+        path: path.to_path_buf(),
+        source: e,
     })
 }
 
