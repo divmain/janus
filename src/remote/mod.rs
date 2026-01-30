@@ -142,11 +142,16 @@ impl RemoteRef {
         if parts.len() != 2 {
             return false;
         }
-        // Project key is uppercase letters, number is digits
-        parts[0].chars().all(|c| c.is_ascii_uppercase())
-            && !parts[0].is_empty()
-            && parts[1].chars().all(|c| c.is_ascii_digit())
-            && !parts[1].is_empty()
+        let project_key = parts[0];
+        let number = parts[1];
+
+        // Project key: at least 2 uppercase letters
+        // Number: at least 1 digit, reasonable max to prevent overflow
+        project_key.len() >= 2
+            && project_key.chars().all(|c| c.is_ascii_uppercase())
+            && !number.is_empty()
+            && number.len() <= 10 // Prevent overflow
+            && number.chars().all(|c| c.is_ascii_digit())
     }
 
     /// Try to parse as GitHub short format: owner/repo/123
@@ -601,6 +606,9 @@ mod tests {
         assert!(!RemoteRef::looks_like_linear_id("123-ABC")); // wrong order
         assert!(!RemoteRef::looks_like_linear_id("PROJ-")); // no number
         assert!(!RemoteRef::looks_like_linear_id("-123")); // no project
+        assert!(!RemoteRef::looks_like_linear_id("A-123")); // single char project key
+        assert!(!RemoteRef::looks_like_linear_id("AB-12345678901")); // number too long (>10 digits)
+        assert!(RemoteRef::looks_like_linear_id("AB-1234567890")); // exactly 10 digits
     }
 
     #[test]
