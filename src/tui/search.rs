@@ -1,7 +1,19 @@
-//! Fuzzy search logic for filtering tickets
+//! Fuzzy and semantic search logic for filtering tickets
 //!
-//! Provides fuzzy matching across multiple ticket fields with support for
-//! priority shorthand (p0-p4) filtering.
+//! Provides two search modes:
+//! - Fuzzy matching (default): Uses substring/fuzzy matching across ticket fields
+//! - Semantic matching (with ~ prefix): Uses vector embeddings for intent-based search
+//!
+//! To use semantic search, prefix your query with `~`:
+//! - `authentication` - Fuzzy search for "authentication"
+//! - `~authentication` - Semantic search for tickets related to authentication
+//!
+//! Features:
+//! - Fuzzy matching across id, title, and type
+//! - Priority shorthand: `p0`, `p1`, `p2`, `p3`, `p4`
+//! - Smart case: case-insensitive unless query contains uppercase
+//! - Semantic search with `~` prefix (requires semantic-search feature)
+//! - Result merging: Fuzzy results first, then semantic (deduplicated)
 
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
@@ -19,6 +31,8 @@ pub struct FilteredTicket {
     pub score: i64,
     /// Indices of matched characters in the title (for highlighting)
     pub title_indices: Vec<usize>,
+    /// true if from semantic search
+    pub is_semantic: bool,
 }
 
 /// Generic result of fuzzy filtering with item, score, and title indices
@@ -110,6 +124,7 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
                 ticket: Arc::new(t.clone()),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             })
             .collect();
     }
@@ -134,6 +149,7 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
                 ticket: Arc::new((*t).clone()),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             })
             .collect();
     }
@@ -167,6 +183,7 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
             ticket: Arc::new((*filtered.item).clone()),
             score: filtered.score,
             title_indices: filtered.title_indices,
+            is_semantic: false,
         })
         .collect()
 }
@@ -197,6 +214,97 @@ pub fn calculate_debounce_ms(ticket_count: usize) -> u64 {
     }
 }
 
+/// Check if query uses semantic search modifier (~ prefix)
+pub fn is_semantic_search(query: &str) -> bool {
+    query.starts_with('~')
+}
+
+/// Strip the semantic modifier and return clean query
+pub fn strip_semantic_modifier(query: &str) -> &str {
+    if let Some(stripped) = query.strip_prefix('~') {
+        stripped.trim_start()
+    } else {
+        query
+    }
+}
+
+/// Merge fuzzy and semantic results, removing duplicates
+/// Fuzzy results take precedence (appear first)
+#[cfg(feature = "semantic-search")]
+pub fn merge_search_results(
+    fuzzy: Vec<FilteredTicket>,
+    semantic: Vec<crate::embedding::search::SearchResult>,
+) -> Vec<FilteredTicket> {
+    use std::collections::HashSet;
+
+    // Collect IDs from fuzzy results to avoid duplicates
+    let fuzzy_ids: HashSet<String> = fuzzy.iter().filter_map(|t| t.ticket.id.clone()).collect();
+
+    // Convert semantic results to FilteredTickets, excluding duplicates
+    let semantic_tickets: Vec<FilteredTicket> = semantic
+        .into_iter()
+        .filter(|r| {
+            r.ticket
+                .id
+                .as_ref()
+                .map(|id| !fuzzy_ids.contains(id))
+                .unwrap_or(false)
+        })
+        .map(|r| r.into())
+        .collect();
+
+    // Combine: fuzzy first, then semantic
+    let mut result = fuzzy;
+    result.extend(semantic_tickets);
+    result
+}
+
+#[cfg(feature = "semantic-search")]
+/// Perform semantic search using the cache.
+/// Returns SearchResults on success, or an error string on failure.
+pub async fn perform_semantic_search(
+    query: &str,
+) -> std::result::Result<Vec<crate::embedding::search::SearchResult>, String> {
+    use crate::cache::get_or_init_cache;
+
+    // Get cache
+    let cache = get_or_init_cache().await.ok_or("Cache not available")?;
+
+    // Check if embeddings are available
+    let (with_embedding, total) = cache
+        .embedding_coverage()
+        .await
+        .map_err(|e| format!("Failed to check embeddings: {}", e))?;
+
+    if total == 0 {
+        return Err("No tickets in cache".to_string());
+    }
+
+    if with_embedding == 0 {
+        return Err("No ticket embeddings available. Run 'janus cache rebuild' with semantic-search feature enabled.".to_string());
+    }
+
+    // Perform semantic search with hard-coded limit of 10
+    let results = cache
+        .semantic_search(query, 10)
+        .await
+        .map_err(|e| format!("Semantic search failed: {}", e))?;
+
+    Ok(results)
+}
+
+#[cfg(feature = "semantic-search")]
+impl From<crate::embedding::search::SearchResult> for FilteredTicket {
+    fn from(result: crate::embedding::search::SearchResult) -> Self {
+        Self {
+            ticket: Arc::new(result.ticket),
+            score: 0,              // Fuzzy score not applicable
+            title_indices: vec![], // No fuzzy highlighting
+            is_semantic: true,
+        }
+    }
+}
+
 /// Compute title highlight indices for tickets returned from SQL search.
 ///
 /// Runs lightweight fuzzy matching on title only (not body) to determine
@@ -213,6 +321,7 @@ pub fn compute_title_highlights(tickets: &[TicketMetadata], query: &str) -> Vec<
                 ticket: Arc::new(t.clone()),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             })
             .collect();
     }
@@ -232,6 +341,7 @@ pub fn compute_title_highlights(tickets: &[TicketMetadata], query: &str) -> Vec<
                 ticket: Arc::new(ticket.clone()),
                 score: 0, // Score not relevant for SQL-based search
                 title_indices,
+                is_semantic: false,
             }
         })
         .collect()
@@ -401,5 +511,114 @@ mod tests {
         assert!(!results[0].title_indices.is_empty());
         // Second ticket has no "bug"
         assert!(results[1].title_indices.is_empty());
+    }
+
+    #[test]
+    fn test_is_semantic_search() {
+        assert!(is_semantic_search("~query"));
+        assert!(is_semantic_search("~ query"));
+        assert!(!is_semantic_search("query"));
+        assert!(!is_semantic_search("query~"));
+        assert!(!is_semantic_search(""));
+    }
+
+    #[test]
+    fn test_strip_semantic_modifier() {
+        assert_eq!(strip_semantic_modifier("~query"), "query");
+        assert_eq!(strip_semantic_modifier("~ query"), "query");
+        assert_eq!(strip_semantic_modifier("query"), "query");
+        assert_eq!(strip_semantic_modifier("~"), "");
+    }
+
+    #[cfg(feature = "semantic-search")]
+    #[test]
+    fn test_merge_search_results() {
+        // Create fuzzy results
+        let fuzzy = vec![FilteredTicket {
+            ticket: Arc::new(TicketMetadata {
+                id: Some("ticket-1".to_string()),
+                title: Some("First Ticket".to_string()),
+                ..Default::default()
+            }),
+            score: 100,
+            title_indices: vec![],
+            is_semantic: false,
+        }];
+
+        // Create semantic results (including duplicate)
+        let semantic = vec![
+            crate::embedding::search::SearchResult {
+                ticket: TicketMetadata {
+                    id: Some("ticket-1".to_string()), // Duplicate
+                    title: Some("First Ticket".to_string()),
+                    ..Default::default()
+                },
+                similarity: 0.95,
+            },
+            crate::embedding::search::SearchResult {
+                ticket: TicketMetadata {
+                    id: Some("ticket-2".to_string()), // New
+                    title: Some("Second Ticket".to_string()),
+                    ..Default::default()
+                },
+                similarity: 0.85,
+            },
+        ];
+
+        let merged = merge_search_results(fuzzy, semantic);
+
+        // Should have 2 results (ticket-1 from fuzzy, ticket-2 from semantic)
+        assert_eq!(merged.len(), 2);
+
+        // First should be fuzzy (ticket-1)
+        assert_eq!(merged[0].ticket.id.as_ref().unwrap(), "ticket-1");
+        assert!(!merged[0].is_semantic);
+
+        // Second should be semantic (ticket-2)
+        assert_eq!(merged[1].ticket.id.as_ref().unwrap(), "ticket-2");
+        assert!(merged[1].is_semantic);
+    }
+
+    #[test]
+    fn test_is_semantic_search_edge_cases() {
+        // Empty query with ~ prefix
+        assert!(is_semantic_search("~"));
+        assert!(is_semantic_search("~ "));
+
+        // Very long query
+        assert!(is_semantic_search(
+            "~a very long query with many words to test edge cases"
+        ));
+
+        // Special characters after ~
+        assert!(is_semantic_search("~!@#$%^&*()"));
+        assert!(is_semantic_search("~query-with-dashes"));
+        assert!(is_semantic_search("~query_with_underscores"));
+
+        // Multiple ~ characters
+        assert!(is_semantic_search("~~query"));
+        assert!(is_semantic_search("~query~more"));
+        assert!(is_semantic_search("~~~"));
+    }
+
+    #[test]
+    fn test_strip_semantic_modifier_edge_cases() {
+        // Only ~
+        assert_eq!(strip_semantic_modifier("~"), "");
+
+        // ~ followed by spaces
+        assert_eq!(strip_semantic_modifier("~   "), "");
+        assert_eq!(strip_semantic_modifier("~  query"), "query");
+
+        // Without ~ prefix (no change)
+        assert_eq!(
+            strip_semantic_modifier("query without prefix"),
+            "query without prefix"
+        );
+        assert_eq!(strip_semantic_modifier(""), "");
+
+        // Multiple ~ (only strips first)
+        assert_eq!(strip_semantic_modifier("~~query"), "~query");
+        assert_eq!(strip_semantic_modifier("~query~more"), "query~more");
     }
 }

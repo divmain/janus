@@ -357,6 +357,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                             InlineSearchBox(
                                 value: Some(search_query),
                                 has_focus: search_focused.get() && !is_editing,
+                                is_semantic: query_str.starts_with('~'),
                             )
                         }
 
@@ -560,6 +561,7 @@ mod tests {
                 }),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             },
             FilteredTicket {
                 ticket: Arc::new(TicketMetadata {
@@ -571,6 +573,7 @@ mod tests {
                 }),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             },
         ];
 

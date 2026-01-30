@@ -58,7 +58,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let init_result: State<InitResult> = hooks.use_state(|| InitResult::Ok);
     let all_tickets: State<Vec<TicketMetadata>> = hooks.use_state(Vec::new);
     let mut is_loading = hooks.use_state(|| true);
-    let toast: State<Option<Toast>> = hooks.use_state(|| None);
+    let mut toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut search_query = hooks.use_state(String::new);
     let mut selected_index = hooks.use_state(|| 0usize);
     let mut scroll_offset = hooks.use_state(|| 0usize);
@@ -265,6 +265,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     search_state.check_pending(query_str.clone());
     search_state.clear_if_empty(&query_str);
 
+    // Check for semantic search errors and display toast if present
+    // Only show error if user explicitly requested semantic search with ~ prefix
+    if query_str.starts_with('~')
+        && let Some(error) = search_state.take_semantic_error()
+    {
+        // Provide user-friendly error message
+        let user_message = format!("Semantic search failed: {}", error);
+        toast.set(Some(Toast::error(user_message)));
+    }
+
     let filtered = compute_filtered_tickets(&all_tickets.read(), &search_state, &query_str);
 
     // Clone filtered for event handler closure (each clone is cheap since FilteredTicket contains Arc)
@@ -427,6 +437,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             needs_reload: &mut needs_reload,
                             active_pane: &mut active_pane,
                             is_triage_mode: is_triage_mode_for_events.get(),
+                            toast_setter: Some(&mut toast),
                         },
                         data: handlers::ViewData {
                             filtered_tickets: &filtered_for_events,
@@ -561,6 +572,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             SearchBox(
                                 value: Some(search_query),
                                 has_focus: active_pane.get() == Pane::Search && !is_editing,
+                                is_semantic: query_str.starts_with('~'),
                             )
                         }
 

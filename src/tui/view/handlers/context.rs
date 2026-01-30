@@ -5,6 +5,7 @@
 
 use iocraft::prelude::{Handler, State};
 
+use crate::tui::components::Toast;
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::{EditFormState, EditMode};
 use crate::tui::search::FilteredTicket;
@@ -35,6 +36,17 @@ pub struct AppState<'a> {
     pub needs_reload: &'a mut State<bool>,
     pub active_pane: &'a mut State<Pane>,
     pub is_triage_mode: bool,
+    /// Toast setter for displaying notifications
+    pub toast_setter: Option<&'a mut State<Option<Toast>>>,
+}
+
+impl<'a> AppState<'a> {
+    /// Show an error toast with the given message
+    pub fn show_error_toast(&mut self, message: impl Into<String>) {
+        if let Some(setter) = self.toast_setter.as_mut() {
+            setter.set(Some(Toast::error(message)));
+        }
+    }
 }
 
 /// Data and computed values for view

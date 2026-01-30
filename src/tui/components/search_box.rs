@@ -13,13 +13,17 @@ pub struct SearchBoxProps {
     pub value: Option<State<String>>,
     /// Whether the search box has focus
     pub has_focus: bool,
+    /// Whether semantic search mode is active (query starts with ~)
+    pub is_semantic: bool,
 }
 
 /// Search input with magnifying glass icon
 #[component]
 pub fn SearchBox(props: &SearchBoxProps) -> impl Into<AnyElement<'static>> {
     let theme = theme();
-    let border_color = if props.has_focus {
+    let border_color = if props.is_semantic {
+        theme.semantic_search_border
+    } else if props.has_focus {
         theme.border_focused
     } else {
         theme.border
@@ -51,6 +55,23 @@ pub fn SearchBox(props: &SearchBoxProps) -> impl Into<AnyElement<'static>> {
             height: 3,
             width: 100pct,
         ) {
+            // Show ~ indicator when in semantic mode
+            #(if props.is_semantic {
+                Some(element! {
+                    View(
+                        margin_right: 1,
+                        justify_content: JustifyContent::Center,
+                    ) {
+                        Text(
+                            content: "~",
+                            color: theme.semantic_indicator,
+                        )
+                    }
+                })
+            } else {
+                None
+            })
+
             // Search icon (magnifying glass represented as "/")
             View(
                 margin_right: 1,
@@ -81,6 +102,8 @@ pub struct InlineSearchBoxProps {
     pub value: Option<State<String>>,
     /// Whether the search box has focus
     pub has_focus: bool,
+    /// Whether semantic search mode is active (query starts with ~)
+    pub is_semantic: bool,
 }
 
 /// Inline search input without borders
@@ -103,13 +126,38 @@ pub fn InlineSearchBox(props: &InlineSearchBoxProps) -> impl Into<AnyElement<'st
             width: 100pct,
             height: 1,
         ) {
+            // Show ~ indicator when in semantic mode
+            #(if props.is_semantic {
+                Some(element! {
+                    View(
+                        margin_right: 1,
+                        justify_content: JustifyContent::Center,
+                    ) {
+                        Text(
+                            content: "~",
+                            color: theme.semantic_indicator,
+                        )
+                    }
+                })
+            } else {
+                None
+            })
+
             View(
                 margin_right: 1,
                 justify_content: JustifyContent::Center,
             ) {
                 Text(
                     content: "/",
-                    color: if has_focus { theme.border_focused } else { theme.text_dimmed },
+                    color: if has_focus {
+                        if props.is_semantic {
+                            theme.semantic_search_border
+                        } else {
+                            theme.border_focused
+                        }
+                    } else {
+                        theme.text_dimmed
+                    },
                 )
             }
 

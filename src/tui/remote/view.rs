@@ -763,6 +763,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 InlineSearchBox(
                     value: Some(search_query),
                     has_focus: search_focused.get(),
+                    is_semantic: query_str.starts_with('~'),
                 )
             }
 

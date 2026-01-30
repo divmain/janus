@@ -157,6 +157,7 @@ pub struct TicketRowProps {
 pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
     let theme = theme();
     let ticket = &props.ticket.ticket;
+    let is_semantic = props.ticket.is_semantic;
 
     // Get ticket properties
     let id = ticket.id.as_deref().unwrap_or("???");
@@ -176,8 +177,16 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
         theme.text
     };
 
-    // Selection indicator
-    let indicator = if props.is_selected { ">" } else { " " };
+    // Selection indicator based on match type
+    let indicator = if props.is_selected && is_semantic {
+        ">~" // Selected semantic match
+    } else if props.is_selected {
+        ">" // Selected fuzzy match
+    } else if is_semantic {
+        "~" // Semantic match (not selected)
+    } else {
+        " " // Regular fuzzy match (not selected)
+    };
 
     // Format status
     let status_str = match status {
@@ -199,7 +208,14 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
         ) {
             // Selection indicator - fixed width, won't shrink
             View(width: 2, flex_shrink: 0.0) {
-                Text(content: indicator, color: text_color)
+                Text(
+                    content: indicator,
+                    color: if is_semantic && !props.is_selected {
+                        theme.semantic_indicator // Use semantic color for ~
+                    } else {
+                        text_color
+                    },
+                )
             }
 
             // Ticket ID - fixed width, won't shrink
@@ -248,6 +264,7 @@ mod tests {
             }),
             score: 0,
             title_indices: vec![],
+            is_semantic: false,
         }
     }
 }

@@ -1074,16 +1074,19 @@ mod tests {
                 ticket: Arc::new(make_ticket("j-1", "New task", TicketStatus::New)),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             },
             FilteredTicket {
                 ticket: Arc::new(make_ticket("j-2", "WIP task", TicketStatus::InProgress)),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             },
             FilteredTicket {
                 ticket: Arc::new(make_ticket("j-3", "Another new", TicketStatus::New)),
                 score: 0,
                 title_indices: vec![],
+                is_semantic: false,
             },
         ];
 

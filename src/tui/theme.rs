@@ -37,6 +37,12 @@ pub struct Theme {
     pub search_match: Color,
     pub id_color: Color,
     pub error: Color,
+
+    // Semantic search colors
+    /// Color for semantic search indicator (~)
+    pub semantic_indicator: Color,
+    /// Border color when in semantic search mode
+    pub semantic_search_border: Color,
 }
 
 impl Default for Theme {
@@ -92,6 +98,10 @@ impl Default for Theme {
             search_match: Color::Yellow,
             id_color: Color::Cyan,
             error: Color::Red,
+
+            // Semantic search defaults
+            semantic_indicator: Color::Magenta,
+            semantic_search_border: Color::Cyan,
         }
     }
 }
