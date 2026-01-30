@@ -88,6 +88,9 @@ url = "2.5"
 # MCP (Model Context Protocol) server
 rmcp = { version = "0.13", features = ["server", "macros", "transport-io"] }
 
+# Table formatting for pretty output
+tabled = "0.20"
+
 # Semantic search (optional - enabled via feature flag)
 fastembed = { version = "5", optional = true }
 

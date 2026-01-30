@@ -1038,43 +1038,60 @@ impl JanusTools {
                 .filter(|r| r.similarity >= threshold)
                 .collect::<Vec<_>>();
 
-            // Format as Markdown table for LLM consumption
+            // Format as table for LLM consumption using tabled
             if results.is_empty() {
                 return Ok("No tickets found matching the query.".to_string());
             }
+
+            use tabled::settings::Style;
+            use tabled::{Table, Tabled};
+
+            #[derive(Tabled)]
+            struct SearchRow {
+                #[tabled(rename = "ID")]
+                id: String,
+                #[tabled(rename = "Similarity")]
+                similarity: String,
+                #[tabled(rename = "Title")]
+                title: String,
+                #[tabled(rename = "Status")]
+                status: String,
+            }
+
+            let rows: Vec<SearchRow> = results
+                .iter()
+                .map(|r| SearchRow {
+                    id: r.ticket.id.as_deref().unwrap_or("unknown").to_string(),
+                    similarity: format!("{:.2}", r.similarity),
+                    title: r.ticket.title.as_deref().unwrap_or("Untitled").to_string(),
+                    status: r
+                        .ticket
+                        .status
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "new".to_string()),
+                })
+                .collect();
+
+            let mut table = Table::new(rows);
+            table.with(Style::modern());
 
             let mut output = format!(
                 "Found {} ticket(s) semantically similar to: {}\n\n",
                 results.len(),
                 request.query
             );
-            output.push_str("| ID | Similarity | Title | Status |\n");
-            output.push_str("|----|------------|-------|--------|\n");
-
-            for result in &results {
-                output.push_str(&format!(
-                    "| {} | {:.2} | {} | {} |\n",
-                    result.ticket.id.as_deref().unwrap_or("unknown"),
-                    result.similarity,
-                    result.ticket.title.as_deref().unwrap_or("Untitled"),
-                    result
-                        .ticket
-                        .status
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "new".to_string())
-                ));
-            }
+            output.push_str(&table.to_string());
 
             if with_embedding < total {
                 let percentage = (with_embedding * 100) / total;
                 output.push_str(&format!(
-                    "\n*Note: Only {}/{} tickets have embeddings ({}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*",
+                    "\n\n*Note: Only {}/{} tickets have embeddings ({}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*",
                     with_embedding, total, percentage
                 ));
             }
 
             if needs_reembed {
-                output.push_str("\n*Warning: Embedding model version mismatch detected. Run 'janus cache rebuild' to update embeddings to the current model.*");
+                output.push_str("\n\n*Warning: Embedding model version mismatch detected. Run 'janus cache rebuild' to update embeddings to the current model.*");
             }
 
             Ok(output)

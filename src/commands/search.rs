@@ -8,6 +8,21 @@ use crate::commands::print_json;
 use crate::embedding::search::SearchResult;
 use crate::error::{JanusError, Result};
 use serde_json::json;
+use tabled::settings::Style;
+use tabled::{Table, Tabled};
+
+/// A row in the search results table
+#[derive(Tabled)]
+struct SearchResultRow {
+    #[tabled(rename = "ID")]
+    id: String,
+    #[tabled(rename = "Similarity")]
+    similarity: String,
+    #[tabled(rename = "Title")]
+    title: String,
+    #[tabled(rename = "Status")]
+    status: String,
+}
 
 /// Execute the search command
 ///
@@ -90,25 +105,34 @@ pub async fn cmd_search(
             .collect();
         print_json(&json!(json_results))?;
     } else {
-        // Output as formatted text
+        // Output as formatted table
         println!("Search results for: \"{}\"\n", query);
 
         if results.is_empty() {
             println!("No matching tickets found.");
         } else {
-            for result in &results {
-                let id_str = result.ticket.id.as_deref().unwrap_or("unknown");
-                let title_str = result.ticket.title.as_deref().unwrap_or("(no title)");
-                let status_str = result
-                    .ticket
-                    .status
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                println!(
-                    "{}  [{:.2}] {} [{}]",
-                    id_str, result.similarity, title_str, status_str
-                );
-            }
+            let rows: Vec<SearchResultRow> = results
+                .iter()
+                .map(|r| SearchResultRow {
+                    id: r.ticket.id.as_deref().unwrap_or("unknown").to_string(),
+                    similarity: format!("{:.2}", r.similarity),
+                    title: r
+                        .ticket
+                        .title
+                        .as_deref()
+                        .unwrap_or("(no title)")
+                        .to_string(),
+                    status: r
+                        .ticket
+                        .status
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                })
+                .collect();
+
+            let mut table = Table::new(rows);
+            table.with(Style::rounded());
+            println!("{}", table);
         }
 
         println!("\n{} result(s)", results.len());
