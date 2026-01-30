@@ -9,7 +9,8 @@ use crate::ticket::{get_all_tickets, get_children_count};
 
 /// Output tickets as JSON, optionally filtered with jq syntax
 pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
-    let tickets = get_all_tickets().await?;
+    let result = get_all_tickets().await?;
+    let tickets = result.tickets;
 
     // Build JSON lines output with children_count for each ticket
     let mut json_lines = Vec::new();

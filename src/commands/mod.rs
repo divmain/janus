@@ -5,6 +5,7 @@ mod config;
 pub mod create;
 mod dep;
 mod dep_tree;
+mod doctor;
 mod edit;
 mod graph;
 pub mod hook;
@@ -30,6 +31,7 @@ pub use cache::{cmd_cache_clear, cmd_cache_path, cmd_cache_rebuild, cmd_cache_st
 pub use config::{cmd_config_get, cmd_config_set, cmd_config_show};
 pub use create::cmd_create;
 pub use dep::{cmd_dep_add, cmd_dep_remove, cmd_dep_tree};
+pub use doctor::cmd_doctor;
 pub use edit::cmd_edit;
 pub use graph::cmd_graph;
 pub use hook::{

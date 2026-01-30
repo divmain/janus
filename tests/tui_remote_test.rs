@@ -393,10 +393,11 @@ fn test_linked_tickets_fixture_loads() {
     let _guard = FixtureGuard::new("linked_tickets");
 
     // Load tickets from the fixture using the async runtime
-    let tickets: Vec<janus::types::TicketMetadata> = tokio::runtime::Runtime::new()
+    let result = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async { janus::ticket::get_all_tickets().await })
         .expect("Failed to load tickets from linked_tickets fixture");
+    let tickets = result.tickets;
 
     // Verify we have 3 tickets
     assert_eq!(
@@ -451,10 +452,11 @@ fn test_linked_tickets_fixture_loads() {
 fn test_linked_tickets_fixture_statuses() {
     let _guard = FixtureGuard::new("linked_tickets");
 
-    let tickets: Vec<janus::types::TicketMetadata> = tokio::runtime::Runtime::new()
+    let result = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async { janus::ticket::get_all_tickets().await })
         .expect("Failed to load tickets from linked_tickets fixture");
+    let tickets = result.tickets;
 
     // Verify statuses
     let linear_ticket = tickets

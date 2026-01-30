@@ -264,6 +264,9 @@ pub enum JanusError {
     #[error("failed to load {} plan file(s):\n{}", .0.len(), .0.join("\n"))]
     PlanLoadFailed(Vec<String>),
 
+    #[error("failed to load {} ticket file(s):\n{}", .0.len(), .0.join("\n"))]
+    TicketLoadFailed(Vec<String>),
+
     #[error("--verbose-phase can only be used with phased plans")]
     VerbosePhaseRequiresPhasedPlan,
 

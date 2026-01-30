@@ -306,6 +306,13 @@ pub enum Commands {
         action: HookAction,
     },
 
+    /// Check ticket health - scan for corrupted or invalid ticket files
+    Doctor {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Plan management
     Plan {
         #[command(subcommand)]

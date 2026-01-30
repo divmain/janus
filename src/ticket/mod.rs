@@ -11,7 +11,7 @@ pub use content::{extract_body, parse as parse_ticket, remove_field, update_fiel
 pub use editor::TicketEditor;
 pub use locator::find_ticket_by_id;
 pub use repository::{
-    build_ticket_map, find_tickets, get_all_tickets, get_all_tickets_from_disk,
+    TicketLoadResult, build_ticket_map, find_tickets, get_all_tickets, get_all_tickets_from_disk,
     get_all_tickets_with_map, get_children_count, get_file_mtime,
 };
 

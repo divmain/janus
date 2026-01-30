@@ -83,12 +83,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // State management - using individual State values like view.rs
     let mut active_view = hooks.use_state(|| ViewMode::Local);
-    let mut local_tickets: State<Vec<TicketMetadata>> = hooks.use_state(|| {
-        get_all_tickets_from_disk().unwrap_or_else(|e| {
-            eprintln!("Error: failed to load tickets: {}", e);
-            vec![]
-        })
-    });
+    let mut local_tickets: State<Vec<TicketMetadata>> =
+        hooks.use_state(|| get_all_tickets_from_disk().tickets);
     let mut remote_issues: State<Vec<RemoteIssue>> = hooks.use_state(Vec::new);
 
     let mut local_selected_index = hooks.use_state(|| 0usize);
@@ -243,10 +239,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 }
 
                 // Refresh local tickets to show updated remote links
-                local_tickets_setter.set(get_all_tickets_from_disk().unwrap_or_else(|e| {
-                    eprintln!("Error: failed to load tickets: {}", e);
-                    vec![]
-                }));
+                local_tickets_setter.set(get_all_tickets_from_disk().tickets);
 
                 // Clear selection
                 local_selected_ids_setter.set(HashSet::new());
@@ -400,10 +393,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
                 if applied > 0 {
                     toast_setter.set(Some(Toast::info(format!("Applied {} change(s)", applied))));
-                    local_tickets_setter.set(get_all_tickets_from_disk().unwrap_or_else(|e| {
-                        eprintln!("Error: failed to load tickets: {}", e);
-                        vec![]
-                    }));
+                    local_tickets_setter.set(get_all_tickets_from_disk().tickets);
                     fetch_handler((platform, query));
                 } else if !errors.is_empty() {
                     toast_setter.set(Some(Toast::error("Failed to apply changes")));
@@ -435,10 +425,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                             "Linked {} to {}",
                             source.ticket_id, source.remote_issue.id
                         ))));
-                        local_tickets_setter.set(get_all_tickets_from_disk().unwrap_or_else(|e| {
-                            eprintln!("Error: failed to load tickets: {}", e);
-                            vec![]
-                        }));
+                        local_tickets_setter.set(get_all_tickets_from_disk().tickets);
                     }
                     Err(e) => {
                         toast_setter.set(Some(Toast::error(format!("Link failed: {}", e))));
@@ -474,10 +461,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
                 // Always refresh and clear selection if any operations succeeded
                 if unlinked > 0 {
-                    local_tickets_setter.set(get_all_tickets_from_disk().unwrap_or_else(|e| {
-                        eprintln!("Error: failed to load tickets: {}", e);
-                        vec![]
-                    }));
+                    local_tickets_setter.set(get_all_tickets_from_disk().tickets);
                     local_selected_ids_setter.set(HashSet::new());
                 }
 

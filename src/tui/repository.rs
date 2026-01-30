@@ -45,23 +45,23 @@ impl TicketRepository {
                         "Warning: failed to load from cache: {}. Using file reads.",
                         e
                     );
-                    match get_all_tickets_from_disk() {
-                        Ok(tickets) => tickets,
-                        Err(e) => {
-                            eprintln!("Error: failed to load tickets from disk: {}", e);
-                            vec![]
+                    let result = get_all_tickets_from_disk();
+                    if result.has_failures() {
+                        for (file, error) in &result.failed {
+                            eprintln!("Warning: failed to load {}: {}", file, error);
                         }
                     }
+                    result.tickets
                 }
             }
         } else {
-            match get_all_tickets_from_disk() {
-                Ok(tickets) => tickets,
-                Err(e) => {
-                    eprintln!("Error: failed to load tickets from disk: {}", e);
-                    vec![]
+            let result = get_all_tickets_from_disk();
+            if result.has_failures() {
+                for (file, error) in &result.failed {
+                    eprintln!("Warning: failed to load {}: {}", file, error);
                 }
             }
+            result.tickets
         }
     }
 
