@@ -55,24 +55,7 @@ pub fn SearchBox(props: &SearchBoxProps) -> impl Into<AnyElement<'static>> {
             height: 3,
             width: 100pct,
         ) {
-            // Show ~ indicator when in semantic mode
-            #(if props.is_semantic {
-                Some(element! {
-                    View(
-                        margin_right: 1,
-                        justify_content: JustifyContent::Center,
-                    ) {
-                        Text(
-                            content: "~",
-                            color: theme.semantic_indicator,
-                        )
-                    }
-                })
-            } else {
-                None
-            })
-
-            // Search icon (magnifying glass represented as "/")
+            // Search indicator
             View(
                 margin_right: 1,
                 justify_content: JustifyContent::Center,
@@ -126,23 +109,6 @@ pub fn InlineSearchBox(props: &InlineSearchBoxProps) -> impl Into<AnyElement<'st
             width: 100pct,
             height: 1,
         ) {
-            // Show ~ indicator when in semantic mode
-            #(if props.is_semantic {
-                Some(element! {
-                    View(
-                        margin_right: 1,
-                        justify_content: JustifyContent::Center,
-                    ) {
-                        Text(
-                            content: "~",
-                            color: theme.semantic_indicator,
-                        )
-                    }
-                })
-            } else {
-                None
-            })
-
             View(
                 margin_right: 1,
                 justify_content: JustifyContent::Center,

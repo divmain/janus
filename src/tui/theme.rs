@@ -101,7 +101,11 @@ impl Default for Theme {
 
             // Semantic search defaults
             semantic_indicator: Color::Magenta,
-            semantic_search_border: Color::Cyan,
+            semantic_search_border: Color::Rgb {
+                r: 240,
+                g: 105,
+                b: 180,
+            },
         }
     }
 }
