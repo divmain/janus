@@ -23,7 +23,7 @@ jobs:
           targets: ${{ matrix.target }}
           
       - name: Run tests
-        run: cargo test
+        run: cargo test --features semantic-search
         
       - name: Build binary
         run: |
