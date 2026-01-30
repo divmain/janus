@@ -255,7 +255,14 @@ impl Ticket {
     pub fn write_completion_summary(&self, summary: &str) -> Result<()> {
         let content = self.read_content()?;
 
-        let doc = parse_document(&content)?;
+        let doc = parse_document(&content).map_err(|e| {
+            JanusError::InvalidFormat(format!(
+                "Failed to parse ticket {} at {}: {}",
+                self.id,
+                self.file_path.display(),
+                e
+            ))
+        })?;
         let updated_body = doc.update_section("Completion Summary", summary);
 
         let new_content = format!("---\n{}\n---\n{}", doc.frontmatter_raw, updated_body);
