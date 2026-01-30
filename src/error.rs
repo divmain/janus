@@ -314,6 +314,9 @@ pub enum JanusError {
     #[error("ticket cannot be its own parent")]
     SelfParentTicket,
 
+    #[error("No tickets exist in the system. Create a ticket first.")]
+    EmptyTicketMap,
+
     #[error("cannot link a ticket to itself: {0}. Links must be between different tickets.")]
     SelfLink(String),
 

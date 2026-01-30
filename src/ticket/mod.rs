@@ -342,7 +342,7 @@ pub fn resolve_id_from_map<T>(
     map: &std::collections::HashMap<String, T>,
 ) -> Result<String> {
     if map.is_empty() {
-        return Err(JanusError::Other("No tickets loaded".to_string()));
+        return Err(JanusError::EmptyTicketMap);
     }
 
     if map.contains_key(partial_id) {
@@ -400,7 +400,7 @@ mod tests {
         let map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
 
         let result = resolve_id_from_map("x-y-z", &map);
-        assert!(matches!(result, Err(JanusError::Other(_))));
+        assert!(matches!(result, Err(JanusError::EmptyTicketMap)));
     }
 
     #[test]
@@ -408,6 +408,6 @@ mod tests {
         let map: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
 
         let result = resolve_id_from_map("j-a1b2", &map);
-        assert!(matches!(result, Err(JanusError::Other(msg)) if msg.contains("No tickets loaded")));
+        assert!(matches!(result, Err(JanusError::EmptyTicketMap)));
     }
 }
