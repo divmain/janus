@@ -338,9 +338,9 @@ Description of the plan.
             rows.next().await.unwrap().map(|row| row.get(0).unwrap());
 
         #[cfg(feature = "semantic-search")]
-        assert_eq!(stored_version, Some("12-semantic".to_string()));
+        assert_eq!(stored_version, Some("13-semantic".to_string()));
         #[cfg(not(feature = "semantic-search"))]
-        assert_eq!(stored_version, Some("12".to_string()));
+        assert_eq!(stored_version, Some("13".to_string()));
 
         let db_path = cache.cache_db_path();
         drop(cache);
@@ -2393,9 +2393,9 @@ size: {}
         // Verify cache version was updated
         let version = cache.get_meta("cache_version").await.unwrap();
         #[cfg(feature = "semantic-search")]
-        assert_eq!(version, Some("12-semantic".to_string()));
+        assert_eq!(version, Some("13-semantic".to_string()));
         #[cfg(not(feature = "semantic-search"))]
-        assert_eq!(version, Some("12".to_string()));
+        assert_eq!(version, Some("13".to_string()));
 
         drop(cache);
         fs::remove_file(&db_path).ok();

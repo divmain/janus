@@ -1,11 +1,12 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Mutex, OnceLock};
 
 use directories::BaseDirs;
 use fastembed::{EmbeddingModel as FastembedModel, InitOptions, TextEmbedding};
 
-pub const EMBEDDING_DIMENSIONS: usize = 384;
-pub const EMBEDDING_MODEL_NAME: &str = "AllMiniLML6V2";
+pub const EMBEDDING_DIMENSIONS: usize = 768;
+pub const EMBEDDING_MODEL_NAME: &str = "jinaai/jina-embeddings-v2-base-code";
 
 /// Wrapper around the fastembed TextEmbedding model with lazy loading
 /// Uses Mutex for interior mutability since TextEmbedding requires &mut self
@@ -21,13 +22,21 @@ impl EmbeddingModel {
     fn load() -> Result<Self, String> {
         let cache_dir = get_embedding_cache_dir()?;
 
-        let options = InitOptions::new(FastembedModel::AllMiniLML6V2)
+        // Parse the model name string to get the enum variant
+        let model = FastembedModel::from_str(EMBEDDING_MODEL_NAME).map_err(|e| {
+            format!(
+                "Invalid embedding model name '{}': {}",
+                EMBEDDING_MODEL_NAME, e
+            )
+        })?;
+
+        let options = InitOptions::new(model)
             .with_cache_dir(cache_dir)
             .with_show_download_progress(true);
 
         let inner = TextEmbedding::try_new(options).map_err(|e| {
             format!(
-                "Failed to load embedding model '{}': {}. This may be caused by network issues when downloading the model from HuggingFace (~30MB). Please check your internet connection and try again.",
+                "Failed to load embedding model '{}': {}. This may be caused by network issues when downloading the model from HuggingFace (~161MB). Please check your internet connection and try again.",
                 EMBEDDING_MODEL_NAME, e
             )
         })?;
@@ -126,7 +135,7 @@ mod tests {
     #[test]
     fn test_embedding_dimensions() {
         // This test verifies that the embedding dimensions constant is correct
-        assert_eq!(EMBEDDING_DIMENSIONS, 384);
+        assert_eq!(EMBEDDING_DIMENSIONS, 768);
     }
 
     #[test]
@@ -134,7 +143,7 @@ mod tests {
         let title = "Test Ticket";
         let body = "This is a test body";
 
-        // Note: This test will download the model on first run (~30MB)
+        // Note: This test will download the model on first run (~161MB)
         let embedding = generate_ticket_embedding(title, Some(body));
 
         // The model download might fail in test environments, so we just check

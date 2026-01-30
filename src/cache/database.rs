@@ -23,9 +23,9 @@ const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 /// Current cache schema version. Increment when schema changes.
 /// This includes feature flags to ensure caches with different features are isolated.
 #[cfg(feature = "semantic-search")]
-pub(crate) const CACHE_VERSION: &str = "12-semantic";
+pub(crate) const CACHE_VERSION: &str = "13-semantic";
 #[cfg(not(feature = "semantic-search"))]
-pub(crate) const CACHE_VERSION: &str = "12";
+pub(crate) const CACHE_VERSION: &str = "13";
 
 /// Maximum number of retry attempts when creating database connections.
 ///
@@ -271,9 +271,10 @@ impl TicketCache {
         #[cfg(feature = "semantic-search")]
         {
             // Track the embedding model version
+            use crate::embedding::model::EMBEDDING_MODEL_NAME;
             conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('embedding_model', 'AllMiniLML6V2')",
-                (),
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('embedding_model', ?1)",
+                (EMBEDDING_MODEL_NAME,),
             )
             .await?;
         }
