@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use super::{
@@ -23,11 +24,31 @@ struct SpawningFilters<'a> {
 /// Engine for filtering tickets based on dependency status
 struct TicketFilterEngine<'a> {
     ticket_map: &'a HashMap<String, TicketMetadata>,
+    /// Track dangling dependencies we've already warned about to avoid duplicate warnings
+    warned_dangling: RefCell<HashSet<String>>,
 }
 
 impl<'a> TicketFilterEngine<'a> {
     fn new(ticket_map: &'a HashMap<String, TicketMetadata>) -> Self {
-        Self { ticket_map }
+        Self {
+            ticket_map,
+            warned_dangling: RefCell::new(HashSet::new()),
+        }
+    }
+
+    /// Warn about a dangling dependency if we haven't already warned about it.
+    /// Returns true if this is a new dangling dependency that was just warned about.
+    fn warn_dangling(&self, ticket_id: &str, dep_id: &str) -> bool {
+        let mut warned = self.warned_dangling.borrow_mut();
+        if warned.insert(dep_id.to_string()) {
+            eprintln!(
+                "Warning: Ticket {} references dangling dependency {}",
+                ticket_id, dep_id
+            );
+            true
+        } else {
+            false
+        }
     }
 
     /// Check if a ticket is "ready" - has New/Next status and all deps are complete
@@ -39,11 +60,15 @@ impl<'a> TicketFilterEngine<'a> {
             return false;
         }
         // All deps must be complete
+        let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
         ticket.deps.iter().all(|dep_id| {
             self.ticket_map
                 .get(dep_id)
                 .map(|dep| dep.status == Some(TicketStatus::Complete))
-                .unwrap_or(false)
+                .unwrap_or_else(|| {
+                    self.warn_dangling(ticket_id, dep_id);
+                    false
+                })
         })
     }
 
@@ -60,11 +85,15 @@ impl<'a> TicketFilterEngine<'a> {
             return false;
         }
         // Check if any dep is incomplete
+        let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
         ticket.deps.iter().any(|dep_id| {
             self.ticket_map
                 .get(dep_id)
                 .map(|dep| dep.status != Some(TicketStatus::Complete))
-                .unwrap_or(true)
+                .unwrap_or_else(|| {
+                    self.warn_dangling(ticket_id, dep_id);
+                    true
+                })
         })
     }
 }
