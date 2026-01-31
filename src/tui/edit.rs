@@ -407,6 +407,54 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                             )
                         }
                     }
+
+                    // Footer with Save and Cancel buttons
+                    View(
+                        width: 100pct,
+                        height: 3,
+                        padding: 1,
+                        border_edges: Edges::Top,
+                        border_style: BorderStyle::Single,
+                        border_color: theme.border,
+                        flex_direction: FlexDirection::Row,
+                        gap: 2,
+                        justify_content: JustifyContent::Center,
+                    ) {
+                        Button(
+                            handler: move |_| should_save.set(true),
+                            has_focus: false,
+                        ) {
+                            View(
+                                border_style: BorderStyle::Round,
+                                border_color: theme.status_complete,
+                                padding_left: 2,
+                                padding_right: 2,
+                                background_color: theme.status_complete,
+                            ) {
+                                Text(
+                                    content: "Save (Ctrl+S)",
+                                    color: Color::Black,
+                                    weight: Weight::Bold,
+                                )
+                            }
+                        }
+                        Button(
+                            handler: move |_| should_cancel.set(true),
+                            has_focus: false,
+                        ) {
+                            View(
+                                border_style: BorderStyle::Round,
+                                border_color: theme.border,
+                                padding_left: 2,
+                                padding_right: 2,
+                            ) {
+                                Text(
+                                    content: "Cancel (Esc)",
+                                    color: theme.text,
+                                )
+                            }
+                        }
+                    }
                 }
     }
 }
