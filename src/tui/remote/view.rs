@@ -252,16 +252,188 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     let push_handler_for_events = push_handler.clone();
 
+    // Handler to apply accepted sync changes
+    // NOTE: Defined before sync_fetch_handler so button handlers can reference it
+    let sync_apply_handler: Handler<(
+        super::sync_preview::SyncPreviewState,
+        Platform,
+        RemoteQuery,
+    )> = hooks.use_async_handler({
+        let local_tickets_setter = local_tickets.clone();
+        let fetch_handler = fetch_handler.clone();
+        let toast_setter = toast.clone();
+        let last_error_setter = last_error.clone();
+
+        move |(state, platform, query): (
+            super::sync_preview::SyncPreviewState,
+            Platform,
+            RemoteQuery,
+        )| {
+            let mut local_tickets_setter = local_tickets_setter.clone();
+            let fetch_handler = fetch_handler.clone();
+            let mut toast_setter = toast_setter.clone();
+            let mut last_error_setter = last_error_setter.clone();
+
+            async move {
+                let accepted = state.accepted_changes();
+                let mut applied = 0;
+                let mut errors = Vec::new();
+
+                for change_ctx in accepted {
+                    let result = match change_ctx.change.direction {
+                        super::sync_preview::SyncDirection::RemoteToLocal => {
+                            super::operations::apply_sync_change_to_local(
+                                &change_ctx.ticket_id,
+                                &change_ctx.change,
+                            )
+                            .await
+                        }
+                        super::sync_preview::SyncDirection::LocalToRemote => {
+                            super::operations::apply_sync_change_to_remote(
+                                &change_ctx.remote_ref,
+                                &change_ctx.change,
+                                platform,
+                            )
+                            .await
+                        }
+                    };
+
+                    match result {
+                        Ok(()) => applied += 1,
+                        Err(e) => errors.push(e.to_string()),
+                    }
+                }
+
+                if !errors.is_empty() {
+                    last_error_setter.set(Some(("SyncApplyError".to_string(), errors.join("\n"))));
+                }
+
+                if applied > 0 {
+                    toast_setter.set(Some(Toast::info(format!("Applied {} change(s)", applied))));
+                    local_tickets_setter.set(get_all_tickets_from_disk().tickets);
+                    fetch_handler((platform, query));
+                } else if !errors.is_empty() {
+                    toast_setter.set(Some(Toast::error("Failed to apply changes")));
+                }
+            }
+        }
+    });
+
+    // Sync preview button action handlers
+    // NOTE: Defined before sync_fetch_handler so they can be passed to SyncPreviewState::new
+
+    // Accept current change
+    let sync_accept_handler: Handler<()> = hooks.use_async_handler({
+        let sync_preview_setter = sync_preview.clone();
+        let sync_apply_handler = sync_apply_handler.clone();
+        let provider = provider.clone();
+        let active_filters = active_filters.clone();
+        move |()| {
+            let mut sync_preview_setter = sync_preview_setter.clone();
+            let sync_apply_handler = sync_apply_handler.clone();
+            let provider = provider.clone();
+            let active_filters = active_filters.clone();
+            async move {
+                let preview = sync_preview_setter.read().clone();
+                if let Some(mut p) = preview {
+                    if !p.accept_current() {
+                        // No more changes, apply all accepted
+                        let current_platform = provider.get();
+                        let current_query = active_filters.read().clone();
+                        sync_apply_handler((p, current_platform, current_query));
+                        sync_preview_setter.set(None);
+                    } else {
+                        sync_preview_setter.set(Some(p));
+                    }
+                }
+            }
+        }
+    });
+
+    // Skip current change
+    let sync_skip_handler: Handler<()> = hooks.use_async_handler({
+        let sync_preview_setter = sync_preview.clone();
+        let sync_apply_handler = sync_apply_handler.clone();
+        let provider = provider.clone();
+        let active_filters = active_filters.clone();
+        move |()| {
+            let mut sync_preview_setter = sync_preview_setter.clone();
+            let sync_apply_handler = sync_apply_handler.clone();
+            let provider = provider.clone();
+            let active_filters = active_filters.clone();
+            async move {
+                let preview = sync_preview_setter.read().clone();
+                if let Some(mut p) = preview {
+                    if !p.skip_current() {
+                        // No more changes, apply all accepted
+                        let current_platform = provider.get();
+                        let current_query = active_filters.read().clone();
+                        sync_apply_handler((p, current_platform, current_query));
+                        sync_preview_setter.set(None);
+                    } else {
+                        sync_preview_setter.set(Some(p));
+                    }
+                }
+            }
+        }
+    });
+
+    // Accept all changes
+    let sync_accept_all_handler: Handler<()> = hooks.use_async_handler({
+        let sync_preview_setter = sync_preview.clone();
+        let sync_apply_handler = sync_apply_handler.clone();
+        let provider = provider.clone();
+        let active_filters = active_filters.clone();
+        move |()| {
+            let mut sync_preview_setter = sync_preview_setter.clone();
+            let sync_apply_handler = sync_apply_handler.clone();
+            let provider = provider.clone();
+            let active_filters = active_filters.clone();
+            async move {
+                let preview = sync_preview_setter.read().clone();
+                if let Some(mut p) = preview {
+                    p.accept_all();
+                    let current_platform = provider.get();
+                    let current_query = active_filters.read().clone();
+                    sync_apply_handler((p, current_platform, current_query));
+                    sync_preview_setter.set(None);
+                }
+            }
+        }
+    });
+
+    // Cancel sync
+    let sync_cancel_handler: Handler<()> = hooks.use_async_handler({
+        let sync_preview_setter = sync_preview.clone();
+        let toast_setter = toast.clone();
+        move |()| {
+            let mut sync_preview_setter = sync_preview_setter.clone();
+            let mut toast_setter = toast_setter.clone();
+            async move {
+                sync_preview_setter.set(None);
+                toast_setter.set(Some(Toast::info("Sync cancelled")));
+            }
+        }
+    });
+
     // Async sync handler for fetching remote data and building changes
     let sync_fetch_handler: Handler<(Vec<String>, Platform)> = hooks.use_async_handler({
         let sync_preview_setter = sync_preview.clone();
         let toast_setter = toast.clone();
         let last_error_setter = last_error.clone();
+        let sync_accept_handler = sync_accept_handler.clone();
+        let sync_skip_handler = sync_skip_handler.clone();
+        let sync_accept_all_handler = sync_accept_all_handler.clone();
+        let sync_cancel_handler = sync_cancel_handler.clone();
 
         move |(ticket_ids, platform): (Vec<String>, Platform)| {
             let mut sync_preview_setter = sync_preview_setter.clone();
             let mut toast_setter = toast_setter.clone();
             let mut last_error_setter = last_error_setter.clone();
+            let sync_accept_handler = sync_accept_handler.clone();
+            let sync_skip_handler = sync_skip_handler.clone();
+            let sync_accept_all_handler = sync_accept_all_handler.clone();
+            let sync_cancel_handler = sync_cancel_handler.clone();
 
             async move {
                 use super::sync_preview::SyncChangeWithContext;
@@ -331,6 +503,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         None,
                         None,
                         None,
+                        Some(sync_accept_handler),
+                        Some(sync_skip_handler),
+                        Some(sync_accept_all_handler),
+                        Some(sync_cancel_handler),
                     )));
                 }
             }
@@ -338,8 +514,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     let sync_fetch_handler_for_events = sync_fetch_handler.clone();
-
-    // Handler to apply accepted sync changes
     let sync_apply_handler: Handler<(
         super::sync_preview::SyncPreviewState,
         Platform,
