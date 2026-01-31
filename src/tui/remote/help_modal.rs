@@ -1,12 +1,13 @@
 //! Help modal for displaying keyboard shortcuts
 //!
 //! Provides a modal dialog that displays all available keyboard shortcuts
-//! for the remote TUI.
+//! for the remote TUI. Supports both keyboard (j/k, Page Up/Down) and mouse
+//! wheel scrolling.
 
 use iocraft::prelude::*;
 
 use crate::tui::components::{
-    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth, TextViewer,
+    Clickable, ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth, TextViewer,
 };
 
 /// Props for the HelpModal component
@@ -16,12 +17,17 @@ pub struct HelpModalProps {
     pub scroll_offset: Option<usize>,
     /// Handler invoked when modal is closed via X button
     pub on_close: Option<Handler<()>>,
+    /// Handler invoked when scroll up is requested (mouse wheel)
+    pub on_scroll_up: Option<Handler<()>>,
+    /// Handler invoked when scroll down is requested (mouse wheel)
+    pub on_scroll_down: Option<Handler<()>>,
 }
 
 /// Help modal component
 ///
 /// Displays a list of keyboard shortcuts organized by category.
 /// Supports scrolling for long content via scroll_offset prop.
+/// Includes mouse wheel support via Clickable wrapper.
 #[component]
 pub fn HelpModal<'a>(props: &HelpModalProps, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
     let scroll_offset = props.scroll_offset.unwrap_or(0);
@@ -39,18 +45,23 @@ pub fn HelpModal<'a>(props: &HelpModalProps, _hooks: Hooks) -> impl Into<AnyElem
                 footer_text: Some("j/k or ↑/↓ to scroll".to_string()),
                 on_close: props.on_close.clone(),
             ) {
-                // Scrollable content using TextViewer
+                // Scrollable content using TextViewer with mouse wheel support
                 View(
                     flex_grow: 1.0,
                     width: 100pct,
                     overflow: Overflow::Hidden,
                 ) {
-                    TextViewer(
-                        text: help_text,
-                        scroll_offset: scroll_offset,
-                        has_focus: true,
-                        placeholder: None,
-                    )
+                    Clickable(
+                        on_scroll_up: props.on_scroll_up.clone(),
+                        on_scroll_down: props.on_scroll_down.clone(),
+                    ) {
+                        TextViewer(
+                            text: help_text,
+                            scroll_offset: scroll_offset,
+                            has_focus: true,
+                            placeholder: None,
+                        )
+                    }
                 }
             }
         }
