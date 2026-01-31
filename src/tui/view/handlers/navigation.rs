@@ -5,8 +5,8 @@ use iocraft::prelude::KeyCode;
 use crate::tui::navigation;
 use crate::tui::state::Pane;
 
-use super::HandleResult;
 use super::context::ViewHandlerContext;
+use super::HandleResult;
 
 /// Handle navigation keys
 pub fn handle(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -146,10 +146,16 @@ fn handle_down(ctx: &mut ViewHandlerContext<'_>) {
 }
 
 fn handle_up(ctx: &mut ViewHandlerContext<'_>) {
+    let effective_height = effective_visible_height(
+        ctx.data.list_nav.scroll_offset.get(),
+        ctx.data.list_height,
+        ctx.data.filtered_count,
+    );
     let old_index = ctx.data.list_nav.selected_index.get();
     navigation::apply_scroll_up(
         ctx.data.list_nav.selected_index,
         ctx.data.list_nav.scroll_offset,
+        effective_height,
     );
     // Reset detail scroll when ticket changes
     if ctx.data.list_nav.selected_index.get() != old_index {

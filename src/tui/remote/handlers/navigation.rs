@@ -143,6 +143,7 @@ fn handle_local_up(ctx: &mut HandlerContext<'_>, shift_held: bool) {
     navigation::apply_scroll_up(
         ctx.view_data.local_nav.selected_index,
         ctx.view_data.local_nav.scroll_offset,
+        ctx.view_data.list_height,
     );
 
     // Also select new item if shift is held
@@ -190,6 +191,7 @@ fn handle_remote_up(ctx: &mut HandlerContext<'_>, shift_held: bool) {
     navigation::apply_scroll_up(
         ctx.view_data.remote_nav.selected_index,
         ctx.view_data.remote_nav.scroll_offset,
+        ctx.view_data.list_height,
     );
 
     // Also select new item if shift is held
