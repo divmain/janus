@@ -124,6 +124,7 @@ pub const VALID_TYPES: &[&str] = &["bug", "feature", "task", "epic", "chore"];
 pub enum EntityType {
     Ticket,
     Plan,
+    Cache,
 }
 
 enum_display_fromstr!(
@@ -132,6 +133,7 @@ enum_display_fromstr!(
     {
         Ticket => "ticket",
         Plan => "plan",
+        Cache => "cache",
     }
 );
 
@@ -435,7 +437,11 @@ impl TicketMetadata {
     pub fn compute_depth(&self) -> u32 {
         self.depth.unwrap_or_else(|| {
             // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if self.spawned_from.is_none() { 0 } else { 1 }
+            if self.spawned_from.is_none() {
+                0
+            } else {
+                1
+            }
         })
     }
 

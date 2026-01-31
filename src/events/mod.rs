@@ -414,6 +414,43 @@ pub fn log_ticket_moved(plan_id: &str, ticket_id: &str, from_phase: &str, to_pha
     ));
 }
 
+/// Log a cache rebuilt event
+///
+/// This function logs detailed information about why the cache was rebuilt,
+/// including the reason, duration, and additional context to help debug
+/// issues where cache regeneration happens unexpectedly.
+pub fn log_cache_rebuilt(
+    reason: &str,
+    trigger: &str,
+    duration_ms: Option<u64>,
+    ticket_count: Option<usize>,
+    details: Option<serde_json::Value>,
+) {
+    let mut data = serde_json::json!({
+        "reason": reason,
+        "trigger": trigger,
+    });
+
+    if let Some(ms) = duration_ms {
+        data["duration_ms"] = serde_json::Value::Number(serde_json::Number::from(ms));
+    }
+
+    if let Some(count) = ticket_count {
+        data["ticket_count"] = serde_json::Value::Number(serde_json::Number::from(count));
+    }
+
+    if let Some(d) = details {
+        data["details"] = d;
+    }
+
+    log_event(Event::new(
+        EventType::CacheRebuilt,
+        EntityType::Cache,
+        "cache",
+        data,
+    ));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,6 +570,63 @@ mod tests {
 
         let events = read_events().unwrap();
         assert_eq!(events.len(), 14);
+    }
+
+    #[test]
+    #[serial]
+    fn test_log_cache_rebuilt() {
+        let _temp = setup_test_dir();
+
+        // Log a cache rebuilt event with all fields
+        log_cache_rebuilt(
+            "version_mismatch",
+            "automatic_schema_update",
+            Some(150),
+            Some(42),
+            Some(serde_json::json!({
+                "old_version": "12",
+                "new_version": "13",
+            })),
+        );
+
+        // Log a minimal cache rebuilt event
+        log_cache_rebuilt(
+            "corruption_recovery",
+            "automatic_recovery",
+            None,
+            None,
+            None,
+        );
+
+        let events = read_events().unwrap();
+        assert_eq!(events.len(), 2);
+
+        // Verify first event
+        assert_eq!(events[0].event_type, EventType::CacheRebuilt);
+        assert_eq!(events[0].entity_type, EntityType::Cache);
+        assert_eq!(events[0].entity_id, "cache");
+        assert_eq!(events[0].data["reason"], "version_mismatch");
+        assert_eq!(events[0].data["trigger"], "automatic_schema_update");
+        assert_eq!(events[0].data["duration_ms"], 150);
+        assert_eq!(events[0].data["ticket_count"], 42);
+        assert_eq!(events[0].data["details"]["old_version"], "12");
+        assert_eq!(events[0].data["details"]["new_version"], "13");
+
+        // Verify second event
+        assert_eq!(events[1].event_type, EventType::CacheRebuilt);
+        assert_eq!(events[1].data["reason"], "corruption_recovery");
+        assert_eq!(events[1].data["trigger"], "automatic_recovery");
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("duration_ms"));
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("ticket_count"));
+        assert!(!events[1].data.as_object().unwrap().contains_key("details"));
     }
 
     #[test]

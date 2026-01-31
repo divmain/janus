@@ -13,6 +13,7 @@ use std::time::Duration;
 use turso::{Builder, Connection, Database};
 
 use crate::error::{JanusError as CacheError, Result, is_corruption_error};
+use crate::events::log_cache_rebuilt;
 
 use super::paths::{cache_db_path, cache_dir, repo_hash};
 
@@ -126,7 +127,20 @@ impl TicketCache {
                 eprintln!("Warning: failed to delete corrupted cache: {}", e);
             } else {
                 eprintln!("Cache deleted successfully, rebuilding...");
-                return Self::open().await;
+                let result = Self::open().await;
+                if result.is_ok() {
+                    log_cache_rebuilt(
+                        "corruption_recovery",
+                        "automatic_recovery",
+                        None,
+                        None,
+                        Some(serde_json::json!({
+                            "previous_error": error.to_string(),
+                            "database_existed": true,
+                        })),
+                    );
+                }
+                return result;
             }
         }
 
@@ -313,6 +327,16 @@ impl TicketCache {
             );
             self.rebuild_schema(conn).await?;
             eprintln!("Cache rebuild complete.");
+            log_cache_rebuilt(
+                "version_mismatch",
+                "automatic_schema_update",
+                None,
+                None,
+                Some(serde_json::json!({
+                    "old_version": stored_version,
+                    "new_version": CACHE_VERSION,
+                })),
+            );
         }
 
         Ok(())
