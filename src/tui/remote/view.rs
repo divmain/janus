@@ -777,6 +777,36 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     remote_selected_ids: remote_selected_ids.read().clone(),
                     all_local_tickets: all_local_tickets.clone(),
                     linked_issue_ids: linked_issue_ids.clone(),
+                    on_local_row_click: Some(hooks.use_async_handler({
+                        let selected_setter = local_selected_index;
+                        let scroll_setter = local_scroll_offset;
+                        move |idx: usize| {
+                            let mut selected_setter = selected_setter;
+                            let mut scroll_setter = scroll_setter;
+                            async move {
+                                selected_setter.set(idx);
+                                // Update scroll offset if needed to keep selection visible
+                                if idx < scroll_setter.get() {
+                                    scroll_setter.set(idx);
+                                }
+                            }
+                        }
+                    })),
+                    on_remote_row_click: Some(hooks.use_async_handler({
+                        let selected_setter = remote_selected_index;
+                        let scroll_setter = remote_scroll_offset;
+                        move |idx: usize| {
+                            let mut selected_setter = selected_setter;
+                            let mut scroll_setter = scroll_setter;
+                            async move {
+                                selected_setter.set(idx);
+                                // Update scroll offset if needed to keep selection visible
+                                if idx < scroll_setter.get() {
+                                    scroll_setter.set(idx);
+                                }
+                            }
+                        }
+                    })),
                 )
 
                 // Detail pane
@@ -788,6 +818,34 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     remote_scroll_offset: remote_detail_scroll_offset.get(),
                     local_scroll_offset: local_detail_scroll_offset.get(),
                     all_local_tickets: all_local_tickets.clone(),
+                    on_scroll_up: Some(hooks.use_async_handler({
+                        let scroll_setter = if current_view == ViewMode::Local {
+                            local_detail_scroll_offset
+                        } else {
+                            remote_detail_scroll_offset
+                        };
+                        move |()| {
+                            let mut scroll_setter = scroll_setter;
+                            async move {
+                                // Scroll up: decrease offset by 3 lines
+                                scroll_setter.set(scroll_setter.get().saturating_sub(3));
+                            }
+                        }
+                    })),
+                    on_scroll_down: Some(hooks.use_async_handler({
+                        let scroll_setter = if current_view == ViewMode::Local {
+                            local_detail_scroll_offset
+                        } else {
+                            remote_detail_scroll_offset
+                        };
+                        move |()| {
+                            let mut scroll_setter = scroll_setter;
+                            async move {
+                                // Scroll down: increase offset by 3 lines
+                                scroll_setter.set(scroll_setter.get() + 3);
+                            }
+                        }
+                    })),
                 )
             }
 

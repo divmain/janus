@@ -1,10 +1,12 @@
 //! Scrollable ticket list component
 //!
 //! Displays a list of tickets with selection highlighting, fuzzy match
-//! highlighting, and scrolling support.
+//! highlighting, and scrolling support. Each row is clickable for mouse
+//! selection.
 
 use iocraft::prelude::*;
 
+use crate::tui::components::Clickable;
 use crate::tui::search::FilteredTicket;
 use crate::tui::theme::theme;
 use crate::types::TicketStatus;
@@ -28,6 +30,8 @@ pub struct TicketListProps {
     pub visible_height: usize,
     /// Whether a search is currently in progress
     pub searching: bool,
+    /// Handler invoked when a row is clicked (passes the actual index)
+    pub on_row_click: Option<Handler<usize>>,
 }
 
 /// Scrollable ticket list with selection
@@ -111,16 +115,27 @@ pub fn TicketList(props: &TicketListProps) -> impl Into<AnyElement<'static>> {
                 None
             })
 
-            // Ticket rows
+            // Ticket rows (clickable)
             #(visible_tickets.iter().enumerate().map(|(i, ft)| {
                 let actual_index = start + i;
                 let is_selected = actual_index == props.selected_index;
+                let on_click = props.on_row_click.clone();
                 element! {
-                    TicketRow(
-                        ticket: ft.clone(),
-                        is_selected: is_selected,
-                        has_focus: props.has_focus && is_selected,
-                    )
+                    Clickable(
+                        on_click: on_click.map(|h| {
+                            let handler = h;
+                            let idx = actual_index;
+                            Handler::from(move |_: ()| {
+                                handler(idx);
+                            })
+                        }),
+                    ) {
+                        TicketRow(
+                            ticket: ft.clone(),
+                            is_selected: is_selected,
+                            has_focus: props.has_focus && is_selected,
+                        )
+                    }
                 }
             }))
 

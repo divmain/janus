@@ -610,6 +610,24 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                             has_focus: active_pane.get() == Pane::List && !is_editing,
                                             visible_height: list_height,
                                             searching: search_in_flight_ref.get(),
+                                            on_row_click: Some(hooks.use_async_handler({
+                                                let selected_setter = selected_index;
+                                                let pane_setter = active_pane;
+                                                let scroll_setter = scroll_offset;
+                                                move |idx: usize| {
+                                                    let mut selected_setter = selected_setter;
+                                                    let mut pane_setter = pane_setter;
+                                                    let mut scroll_setter = scroll_setter;
+                                                    async move {
+                                                        selected_setter.set(idx);
+                                                        pane_setter.set(Pane::List);
+                                                        // Update scroll offset if needed to keep selection visible
+                                                        if idx < scroll_setter.get() {
+                                                            scroll_setter.set(idx);
+                                                        }
+                                                    }
+                                                }
+                                            })),
                                         )
                                     }
 
@@ -622,6 +640,28 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                             ticket: selected_ticket.clone(),
                                             has_focus: active_pane.get() == Pane::Detail && !is_editing,
                                             scroll_offset: detail_scroll_offset.get(),
+                                            on_scroll_up: Some(hooks.use_async_handler({
+                                                let scroll_setter = detail_scroll_offset;
+                                                move |()| {
+                                                    let mut scroll_setter = scroll_setter;
+                                                    async move {
+                                                        // Scroll up: decrease offset by 3 lines
+                                                        scroll_setter.set(scroll_setter.get().saturating_sub(3));
+                                                    }
+                                                }
+                                            })),
+                                            on_scroll_down: Some(hooks.use_async_handler({
+                                                let scroll_setter = detail_scroll_offset;
+                                                let max_scroll_ref = max_detail_scroll;
+                                                move |()| {
+                                                    let mut scroll_setter = scroll_setter;
+                                                    let max_scroll = max_scroll_ref.get();
+                                                    async move {
+                                                        // Scroll down: increase offset by 3 lines, capped at max
+                                                        scroll_setter.set((scroll_setter.get() + 3).min(max_scroll));
+                                                    }
+                                                }
+                                            })),
                                         )
                                     }
                                 }

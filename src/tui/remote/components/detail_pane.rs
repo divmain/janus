@@ -1,13 +1,14 @@
 //! Remote TUI detail pane component
 //!
 //! Displays detailed information about the selected issue or ticket.
+//! Supports mouse wheel scrolling.
 
 use iocraft::prelude::*;
 
 use crate::formatting::extract_ticket_body;
 use crate::remote::{RemoteIssue, RemoteStatus};
 use crate::ticket::Ticket;
-use crate::tui::components::TextViewer;
+use crate::tui::components::{Clickable, TextViewer};
 use crate::tui::remote::state::ViewMode;
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
@@ -29,6 +30,10 @@ pub struct DetailPaneProps {
     pub local_scroll_offset: usize,
     /// All local tickets (for checking link status of remote issues)
     pub all_local_tickets: Vec<TicketMetadata>,
+    /// Handler invoked when scroll up is requested (mouse wheel)
+    pub on_scroll_up: Option<Handler<()>>,
+    /// Handler invoked when scroll down is requested (mouse wheel)
+    pub on_scroll_down: Option<Handler<()>>,
 }
 
 /// Detail pane showing issue/ticket details
@@ -51,9 +56,20 @@ pub fn DetailPane(props: &DetailPaneProps) -> impl Into<AnyElement<'static>> {
             border_color: theme.border,
         ) {
             #(if props.view_mode == ViewMode::Remote {
-                render_remote_detail(&props.selected_remote, props.remote_scroll_offset, &props.all_local_tickets)
+                render_remote_detail(
+                    &props.selected_remote,
+                    props.remote_scroll_offset,
+                    &props.all_local_tickets,
+                    props.on_scroll_up.clone(),
+                    props.on_scroll_down.clone(),
+                )
             } else {
-                render_local_detail(&props.selected_local, props.local_scroll_offset)
+                render_local_detail(
+                    &props.selected_local,
+                    props.local_scroll_offset,
+                    props.on_scroll_up.clone(),
+                    props.on_scroll_down.clone(),
+                )
             })
         }
     }
@@ -64,6 +80,8 @@ fn render_remote_detail(
     selected_remote: &Option<RemoteIssue>,
     remote_scroll_offset: usize,
     all_local_tickets: &[TicketMetadata],
+    on_scroll_up: Option<Handler<()>>,
+    on_scroll_down: Option<Handler<()>>,
 ) -> Option<AnyElement<'static>> {
     let theme = theme();
 
@@ -132,19 +150,24 @@ fn render_remote_detail(
                         }))
                     }
 
-                    // Body
+                    // Body (with mouse wheel scrolling)
                     View(
                         flex_grow: 1.0,
                         width: 100pct,
                         padding: 1,
                         overflow: Overflow::Hidden,
                     ) {
-                        TextViewer(
-                            text: issue_body,
-                            scroll_offset: remote_scroll_offset,
-                            has_focus: false,
-                            placeholder: Some("No description".to_string()),
-                        )
+                        Clickable(
+                            on_scroll_up: on_scroll_up.clone(),
+                            on_scroll_down: on_scroll_down.clone(),
+                        ) {
+                            TextViewer(
+                                text: issue_body,
+                                scroll_offset: remote_scroll_offset,
+                                has_focus: false,
+                                placeholder: Some("No description".to_string()),
+                            )
+                        }
                     }
                 }
             }
@@ -170,6 +193,8 @@ fn render_remote_detail(
 fn render_local_detail(
     selected_local: &Option<TicketMetadata>,
     scroll_offset: usize,
+    on_scroll_up: Option<Handler<()>>,
+    on_scroll_down: Option<Handler<()>>,
 ) -> Option<AnyElement<'static>> {
     let theme = theme();
 
@@ -234,19 +259,24 @@ fn render_local_detail(
                         Text(content: format!("Priority: {:?}", ticket_priority), color: theme.text)
                     }
 
-                    // Body
+                    // Body (with mouse wheel scrolling)
                     View(
                         flex_grow: 1.0,
                         width: 100pct,
                         padding: 1,
                         overflow: Overflow::Hidden,
                     ) {
-                        TextViewer(
-                            text: body,
-                            scroll_offset: scroll_offset,
-                            has_focus: false,
-                            placeholder: Some("No description".to_string()),
-                        )
+                        Clickable(
+                            on_scroll_up: on_scroll_up.clone(),
+                            on_scroll_down: on_scroll_down.clone(),
+                        ) {
+                            TextViewer(
+                                text: body,
+                                scroll_offset: scroll_offset,
+                                has_focus: false,
+                                placeholder: Some("No description".to_string()),
+                            )
+                        }
                     }
                 }
             }

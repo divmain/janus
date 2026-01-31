@@ -7,7 +7,7 @@ use iocraft::prelude::*;
 
 use crate::formatting::{extract_ticket_body, format_date_for_display};
 use crate::ticket::Ticket;
-use crate::tui::components::TextViewer;
+use crate::tui::components::{Clickable, TextViewer};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
 
@@ -20,6 +20,10 @@ pub struct TicketDetailProps {
     pub has_focus: bool,
     /// Scroll offset for the body content
     pub scroll_offset: usize,
+    /// Handler invoked when scroll up is requested (mouse wheel)
+    pub on_scroll_up: Option<Handler<()>>,
+    /// Handler invoked when scroll down is requested (mouse wheel)
+    pub on_scroll_down: Option<Handler<()>>,
 }
 
 /// Ticket detail view showing metadata and body
@@ -210,19 +214,24 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                 border_color: theme.border,
             )
 
-            // Body content (scrollable)
+            // Body content (scrollable with mouse wheel support)
             View(
                 flex_grow: 1.0,
                 width: 100pct,
                 padding: 1,
                 overflow: Overflow::Hidden,
             ) {
-                TextViewer(
-                    text: body,
-                    scroll_offset: props.scroll_offset,
-                    has_focus: props.has_focus,
-                    placeholder: None,
-                )
+                Clickable(
+                    on_scroll_up: props.on_scroll_up.clone(),
+                    on_scroll_down: props.on_scroll_down.clone(),
+                ) {
+                    TextViewer(
+                        text: body,
+                        scroll_offset: props.scroll_offset,
+                        has_focus: props.has_focus,
+                        placeholder: None,
+                    )
+                }
             }
         }
     }

@@ -10,8 +10,8 @@ use iocraft::prelude::*;
 
 use crate::ticket::Ticket;
 use crate::tui::components::{
-    EmptyState, EmptyStateKind, InlineSearchBox, TicketCard, Toast, board_shortcuts,
-    compute_empty_state, edit_shortcuts, empty_shortcuts,
+    Clickable, ClickableText, EmptyState, EmptyStateKind, InlineSearchBox, TicketCard, Toast,
+    board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::{EditFormState, EditMode};
@@ -256,27 +256,52 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         system.exit();
     }
 
-    // Build column toggle indicator for header
-    let column_toggles: String = visible_columns
-        .get()
-        .iter()
-        .enumerate()
-        .map(|(i, &visible)| {
-            if visible {
-                format!("[{}]", COLUMN_KEYS[i])
-            } else {
-                "[ ]".to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("");
-
     let total_tickets = filtered.len();
     let tickets_ref_for_count = all_tickets.read();
     let all_ticket_count = tickets_ref_for_count.len();
     drop(tickets_ref_for_count);
 
     let theme = theme();
+
+    // Build column toggle indicators using ClickableText components
+    let visible_cols = visible_columns.get();
+    let column_toggles_elements: Vec<AnyElement<'static>> = (0..5)
+        .map(|i| {
+            let is_visible = visible_cols[i];
+            let key = COLUMN_KEYS[i];
+            let on_click = hooks.use_async_handler({
+                let cols = visible_columns;
+                let cur_col = current_column;
+                move |()| {
+                    let mut cols = cols;
+                    let mut cur_col = cur_col;
+                    async move {
+                        let mut vis = cols.get();
+                        vis[i] = !vis[i];
+                        cols.set(vis);
+                        // Adjust current column if it was hidden
+                        handlers::adjust_column_after_toggle(&mut cur_col, &vis);
+                    }
+                }
+            });
+
+            element! {
+                ClickableText(
+                    content: if is_visible {
+                        format!("[{}]", key)
+                    } else {
+                        "[ ]".to_string()
+                    },
+                    on_click: Some(on_click),
+                    color: Some(if is_visible { theme.text } else { theme.text_dimmed }),
+                    hover_color: Some(theme.border_focused),
+                    weight: Some(Weight::Normal),
+                    hover_weight: Some(Weight::Bold),
+                )
+            }
+            .into()
+        })
+        .collect();
 
     // Get editing state for rendering using shared EditFormState
     let (edit_ticket, edit_body) = {
@@ -319,12 +344,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             height: height,
             header_title: Some("Janus - Board"),
             header_ticket_count: Some(total_tickets),
-            header_extra: Some(vec![element! {
-                Text(
-                    content: column_toggles.clone(),
-                    color: theme.text,
-                )
-            }.into()]),
+            header_extra: Some(column_toggles_elements),
             shortcuts: shortcuts,
             toast: toast.read().clone(),
         ) {
@@ -471,16 +491,35 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                         None
                                                     })
 
-                                                    // Visible cards
+                                                    // Visible cards (clickable)
                                                     #(column_tickets.iter().enumerate().skip(start).take(end - start).map(|(row_idx, ft)| {
                                                         let is_selected = is_active_column && row_idx == current_row_val;
+                                                        let card_click_handler = hooks.use_async_handler({
+                                                            let cur_col = current_column;
+                                                            let cur_row = current_row;
+                                                            let search_focus = search_focused;
+                                                            move |()| {
+                                                                let mut cur_col = cur_col;
+                                                                let mut cur_row = cur_row;
+                                                                let mut search_focus = search_focus;
+                                                                async move {
+                                                                    cur_col.set(col_idx);
+                                                                    cur_row.set(row_idx);
+                                                                    search_focus.set(false);
+                                                                }
+                                                            }
+                                                        });
                                                         element! {
                                                             View(margin_top: 1) {
-                                                                TicketCard(
-                                                                    ticket: ft.ticket.as_ref().clone(),
-                                                                    is_selected: is_selected,
-                                                                    width: Some(card_width),
-                                                                )
+                                                                Clickable(
+                                                                    on_click: Some(card_click_handler),
+                                                                ) {
+                                                                    TicketCard(
+                                                                        ticket: ft.ticket.as_ref().clone(),
+                                                                        is_selected: is_selected,
+                                                                        width: Some(card_width),
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }))
