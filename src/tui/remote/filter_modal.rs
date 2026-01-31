@@ -104,6 +104,8 @@ impl FilterState {
 #[derive(Default, Props)]
 pub struct FilterModalProps {
     pub state: FilterState,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
 }
 
 /// Filter modal component
@@ -126,6 +128,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                 border_color: Some(ModalBorderColor::Info),
                 title: Some("Filter Remote Issues".to_string()),
                 footer_text: Some("Tab/j/k: navigate | Enter: toggle/edit | x: clear | Esc: cancel".to_string()),
+                on_close: props.on_close.clone(),
             ) {
                 // Status field
                 View(

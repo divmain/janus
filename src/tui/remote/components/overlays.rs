@@ -45,13 +45,13 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
             // Filter modal - rendered directly since FilterModal handles its own positioning via ModalOverlay
             #(props.filter_state.as_ref().map(|state| {
                 let state_clone = state.clone();
-                element! { FilterModal(state: state_clone) }
+                element! { FilterModal(state: state_clone, on_close: None) }
             }))
 
             // Help modal - rendered directly since HelpModal handles its own positioning via ModalOverlay
             #(if props.show_help_modal {
                 let scroll = props.help_modal_scroll;
-                Some(element! { HelpModal(scroll_offset: Some(scroll)) })
+                Some(element! { HelpModal(scroll_offset: Some(scroll), on_close: None) })
             } else {
                 None
             })
@@ -62,7 +62,7 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
                     let error_type_clone = error_type.clone();
                     let error_message_clone = error_message.clone();
                     element! {
-                        ErrorDetailModal(error_type: error_type_clone.clone(), error_message: error_message_clone.clone())
+                        ErrorDetailModal(error_type: error_type_clone.clone(), error_message: error_message_clone.clone(), on_close: None)
                     }
                 })
             } else {
@@ -72,13 +72,13 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
             // Sync preview modal - rendered directly since SyncPreview handles its own positioning via ModalOverlay
             #(props.sync_preview_state.as_ref().map(|state| {
                 let state_clone = state.clone();
-                element! { SyncPreview(changes: state_clone.changes, current_change_index: state_clone.current_change_index) }
+                element! { SyncPreview(changes: state_clone.changes, current_change_index: state_clone.current_change_index, on_close: None) }
             }))
 
             // Confirm dialog modal - rendered directly since ConfirmDialog handles its own positioning via ModalOverlay
             #(props.confirm_dialog_state.as_ref().map(|state| {
                 let message = state.message.clone();
-                element! { ConfirmDialog(message: message) }
+                element! { ConfirmDialog(message: message, on_close: None) }
             }))
         }
     }

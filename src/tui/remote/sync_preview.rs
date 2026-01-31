@@ -38,17 +38,30 @@ pub struct SyncChangeWithContext {
     pub decision: Option<SyncDecision>,
 }
 
-#[derive(Debug, Clone, Default, Props)]
+#[derive(Clone, Default, Props)]
 pub struct SyncPreviewState {
     pub changes: Vec<SyncChangeWithContext>,
     pub current_change_index: usize,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
+}
+
+impl std::fmt::Debug for SyncPreviewState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyncPreviewState")
+            .field("changes", &self.changes)
+            .field("current_change_index", &self.current_change_index)
+            .field("on_close", &self.on_close.is_some())
+            .finish()
+    }
 }
 
 impl SyncPreviewState {
-    pub fn new(changes: Vec<SyncChangeWithContext>) -> Self {
+    pub fn new(changes: Vec<SyncChangeWithContext>, on_close: Option<Handler<()>>) -> Self {
         Self {
             changes,
             current_change_index: 0,
+            on_close,
         }
     }
 
@@ -132,6 +145,7 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                 border_color: Some(ModalBorderColor::Info),
                 title: Some("Sync Preview".to_string()),
                 footer_text: Some(footer_text.to_string()),
+                on_close: props.on_close.clone(),
             ) {
                 // Progress counter
                 Text(

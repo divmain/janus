@@ -22,6 +22,8 @@ pub struct NoteInputModalProps {
     pub ticket_id: String,
     /// Current note data state (contains ticket_id and text)
     pub note_text: Option<State<NoteModalData>>,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
 }
 
 /// Modal dialog for inputting a note to add to a ticket
@@ -58,6 +60,7 @@ pub fn NoteInputModal<'a>(
                 height: Some(ModalHeight::Fixed(18)),
                 title: Some(format!("Add Note to {}", props.ticket_id)),
                 footer_text: Some("[Enter] Submit  [Esc] Cancel".to_string()),
+                on_close: props.on_close.clone(),
             ) {
                 // Note input area
                 View(
@@ -102,6 +105,8 @@ pub struct CancelConfirmModalProps {
     pub ticket_id: String,
     /// The ticket title (for display)
     pub ticket_title: String,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
 }
 
 /// Modal dialog for confirming ticket cancellation
@@ -131,6 +136,7 @@ pub fn CancelConfirmModal<'a>(
                 title: Some("Confirm Cancellation".to_string()),
                 title_color: Some(Color::Yellow),
                 footer_text: Some("Press [c] again to confirm, [Esc] to cancel".to_string()),
+                on_close: props.on_close.clone(),
             ) {
                 // Confirmation message
                 View(
@@ -160,6 +166,8 @@ pub fn CancelConfirmModal<'a>(
 pub struct CacheErrorModalProps {
     /// The error message to display
     pub error_message: String,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
 }
 
 /// Modal dialog for displaying cache sync errors
@@ -183,6 +191,7 @@ pub fn CacheErrorModal<'a>(
                 title: Some("Cache Sync Error".to_string()),
                 title_color: Some(Color::Red),
                 footer_text: Some("Press any key to exit".to_string()),
+                on_close: props.on_close.clone(),
             ) {
                 // Error content
                 View(
