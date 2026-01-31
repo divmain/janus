@@ -32,18 +32,22 @@ pub struct ClickableProps<'a> {
 ///
 /// # Example
 ///
-/// ```
-/// # use iocraft::prelude::*;
-/// # use janus::tui::components::Clickable;
-/// # fn example() -> impl Into<AnyElement<'static>> {
+/// ```ignore
+/// use iocraft::prelude::*;
+/// use janus::tui::components::Clickable;
+///
+/// // Create a handler using use_async_handler in your component
+/// let click_handler = use_async_handler(move |()| {
+///     // Handle click
+/// });
+///
 /// element! {
 ///     Clickable(
-///         on_click: Some(Handler::new(|_| println!("Clicked!"))),
+///         on_click: Some(click_handler),
 ///     ) {
 ///         Text(content: "Click me")
 ///     }
 /// }
-/// # }
 /// ```
 #[component]
 pub fn Clickable<'a>(

@@ -36,21 +36,25 @@ pub struct ClickableTextProps {
 ///
 /// # Example
 ///
-/// ```
-/// # use iocraft::prelude::*;
-/// # use janus::tui::components::ClickableText;
-/// # fn example() -> impl Into<AnyElement<'static>> {
+/// ```ignore
+/// use iocraft::prelude::*;
+/// use janus::tui::components::ClickableText;
+///
+/// // Create a handler using use_async_handler in your component
+/// let click_handler = use_async_handler(move |()| {
+///     // Handle click
+/// });
+///
 /// element! {
 ///     ClickableText(
 ///         content: "Click me!".to_string(),
-///         on_click: Some(Handler::new(|_| println!("Clicked!"))),
+///         on_click: Some(click_handler),
 ///         color: Some(Color::White),
 ///         hover_color: Some(Color::Blue),
 ///         weight: Some(Weight::Normal),
 ///         hover_weight: Some(Weight::Bold),
 ///     )
 /// }
-/// # }
 /// ```
 #[component]
 pub fn ClickableText(
