@@ -6,7 +6,7 @@
 use iocraft::prelude::*;
 
 use crate::formatting::extract_ticket_body;
-use crate::tui::components::{Select, Selectable, TextEditor, options_for};
+use crate::tui::components::{Clickable, Select, Selectable, TextEditor, options_for};
 use crate::tui::services::{TicketEditService, TicketFormValidator};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
@@ -106,6 +106,88 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     let mut has_error = hooks.use_state(|| false);
     let mut error_text = hooks.use_state(String::new);
     let mut is_saving = hooks.use_state(|| false);
+
+    // Click handlers for form fields (using async_handler pattern to allow state mutation)
+    let focus_title_handler: Handler<()> = hooks.use_async_handler({
+        let focused_field_setter = focused_field;
+        move |_| {
+            let mut focused_field_setter = focused_field_setter;
+            async move {
+                focused_field_setter.set(EditField::Title);
+            }
+        }
+    });
+
+    let focus_body_handler: Handler<()> = hooks.use_async_handler({
+        let focused_field_setter = focused_field;
+        move |_| {
+            let mut focused_field_setter = focused_field_setter;
+            async move {
+                focused_field_setter.set(EditField::Body);
+            }
+        }
+    });
+
+    // Handlers for Select component arrows
+    let status_prev_handler: Handler<()> = hooks.use_async_handler({
+        let status_setter = status;
+        move |_| {
+            let mut status_setter = status_setter;
+            async move {
+                status_setter.set(status_setter.get().prev());
+            }
+        }
+    });
+
+    let status_next_handler: Handler<()> = hooks.use_async_handler({
+        let status_setter = status;
+        move |_| {
+            let mut status_setter = status_setter;
+            async move {
+                status_setter.set(status_setter.get().next());
+            }
+        }
+    });
+
+    let type_prev_handler: Handler<()> = hooks.use_async_handler({
+        let type_setter = ticket_type;
+        move |_| {
+            let mut type_setter = type_setter;
+            async move {
+                type_setter.set(type_setter.get().prev());
+            }
+        }
+    });
+
+    let type_next_handler: Handler<()> = hooks.use_async_handler({
+        let type_setter = ticket_type;
+        move |_| {
+            let mut type_setter = type_setter;
+            async move {
+                type_setter.set(type_setter.get().next());
+            }
+        }
+    });
+
+    let priority_prev_handler: Handler<()> = hooks.use_async_handler({
+        let priority_setter = priority;
+        move |_| {
+            let mut priority_setter = priority_setter;
+            async move {
+                priority_setter.set(priority_setter.get().prev());
+            }
+        }
+    });
+
+    let priority_next_handler: Handler<()> = hooks.use_async_handler({
+        let priority_setter = priority;
+        move |_| {
+            let mut priority_setter = priority_setter;
+            async move {
+                priority_setter.set(priority_setter.get().next());
+            }
+        }
+    });
 
     // Async save handler
     let save_handler: Handler<SaveRequest> = hooks.use_async_handler({
@@ -321,33 +403,37 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                         overflow: Overflow::Hidden,
                     ) {
                         // Title field
-                        View(flex_direction: FlexDirection::Column) {
-                            Text(
-                                content: "Title:",
-                                color: if focused_field.get() == EditField::Title {
-                                    theme.border_focused
-                                } else {
-                                    theme.text_dimmed
-                                },
-                            )
-                            View(
-                                border_style: BorderStyle::Round,
-                                border_color: if focused_field.get() == EditField::Title {
-                                    theme.border_focused
-                                } else {
-                                    theme.border
-                                },
-                                padding_left: 1,
-                                padding_right: 1,
-                                width: 100pct,
-                            ) {
-                                TextInput(
-                                    value: title.to_string(),
-                                    has_focus: focused_field.get() == EditField::Title,
-                                    on_change: move |new_value: String| title.set(new_value),
-                                    color: theme.text,
-                                    cursor_color: Some(theme.highlight),
+                        Clickable(
+                            on_click: Some(focus_title_handler.clone()),
+                        ) {
+                            View(flex_direction: FlexDirection::Column) {
+                                Text(
+                                    content: "Title:",
+                                    color: if focused_field.get() == EditField::Title {
+                                        theme.border_focused
+                                    } else {
+                                        theme.text_dimmed
+                                    },
                                 )
+                                View(
+                                    border_style: BorderStyle::Round,
+                                    border_color: if focused_field.get() == EditField::Title {
+                                        theme.border_focused
+                                    } else {
+                                        theme.border
+                                    },
+                                    padding_left: 1,
+                                    padding_right: 1,
+                                    width: 100pct,
+                                ) {
+                                    TextInput(
+                                        value: title.to_string(),
+                                        has_focus: focused_field.get() == EditField::Title,
+                                        on_change: move |new_value: String| title.set(new_value),
+                                        color: theme.text,
+                                        cursor_color: Some(theme.highlight),
+                                    )
+                                }
                             }
                         }
 
@@ -359,6 +445,8 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                 selected_index: status.get().index(),
                                 has_focus: focused_field.get() == EditField::Status,
                                 value_color: Some(theme.status_color(status.get())),
+                                on_prev: Some(status_prev_handler.clone()),
+                                on_next: Some(status_next_handler.clone()),
                             )
                             Select(
                                 label: Some("Type"),
@@ -366,6 +454,8 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                 selected_index: ticket_type.get().index(),
                                 has_focus: focused_field.get() == EditField::Type,
                                 value_color: Some(theme.type_color(ticket_type.get())),
+                                on_prev: Some(type_prev_handler.clone()),
+                                on_next: Some(type_next_handler.clone()),
                             )
                             Select(
                                 label: Some("Priority"),
@@ -373,6 +463,8 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                                 selected_index: priority.get().index(),
                                 has_focus: focused_field.get() == EditField::Priority,
                                 value_color: Some(theme.priority_color(priority.get())),
+                                on_prev: Some(priority_prev_handler.clone()),
+                                on_next: Some(priority_next_handler.clone()),
                             )
                         }
 
@@ -395,16 +487,20 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                         )
 
                         // Body text area
-                        View(
-                            width: 100pct,
-                            flex_grow: 1.0,
-                            overflow: Overflow::Hidden,
+                        Clickable(
+                            on_click: Some(focus_body_handler.clone()),
                         ) {
-                            TextEditor(
-                                value: Some(body),
-                                has_focus: focused_field.get() == EditField::Body,
-                                cursor_color: None,
-                            )
+                            View(
+                                width: 100pct,
+                                flex_grow: 1.0,
+                                overflow: Overflow::Hidden,
+                            ) {
+                                TextEditor(
+                                    value: Some(body),
+                                    has_focus: focused_field.get() == EditField::Body,
+                                    cursor_color: None,
+                                )
+                            }
                         }
                     }
 

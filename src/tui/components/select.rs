@@ -5,6 +5,7 @@
 
 use iocraft::prelude::*;
 
+use crate::tui::components::Clickable;
 use crate::tui::theme::theme;
 use crate::types::{TicketPriority, TicketStatus, TicketType};
 
@@ -21,6 +22,10 @@ pub struct SelectProps<'a> {
     pub has_focus: bool,
     /// Optional color for the value (for semantic coloring like status/type/priority)
     pub value_color: Option<Color>,
+    /// Handler invoked when left arrow is clicked (cycle backward)
+    pub on_prev: Option<Handler<()>>,
+    /// Handler invoked when right arrow is clicked (cycle forward)
+    pub on_next: Option<Handler<()>>,
 }
 
 /// Compact inline selector component with arrow indicators
@@ -59,18 +64,26 @@ pub fn Select<'a>(props: &SelectProps<'a>) -> impl Into<AnyElement<'a>> {
                     color: label_color,
                 )
             }))
-            Text(
-                content: "◀",
-                color: arrow_color,
-            )
+            Clickable(
+                on_click: props.on_prev.clone(),
+            ) {
+                Text(
+                    content: "◀",
+                    color: arrow_color,
+                )
+            }
             Text(
                 content: current_value,
                 color: value_color,
             )
-            Text(
-                content: "▶",
-                color: arrow_color,
-            )
+            Clickable(
+                on_click: props.on_next.clone(),
+            ) {
+                Text(
+                    content: "▶",
+                    color: arrow_color,
+                )
+            }
         }
     }
 }
