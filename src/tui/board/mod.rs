@@ -190,13 +190,17 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         .filter_map(|(i, &v)| if v { Some(i) } else { None })
         .collect();
 
+    // Ensure at least one column is visible to prevent division by zero
+    // If all columns are hidden, default to showing the first column
+    let visible_count = visible_indices.len().max(1);
+
     // Calculate column width as equal percentage for all visible columns
-    let column_width_pct = 100.0 / visible_indices.len() as f32;
+    let column_width_pct = 100.0 / visible_count as f32;
 
     // Calculate card width in characters for multi-line title wrapping
     // Terminal width minus overall padding (2 chars), divided by number of columns,
     // then subtract column padding (2) and border (1)
-    let column_char_width = (width as u32).saturating_sub(2) / visible_indices.len() as u32;
+    let column_char_width = (width as u32).saturating_sub(2) / visible_count as u32;
     let card_width = column_char_width.saturating_sub(5); // padding + borders
 
     // Calculate column heights
