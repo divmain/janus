@@ -83,7 +83,20 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
             // Sync preview modal - rendered directly since SyncPreview handles its own positioning via ModalOverlay
             #(props.sync_preview_state.as_ref().map(|state| {
                 let state_clone = state.clone();
-                element! { SyncPreview(changes: state_clone.changes, current_change_index: state_clone.current_change_index, on_close: None) }
+                element! {
+                    SyncPreview(
+                        changes: state_clone.changes,
+                        current_change_index: state_clone.current_change_index,
+                        scroll_offset: state_clone.scroll_offset,
+                        on_close: state_clone.on_close,
+                        on_scroll_up: state_clone.on_scroll_up,
+                        on_scroll_down: state_clone.on_scroll_down,
+                        on_accept: state_clone.on_accept,
+                        on_skip: state_clone.on_skip,
+                        on_accept_all: state_clone.on_accept_all,
+                        on_cancel: state_clone.on_cancel,
+                    )
+                }
             }))
 
             // Confirm dialog modal - rendered directly since ConfirmDialog handles its own positioning via ModalOverlay

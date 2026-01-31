@@ -53,6 +53,14 @@ pub struct SyncPreviewState {
     pub on_scroll_up: Option<Handler<()>>,
     /// Handler invoked when scroll down is requested (mouse wheel)
     pub on_scroll_down: Option<Handler<()>>,
+    /// Handler invoked when Accept button is clicked
+    pub on_accept: Option<Handler<()>>,
+    /// Handler invoked when Skip button is clicked
+    pub on_skip: Option<Handler<()>>,
+    /// Handler invoked when Accept All button is clicked
+    pub on_accept_all: Option<Handler<()>>,
+    /// Handler invoked when Cancel button is clicked
+    pub on_cancel: Option<Handler<()>>,
 }
 
 impl std::fmt::Debug for SyncPreviewState {
@@ -69,11 +77,16 @@ impl std::fmt::Debug for SyncPreviewState {
 }
 
 impl SyncPreviewState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         changes: Vec<SyncChangeWithContext>,
         on_close: Option<Handler<()>>,
         on_scroll_up: Option<Handler<()>>,
         on_scroll_down: Option<Handler<()>>,
+        on_accept: Option<Handler<()>>,
+        on_skip: Option<Handler<()>>,
+        on_accept_all: Option<Handler<()>>,
+        on_cancel: Option<Handler<()>>,
     ) -> Self {
         Self {
             changes,
@@ -82,6 +95,10 @@ impl SyncPreviewState {
             on_close,
             on_scroll_up,
             on_scroll_down,
+            on_accept,
+            on_skip,
+            on_accept_all,
+            on_cancel,
         }
     }
 
@@ -144,32 +161,52 @@ impl SyncPreviewState {
 ///
 /// Displays sync changes one at a time with navigation between changes.
 /// Supports mouse wheel scrolling for long field values.
+/// Features clickable buttons for Accept, Skip, Accept All, and Cancel actions.
+/// Sync preview modal component
+///
+/// Displays sync changes one at a time with navigation between changes.
+/// Supports mouse wheel scrolling for long field values.
+/// Features clickable buttons for Accept, Skip, Accept All, and Cancel actions.
 #[component]
-pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
+pub fn SyncPreview(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = theme();
     let current_idx = props.current_change_index;
     let total = props.changes.len();
     let scroll_offset = props.scroll_offset;
+    let has_changes = props.current_change_index < total;
 
-    // Build footer text based on current state
-    let footer_text = if props.current_change().is_some() {
-        match props.current_change().unwrap().change.direction {
-            SyncDirection::LocalToRemote => "[y] local->remote | [n] skip | [a] all | [c] cancel",
-            SyncDirection::RemoteToLocal => "[y] remote->local | [n] skip | [a] all | [c] cancel",
-        }
+    // Clone handlers
+    let on_close = props.on_close.clone();
+    let scroll_up = props.on_scroll_up.clone();
+    let scroll_down = props.on_scroll_down.clone();
+    let on_accept = props.on_accept.clone();
+    let on_skip = props.on_skip.clone();
+    let on_accept_all = props.on_accept_all.clone();
+    let on_cancel = props.on_cancel.clone();
+
+    // Extract all data from props before using in element! macro to avoid borrow issues
+    let content_text: Option<String> = if has_changes {
+        let change_ctx = &props.changes[current_idx];
+        Some(format!(
+            "Ticket: {} | Field: {}\n\n---\n\nLocal:\n{}\n\nRemote:\n{}",
+            change_ctx.ticket_id,
+            change_ctx.change.field_name,
+            change_ctx.change.local_value,
+            change_ctx.change.remote_value
+        ))
     } else {
-        "[c] to close"
+        None
     };
 
     element! {
         ModalOverlay() {
             ModalContainer(
                 width: Some(ModalWidth::Fixed(80)),
-                height: Some(ModalHeight::Fixed(20)),
+                height: Some(ModalHeight::Fixed(22)),
                 border_color: Some(ModalBorderColor::Info),
                 title: Some("Sync Preview".to_string()),
-                footer_text: Some(footer_text.to_string()),
-                on_close: props.on_close.clone(),
+                footer_text: None,
+                on_close,
             ) {
                 // Progress counter
                 Text(
@@ -178,30 +215,16 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                 )
                 Text(content: "")
 
-                // Content based on current change with scroll support
-                #(if let Some(change_ctx) = props.current_change() {
-                    let change = &change_ctx.change;
-                    let content_text = format!(
-                        "Ticket: {} | Field: {}\n\n---\n\nLocal:\n{}\n\nRemote:\n{}",
-                        change_ctx.ticket_id,
-                        change.field_name,
-                        change.local_value,
-                        change.remote_value
-                    );
+                // Content area
+                #(if let Some(text) = content_text {
                     Some(element! {
-                        View(
-                            flex_direction: FlexDirection::Column,
-                            width: 100pct,
-                            flex_grow: 1.0,
-                            overflow: Overflow::Hidden,
-                        ) {
-                            // Scrollable content using TextViewer with mouse wheel support
+                        View(flex_grow: 1.0, width: 100pct) {
                             Clickable(
-                                on_scroll_up: props.on_scroll_up.clone(),
-                                on_scroll_down: props.on_scroll_down.clone(),
+                                on_scroll_up: scroll_up,
+                                on_scroll_down: scroll_down,
                             ) {
                                 TextViewer(
-                                    text: content_text,
+                                    text: text,
                                     scroll_offset: scroll_offset,
                                     has_focus: true,
                                     placeholder: None,
@@ -224,6 +247,126 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                         }
                     })
                 })
+
+                // Button row at the bottom
+                View(
+                    width: 100pct,
+                    padding_top: 1,
+                    border_edges: Edges::Top,
+                    border_style: BorderStyle::Single,
+                    border_color: theme.border,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center,
+                    gap: 2,
+                ) {
+                    // Per-change action buttons (Accept/Skip) - only when there are changes
+                    #(if has_changes {
+                        if let (Some(accept_h), Some(skip_h)) = (on_accept.clone(), on_skip.clone()) {
+                            Some(element! {
+                                View(flex_direction: FlexDirection::Row, gap: 1) {
+                                    // Accept button - green for "apply this change"
+                                    Button(
+                                        handler: move |_| { accept_h(()); },
+                                        has_focus: false,
+                                    ) {
+                                        View(
+                                            border_style: BorderStyle::Round,
+                                            border_color: Color::Green,
+                                            padding_left: 1,
+                                            padding_right: 1,
+                                            background_color: Color::Green,
+                                        ) {
+                                            Text(
+                                                content: "[y] Accept",
+                                                color: Color::Black,
+                                                weight: Weight::Bold,
+                                            )
+                                        }
+                                    }
+
+                                    // Skip button - yellow/amber for "skip this change"
+                                    Button(
+                                        handler: move |_| { skip_h(()); },
+                                        has_focus: false,
+                                    ) {
+                                        View(
+                                            border_style: BorderStyle::Round,
+                                            border_color: Color::Yellow,
+                                            padding_left: 1,
+                                            padding_right: 1,
+                                            background_color: Color::Yellow,
+                                        ) {
+                                            Text(
+                                                content: "[n] Skip",
+                                                color: Color::Black,
+                                                weight: Weight::Bold,
+                                            )
+                                        }
+                                    }
+                                }
+                            })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    })
+
+                    // Global action buttons (Accept All/Cancel)
+                    View(flex_direction: FlexDirection::Row, gap: 1) {
+                        // Accept All button - bold blue for global action (only when there are changes)
+                        #(if has_changes {
+                            on_accept_all.clone().map(|handler| {
+                                element! {
+                                    Button(
+                                        handler: move |_| { handler(()); },
+                                        has_focus: false,
+                                    ) {
+                                        View(
+                                            border_style: BorderStyle::Round,
+                                            border_color: Color::Blue,
+                                            padding_left: 1,
+                                            padding_right: 1,
+                                            background_color: Color::Blue,
+                                        ) {
+                                            Text(
+                                                content: "[a] Accept All",
+                                                color: Color::White,
+                                                weight: Weight::Bold,
+                                            )
+                                        }
+                                    }
+                                }
+                            })
+                        } else {
+                            None
+                        })
+
+                        // Cancel button - gray for cancel/close (always visible)
+                        #(on_cancel.clone().map(|handler| {
+                            element! {
+                                Button(
+                                    handler: move |_| { handler(()); },
+                                    has_focus: false,
+                                ) {
+                                    View(
+                                        border_style: BorderStyle::Round,
+                                        border_color: Color::Grey,
+                                        padding_left: 1,
+                                        padding_right: 1,
+                                        background_color: Color::Grey,
+                                    ) {
+                                        Text(
+                                            content: "[c] Cancel",
+                                            color: Color::White,
+                                            weight: Weight::Bold,
+                                        )
+                                    }
+                                }
+                            }
+                        }))
+                    }
+                }
             }
         }
     }
