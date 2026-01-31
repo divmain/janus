@@ -20,7 +20,6 @@ pub mod ticket_card;
 pub mod ticket_detail;
 pub mod ticket_list;
 pub mod toast;
-
 pub use clickable::{Clickable, ClickableProps};
 pub use clickable_text::{ClickableText, ClickableTextProps};
 pub use empty_state::{EmptyState, EmptyStateKind, EmptyStateProps, compute_empty_state};

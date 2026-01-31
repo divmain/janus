@@ -147,6 +147,9 @@ pub struct ScreenLayoutProps<'a> {
     /// Keyboard shortcuts for footer
     pub shortcuts: Vec<Shortcut>,
 
+    /// Optional action buttons for triage mode footer
+    pub action_buttons: Vec<AnyElement<'a>>,
+
     /// Toast notification to display
     pub toast: Option<crate::tui::components::Toast>,
 
@@ -174,6 +177,7 @@ pub fn ScreenLayout<'a>(props: &mut ScreenLayoutProps<'a>) -> impl Into<AnyEleme
     // Take ownership of children to avoid borrow issues
     let children = std::mem::take(&mut props.children);
     let header_extra = std::mem::take(&mut props.header_extra);
+    let action_buttons = std::mem::take(&mut props.action_buttons);
     let toast = props.toast.clone();
     let shortcuts = std::mem::take(&mut props.shortcuts);
 
@@ -214,8 +218,11 @@ pub fn ScreenLayout<'a>(props: &mut ScreenLayoutProps<'a>) -> impl Into<AnyEleme
                 None
             })
 
-            // Footer
-            Footer(shortcuts: shortcuts)
+            // Footer with optional action buttons
+            Footer(
+                shortcuts: shortcuts,
+                action_buttons: action_buttons,
+            )
         }
     }
 }
