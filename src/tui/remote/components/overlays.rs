@@ -19,6 +19,10 @@ pub struct ModalOverlaysProps {
     pub show_help_modal: bool,
     /// Help modal scroll offset
     pub help_modal_scroll: usize,
+    /// Handler for help modal scroll up
+    pub on_help_scroll_up: Option<Handler<()>>,
+    /// Handler for help modal scroll down
+    pub on_help_scroll_down: Option<Handler<()>>,
     /// Whether to show the error modal
     pub show_error_modal: bool,
     /// Last error information (type, message)
@@ -51,7 +55,14 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
             // Help modal - rendered directly since HelpModal handles its own positioning via ModalOverlay
             #(if props.show_help_modal {
                 let scroll = props.help_modal_scroll;
-                Some(element! { HelpModal(scroll_offset: Some(scroll), on_close: None) })
+                Some(element! {
+                    HelpModal(
+                        scroll_offset: Some(scroll),
+                        on_close: None,
+                        on_scroll_up: props.on_help_scroll_up.clone(),
+                        on_scroll_down: props.on_help_scroll_down.clone(),
+                    )
+                })
             } else {
                 None
             })

@@ -1,9 +1,12 @@
 //! Sync preview modal for remote TUI
+//!
+//! Displays sync changes one at a time with navigation between changes.
+//! Supports scrolling for long field values that exceed the modal height.
 
 use iocraft::prelude::*;
 
 use crate::tui::components::{
-    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
+    Clickable, ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth, TextViewer,
 };
 use crate::tui::theme::theme;
 
@@ -42,8 +45,14 @@ pub struct SyncChangeWithContext {
 pub struct SyncPreviewState {
     pub changes: Vec<SyncChangeWithContext>,
     pub current_change_index: usize,
+    /// Scroll offset for long content
+    pub scroll_offset: usize,
     /// Handler invoked when modal is closed via X button
     pub on_close: Option<Handler<()>>,
+    /// Handler invoked when scroll up is requested (mouse wheel)
+    pub on_scroll_up: Option<Handler<()>>,
+    /// Handler invoked when scroll down is requested (mouse wheel)
+    pub on_scroll_down: Option<Handler<()>>,
 }
 
 impl std::fmt::Debug for SyncPreviewState {
@@ -51,17 +60,28 @@ impl std::fmt::Debug for SyncPreviewState {
         f.debug_struct("SyncPreviewState")
             .field("changes", &self.changes)
             .field("current_change_index", &self.current_change_index)
+            .field("scroll_offset", &self.scroll_offset)
             .field("on_close", &self.on_close.is_some())
+            .field("on_scroll_up", &self.on_scroll_up.is_some())
+            .field("on_scroll_down", &self.on_scroll_down.is_some())
             .finish()
     }
 }
 
 impl SyncPreviewState {
-    pub fn new(changes: Vec<SyncChangeWithContext>, on_close: Option<Handler<()>>) -> Self {
+    pub fn new(
+        changes: Vec<SyncChangeWithContext>,
+        on_close: Option<Handler<()>>,
+        on_scroll_up: Option<Handler<()>>,
+        on_scroll_down: Option<Handler<()>>,
+    ) -> Self {
         Self {
             changes,
             current_change_index: 0,
+            scroll_offset: 0,
             on_close,
+            on_scroll_up,
+            on_scroll_down,
         }
     }
 
@@ -121,11 +141,15 @@ impl SyncPreviewState {
 }
 
 /// Sync preview modal component
+///
+/// Displays sync changes one at a time with navigation between changes.
+/// Supports mouse wheel scrolling for long field values.
 #[component]
 pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
     let theme = theme();
     let current_idx = props.current_change_index;
     let total = props.changes.len();
+    let scroll_offset = props.scroll_offset;
 
     // Build footer text based on current state
     let footer_text = if props.current_change().is_some() {
@@ -154,41 +178,35 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                 )
                 Text(content: "")
 
-                // Content based on current change
+                // Content based on current change with scroll support
                 #(if let Some(change_ctx) = props.current_change() {
                     let change = &change_ctx.change;
+                    let content_text = format!(
+                        "Ticket: {} | Field: {}\n\n---\n\nLocal:\n{}\n\nRemote:\n{}",
+                        change_ctx.ticket_id,
+                        change.field_name,
+                        change.local_value,
+                        change.remote_value
+                    );
                     Some(element! {
                         View(
                             flex_direction: FlexDirection::Column,
                             width: 100pct,
+                            flex_grow: 1.0,
+                            overflow: Overflow::Hidden,
                         ) {
-                            // Ticket and field info
-                            Text(
-                                content: format!("Ticket: {} | Field: {}", change_ctx.ticket_id, change.field_name),
-                                color: Color::Yellow,
-                                weight: Weight::Bold,
-                            )
-                            Text(content: "")
-
-                            // Separator
-                            View(
-                                width: 100pct,
-                                border_edges: Edges::Bottom,
-                                border_style: BorderStyle::Single,
-                                border_color: theme.border,
+                            // Scrollable content using TextViewer with mouse wheel support
+                            Clickable(
+                                on_scroll_up: props.on_scroll_up.clone(),
+                                on_scroll_down: props.on_scroll_down.clone(),
                             ) {
-                                Text(content: "")
+                                TextViewer(
+                                    text: content_text,
+                                    scroll_offset: scroll_offset,
+                                    has_focus: true,
+                                    placeholder: None,
+                                )
                             }
-                            Text(content: "")
-
-                            // Local value
-                            Text(content: "Local:", color: Color::Green, weight: Weight::Bold)
-                            Text(content: change.local_value.clone(), color: theme.text_dimmed)
-                            Text(content: "")
-
-                            // Remote value
-                            Text(content: "Remote:", color: Color::Red, weight: Weight::Bold)
-                            Text(content: change.remote_value.clone(), color: theme.text_dimmed)
                         }
                     })
                 } else {
@@ -197,6 +215,7 @@ pub fn SyncPreview<'a>(props: &SyncPreviewState, _hooks: Hooks) -> impl Into<Any
                             flex_direction: FlexDirection::Column,
                             width: 100pct,
                             align_items: AlignItems::Center,
+                            flex_grow: 1.0,
                         ) {
                             Text(content: "")
                             Text(content: "No changes found", color: Color::Green, weight: Weight::Bold)

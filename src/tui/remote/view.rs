@@ -329,6 +329,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     sync_preview_setter.set(Some(super::sync_preview::SyncPreviewState::new(
                         all_changes,
                         None,
+                        None,
+                        None,
                     )));
                 }
             }
@@ -919,6 +921,26 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 filter_state: filter_state_clone,
                 show_help_modal: show_help_modal.get(),
                 help_modal_scroll: help_modal_scroll.get(),
+                on_help_scroll_up: Some(hooks.use_async_handler({
+                    let scroll_setter = help_modal_scroll;
+                    move |()| {
+                        let mut scroll_setter = scroll_setter;
+                        async move {
+                            // Scroll up: decrease offset by 3 lines
+                            scroll_setter.set(scroll_setter.get().saturating_sub(3));
+                        }
+                    }
+                })),
+                on_help_scroll_down: Some(hooks.use_async_handler({
+                    let scroll_setter = help_modal_scroll;
+                    move |()| {
+                        let mut scroll_setter = scroll_setter;
+                        async move {
+                            // Scroll down: increase offset by 3 lines
+                            scroll_setter.set(scroll_setter.get() + 3);
+                        }
+                    }
+                })),
                 show_error_modal: show_error_modal.get(),
                 last_error: last_error_clone,
                 sync_preview_state: sync_preview_state_clone,
