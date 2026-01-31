@@ -489,6 +489,32 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                 }
                                             });
 
+                                            // Create page scroll handlers for the scroll indicators
+                                            let page_up_handler = hooks.use_async_handler({
+                                                let col_scroll_offsets = column_scroll_offsets;
+                                                move |()| {
+                                                    let mut col_scroll_offsets = col_scroll_offsets;
+                                                    async move {
+                                                        let mut offsets = col_scroll_offsets.get();
+                                                        offsets[col_idx] = offsets[col_idx].saturating_sub(cards_per_column);
+                                                        col_scroll_offsets.set(offsets);
+                                                    }
+                                                }
+                                            });
+
+                                            let page_down_handler = hooks.use_async_handler({
+                                                let col_scroll_offsets = column_scroll_offsets;
+                                                move |()| {
+                                                    let mut col_scroll_offsets = col_scroll_offsets;
+                                                    async move {
+                                                        let mut offsets = col_scroll_offsets.get();
+                                                        let max_scroll = total_count.saturating_sub(cards_per_column);
+                                                        offsets[col_idx] = (offsets[col_idx] + cards_per_column).min(max_scroll);
+                                                        col_scroll_offsets.set(offsets);
+                                                    }
+                                                }
+                                            });
+
                                             element! {
                                                 Clickable(
                                                     on_scroll_up: Some(scroll_up_handler),
@@ -507,13 +533,17 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                         border_color: theme.border,
                                                         overflow: Overflow::Hidden,
                                                     ) {
-                                                    // "More above" indicator
+                                                    // "More above" indicator - clickable for page navigation
                                                     #(if hidden_above > 0 {
                                                         Some(element! {
                                                             View(height: 1, padding_left: 1) {
-                                                                Text(
+                                                                ClickableText(
                                                                     content: format!("  {} more above", hidden_above),
-                                                                    color: theme.text_dimmed,
+                                                                    on_click: Some(page_up_handler),
+                                                                    color: Some(theme.text_dimmed),
+                                                                    hover_color: Some(theme.border_focused),
+                                                                    weight: Some(Weight::Normal),
+                                                                    hover_weight: Some(Weight::Bold),
                                                                 )
                                                             }
                                                         })
@@ -557,13 +587,17 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                     // Spacer to push "more below" to bottom
                                                     View(flex_grow: 1.0)
 
-                                                    // "More below" indicator
+                                                    // "More below" indicator - clickable for page navigation
                                                     #(if hidden_below > 0 {
                                                         Some(element! {
                                                             View(height: 1, padding_left: 1) {
-                                                                Text(
+                                                                ClickableText(
                                                                     content: format!("  {} more below", hidden_below),
-                                                                    color: theme.text_dimmed,
+                                                                    on_click: Some(page_down_handler),
+                                                                    color: Some(theme.text_dimmed),
+                                                                    hover_color: Some(theme.border_focused),
+                                                                    weight: Some(Weight::Normal),
+                                                                    hover_weight: Some(Weight::Bold),
                                                                 )
                                                             }
                                                         })
