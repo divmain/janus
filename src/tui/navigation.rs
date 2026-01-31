@@ -28,13 +28,18 @@ pub fn scroll_down(
 }
 
 /// Scroll up one item in a list, adjusting scroll offset if needed.
-pub fn scroll_up(selected_index: &mut usize, scroll_offset: &mut usize) {
+pub fn scroll_up(selected_index: &mut usize, scroll_offset: &mut usize, list_height: usize) {
     let new_idx = selected_index.saturating_sub(1);
     *selected_index = new_idx;
 
     // Adjust scroll if selection moves above visible area
     if new_idx < *scroll_offset {
         *scroll_offset = new_idx;
+    }
+
+    // Adjust scroll if selection is below visible area (e.g., after manual scroll)
+    if list_height > 0 && new_idx >= *scroll_offset + list_height {
+        *scroll_offset = new_idx.saturating_sub(list_height - 1);
     }
 }
 
@@ -115,10 +120,14 @@ pub fn apply_scroll_down(
 }
 
 /// Apply scroll up to a State-based navigation pair.
-pub fn apply_scroll_up(selected_index: &mut State<usize>, scroll_offset: &mut State<usize>) {
+pub fn apply_scroll_up(
+    selected_index: &mut State<usize>,
+    scroll_offset: &mut State<usize>,
+    list_height: usize,
+) {
     let mut selected = selected_index.get();
     let mut scroll = scroll_offset.get();
-    scroll_up(&mut selected, &mut scroll);
+    scroll_up(&mut selected, &mut scroll, list_height);
     selected_index.set(selected);
     scroll_offset.set(scroll);
 }
@@ -222,7 +231,7 @@ mod tests {
     fn test_scroll_up_at_top() {
         let mut selected = 0;
         let mut scroll = 0;
-        scroll_up(&mut selected, &mut scroll);
+        scroll_up(&mut selected, &mut scroll, 10);
         assert_eq!(selected, 0, "Should stay at top");
         assert_eq!(scroll, 0, "Scroll should stay at 0");
     }
@@ -240,9 +249,25 @@ mod tests {
     fn test_scroll_up_triggers_scroll() {
         let mut selected = 5;
         let mut scroll = 5;
-        scroll_up(&mut selected, &mut scroll);
+        scroll_up(&mut selected, &mut scroll, 10);
         assert_eq!(selected, 4);
         assert_eq!(scroll, 4, "Should scroll up to keep visible");
+    }
+
+    #[test]
+    fn test_scroll_up_when_selection_below_viewport() {
+        // Scenario: User manually scrolled up, selected item is now below viewport
+        // selected=20, scroll=0, height=10 means items 0-9 are visible
+        // selected item 20 is below the viewport
+        let mut selected = 20;
+        let mut scroll = 0;
+        scroll_up(&mut selected, &mut scroll, 10);
+        assert_eq!(selected, 19);
+        // Should auto-scroll to bring selected item back into view
+        assert_eq!(
+            scroll, 10,
+            "Should scroll down to bring selection into view"
+        );
     }
 
     #[test]

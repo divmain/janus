@@ -578,7 +578,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         selected_index.set(filtered.len() - 1);
     }
     if scroll_offset.get() > selected_index.get() {
-        scroll_offset.set(selected_index.get());
+        // Only constrain scroll_offset when it would hide the selected item above viewport
+        // Allow scroll_offset > selected_index so users can scroll down to see more tickets
+        // while keeping their current selection visible (or just off-screen)
+        let viewport_size = list_height.saturating_sub(2).max(1);
+        if selected_index.get() >= scroll_offset.get() + viewport_size {
+            // Selected item is below viewport, scroll down to keep it visible
+            scroll_offset.set(selected_index.get().saturating_sub(viewport_size - 1));
+        }
     }
 
     let ticket_count = filtered.len();
