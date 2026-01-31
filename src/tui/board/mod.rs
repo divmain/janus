@@ -463,20 +463,50 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                             let hidden_above = start;
                                             let hidden_below = total_count.saturating_sub(end);
 
+                                            // Create scroll handlers for this column
+                                            let scroll_up_handler = hooks.use_async_handler({
+                                                let col_scroll_offsets = column_scroll_offsets;
+                                                move |()| {
+                                                    let mut col_scroll_offsets = col_scroll_offsets;
+                                                    async move {
+                                                        let mut offsets = col_scroll_offsets.get();
+                                                        offsets[col_idx] = offsets[col_idx].saturating_sub(3);
+                                                        col_scroll_offsets.set(offsets);
+                                                    }
+                                                }
+                                            });
+
+                                            let scroll_down_handler = hooks.use_async_handler({
+                                                let col_scroll_offsets = column_scroll_offsets;
+                                                move |()| {
+                                                    let mut col_scroll_offsets = col_scroll_offsets;
+                                                    async move {
+                                                        let mut offsets = col_scroll_offsets.get();
+                                                        let max_scroll = total_count.saturating_sub(cards_per_column);
+                                                        offsets[col_idx] = (offsets[col_idx] + 3).min(max_scroll);
+                                                        col_scroll_offsets.set(offsets);
+                                                    }
+                                                }
+                                            });
+
                                             element! {
-                                                View(
-                                                    width: Size::Percent(column_width_pct),
-                                                    height: 100pct,
-                                                    flex_direction: FlexDirection::Column,
-                                                    padding_left: 1,
-                                                    padding_right: 1,
-                                                    padding_top: 0,
-                                                    padding_bottom: 0,
-                                                    border_edges: Edges::Right,
-                                                    border_style: BorderStyle::Single,
-                                                    border_color: theme.border,
-                                                    overflow: Overflow::Hidden,
+                                                Clickable(
+                                                    on_scroll_up: Some(scroll_up_handler),
+                                                    on_scroll_down: Some(scroll_down_handler),
                                                 ) {
+                                                    View(
+                                                        width: Size::Percent(column_width_pct),
+                                                        height: 100pct,
+                                                        flex_direction: FlexDirection::Column,
+                                                        padding_left: 1,
+                                                        padding_right: 1,
+                                                        padding_top: 0,
+                                                        padding_bottom: 0,
+                                                        border_edges: Edges::Right,
+                                                        border_style: BorderStyle::Single,
+                                                        border_color: theme.border,
+                                                        overflow: Overflow::Hidden,
+                                                    ) {
                                                     // "More above" indicator
                                                     #(if hidden_above > 0 {
                                                         Some(element! {
@@ -542,6 +572,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                     })
                                                 }
                                             }
+                                        }
                                         }))
                                     }
                                 }
