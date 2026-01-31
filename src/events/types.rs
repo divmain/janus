@@ -29,6 +29,9 @@ pub enum EventType {
     PhaseAdded,
     PhaseRemoved,
     TicketMoved,
+
+    // Cache events
+    CacheRebuilt,
 }
 
 enum_display_fromstr!(
@@ -49,6 +52,7 @@ enum_display_fromstr!(
         PhaseAdded => "phase_added",
         PhaseRemoved => "phase_removed",
         TicketMoved => "ticket_moved",
+        CacheRebuilt => "cache_rebuilt",
     }
 );
 

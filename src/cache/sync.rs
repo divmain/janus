@@ -11,6 +11,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use crate::error::{JanusError as CacheError, Result};
+use crate::events::log_cache_rebuilt;
 use crate::plan::types::PlanMetadata;
 use crate::types::TicketMetadata;
 
@@ -20,13 +21,74 @@ use super::traits::CacheableItem;
 #[cfg(feature = "semantic-search")]
 use crate::embedding::model::{EMBEDDING_MODEL_NAME, generate_ticket_embedding};
 
+/// Statistics from a sync operation
+#[derive(Debug, Default)]
+pub struct SyncStats {
+    pub added: usize,
+    pub modified: usize,
+    pub removed: usize,
+    pub cache_was_empty: bool,
+}
+
+impl SyncStats {
+    pub fn total_changes(&self) -> usize {
+        self.added + self.modified + self.removed
+    }
+}
+
 impl TicketCache {
     /// Sync both tickets and plans from disk to cache.
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
     pub async fn sync(&self) -> Result<bool> {
-        let tickets_changed = self.sync_tickets().await?;
-        let plans_changed = self.sync_plans().await?;
+        let start = std::time::Instant::now();
+        let (tickets_changed, ticket_stats) = self.sync_tickets_with_stats().await?;
+        let (plans_changed, plan_stats) = self.sync_plans_with_stats().await?;
+        let duration = start.elapsed();
+
+        // Log if any sync operation occurred that modified the cache
+        let total_ticket_changes = ticket_stats.total_changes();
+        let total_plan_changes = plan_stats.total_changes();
+        let has_changes = tickets_changed || plans_changed;
+        let is_initial_sync = ticket_stats.cache_was_empty && total_ticket_changes > 0;
+
+        // Log event for any sync that actually updates the cache
+        if has_changes {
+            let reason = if is_initial_sync {
+                "initial_cache_population"
+            } else {
+                "incremental_sync"
+            };
+
+            let trigger = if is_initial_sync {
+                "cache_empty_on_startup"
+            } else {
+                "mtime_changes_detected"
+            };
+
+            log_cache_rebuilt(
+                reason,
+                trigger,
+                Some(duration.as_millis() as u64),
+                Some(ticket_stats.added + ticket_stats.modified),
+                Some(serde_json::json!({
+                    "tickets": {
+                        "added": ticket_stats.added,
+                        "modified": ticket_stats.modified,
+                        "removed": ticket_stats.removed,
+                        "cache_was_empty": ticket_stats.cache_was_empty,
+                    },
+                    "plans": {
+                        "added": plan_stats.added,
+                        "modified": plan_stats.modified,
+                        "removed": plan_stats.removed,
+                        "cache_was_empty": plan_stats.cache_was_empty,
+                    },
+                    "total_changes": total_ticket_changes + total_plan_changes,
+                })),
+            );
+        }
+
         Ok(tickets_changed || plans_changed)
     }
 
@@ -34,30 +96,40 @@ impl TicketCache {
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
     pub async fn sync_tickets(&self) -> Result<bool> {
-        self.sync_items::<TicketMetadata>().await
+        let (changed, _) = self.sync_tickets_with_stats().await?;
+        Ok(changed)
+    }
+
+    /// Sync tickets and return detailed stats.
+    async fn sync_tickets_with_stats(&self) -> Result<(bool, SyncStats)> {
+        self.sync_items_with_stats::<TicketMetadata>().await
     }
 
     /// Sync plans from disk to cache.
     ///
     /// Returns true if any changes were made, false if cache was already up to date.
     pub async fn sync_plans(&self) -> Result<bool> {
-        self.sync_items::<PlanMetadata>().await
+        let (changed, _) = self.sync_plans_with_stats().await?;
+        Ok(changed)
     }
 
-    /// Generic sync implementation for any CacheableItem type.
-    ///
-    /// Scans the item's directory, compares mtimes with cached values,
-    /// and updates the cache with any changes.
-    async fn sync_items<T: CacheableItem>(&self) -> Result<bool> {
+    /// Sync plans and return detailed stats.
+    async fn sync_plans_with_stats(&self) -> Result<(bool, SyncStats)> {
+        self.sync_items_with_stats::<PlanMetadata>().await
+    }
+
+    /// Generic sync implementation that returns detailed statistics.
+    async fn sync_items_with_stats<T: CacheableItem>(&self) -> Result<(bool, SyncStats)> {
         let dir = T::directory();
 
         if !dir.exists() {
             fs::create_dir_all(&dir).map_err(CacheError::Io)?;
-            return Ok(false);
+            return Ok((false, SyncStats::default()));
         }
 
         let disk_files = Self::scan_directory_static(&dir)?;
         let cached_mtimes = self.get_cached_mtimes_for::<T>().await?;
+        let cache_was_empty = cached_mtimes.is_empty();
 
         let mut added = Vec::new();
         let mut modified = Vec::new();
@@ -80,8 +152,15 @@ impl TicketCache {
         }
 
         if added.is_empty() && modified.is_empty() && removed.is_empty() {
-            return Ok(false);
+            return Ok((false, SyncStats { cache_was_empty, ..Default::default() }));
         }
+
+        let stats = SyncStats {
+            added: added.len(),
+            modified: modified.len(),
+            removed: removed.len(),
+            cache_was_empty,
+        };
 
         // Read and parse items before starting the transaction
         let mut items_to_upsert = Vec::new();
@@ -140,7 +219,7 @@ impl TicketCache {
 
         tx.commit().await?;
 
-        Ok(true)
+        Ok((true, stats))
     }
 
     /// Scan a directory for .md files and return their IDs and mtimes.

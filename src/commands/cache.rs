@@ -4,6 +4,7 @@ use std::fs;
 use super::CommandOutput;
 use crate::cache::TicketCache;
 use crate::error::{Result, is_corruption_error, is_permission_error};
+use crate::events::log_cache_rebuilt;
 
 #[cfg(feature = "semantic-search")]
 use crate::embedding::model::EMBEDDING_MODEL_NAME;
@@ -332,6 +333,24 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                             ticket_count, sync_duration, total_duration
                         ))
                         .print(output_json)?;
+
+                    // Log the cache rebuild event with detailed information
+                    #[cfg(feature = "semantic-search")]
+                    let embeddings_regenerated = needs_reemb;
+                    #[cfg(not(feature = "semantic-search"))]
+                    let embeddings_regenerated = false;
+                    
+                    let details = json!({
+                        "sync_time_ms": sync_duration.as_millis(),
+                        "embeddings_regenerated": embeddings_regenerated,
+                    });
+                    log_cache_rebuilt(
+                        "explicit_rebuild",
+                        "janus cache rebuild command",
+                        Some(total_duration.as_millis() as u64),
+                        Some(ticket_count),
+                        Some(details),
+                    );
                 }
                 Err(e) => {
                     if !output_json {
