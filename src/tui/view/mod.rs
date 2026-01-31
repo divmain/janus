@@ -289,6 +289,30 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         }
     });
 
+    // TicketList scroll handlers - created at top level to follow rules of hooks
+    let list_scroll_up_handler: Handler<()> = hooks.use_async_handler({
+        let scroll_setter = scroll_offset;
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            async move {
+                // Scroll up: decrease offset by 3 items
+                scroll_setter.set(scroll_setter.get().saturating_sub(3));
+            }
+        }
+    });
+
+    let list_scroll_down_handler: Handler<()> = hooks.use_async_handler({
+        let scroll_setter = scroll_offset;
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            async move {
+                // Scroll down: increase offset by 3 items
+                // The view handles clamping to valid range
+                scroll_setter.set(scroll_setter.get() + 3);
+            }
+        }
+    });
+
     // Detail pane scroll handlers - created at top level to follow rules of hooks
     let detail_scroll_up_handler: Handler<()> = hooks.use_async_handler({
         let scroll_setter = detail_scroll_offset;
@@ -835,6 +859,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                     // Left pane: Ticket list (35% width via declarative flexbox)
                                     Clickable(
                                         on_click: Some(focus_list_handler.clone()),
+                                        on_scroll_up: Some(list_scroll_up_handler.clone()),
+                                        on_scroll_down: Some(list_scroll_down_handler.clone()),
                                     ) {
                                         View(
                                             width: 35pct,
