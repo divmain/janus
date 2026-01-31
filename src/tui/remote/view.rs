@@ -15,7 +15,7 @@ use iocraft::prelude::*;
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
-use crate::tui::components::InlineSearchBox;
+use crate::tui::components::{Clickable, InlineSearchBox};
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
 use crate::tui::theme::theme;
@@ -328,6 +328,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     ))));
                     sync_preview_setter.set(Some(super::sync_preview::SyncPreviewState::new(
                         all_changes,
+                        None,
                     )));
                 }
             }
@@ -731,24 +732,54 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             shortcuts: shortcuts,
             toast: toast_state.clone(),
         ) {
-            // Tab bar
+            // Tab bar with clickable tabs
             TabBar(
                 active_view: current_view,
                 filter_query: if query_str.is_empty() { None } else { Some(query_str.clone()) },
+                on_local_click: Some(hooks.use_async_handler({
+                    let active_view_setter = active_view;
+                    move |()| {
+                        let mut active_view_setter = active_view_setter;
+                        async move {
+                            active_view_setter.set(ViewMode::Local);
+                        }
+                    }
+                })),
+                on_remote_click: Some(hooks.use_async_handler({
+                    let active_view_setter = active_view;
+                    move |()| {
+                        let mut active_view_setter = active_view_setter;
+                        async move {
+                            active_view_setter.set(ViewMode::Remote);
+                        }
+                    }
+                })),
             )
 
-            // Search bar
-            View(
-                width: 100pct,
-                padding_left: 1,
-                padding_right: 1,
-                height: 1,
+            // Search bar with clickable focus
+            Clickable(
+                on_click: Some(hooks.use_async_handler({
+                    let search_focused_setter = search_focused;
+                    move |()| {
+                        let mut search_focused_setter = search_focused_setter;
+                        async move {
+                            search_focused_setter.set(true);
+                        }
+                    }
+                })),
             ) {
-                InlineSearchBox(
-                    value: Some(search_query),
-                    has_focus: search_focused.get(),
-                    is_semantic: query_str.starts_with('~'),
-                )
+                View(
+                    width: 100pct,
+                    padding_left: 1,
+                    padding_right: 1,
+                    height: 1,
+                ) {
+                    InlineSearchBox(
+                        value: Some(search_query),
+                        has_focus: search_focused.get(),
+                        is_semantic: query_str.starts_with('~'),
+                    )
+                }
             }
 
             // Link mode banner
@@ -761,56 +792,82 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 flex_direction: FlexDirection::Row,
                 overflow: Overflow::Hidden,
             ) {
-                // List pane
-                ListPane(
-                    view_mode: current_view,
-                    is_loading,
-                    local_list: local_list.clone(),
-                    remote_list: remote_list.clone(),
-                    local_count,
-                    remote_count,
-                    local_scroll_offset: local_scroll_offset.get(),
-                    remote_scroll_offset: remote_scroll_offset.get(),
-                    local_selected_index: local_selected_index.get(),
-                    remote_selected_index: remote_selected_index.get(),
-                    local_selected_ids: local_selected_ids.read().clone(),
-                    remote_selected_ids: remote_selected_ids.read().clone(),
-                    all_local_tickets: all_local_tickets.clone(),
-                    linked_issue_ids: linked_issue_ids.clone(),
-                    on_local_row_click: Some(hooks.use_async_handler({
-                        let selected_setter = local_selected_index;
-                        let scroll_setter = local_scroll_offset;
-                        move |idx: usize| {
-                            let mut selected_setter = selected_setter;
-                            let mut scroll_setter = scroll_setter;
+                // List pane with clickable focus
+                Clickable(
+                    on_click: Some(hooks.use_async_handler({
+                        let search_focused_setter = search_focused;
+                        let detail_pane_focused_setter = detail_pane_focused;
+                        move |()| {
+                            let mut search_focused_setter = search_focused_setter;
+                            let mut detail_pane_focused_setter = detail_pane_focused_setter;
                             async move {
-                                selected_setter.set(idx);
-                                // Update scroll offset if needed to keep selection visible
-                                if idx < scroll_setter.get() {
-                                    scroll_setter.set(idx);
-                                }
+                                search_focused_setter.set(false);
+                                detail_pane_focused_setter.set(false);
                             }
                         }
                     })),
-                    on_remote_row_click: Some(hooks.use_async_handler({
-                        let selected_setter = remote_selected_index;
-                        let scroll_setter = remote_scroll_offset;
-                        move |idx: usize| {
-                            let mut selected_setter = selected_setter;
-                            let mut scroll_setter = scroll_setter;
-                            async move {
-                                selected_setter.set(idx);
-                                // Update scroll offset if needed to keep selection visible
-                                if idx < scroll_setter.get() {
-                                    scroll_setter.set(idx);
+                ) {
+                    ListPane(
+                        view_mode: current_view,
+                        is_loading,
+                        local_list: local_list.clone(),
+                        remote_list: remote_list.clone(),
+                        local_count,
+                        remote_count,
+                        local_scroll_offset: local_scroll_offset.get(),
+                        remote_scroll_offset: remote_scroll_offset.get(),
+                        local_selected_index: local_selected_index.get(),
+                        remote_selected_index: remote_selected_index.get(),
+                        local_selected_ids: local_selected_ids.read().clone(),
+                        remote_selected_ids: remote_selected_ids.read().clone(),
+                        all_local_tickets: all_local_tickets.clone(),
+                        linked_issue_ids: linked_issue_ids.clone(),
+                        on_local_row_click: Some(hooks.use_async_handler({
+                            let selected_setter = local_selected_index;
+                            let scroll_setter = local_scroll_offset;
+                            move |idx: usize| {
+                                let mut selected_setter = selected_setter;
+                                let mut scroll_setter = scroll_setter;
+                                async move {
+                                    selected_setter.set(idx);
+                                    // Update scroll offset if needed to keep selection visible
+                                    if idx < scroll_setter.get() {
+                                        scroll_setter.set(idx);
+                                    }
                                 }
                             }
-                        }
-                    })),
-                )
+                        })),
+                        on_remote_row_click: Some(hooks.use_async_handler({
+                            let selected_setter = remote_selected_index;
+                            let scroll_setter = remote_scroll_offset;
+                            move |idx: usize| {
+                                let mut selected_setter = selected_setter;
+                                let mut scroll_setter = scroll_setter;
+                                async move {
+                                    selected_setter.set(idx);
+                                    // Update scroll offset if needed to keep selection visible
+                                    if idx < scroll_setter.get() {
+                                        scroll_setter.set(idx);
+                                    }
+                                }
+                            }
+                        })),
+                    )
+                }
 
-                // Detail pane
-                DetailPane(
+                // Detail pane with clickable focus
+                Clickable(
+                    on_click: Some(hooks.use_async_handler({
+                        let detail_pane_focused_setter = detail_pane_focused;
+                        move |()| {
+                            let mut detail_pane_focused_setter = detail_pane_focused_setter;
+                            async move {
+                                detail_pane_focused_setter.set(true);
+                            }
+                        }
+                    })),
+                ) {
+                    DetailPane(
                     view_mode: current_view,
                     selected_remote: selected_remote.clone(),
                     selected_local: selected_local.clone(),
@@ -845,8 +902,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                                 scroll_setter.set(scroll_setter.get() + 3);
                             }
                         }
-                    })),
-                )
+                        })),
+                    )
+                }
             }
 
             // Selection status bar

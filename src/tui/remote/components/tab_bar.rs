@@ -4,6 +4,7 @@
 
 use iocraft::prelude::*;
 
+use crate::tui::components::ClickableText;
 use crate::tui::remote::state::ViewMode;
 use crate::tui::theme::theme;
 
@@ -14,6 +15,10 @@ pub struct TabBarProps {
     pub active_view: ViewMode,
     /// Optional filter query to display
     pub filter_query: Option<String>,
+    /// Handler invoked when Local tab is clicked
+    pub on_local_click: Option<Handler<()>>,
+    /// Handler invoked when Remote tab is clicked
+    pub on_remote_click: Option<Handler<()>>,
 }
 
 /// Tab bar showing [Local] [Remote] toggle with optional filter display
@@ -32,15 +37,21 @@ pub fn TabBar(props: &TabBarProps) -> impl Into<AnyElement<'static>> {
             border_style: BorderStyle::Single,
             border_color: theme.border,
         ) {
-            Text(
-                content: "[Local] ",
-                color: if current_view == ViewMode::Local { Color::Cyan } else { theme.text_dimmed },
-                weight: if current_view == ViewMode::Local { Weight::Bold } else { Weight::Normal },
+            ClickableText(
+                content: "[Local] ".to_string(),
+                on_click: props.on_local_click.clone(),
+                color: if current_view == ViewMode::Local { Some(Color::Cyan) } else { Some(theme.text_dimmed) },
+                hover_color: Some(Color::Cyan),
+                weight: if current_view == ViewMode::Local { Some(Weight::Bold) } else { Some(Weight::Normal) },
+                hover_weight: Some(Weight::Bold),
             )
-            Text(
-                content: "[Remote] ",
-                color: if current_view == ViewMode::Remote { Color::Cyan } else { theme.text_dimmed },
-                weight: if current_view == ViewMode::Remote { Weight::Bold } else { Weight::Normal },
+            ClickableText(
+                content: "[Remote] ".to_string(),
+                on_click: props.on_remote_click.clone(),
+                color: if current_view == ViewMode::Remote { Some(Color::Cyan) } else { Some(theme.text_dimmed) },
+                hover_color: Some(Color::Cyan),
+                weight: if current_view == ViewMode::Remote { Some(Weight::Bold) } else { Some(Weight::Normal) },
+                hover_weight: Some(Weight::Bold),
             )
             View(flex_grow: 1.0)
             #(if query.is_empty() {

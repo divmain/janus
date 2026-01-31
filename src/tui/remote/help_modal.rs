@@ -14,6 +14,8 @@ use crate::tui::components::{
 pub struct HelpModalProps {
     /// Current scroll offset (controlled by parent)
     pub scroll_offset: Option<usize>,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
 }
 
 /// Help modal component
@@ -34,8 +36,8 @@ pub fn HelpModal<'a>(props: &HelpModalProps, _hooks: Hooks) -> impl Into<AnyElem
                 height: Some(ModalHeight::Percent(80)),
                 border_color: Some(ModalBorderColor::Info),
                 title: Some("Keyboard Shortcuts".to_string()),
-                show_close_hint: Some(true),
                 footer_text: Some("j/k or ↑/↓ to scroll".to_string()),
+                on_close: props.on_close.clone(),
             ) {
                 // Scrollable content using TextViewer
                 View(

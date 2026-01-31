@@ -15,13 +15,16 @@ use crate::tui::theme::theme;
 pub struct ErrorDetailModalProps {
     pub error_type: String,
     pub error_message: String,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
 }
 
 impl ErrorDetailModalProps {
-    pub fn new(error_type: String, error_message: String) -> Self {
+    pub fn new(error_type: String, error_message: String, on_close: Option<Handler<()>>) -> Self {
         Self {
             error_type,
             error_message,
+            on_close,
         }
     }
 }
@@ -44,7 +47,7 @@ pub fn ErrorDetailModal<'a>(
                 border_color: Some(ModalBorderColor::Error),
                 title: Some("Error Details".to_string()),
                 title_color: Some(Color::Red),
-                show_close_hint: Some(true),
+                on_close: props.on_close.clone(),
             ) {
                 // Error content
                 View(flex_direction: FlexDirection::Column) {

@@ -54,6 +54,8 @@ impl ConfirmDialogState {
 pub struct ConfirmDialogProps {
     /// The message to display
     pub message: String,
+    /// Handler invoked when modal is closed via X button
+    pub on_close: Option<Handler<()>>,
 }
 
 /// Confirmation dialog component using shared modal components
@@ -66,6 +68,7 @@ pub fn ConfirmDialog(props: &ConfirmDialogProps) -> impl Into<AnyElement<'static
                 border_color: Some(ModalBorderColor::Warning),
                 title: Some("Confirm".to_string()),
                 footer_text: Some("[Y]es / [n]o / [c]ancel".to_string()),
+                on_close: props.on_close.clone(),
             ) {
                 TextViewer(
                     text: props.message.clone(),

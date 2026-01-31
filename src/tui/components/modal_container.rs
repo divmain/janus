@@ -4,6 +4,7 @@
 
 use iocraft::prelude::*;
 
+use crate::tui::components::ClickableText;
 use crate::tui::theme::theme;
 
 /// Predefined modal border colors for common use cases
@@ -67,6 +68,9 @@ pub struct ModalContainerProps<'a> {
     // Footer
     pub footer_text: Option<String>,
 
+    // Close button
+    pub on_close: Option<Handler<()>>,
+
     // Children
     pub children: Vec<AnyElement<'a>>,
 }
@@ -100,6 +104,7 @@ pub fn ModalContainer<'a>(props: &mut ModalContainerProps<'a>) -> impl Into<AnyE
     let border_color = props.border_color.unwrap_or_default().to_color();
     let title_color = props.title_color.unwrap_or(Color::Cyan);
     let show_close_hint = props.show_close_hint.unwrap_or(false);
+    let on_close = props.on_close.clone();
 
     let width = props.width.clone().unwrap_or_default();
     let height = props.height.clone().unwrap_or_default();
@@ -128,6 +133,7 @@ pub fn ModalContainer<'a>(props: &mut ModalContainerProps<'a>) -> impl Into<AnyE
             // Header - if title provided
             #(if has_title {
                 let title = props.title.clone().unwrap_or_default();
+                let has_close_handler = on_close.is_some();
                 Some(element! {
                     View(
                         width: 100pct,
@@ -136,6 +142,7 @@ pub fn ModalContainer<'a>(props: &mut ModalContainerProps<'a>) -> impl Into<AnyE
                         border_style: BorderStyle::Single,
                         border_color: theme.border,
                         flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
                     ) {
                         Text(
                             content: title,
@@ -143,10 +150,21 @@ pub fn ModalContainer<'a>(props: &mut ModalContainerProps<'a>) -> impl Into<AnyE
                             weight: Weight::Bold,
                         )
                         View(flex_grow: 1.0)
-                        #(if show_close_hint {
+                        #(if has_close_handler {
+                            Some(element! {
+                                ClickableText(
+                                    content: "[X]".to_string(),
+                                    on_click: on_close.clone(),
+                                    color: Some(theme.text_dimmed),
+                                    hover_color: Some(Color::Red),
+                                    weight: Some(Weight::Bold),
+                                    hover_weight: Some(Weight::Bold),
+                                )
+                            }.into_any())
+                        } else if show_close_hint {
                             Some(element! {
                                 Text(content: "Press Esc to close", color: theme.text_dimmed)
-                            })
+                            }.into_any())
                         } else {
                             None
                         })
