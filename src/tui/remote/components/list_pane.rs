@@ -1,13 +1,15 @@
 //! Remote TUI list pane component
 //!
 //! Displays either the local tickets list or the remote issues list
-//! with selection state, markers, and link indicators.
+//! with selection state, markers, and link indicators. Each row is
+//! clickable for mouse selection.
 
 use std::collections::HashSet;
 
 use iocraft::prelude::*;
 
 use crate::remote::RemoteStatus;
+use crate::tui::components::Clickable;
 use crate::tui::remote::filter::{FilteredLocalTicket, FilteredRemoteIssue};
 use crate::tui::remote::state::ViewMode;
 use crate::tui::theme::theme;
@@ -44,6 +46,10 @@ pub struct ListPaneProps {
     pub all_local_tickets: Vec<TicketMetadata>,
     /// Cached set of linked issue IDs (pre-computed for performance)
     pub linked_issue_ids: HashSet<String>,
+    /// Handler invoked when a local row is clicked (passes actual index)
+    pub on_local_row_click: Option<Handler<usize>>,
+    /// Handler invoked when a remote row is clicked (passes actual index)
+    pub on_remote_row_click: Option<Handler<usize>>,
 }
 
 /// Build a set of linked issue IDs from local tickets
@@ -147,6 +153,7 @@ fn render_remote_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
                     let is_selected = actual_idx == remote_selected_index;
                     let issue = &filtered.issue;
                     let is_marked = remote_selected_ids.contains(&issue.id);
+                    let on_click = props.on_remote_row_click.clone();
 
                     let status_color = match &issue.status {
                         RemoteStatus::Open => Color::Green,
@@ -172,27 +179,37 @@ fn render_remote_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
                     };
 
                     element! {
-                        View(
-                            height: 1,
-                            width: 100pct,
-                            padding_left: 1,
-                            background_color: if is_selected { Some(theme.highlight) } else { None },
+                        Clickable(
+                            on_click: on_click.map(|h| {
+                                let handler = h;
+                                let idx = actual_idx;
+                                Handler::from(move |_: ()| {
+                                    handler(idx);
+                                })
+                            }),
                         ) {
-                            Text(content: indicator.to_string(), color: Color::White)
-                            Text(content: marker.to_string(), color: Color::White)
-                            Text(content: link_indicator.to_string(), color: Color::Cyan)
-                            Text(
-                                content: format!(" {:<10}", &issue.id),
-                                color: if is_selected { Color::White } else { theme.id_color },
-                            )
-                            Text(
-                                content: format!(" [{}]", status_str),
-                                color: if is_selected { Color::White } else { status_color },
-                            )
-                            Text(
-                                content: format!(" {}", title_display),
-                                color: Color::White,
-                            )
+                            View(
+                                height: 1,
+                                width: 100pct,
+                                padding_left: 1,
+                                background_color: if is_selected { Some(theme.highlight) } else { None },
+                            ) {
+                                Text(content: indicator.to_string(), color: Color::White)
+                                Text(content: marker.to_string(), color: Color::White)
+                                Text(content: link_indicator.to_string(), color: Color::Cyan)
+                                Text(
+                                    content: format!(" {:<10}", &issue.id),
+                                    color: if is_selected { Color::White } else { theme.id_color },
+                                )
+                                Text(
+                                    content: format!(" [{}]", status_str),
+                                    color: if is_selected { Color::White } else { status_color },
+                                )
+                                Text(
+                                    content: format!(" {}", title_display),
+                                    color: Color::White,
+                                )
+                            }
                         }
                     }
                 }))
@@ -241,6 +258,7 @@ fn render_local_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
                     let ticket = &filtered.ticket;
                     let ticket_id = ticket.id.as_deref().unwrap_or("???");
                     let is_marked = local_selected_ids.contains(ticket_id);
+                    let on_click = props.on_local_row_click.clone();
 
                     let status = ticket.status.unwrap_or_default();
                     let status_color = theme.status_color(status);
@@ -265,27 +283,37 @@ fn render_local_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
                     };
 
                     element! {
-                        View(
-                            height: 1,
-                            width: 100pct,
-                            padding_left: 1,
-                            background_color: if is_selected { Some(theme.highlight) } else { None },
+                        Clickable(
+                            on_click: on_click.map(|h| {
+                                let handler = h;
+                                let idx = actual_idx;
+                                Handler::from(move |_: ()| {
+                                    handler(idx);
+                                })
+                            }),
                         ) {
-                            Text(content: indicator.to_string(), color: Color::White)
-                            Text(content: marker.to_string(), color: Color::White)
-                            Text(content: link_indicator.to_string(), color: Color::Cyan)
-                            Text(
-                                content: format!(" {:<8}", ticket_id),
-                                color: if is_selected { Color::White } else { theme.id_color },
-                            )
-                            Text(
-                                content: format!(" [{}]", status_str),
-                                color: if is_selected { Color::White } else { status_color },
-                            )
-                            Text(
-                                content: format!(" {}", title_display),
-                                color: Color::White,
-                            )
+                            View(
+                                height: 1,
+                                width: 100pct,
+                                padding_left: 1,
+                                background_color: if is_selected { Some(theme.highlight) } else { None },
+                            ) {
+                                Text(content: indicator.to_string(), color: Color::White)
+                                Text(content: marker.to_string(), color: Color::White)
+                                Text(content: link_indicator.to_string(), color: Color::Cyan)
+                                Text(
+                                    content: format!(" {:<8}", ticket_id),
+                                    color: if is_selected { Color::White } else { theme.id_color },
+                                )
+                                Text(
+                                    content: format!(" [{}]", status_str),
+                                    color: if is_selected { Color::White } else { status_color },
+                                )
+                                Text(
+                                    content: format!(" {}", title_display),
+                                    color: Color::White,
+                                )
+                            }
                         }
                     }
                 }))

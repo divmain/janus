@@ -10,6 +10,7 @@ mod navigation;
 mod search;
 mod types;
 
+pub use column::adjust_column_after_toggle;
 pub use context::{BoardAsyncHandlers, BoardHandlerContext};
 
 use super::model::BoardAction;
