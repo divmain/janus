@@ -267,13 +267,11 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     let theme = theme();
 
-    // Build column toggle indicators using ClickableText components
-    let visible_cols = visible_columns.get();
-    let column_toggles_elements: Vec<AnyElement<'static>> = (0..5)
+    // Create column toggle handlers OUTSIDE the iterator to follow rules of hooks
+    // Hooks must be called in the same order every render
+    let column_toggle_handlers: Vec<Handler<()>> = (0..5)
         .map(|i| {
-            let is_visible = visible_cols[i];
-            let key = COLUMN_KEYS[i];
-            let on_click = hooks.use_async_handler({
+            hooks.use_async_handler({
                 let cols = visible_columns;
                 let cur_col = current_column;
                 move |()| {
@@ -287,7 +285,17 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         handlers::adjust_column_after_toggle(&mut cur_col, &vis);
                     }
                 }
-            });
+            })
+        })
+        .collect();
+
+    // Build column toggle indicators using ClickableText components
+    let visible_cols = visible_columns.get();
+    let column_toggles_elements: Vec<AnyElement<'static>> = (0..5)
+        .map(|i| {
+            let is_visible = visible_cols[i];
+            let key = COLUMN_KEYS[i];
+            let on_click = column_toggle_handlers[i].clone();
 
             element! {
                 ClickableText(
@@ -341,6 +349,77 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     } else {
         board_shortcuts()
     };
+
+    // Create scroll handlers for ALL 5 columns OUTSIDE the iterator
+    // This follows the rules of hooks - hooks must be called in the same order every render
+    let scroll_up_handlers: Vec<Handler<()>> = (0..5)
+        .map(|col_idx| {
+            hooks.use_async_handler({
+                let col_scroll_offsets = column_scroll_offsets;
+                move |()| {
+                    let mut col_scroll_offsets = col_scroll_offsets;
+                    async move {
+                        let mut offsets = col_scroll_offsets.get();
+                        offsets[col_idx] = offsets[col_idx].saturating_sub(3);
+                        col_scroll_offsets.set(offsets);
+                    }
+                }
+            })
+        })
+        .collect();
+
+    let scroll_down_handlers: Vec<Handler<()>> = (0..5)
+        .map(|col_idx| {
+            hooks.use_async_handler({
+                let col_scroll_offsets = column_scroll_offsets;
+                let cards_per_col = cards_per_column;
+                move |()| {
+                    let mut col_scroll_offsets = col_scroll_offsets;
+                    async move {
+                        let mut offsets = col_scroll_offsets.get();
+                        // Get the total count for this column dynamically
+                        // We use a large max value and let the view handle clamping
+                        offsets[col_idx] = offsets[col_idx] + 3;
+                        col_scroll_offsets.set(offsets);
+                    }
+                }
+            })
+        })
+        .collect();
+
+    let page_up_handlers: Vec<Handler<()>> = (0..5)
+        .map(|col_idx| {
+            hooks.use_async_handler({
+                let col_scroll_offsets = column_scroll_offsets;
+                let cards_per_col = cards_per_column;
+                move |()| {
+                    let mut col_scroll_offsets = col_scroll_offsets;
+                    async move {
+                        let mut offsets = col_scroll_offsets.get();
+                        offsets[col_idx] = offsets[col_idx].saturating_sub(cards_per_col);
+                        col_scroll_offsets.set(offsets);
+                    }
+                }
+            })
+        })
+        .collect();
+
+    let page_down_handlers: Vec<Handler<()>> = (0..5)
+        .map(|col_idx| {
+            hooks.use_async_handler({
+                let col_scroll_offsets = column_scroll_offsets;
+                let cards_per_col = cards_per_column;
+                move |()| {
+                    let mut col_scroll_offsets = col_scroll_offsets;
+                    async move {
+                        let mut offsets = col_scroll_offsets.get();
+                        offsets[col_idx] = offsets[col_idx] + cards_per_col;
+                        col_scroll_offsets.set(offsets);
+                    }
+                }
+            })
+        })
+        .collect();
 
     element! {
         ScreenLayout(
@@ -467,57 +546,11 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                             let hidden_above = start;
                                             let hidden_below = total_count.saturating_sub(end);
 
-                                            // Create scroll handlers for this column
-                                            let scroll_up_handler = hooks.use_async_handler({
-                                                let col_scroll_offsets = column_scroll_offsets;
-                                                move |()| {
-                                                    let mut col_scroll_offsets = col_scroll_offsets;
-                                                    async move {
-                                                        let mut offsets = col_scroll_offsets.get();
-                                                        offsets[col_idx] = offsets[col_idx].saturating_sub(3);
-                                                        col_scroll_offsets.set(offsets);
-                                                    }
-                                                }
-                                            });
-
-                                            let scroll_down_handler = hooks.use_async_handler({
-                                                let col_scroll_offsets = column_scroll_offsets;
-                                                move |()| {
-                                                    let mut col_scroll_offsets = col_scroll_offsets;
-                                                    async move {
-                                                        let mut offsets = col_scroll_offsets.get();
-                                                        let max_scroll = total_count.saturating_sub(cards_per_column);
-                                                        offsets[col_idx] = (offsets[col_idx] + 3).min(max_scroll);
-                                                        col_scroll_offsets.set(offsets);
-                                                    }
-                                                }
-                                            });
-
-                                            // Create page scroll handlers for the scroll indicators
-                                            let page_up_handler = hooks.use_async_handler({
-                                                let col_scroll_offsets = column_scroll_offsets;
-                                                move |()| {
-                                                    let mut col_scroll_offsets = col_scroll_offsets;
-                                                    async move {
-                                                        let mut offsets = col_scroll_offsets.get();
-                                                        offsets[col_idx] = offsets[col_idx].saturating_sub(cards_per_column);
-                                                        col_scroll_offsets.set(offsets);
-                                                    }
-                                                }
-                                            });
-
-                                            let page_down_handler = hooks.use_async_handler({
-                                                let col_scroll_offsets = column_scroll_offsets;
-                                                move |()| {
-                                                    let mut col_scroll_offsets = col_scroll_offsets;
-                                                    async move {
-                                                        let mut offsets = col_scroll_offsets.get();
-                                                        let max_scroll = total_count.saturating_sub(cards_per_column);
-                                                        offsets[col_idx] = (offsets[col_idx] + cards_per_column).min(max_scroll);
-                                                        col_scroll_offsets.set(offsets);
-                                                    }
-                                                }
-                                            });
+                                            // Use pre-created scroll handlers (created outside iterator to follow rules of hooks)
+                                            let scroll_up_handler = scroll_up_handlers[col_idx].clone();
+                                            let scroll_down_handler = scroll_down_handlers[col_idx].clone();
+                                            let page_up_handler = page_up_handlers[col_idx].clone();
+                                            let page_down_handler = page_down_handlers[col_idx].clone();
 
                                             element! {
                                                 Clickable(
