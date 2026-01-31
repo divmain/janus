@@ -6,7 +6,7 @@ use iocraft::prelude::*;
 
 use crate::remote::{RemoteQuery, RemoteStatusFilter};
 use crate::tui::components::{
-    ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
+    Clickable, ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
 };
 
 /// Filter modal state
@@ -106,6 +106,12 @@ pub struct FilterModalProps {
     pub state: FilterState,
     /// Handler invoked when modal is closed via X button
     pub on_close: Option<Handler<()>>,
+    /// Handler invoked when status field is clicked (focus + toggle)
+    pub on_status_click: Option<Handler<()>>,
+    /// Handler invoked when assignee field is clicked (focus)
+    pub on_assignee_click: Option<Handler<()>>,
+    /// Handler invoked when labels field is clicked (focus)
+    pub on_labels_click: Option<Handler<()>>,
 }
 
 /// Filter modal component
@@ -120,6 +126,11 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
         Some(RemoteStatusFilter::All) => "All",
     };
 
+    // Determine visual styles based on focus state
+    let status_focused = state.focused_field == 0;
+    let assignee_focused = state.focused_field == 1;
+    let labels_focused = state.focused_field == 2;
+
     element! {
         ModalOverlay() {
             ModalContainer(
@@ -130,58 +141,78 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                 footer_text: Some("Tab/j/k: navigate | Enter: toggle/edit | x: clear | Esc: cancel".to_string()),
                 on_close: props.on_close.clone(),
             ) {
-                // Status field
-                View(
-                    width: 100pct,
-                    flex_direction: FlexDirection::Row,
-                    background_color: if state.focused_field == 0 { Some(Color::DarkBlue) } else { None },
+                // Status field - clickable to focus and toggle
+                Clickable(
+                    on_click: props.on_status_click.clone(),
                 ) {
-                    Text(
-                        content: "Status: ",
-                        color: if state.focused_field == 0 { Color::Yellow } else { Color::White },
-                    )
-                    Text(
-                        content: format!("[{}]", status_str),
-                        color: Color::Cyan,
-                    )
-                    Text(
-                        content: if state.focused_field == 0 { " (Enter to toggle)" } else { "" },
-                        color: Color::DarkGrey,
-                    )
+                    View(
+                        width: 100pct,
+                        flex_direction: FlexDirection::Row,
+                        background_color: if status_focused { Some(Color::DarkBlue) } else { None },
+                    ) {
+                        Text(
+                            content: "Status: ",
+                            color: if status_focused { Color::Yellow } else { Color::White },
+                        )
+                        Text(
+                            content: format!("[{}]", status_str),
+                            color: Color::Cyan,
+                        )
+                        Text(
+                            content: if status_focused { " (click or Enter to toggle)" } else { "" },
+                            color: Color::DarkGrey,
+                        )
+                    }
                 }
                 Text(content: "")
 
-                // Assignee field
-                View(
-                    width: 100pct,
-                    flex_direction: FlexDirection::Row,
-                    background_color: if state.focused_field == 1 { Some(Color::DarkBlue) } else { None },
+                // Assignee field - clickable to focus
+                Clickable(
+                    on_click: props.on_assignee_click.clone(),
                 ) {
-                    Text(
-                        content: "Assignee: ",
-                        color: if state.focused_field == 1 { Color::Yellow } else { Color::White },
-                    )
-                    Text(
-                        content: if state.assignee.is_empty() { "(any)" } else { &state.assignee },
-                        color: if state.assignee.is_empty() { Color::DarkGrey } else { Color::Cyan },
-                    )
+                    View(
+                        width: 100pct,
+                        flex_direction: FlexDirection::Row,
+                        background_color: if assignee_focused { Some(Color::DarkBlue) } else { None },
+                    ) {
+                        Text(
+                            content: "Assignee: ",
+                            color: if assignee_focused { Color::Yellow } else { Color::White },
+                        )
+                        Text(
+                            content: if state.assignee.is_empty() { "(any)" } else { &state.assignee },
+                            color: if state.assignee.is_empty() { Color::DarkGrey } else { Color::Cyan },
+                        )
+                        Text(
+                            content: if assignee_focused { " (Enter to apply)" } else { "" },
+                            color: Color::DarkGrey,
+                        )
+                    }
                 }
                 Text(content: "")
 
-                // Labels field
-                View(
-                    width: 100pct,
-                    flex_direction: FlexDirection::Row,
-                    background_color: if state.focused_field == 2 { Some(Color::DarkBlue) } else { None },
+                // Labels field - clickable to focus
+                Clickable(
+                    on_click: props.on_labels_click.clone(),
                 ) {
-                    Text(
-                        content: "Labels: ",
-                        color: if state.focused_field == 2 { Color::Yellow } else { Color::White },
-                    )
-                    Text(
-                        content: if state.labels.is_empty() { "(any)" } else { &state.labels },
-                        color: if state.labels.is_empty() { Color::DarkGrey } else { Color::Cyan },
-                    )
+                    View(
+                        width: 100pct,
+                        flex_direction: FlexDirection::Row,
+                        background_color: if labels_focused { Some(Color::DarkBlue) } else { None },
+                    ) {
+                        Text(
+                            content: "Labels: ",
+                            color: if labels_focused { Color::Yellow } else { Color::White },
+                        )
+                        Text(
+                            content: if state.labels.is_empty() { "(any)" } else { &state.labels },
+                            color: if state.labels.is_empty() { Color::DarkGrey } else { Color::Cyan },
+                        )
+                        Text(
+                            content: if labels_focused { " (Enter to apply)" } else { "" },
+                            color: Color::DarkGrey,
+                        )
+                    }
                 }
             }
         }

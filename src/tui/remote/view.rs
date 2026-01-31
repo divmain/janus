@@ -1093,6 +1093,46 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             // Modal overlays
             ModalOverlays(
                 filter_state: filter_state_clone,
+                on_filter_status_click: Some(hooks.use_async_handler({
+                    let filter_state_setter = filter_state.clone();
+                    move |()| {
+                        let mut filter_state_setter = filter_state_setter;
+                        async move {
+                            let state = filter_state_setter.read().clone();
+                            if let Some(mut s) = state {
+                                s.focused_field = 0;
+                                s.toggle_status();
+                                filter_state_setter.set(Some(s));
+                            }
+                        }
+                    }
+                })),
+                on_filter_assignee_click: Some(hooks.use_async_handler({
+                    let filter_state_setter = filter_state.clone();
+                    move |()| {
+                        let mut filter_state_setter = filter_state_setter;
+                        async move {
+                            let state = filter_state_setter.read().clone();
+                            if let Some(mut s) = state {
+                                s.focused_field = 1;
+                                filter_state_setter.set(Some(s));
+                            }
+                        }
+                    }
+                })),
+                on_filter_labels_click: Some(hooks.use_async_handler({
+                    let filter_state_setter = filter_state.clone();
+                    move |()| {
+                        let mut filter_state_setter = filter_state_setter;
+                        async move {
+                            let state = filter_state_setter.read().clone();
+                            if let Some(mut s) = state {
+                                s.focused_field = 2;
+                                filter_state_setter.set(Some(s));
+                            }
+                        }
+                    }
+                })),
                 show_help_modal: show_help_modal.get(),
                 help_modal_scroll: help_modal_scroll.get(),
                 on_help_scroll_up: Some(hooks.use_async_handler({
