@@ -683,6 +683,190 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     let unlink_handler_for_events = unlink_handler.clone();
 
+    // Click handlers for TabBar - must be defined at top level (not in element! macro)
+    let tab_local_click_handler = hooks.use_async_handler({
+        let active_view_setter = active_view;
+        move |()| {
+            let mut active_view_setter = active_view_setter;
+            async move {
+                active_view_setter.set(ViewMode::Local);
+            }
+        }
+    });
+    let tab_remote_click_handler = hooks.use_async_handler({
+        let active_view_setter = active_view;
+        move |()| {
+            let mut active_view_setter = active_view_setter;
+            async move {
+                active_view_setter.set(ViewMode::Remote);
+            }
+        }
+    });
+
+    // Click handler for search box
+    let search_click_handler = hooks.use_async_handler({
+        let search_focused_setter = search_focused;
+        move |()| {
+            let mut search_focused_setter = search_focused_setter;
+            async move {
+                search_focused_setter.set(true);
+            }
+        }
+    });
+
+    // Click handler for list pane
+    let list_pane_click_handler = hooks.use_async_handler({
+        let search_focused_setter = search_focused;
+        let detail_pane_focused_setter = detail_pane_focused;
+        move |()| {
+            let mut search_focused_setter = search_focused_setter;
+            let mut detail_pane_focused_setter = detail_pane_focused_setter;
+            async move {
+                search_focused_setter.set(false);
+                detail_pane_focused_setter.set(false);
+            }
+        }
+    });
+
+    // Click handlers for list rows
+    let local_row_click_handler = hooks.use_async_handler({
+        let selected_setter = local_selected_index;
+        let scroll_setter = local_scroll_offset;
+        move |idx: usize| {
+            let mut selected_setter = selected_setter;
+            let mut scroll_setter = scroll_setter;
+            async move {
+                selected_setter.set(idx);
+                // Update scroll offset if needed to keep selection visible
+                if idx < scroll_setter.get() {
+                    scroll_setter.set(idx);
+                }
+            }
+        }
+    });
+    let remote_row_click_handler = hooks.use_async_handler({
+        let selected_setter = remote_selected_index;
+        let scroll_setter = remote_scroll_offset;
+        move |idx: usize| {
+            let mut selected_setter = selected_setter;
+            let mut scroll_setter = scroll_setter;
+            async move {
+                selected_setter.set(idx);
+                // Update scroll offset if needed to keep selection visible
+                if idx < scroll_setter.get() {
+                    scroll_setter.set(idx);
+                }
+            }
+        }
+    });
+
+    // Click handler for detail pane
+    let detail_pane_click_handler = hooks.use_async_handler({
+        let detail_pane_focused_setter = detail_pane_focused;
+        move |()| {
+            let mut detail_pane_focused_setter = detail_pane_focused_setter;
+            async move {
+                detail_pane_focused_setter.set(true);
+            }
+        }
+    });
+
+    // Scroll handlers for detail pane
+    let detail_scroll_up_handler = hooks.use_async_handler({
+        let current_view = active_view.get();
+        let scroll_setter = if current_view == ViewMode::Local {
+            local_detail_scroll_offset
+        } else {
+            remote_detail_scroll_offset
+        };
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            async move {
+                // Scroll up: decrease offset by 3 lines
+                scroll_setter.set(scroll_setter.get().saturating_sub(3));
+            }
+        }
+    });
+    let detail_scroll_down_handler = hooks.use_async_handler({
+        let current_view = active_view.get();
+        let scroll_setter = if current_view == ViewMode::Local {
+            local_detail_scroll_offset
+        } else {
+            remote_detail_scroll_offset
+        };
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            async move {
+                // Scroll down: increase offset by 3 lines
+                scroll_setter.set(scroll_setter.get() + 3);
+            }
+        }
+    });
+
+    // Filter modal click handlers
+    let filter_status_click_handler = hooks.use_async_handler({
+        let filter_state_setter = filter_state;
+        move |()| {
+            let mut filter_state_setter = filter_state_setter;
+            async move {
+                let state = filter_state_setter.read().clone();
+                if let Some(mut s) = state {
+                    s.focused_field = 0;
+                    s.toggle_status();
+                    filter_state_setter.set(Some(s));
+                }
+            }
+        }
+    });
+    let filter_assignee_click_handler = hooks.use_async_handler({
+        let filter_state_setter = filter_state;
+        move |()| {
+            let mut filter_state_setter = filter_state_setter;
+            async move {
+                let state = filter_state_setter.read().clone();
+                if let Some(mut s) = state {
+                    s.focused_field = 1;
+                    filter_state_setter.set(Some(s));
+                }
+            }
+        }
+    });
+    let filter_labels_click_handler = hooks.use_async_handler({
+        let filter_state_setter = filter_state;
+        move |()| {
+            let mut filter_state_setter = filter_state_setter;
+            async move {
+                let state = filter_state_setter.read().clone();
+                if let Some(mut s) = state {
+                    s.focused_field = 2;
+                    filter_state_setter.set(Some(s));
+                }
+            }
+        }
+    });
+
+    // Help modal scroll handlers
+    let help_scroll_up_handler = hooks.use_async_handler({
+        let scroll_setter = help_modal_scroll;
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            async move {
+                // Scroll up: decrease offset by 3 lines
+                scroll_setter.set(scroll_setter.get().saturating_sub(3));
+            }
+        }
+    });
+    let help_scroll_down_handler = hooks.use_async_handler({
+        let scroll_setter = help_modal_scroll;
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            async move {
+                // Scroll down: increase offset by 3 lines
+                scroll_setter.set(scroll_setter.get() + 3);
+            }
+        }
+    });
+
     // Calculate visible list height for scroll/pagination calculations
     // This is NOT for layout (handled by flexbox) but for determining how many
     // items fit in the visible area for keyboard navigation and scroll offset.
@@ -912,37 +1096,13 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             TabBar(
                 active_view: current_view,
                 filter_query: if query_str.is_empty() { None } else { Some(query_str.clone()) },
-                on_local_click: Some(hooks.use_async_handler({
-                    let active_view_setter = active_view;
-                    move |()| {
-                        let mut active_view_setter = active_view_setter;
-                        async move {
-                            active_view_setter.set(ViewMode::Local);
-                        }
-                    }
-                })),
-                on_remote_click: Some(hooks.use_async_handler({
-                    let active_view_setter = active_view;
-                    move |()| {
-                        let mut active_view_setter = active_view_setter;
-                        async move {
-                            active_view_setter.set(ViewMode::Remote);
-                        }
-                    }
-                })),
+                on_local_click: Some(tab_local_click_handler.clone()),
+                on_remote_click: Some(tab_remote_click_handler.clone()),
             )
 
             // Search bar with clickable focus
             Clickable(
-                on_click: Some(hooks.use_async_handler({
-                    let search_focused_setter = search_focused;
-                    move |()| {
-                        let mut search_focused_setter = search_focused_setter;
-                        async move {
-                            search_focused_setter.set(true);
-                        }
-                    }
-                })),
+                on_click: Some(search_click_handler.clone()),
             ) {
                 View(
                     width: 100pct,
@@ -970,18 +1130,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             ) {
                 // List pane with clickable focus
                 Clickable(
-                    on_click: Some(hooks.use_async_handler({
-                        let search_focused_setter = search_focused;
-                        let detail_pane_focused_setter = detail_pane_focused;
-                        move |()| {
-                            let mut search_focused_setter = search_focused_setter;
-                            let mut detail_pane_focused_setter = detail_pane_focused_setter;
-                            async move {
-                                search_focused_setter.set(false);
-                                detail_pane_focused_setter.set(false);
-                            }
-                        }
-                    })),
+                    on_click: Some(list_pane_click_handler.clone()),
                 ) {
                     ListPane(
                         view_mode: current_view,
@@ -998,50 +1147,14 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         remote_selected_ids: remote_selected_ids.read().clone(),
                         all_local_tickets: all_local_tickets.clone(),
                         linked_issue_ids: linked_issue_ids.clone(),
-                        on_local_row_click: Some(hooks.use_async_handler({
-                            let selected_setter = local_selected_index;
-                            let scroll_setter = local_scroll_offset;
-                            move |idx: usize| {
-                                let mut selected_setter = selected_setter;
-                                let mut scroll_setter = scroll_setter;
-                                async move {
-                                    selected_setter.set(idx);
-                                    // Update scroll offset if needed to keep selection visible
-                                    if idx < scroll_setter.get() {
-                                        scroll_setter.set(idx);
-                                    }
-                                }
-                            }
-                        })),
-                        on_remote_row_click: Some(hooks.use_async_handler({
-                            let selected_setter = remote_selected_index;
-                            let scroll_setter = remote_scroll_offset;
-                            move |idx: usize| {
-                                let mut selected_setter = selected_setter;
-                                let mut scroll_setter = scroll_setter;
-                                async move {
-                                    selected_setter.set(idx);
-                                    // Update scroll offset if needed to keep selection visible
-                                    if idx < scroll_setter.get() {
-                                        scroll_setter.set(idx);
-                                    }
-                                }
-                            }
-                        })),
+                        on_local_row_click: Some(local_row_click_handler.clone()),
+                        on_remote_row_click: Some(remote_row_click_handler.clone()),
                     )
                 }
 
                 // Detail pane with clickable focus
                 Clickable(
-                    on_click: Some(hooks.use_async_handler({
-                        let detail_pane_focused_setter = detail_pane_focused;
-                        move |()| {
-                            let mut detail_pane_focused_setter = detail_pane_focused_setter;
-                            async move {
-                                detail_pane_focused_setter.set(true);
-                            }
-                        }
-                    })),
+                    on_click: Some(detail_pane_click_handler.clone()),
                 ) {
                     DetailPane(
                     view_mode: current_view,
@@ -1051,34 +1164,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     remote_scroll_offset: remote_detail_scroll_offset.get(),
                     local_scroll_offset: local_detail_scroll_offset.get(),
                     all_local_tickets: all_local_tickets.clone(),
-                    on_scroll_up: Some(hooks.use_async_handler({
-                        let scroll_setter = if current_view == ViewMode::Local {
-                            local_detail_scroll_offset
-                        } else {
-                            remote_detail_scroll_offset
-                        };
-                        move |()| {
-                            let mut scroll_setter = scroll_setter;
-                            async move {
-                                // Scroll up: decrease offset by 3 lines
-                                scroll_setter.set(scroll_setter.get().saturating_sub(3));
-                            }
-                        }
-                    })),
-                    on_scroll_down: Some(hooks.use_async_handler({
-                        let scroll_setter = if current_view == ViewMode::Local {
-                            local_detail_scroll_offset
-                        } else {
-                            remote_detail_scroll_offset
-                        };
-                        move |()| {
-                            let mut scroll_setter = scroll_setter;
-                            async move {
-                                // Scroll down: increase offset by 3 lines
-                                scroll_setter.set(scroll_setter.get() + 3);
-                            }
-                        }
-                        })),
+                    on_scroll_up: Some(detail_scroll_up_handler.clone()),
+                    on_scroll_down: Some(detail_scroll_down_handler.clone()),
                     )
                 }
             }
@@ -1093,68 +1180,13 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             // Modal overlays
             ModalOverlays(
                 filter_state: filter_state_clone,
-                on_filter_status_click: Some(hooks.use_async_handler({
-                    let filter_state_setter = filter_state.clone();
-                    move |()| {
-                        let mut filter_state_setter = filter_state_setter;
-                        async move {
-                            let state = filter_state_setter.read().clone();
-                            if let Some(mut s) = state {
-                                s.focused_field = 0;
-                                s.toggle_status();
-                                filter_state_setter.set(Some(s));
-                            }
-                        }
-                    }
-                })),
-                on_filter_assignee_click: Some(hooks.use_async_handler({
-                    let filter_state_setter = filter_state.clone();
-                    move |()| {
-                        let mut filter_state_setter = filter_state_setter;
-                        async move {
-                            let state = filter_state_setter.read().clone();
-                            if let Some(mut s) = state {
-                                s.focused_field = 1;
-                                filter_state_setter.set(Some(s));
-                            }
-                        }
-                    }
-                })),
-                on_filter_labels_click: Some(hooks.use_async_handler({
-                    let filter_state_setter = filter_state.clone();
-                    move |()| {
-                        let mut filter_state_setter = filter_state_setter;
-                        async move {
-                            let state = filter_state_setter.read().clone();
-                            if let Some(mut s) = state {
-                                s.focused_field = 2;
-                                filter_state_setter.set(Some(s));
-                            }
-                        }
-                    }
-                })),
+                on_filter_status_click: Some(filter_status_click_handler.clone()),
+                on_filter_assignee_click: Some(filter_assignee_click_handler.clone()),
+                on_filter_labels_click: Some(filter_labels_click_handler.clone()),
                 show_help_modal: show_help_modal.get(),
                 help_modal_scroll: help_modal_scroll.get(),
-                on_help_scroll_up: Some(hooks.use_async_handler({
-                    let scroll_setter = help_modal_scroll;
-                    move |()| {
-                        let mut scroll_setter = scroll_setter;
-                        async move {
-                            // Scroll up: decrease offset by 3 lines
-                            scroll_setter.set(scroll_setter.get().saturating_sub(3));
-                        }
-                    }
-                })),
-                on_help_scroll_down: Some(hooks.use_async_handler({
-                    let scroll_setter = help_modal_scroll;
-                    move |()| {
-                        let mut scroll_setter = scroll_setter;
-                        async move {
-                            // Scroll down: increase offset by 3 lines
-                            scroll_setter.set(scroll_setter.get() + 3);
-                        }
-                    }
-                })),
+                on_help_scroll_up: Some(help_scroll_up_handler.clone()),
+                on_help_scroll_down: Some(help_scroll_down_handler.clone()),
                 show_error_modal: show_error_modal.get(),
                 last_error: last_error_clone,
                 sync_preview_state: sync_preview_state_clone,

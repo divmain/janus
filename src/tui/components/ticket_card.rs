@@ -5,6 +5,7 @@
 
 use iocraft::prelude::*;
 
+use crate::tui::components::Clickable;
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketType};
 use crate::utils::wrap_text_lines;
@@ -18,6 +19,8 @@ pub struct TicketCardProps {
     pub is_selected: bool,
     /// Available width for the card content (in characters)
     pub width: Option<u32>,
+    /// Handler called when card is clicked (optional)
+    pub on_click: Option<Handler<()>>,
 }
 
 /// Compact ticket card for kanban board columns
@@ -90,50 +93,105 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
     // Selection indicator character
     let indicator = if props.is_selected { ">" } else { " " };
 
-    element! {
-        View(
-            width: 100pct,
-            min_height: 3,
-            flex_direction: FlexDirection::Column,
-            border_style: BorderStyle::Round,
-            border_color: border_color,
-            background_color: bg_color,
-            padding_left: 1,
-            padding_right: 1,
-        ) {
-            // ID row with selection indicator
-            View(flex_direction: FlexDirection::Row) {
-                Text(
-                    content: indicator,
-                    color: text_color,
-                    weight: Weight::Bold,
-                )
-                Text(
-                    content: id,
-                    color: if props.is_selected { theme.highlight_text } else { theme.id_color },
-                    weight: Weight::Bold,
-                )
+    // Wrap with Clickable if an on_click handler is provided
+    if let Some(on_click) = props.on_click.clone() {
+        element! {
+            View(margin_top: 1) {
+                Clickable(on_click: Some(on_click)) {
+                    View(
+                        width: 100pct,
+                        min_height: 3,
+                        flex_direction: FlexDirection::Column,
+                        border_style: BorderStyle::Round,
+                        border_color: border_color,
+                        background_color: bg_color,
+                        padding_left: 1,
+                        padding_right: 1,
+                    ) {
+                        // ID row with selection indicator
+                        View(flex_direction: FlexDirection::Row) {
+                            Text(
+                                content: indicator,
+                                color: text_color,
+                                weight: Weight::Bold,
+                            )
+                            Text(
+                                content: id,
+                                color: if props.is_selected { theme.highlight_text } else { theme.id_color },
+                                weight: Weight::Bold,
+                            )
+                        }
+                        // Title rows (up to 3 lines)
+                        #(title_lines.iter().map(|line| {
+                            element! {
+                                Text(
+                                    content: line.clone(),
+                                    color: text_color,
+                                )
+                            }
+                        }))
+                        // Priority and type row
+                        View(flex_direction: FlexDirection::Row, gap: 1) {
+                            Text(
+                                content: priority_str,
+                                color: priority_color,
+                                weight: if priority.as_num() <= 1 { Weight::Bold } else { Weight::Normal },
+                            )
+                            Text(
+                                content: type_str,
+                                color: type_color,
+                            )
+                        }
+                    }
+                }
             }
-            // Title rows (up to 3 lines)
-            #(title_lines.iter().map(|line| {
-                element! {
+        }
+    } else {
+        element! {
+            View(
+                width: 100pct,
+                min_height: 3,
+                flex_direction: FlexDirection::Column,
+                border_style: BorderStyle::Round,
+                border_color: border_color,
+                background_color: bg_color,
+                padding_left: 1,
+                padding_right: 1,
+            ) {
+                // ID row with selection indicator
+                View(flex_direction: FlexDirection::Row) {
                     Text(
-                        content: line.clone(),
+                        content: indicator,
                         color: text_color,
+                        weight: Weight::Bold,
+                    )
+                    Text(
+                        content: id,
+                        color: if props.is_selected { theme.highlight_text } else { theme.id_color },
+                        weight: Weight::Bold,
                     )
                 }
-            }))
-            // Priority and type row
-            View(flex_direction: FlexDirection::Row, gap: 1) {
-                Text(
-                    content: priority_str,
-                    color: priority_color,
-                    weight: if priority.as_num() <= 1 { Weight::Bold } else { Weight::Normal },
-                )
-                Text(
-                    content: type_str,
-                    color: type_color,
-                )
+                // Title rows (up to 3 lines)
+                #(title_lines.iter().map(|line| {
+                    element! {
+                        Text(
+                            content: line.clone(),
+                            color: text_color,
+                        )
+                    }
+                }))
+                // Priority and type row
+                View(flex_direction: FlexDirection::Row, gap: 1) {
+                    Text(
+                        content: priority_str,
+                        color: priority_color,
+                        weight: if priority.as_num() <= 1 { Weight::Bold } else { Weight::Normal },
+                    )
+                    Text(
+                        content: type_str,
+                        color: type_color,
+                    )
+                }
             }
         }
     }

@@ -238,6 +238,82 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         }
     });
 
+    // Pane focus handlers - created at top level to follow rules of hooks
+    let focus_search_handler: Handler<()> = hooks.use_async_handler({
+        let active_pane_setter = active_pane;
+        move |()| {
+            let mut active_pane_setter = active_pane_setter;
+            async move {
+                active_pane_setter.set(Pane::Search);
+            }
+        }
+    });
+
+    let focus_list_handler: Handler<()> = hooks.use_async_handler({
+        let active_pane_setter = active_pane;
+        move |()| {
+            let mut active_pane_setter = active_pane_setter;
+            async move {
+                active_pane_setter.set(Pane::List);
+            }
+        }
+    });
+
+    let focus_detail_handler: Handler<()> = hooks.use_async_handler({
+        let active_pane_setter = active_pane;
+        move |()| {
+            let mut active_pane_setter = active_pane_setter;
+            async move {
+                active_pane_setter.set(Pane::Detail);
+            }
+        }
+    });
+
+    // TicketList row click handler - created at top level to follow rules of hooks
+    let row_click_handler: Handler<usize> = hooks.use_async_handler({
+        let selected_setter = selected_index;
+        let pane_setter = active_pane;
+        let scroll_setter = scroll_offset;
+        move |idx: usize| {
+            let mut selected_setter = selected_setter;
+            let mut pane_setter = pane_setter;
+            let mut scroll_setter = scroll_setter;
+            async move {
+                selected_setter.set(idx);
+                pane_setter.set(Pane::List);
+                // Update scroll offset if needed to keep selection visible
+                if idx < scroll_setter.get() {
+                    scroll_setter.set(idx);
+                }
+            }
+        }
+    });
+
+    // Detail pane scroll handlers - created at top level to follow rules of hooks
+    let detail_scroll_up_handler: Handler<()> = hooks.use_async_handler({
+        let scroll_setter = detail_scroll_offset;
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            async move {
+                // Scroll up: decrease offset by 3 lines
+                scroll_setter.set(scroll_setter.get().saturating_sub(3));
+            }
+        }
+    });
+
+    let detail_scroll_down_handler: Handler<()> = hooks.use_async_handler({
+        let scroll_setter = detail_scroll_offset;
+        let max_scroll_ref = max_detail_scroll;
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            let max_scroll = max_scroll_ref.get();
+            async move {
+                // Scroll down: increase offset by 3 lines, capped at max
+                scroll_setter.set((scroll_setter.get() + 3).min(max_scroll));
+            }
+        }
+    });
+
     // Reload tickets if needed - use async handler instead of sync
     if needs_reload.get() && !is_loading.get() {
         needs_reload.set(false);
@@ -720,15 +796,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     ) {
                         // Search box with clickable focus
                         Clickable(
-                            on_click: Some(hooks.use_async_handler({
-                                let active_pane_setter = active_pane;
-                                move |()| {
-                                    let mut active_pane_setter = active_pane_setter;
-                                    async move {
-                                        active_pane_setter.set(Pane::Search);
-                                    }
-                                }
-                            })),
+                            on_click: Some(focus_search_handler.clone()),
                         ) {
                             View(
                                 width: 100pct,
@@ -766,15 +834,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                 ) {
                                     // Left pane: Ticket list (35% width via declarative flexbox)
                                     Clickable(
-                                        on_click: Some(hooks.use_async_handler({
-                                            let active_pane_setter = active_pane;
-                                            move |()| {
-                                                let mut active_pane_setter = active_pane_setter;
-                                                async move {
-                                                    active_pane_setter.set(Pane::List);
-                                                }
-                                            }
-                                        })),
+                                        on_click: Some(focus_list_handler.clone()),
                                     ) {
                                         View(
                                             width: 35pct,
@@ -788,39 +848,14 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                                 has_focus: active_pane.get() == Pane::List && !is_editing,
                                                 visible_height: list_height,
                                                 searching: search_in_flight_ref.get(),
-                                                on_row_click: Some(hooks.use_async_handler({
-                                                    let selected_setter = selected_index;
-                                                    let pane_setter = active_pane;
-                                                    let scroll_setter = scroll_offset;
-                                                    move |idx: usize| {
-                                                        let mut selected_setter = selected_setter;
-                                                        let mut pane_setter = pane_setter;
-                                                        let mut scroll_setter = scroll_setter;
-                                                        async move {
-                                                            selected_setter.set(idx);
-                                                            pane_setter.set(Pane::List);
-                                                            // Update scroll offset if needed to keep selection visible
-                                                            if idx < scroll_setter.get() {
-                                                                scroll_setter.set(idx);
-                                                            }
-                                                        }
-                                                    }
-                                                })),
+                                                on_row_click: Some(row_click_handler.clone()),
                                             )
                                         }
                                     }
 
                                     // Right pane: Ticket detail (takes remaining 65% via declarative flexbox)
                                     Clickable(
-                                        on_click: Some(hooks.use_async_handler({
-                                            let active_pane_setter = active_pane;
-                                            move |()| {
-                                                let mut active_pane_setter = active_pane_setter;
-                                                async move {
-                                                    active_pane_setter.set(Pane::Detail);
-                                                }
-                                            }
-                                        })),
+                                        on_click: Some(focus_detail_handler.clone()),
                                     ) {
                                         View(
                                             flex_grow: 1.0,
@@ -830,28 +865,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                                 ticket: selected_ticket.clone(),
                                                 has_focus: active_pane.get() == Pane::Detail && !is_editing,
                                                 scroll_offset: detail_scroll_offset.get(),
-                                                on_scroll_up: Some(hooks.use_async_handler({
-                                                    let scroll_setter = detail_scroll_offset;
-                                                    move |()| {
-                                                        let mut scroll_setter = scroll_setter;
-                                                        async move {
-                                                            // Scroll up: decrease offset by 3 lines
-                                                            scroll_setter.set(scroll_setter.get().saturating_sub(3));
-                                                        }
-                                                    }
-                                                })),
-                                                on_scroll_down: Some(hooks.use_async_handler({
-                                                    let scroll_setter = detail_scroll_offset;
-                                                    let max_scroll_ref = max_detail_scroll;
-                                                    move |()| {
-                                                        let mut scroll_setter = scroll_setter;
-                                                        let max_scroll = max_scroll_ref.get();
-                                                        async move {
-                                                            // Scroll down: increase offset by 3 lines, capped at max
-                                                            scroll_setter.set((scroll_setter.get() + 3).min(max_scroll));
-                                                        }
-                                                    }
-                                                })),
+                                                on_scroll_up: Some(detail_scroll_up_handler.clone()),
+                                                on_scroll_down: Some(detail_scroll_down_handler.clone()),
                                             )
                                         }
                                     }
