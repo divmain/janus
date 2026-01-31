@@ -423,19 +423,20 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Create card click handlers for all 5 columns OUTSIDE the iterator
     // This follows the rules of hooks - hooks must be called in the same order every render
-    let card_click_handlers: Vec<Handler<()>> = (0..5)
+    // The handler accepts the row index as a parameter to select the correct ticket
+    let card_click_handlers: Vec<Handler<usize>> = (0..5)
         .map(|col_idx| {
             hooks.use_async_handler({
                 let cur_col = current_column;
                 let cur_row = current_row;
                 let search_focus = search_focused;
-                move |()| {
+                move |row_idx: usize| {
                     let mut cur_col = cur_col;
                     let mut cur_row = cur_row;
                     let mut search_focus = search_focus;
                     async move {
                         cur_col.set(col_idx);
-                        cur_row.set(0);
+                        cur_row.set(row_idx);
                         search_focus.set(false);
                     }
                 }
@@ -613,6 +614,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                     // Visible cards (clickable)
                                                     // Use pre-created handler from card_click_handlers vector
                                                     // This follows the rules of hooks - hooks are called at top level, not in iterators
+                                                    // row_idx is passed to handler to set the correct selected ticket
                                                     #(column_tickets.iter().enumerate().skip(start).take(end - start).map(|(row_idx, ft)| {
                                                         let is_selected = is_active_column && row_idx == current_row_val;
                                                         element! {
@@ -621,6 +623,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                                                 is_selected: is_selected,
                                                                 width: Some(card_width),
                                                                 on_click: Some(card_click_handlers[col_idx].clone()),
+                                                                row_idx: row_idx,
                                                             )
                                                         }
                                                     }))

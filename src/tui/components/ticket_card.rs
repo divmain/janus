@@ -20,7 +20,10 @@ pub struct TicketCardProps {
     /// Available width for the card content (in characters)
     pub width: Option<u32>,
     /// Handler called when card is clicked (optional)
-    pub on_click: Option<Handler<()>>,
+    /// The usize parameter is the row index of the clicked card
+    pub on_click: Option<Handler<usize>>,
+    /// The row index of this card within its column
+    pub row_idx: usize,
 }
 
 /// Compact ticket card for kanban board columns
@@ -94,7 +97,16 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
     let indicator = if props.is_selected { ">" } else { " " };
 
     // Wrap with Clickable if an on_click handler is provided
-    if let Some(on_click) = props.on_click.clone() {
+    // Convert Handler<usize> to Handler<()> by wrapping it with the row_idx
+    let click_handler = props.on_click.clone().map(|h| {
+        let handler = h;
+        let idx = props.row_idx;
+        Handler::from(move |_: ()| {
+            handler(idx);
+        })
+    });
+
+    if let Some(on_click) = click_handler {
         element! {
             View(margin_top: 1) {
                 Clickable(on_click: Some(on_click)) {
