@@ -301,17 +301,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         }
     });
 
-    let list_scroll_down_handler: Handler<()> = hooks.use_async_handler({
-        let scroll_setter = scroll_offset;
-        move |()| {
-            let mut scroll_setter = scroll_setter;
-            async move {
-                // Scroll down: increase offset by 3 items
-                // The view handles clamping to valid range
-                scroll_setter.set(scroll_setter.get() + 3);
-            }
-        }
-    });
+    // Note: list_scroll_down_handler is defined later after we have access to
+    // filtered ticket count and list_height for proper bounds clamping
 
     // Detail pane scroll handlers - created at top level to follow rules of hooks
     let detail_scroll_up_handler: Handler<()> = hooks.use_async_handler({
@@ -420,6 +411,21 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // but scroll calculations need the actual row count for page-up/down and
     // scroll indicator logic.
     let list_height = calculate_list_height(height, 5);
+
+    // Now that we have list_height and filtered tickets, we can create the
+    // scroll down handler with proper bounds clamping
+    let list_scroll_down_handler: Handler<()> = hooks.use_async_handler({
+        let scroll_setter = scroll_offset;
+        let max_scroll = filtered.len().saturating_sub(list_height.saturating_sub(2).max(1));
+        move |()| {
+            let mut scroll_setter = scroll_setter;
+            let max_scroll = max_scroll;
+            async move {
+                // Scroll down: increase offset by 3 items, clamped to valid range
+                scroll_setter.set((scroll_setter.get() + 3).min(max_scroll));
+            }
+        }
+    });
 
     // Clone handlers for use in event handler closure
     let cycle_status_handler_for_events = cycle_status_handler.clone();
@@ -578,13 +584,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         selected_index.set(filtered.len() - 1);
     }
     if scroll_offset.get() > selected_index.get() {
-        // Only constrain scroll_offset when it would hide the selected item above viewport
-        // Allow scroll_offset > selected_index so users can scroll down to see more tickets
-        // while keeping their current selection visible (or just off-screen)
+        // Constrain scroll_offset when it would hide the selected item
+        // Allow scroll_offset > selected_index for manual scrolling, but when
+        // selection moves above viewport (e.g., pressing Up), auto-scroll to keep it visible
         let viewport_size = list_height.saturating_sub(2).max(1);
         if selected_index.get() >= scroll_offset.get() + viewport_size {
             // Selected item is below viewport, scroll down to keep it visible
             scroll_offset.set(selected_index.get().saturating_sub(viewport_size - 1));
+        } else {
+            // Selected item is above viewport, scroll up to keep it visible
+            scroll_offset.set(selected_index.get());
         }
     }
 
