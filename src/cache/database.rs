@@ -7,7 +7,7 @@
 //! - Corruption detection and recovery
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use turso::{Builder, Connection, Database};
@@ -15,7 +15,7 @@ use turso::{Builder, Connection, Database};
 use crate::error::{JanusError as CacheError, Result, is_corruption_error};
 use crate::events::log_cache_rebuilt;
 
-use super::paths::{cache_db_path, cache_dir, repo_hash};
+use super::paths::{cache_db_path, delete_cache_files};
 
 /// Busy timeout for SQLite operations when multiple processes access the cache.
 /// This allows concurrent janus processes to wait for locks rather than failing immediately.
@@ -56,22 +56,19 @@ const BASE_RETRY_DELAY_MS: u64 = 50;
 
 pub struct TicketCache {
     pub(crate) db: Database,
-    #[allow(dead_code)]
-    pub(crate) repo_path: PathBuf,
-    pub(crate) repo_hash: String,
+    pub(crate) db_path: PathBuf,
 }
 
 impl TicketCache {
     pub async fn open() -> Result<Self> {
-        let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
+        let db_path = cache_db_path();
 
-        let repo_hash = repo_hash(&repo_path);
-        let db_path = cache_db_path(&repo_hash);
-
-        let cache_directory = cache_dir();
-        if !cache_directory.exists() {
-            fs::create_dir_all(&cache_directory)
-                .map_err(|_e| CacheError::CacheAccessDenied(cache_directory.clone()))?;
+        // Ensure .janus directory exists
+        if let Some(parent) = db_path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)
+                    .map_err(|_e| CacheError::CacheAccessDenied(parent.to_path_buf()))?;
+            }
         }
 
         let db_path_str = db_path.to_string_lossy();
@@ -88,13 +85,12 @@ impl TicketCache {
 
         let cache = Self {
             db,
-            repo_path: repo_path.clone(),
-            repo_hash,
+            db_path: db_path.clone(),
         };
 
         cache.initialize_database(&conn).await?;
         cache.validate_cache_version(&conn).await?;
-        cache.store_repo_path(&repo_path, &conn).await?;
+        cache.store_metadata(&conn).await?;
 
         Ok(cache)
     }
@@ -103,12 +99,7 @@ impl TicketCache {
     ///
     /// If the database is corrupted, attempts to delete and rebuild it.
     pub(crate) async fn open_with_corruption_handling() -> Result<Self> {
-        let repo_hash_value = {
-            let repo_path = std::env::current_dir().map_err(CacheError::Io)?;
-            repo_hash(&repo_path)
-        };
-
-        let db_path = cache_db_path(&repo_hash_value);
+        let db_path = cache_db_path();
         let database_exists = db_path.exists();
 
         let result = Self::open().await;
@@ -123,7 +114,7 @@ impl TicketCache {
             );
             eprintln!("Deleting corrupted cache and attempting rebuild...");
 
-            if let Err(e) = fs::remove_file(&db_path) {
+            if let Err(e) = delete_cache_files(&db_path) {
                 eprintln!("Warning: failed to delete corrupted cache: {}", e);
             } else {
                 eprintln!("Cache deleted successfully, rebuilding...");
@@ -268,14 +259,7 @@ impl TicketCache {
         Ok(())
     }
 
-    async fn store_repo_path(&self, repo_path: &Path, conn: &Connection) -> Result<()> {
-        let path_str = repo_path.to_string_lossy().to_string();
-        conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('repo_path', ?1)",
-            [path_str],
-        )
-        .await?;
-
+    async fn store_metadata(&self, conn: &Connection) -> Result<()> {
         conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES ('cache_version', ?1)",
             [CACHE_VERSION],
@@ -467,7 +451,7 @@ impl TicketCache {
     }
 
     pub fn cache_db_path(&self) -> PathBuf {
-        cache_db_path(&self.repo_hash)
+        self.db_path.clone()
     }
 
     pub async fn create_connection(&self) -> Result<Arc<Connection>> {

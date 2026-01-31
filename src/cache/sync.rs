@@ -152,7 +152,13 @@ impl TicketCache {
         }
 
         if added.is_empty() && modified.is_empty() && removed.is_empty() {
-            return Ok((false, SyncStats { cache_was_empty, ..Default::default() }));
+            return Ok((
+                false,
+                SyncStats {
+                    cache_was_empty,
+                    ..Default::default()
+                },
+            ));
         }
 
         let stats = SyncStats {

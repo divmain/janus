@@ -171,8 +171,8 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 "Cache database is corrupted and cannot be opened.\n\nTo fix this issue:\n  1. Run 'janus cache clear' to delete the corrupted cache\n  2. Run any janus command to rebuild the cache automatically\n  3. Or run 'janus cache rebuild' to rebuild it manually".to_string()
             } else if is_permission_error(&e) {
                 format!(
-                    "Cache database cannot be accessed due to permission issues.\n\nTo fix this issue:\n  1. Check file permissions for:\n     {}\n  2. Ensure the cache directory is writable\n  3. Try 'janus cache rebuild' after fixing permissions",
-                    crate::cache::cache_dir().display()
+                    "Cache database cannot be accessed due to permission issues.\n\nTo fix this issue:\n  1. Check file permissions for:\n     {}\n  2. Ensure the .janus directory is writable\n  3. Try 'janus cache rebuild' after fixing permissions",
+                    crate::cache::cache_db_path().display()
                 )
             } else {
                 format!(
@@ -221,7 +221,7 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
         println!("Deleting cache database: {}", db_path.display());
     }
 
-    if let Err(e) = fs::remove_file(&db_path) {
+    if let Err(e) = crate::cache::delete_cache_files(&db_path) {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
             if !output_json {
                 println!("Error: Permission denied when trying to delete cache.");
@@ -255,7 +255,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
         if !output_json {
             println!("Found existing cache at: {}", db_path.display());
         }
-        if let Err(e) = fs::remove_file(&db_path) {
+        if let Err(e) = crate::cache::delete_cache_files(&db_path) {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 if !output_json {
                     println!("Error: Permission denied when trying to delete existing cache.");
@@ -339,7 +339,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                     let embeddings_regenerated = needs_reemb;
                     #[cfg(not(feature = "semantic-search"))]
                     let embeddings_regenerated = false;
-                    
+
                     let details = json!({
                         "sync_time_ms": sync_duration.as_millis(),
                         "embeddings_regenerated": embeddings_regenerated,
@@ -376,8 +376,8 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 println!("Error: failed to initialize cache during rebuild: {}", e);
 
                 if is_permission_error(&e) {
-                    println!("\nPermission denied when accessing cache directory.");
-                    println!("Cache directory: {}", crate::cache::cache_dir().display());
+                    println!("\nPermission denied when accessing .janus directory.");
+                    println!("Cache path: {}", crate::cache::cache_db_path().display());
                     println!("Please check file permissions and try again.");
                 }
             }
@@ -390,13 +390,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 }
 
 fn db_path_from_current_dir() -> std::path::PathBuf {
-    use crate::cache::{cache_db_path, repo_hash};
-    if let Ok(repo_path) = std::env::current_dir() {
-        let hash = repo_hash(&repo_path);
-        cache_db_path(&hash)
-    } else {
-        std::path::PathBuf::from("unknown.cache.db")
-    }
+    crate::cache::cache_db_path()
 }
 
 pub async fn cmd_cache_path(output_json: bool) -> Result<()> {

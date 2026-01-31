@@ -5,8 +5,8 @@ use iocraft::prelude::KeyCode;
 use crate::tui::navigation;
 use crate::tui::state::Pane;
 
-use super::context::ViewHandlerContext;
 use super::HandleResult;
+use super::context::ViewHandlerContext;
 
 /// Handle navigation keys
 pub fn handle(ctx: &mut ViewHandlerContext<'_>, code: KeyCode) -> HandleResult {
