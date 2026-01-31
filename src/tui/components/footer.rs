@@ -28,15 +28,21 @@ impl Shortcut {
 
 /// Props for the Footer component
 #[derive(Default, Props)]
-pub struct FooterProps {
+pub struct FooterProps<'a> {
     /// List of keyboard shortcuts to display
     pub shortcuts: Vec<Shortcut>,
+    /// Optional triage action buttons to display alongside shortcuts
+    pub action_buttons: Vec<AnyElement<'a>>,
 }
 
 /// Keyboard shortcuts bar at the bottom of the screen
 #[component]
-pub fn Footer(props: &FooterProps) -> impl Into<AnyElement<'static>> {
+pub fn Footer<'a>(props: &mut FooterProps<'a>) -> impl Into<AnyElement<'a>> {
     let theme = theme();
+
+    // Take ownership of action_buttons to avoid borrow issues
+    let action_buttons = std::mem::take(&mut props.action_buttons);
+    let has_action_buttons = !action_buttons.is_empty();
 
     element! {
         View(
@@ -47,9 +53,28 @@ pub fn Footer(props: &FooterProps) -> impl Into<AnyElement<'static>> {
             flex_shrink: 0.0,
             padding_left: 1,
             padding_right: 1,
+            padding_top: if has_action_buttons { 0 } else { 0 },
+            padding_bottom: if has_action_buttons { 0 } else { 0 },
             column_gap: 2,
             background_color: theme.border,
+            align_items: AlignItems::Center,
         ) {
+            // Action buttons first (if any)
+            #(if has_action_buttons {
+                Some(element! {
+                    View(
+                        flex_direction: FlexDirection::Row,
+                        gap: 1,
+                        margin_right: 2,
+                    ) {
+                        #(action_buttons)
+                    }
+                })
+            } else {
+                None
+            })
+
+            // Text shortcuts
             #(props.shortcuts.iter().map(|shortcut| {
                 let key = shortcut.key.clone();
                 let action = shortcut.action.clone();

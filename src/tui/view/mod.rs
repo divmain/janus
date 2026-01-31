@@ -535,6 +535,160 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         }
     };
 
+    // Build triage action buttons when in triage mode and no modal is open
+    let triage_action_buttons: Vec<AnyElement<'_>> =
+        if is_triage_mode.get()
+            && !note_modal.is_open()
+            && !cancel_confirm_modal.is_open()
+            && !is_editing
+            && !show_full_empty_state
+        {
+            // Get the currently selected ticket for status-based action availability
+            let selected_ticket_status = filtered
+                .get(selected_index.get())
+                .and_then(|ft| ft.ticket.status);
+
+            let mut buttons: Vec<AnyElement<'_>> = Vec::new();
+
+            // Mark Triaged button (only for non-cancelled tickets)
+            let can_mark_triaged = selected_ticket_status
+                .map(|s| s != crate::types::TicketStatus::Cancelled)
+                .unwrap_or(true);
+            if can_mark_triaged
+                && let Some(ft) = filtered.get(selected_index.get())
+                && let Some(id) = &ft.ticket.id
+            {
+                let id = id.clone();
+                let mark_handler = mark_triaged_handler.clone();
+                buttons.push(
+                    element! {
+                        Button(
+                            handler: move |_| mark_handler((id.clone(), true)),
+                            has_focus: false,
+                        ) {
+                            View(
+                                border_style: BorderStyle::Round,
+                                border_color: Color::Green,
+                                padding_left: 1,
+                                padding_right: 1,
+                                background_color: Color::Green,
+                            ) {
+                                Text(
+                                    content: "[t] Triaged",
+                                    color: Color::Black,
+                                    weight: Weight::Bold,
+                                )
+                            }
+                        }
+                    }
+                    .into(),
+                );
+            }
+
+            // Add Note button (always available)
+            if let Some(ft) = filtered.get(selected_index.get())
+                && let Some(id) = &ft.ticket.id
+            {
+                let id = id.clone();
+                let note_modal_ref = note_modal;
+                buttons.push(
+                    element! {
+                        Button(
+                            handler: move |_| {
+                                note_modal_ref.open(NoteModalData::new(id.clone()));
+                            },
+                            has_focus: false,
+                        ) {
+                            View(
+                                border_style: BorderStyle::Round,
+                                border_color: Color::Blue,
+                                padding_left: 1,
+                                padding_right: 1,
+                                background_color: Color::Blue,
+                            ) {
+                                Text(
+                                    content: "[n] Note",
+                                    color: Color::White,
+                                    weight: Weight::Bold,
+                                )
+                            }
+                        }
+                    }
+                    .into(),
+                );
+            }
+
+            // Change Status button (cycle status)
+            if let Some(ft) = filtered.get(selected_index.get())
+                && let Some(id) = &ft.ticket.id
+            {
+                let id = id.clone();
+                let cycle_handler = cycle_status_handler.clone();
+                buttons.push(
+                    element! {
+                        Button(
+                            handler: move |_| cycle_handler(id.clone()),
+                            has_focus: false,
+                        ) {
+                            View(
+                                border_style: BorderStyle::Round,
+                                border_color: Color::Cyan,
+                                padding_left: 1,
+                                padding_right: 1,
+                                background_color: Color::Cyan,
+                            ) {
+                                Text(
+                                    content: "[s] Status",
+                                    color: Color::Black,
+                                    weight: Weight::Bold,
+                                )
+                            }
+                        }
+                    }
+                    .into(),
+                );
+            }
+
+            // Cancel button (only for non-cancelled tickets)
+            let can_cancel = selected_ticket_status
+                .map(|s| s != crate::types::TicketStatus::Cancelled)
+                .unwrap_or(true);
+            if can_cancel
+                && let Some(ft) = filtered.get(selected_index.get())
+                && let Some(id) = &ft.ticket.id
+            {
+                let id = id.clone();
+                let title = ft.ticket.title.clone().unwrap_or_default();
+                let cancel_modal_ref = cancel_confirm_modal;
+                buttons.push(element! {
+                Button(
+                    handler: move |_| {
+                        cancel_modal_ref.open(TicketModalData::new(id.clone(), title.clone()));
+                    },
+                    has_focus: false,
+                ) {
+                    View(
+                        border_style: BorderStyle::Round,
+                        border_color: Color::Grey,
+                        padding_left: 1,
+                        padding_right: 1,
+                        background_color: Color::Grey,
+                    ) {
+                        Text(
+                            content: "[c] Cancel",
+                            color: Color::White,
+                            weight: Weight::Bold,
+                        )
+                    }
+                }
+            }.into());
+            }
+
+            buttons
+        } else {
+            Vec::new()
+        };
+
     element! {
         ScreenLayout(
             width: width,
@@ -542,6 +696,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             header_subtitle: Some("Browser"),
             header_ticket_count: Some(ticket_count),
             shortcuts: shortcuts,
+            action_buttons: triage_action_buttons,
             toast: toast.read().clone(),
             triage_mode: is_triage_mode.get(),
         ) {
