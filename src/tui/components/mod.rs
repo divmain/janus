@@ -3,6 +3,8 @@
 //! This module contains reusable UI components for both the issue browser
 //! and kanban board views.
 
+pub mod clickable;
+pub mod clickable_text;
 pub mod empty_state;
 pub mod footer;
 pub mod header;
@@ -19,6 +21,8 @@ pub mod ticket_detail;
 pub mod ticket_list;
 pub mod toast;
 
+pub use clickable::{Clickable, ClickableProps};
+pub use clickable_text::{ClickableText, ClickableTextProps};
 pub use empty_state::{EmptyState, EmptyStateKind, EmptyStateProps, compute_empty_state};
 pub use footer::{
     Footer, FooterProps, Shortcut, board_shortcuts, browser_shortcuts,
