@@ -203,11 +203,14 @@ mod tests {
 
 Janus uses a SQLite-based caching layer (via Turso) that acts as a read replica of the `.janus/items/` directory. Key points:
 
-- **Cache Location**: `~/.local/share/janus/cache/<repo-hash>.db` (per-repo isolation)
+- **Cache Location**: `.janus/cache-v{VERSION}.db` (local to each repo)
+  - Version includes schema version and feature flags (e.g., `cache-v13.db` or `cache-v13-semantic.db`)
+  - Different builds (with/without semantic-search) use separate cache files to avoid conflicts
 - **Auto-sync**: Cache is validated and updated on every `janus` command invocation
 - **Graceful degradation**: Falls back to file reads if cache is unavailable
 - **Performance**: ~100x faster for common operations after cache warm
 - **Source of truth**: Markdown files remain authoritative; cache is always derived from them
+- **WAL Mode**: Uses SQLite WAL mode for concurrent read/write access
 
 ### Cache Commands
 

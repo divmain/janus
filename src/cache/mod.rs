@@ -28,7 +28,7 @@ mod types;
 
 // Re-export public items
 pub use database::TicketCache;
-pub use paths::{cache_db_path, cache_dir, repo_hash};
+pub use paths::{cache_db_path, delete_cache_files};
 pub use traits::CacheableItem;
 pub use types::{CachedPhase, CachedPlanMetadata};
 
@@ -264,7 +264,8 @@ Description of the plan.
         let db_path = cache.cache_db_path();
 
         assert!(db_path.exists());
-        assert!(db_path.is_absolute());
+        // Cache is now stored locally in .janus/ (relative path)
+        assert!(db_path.starts_with(".janus"));
     }
 
     #[tokio::test]
@@ -292,29 +293,24 @@ Description of the plan.
 
     #[tokio::test]
     #[serial]
-    async fn test_repo_path_stored_in_meta() {
+    async fn test_cache_stored_in_janus_dir() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_repo_path_stored_in_meta");
+        let repo_path = temp.path().join("test_cache_stored_in_janus_dir");
         fs::create_dir_all(&repo_path).unwrap();
-        let repo_path_str = repo_path
-            .canonicalize()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
 
         std::env::set_current_dir(&repo_path).unwrap();
 
         let cache = TicketCache::open().await.unwrap();
+        let db_path = cache.cache_db_path();
 
-        let conn = cache.create_connection().await.unwrap();
-        let mut rows = conn
-            .query("SELECT value FROM meta WHERE key = 'repo_path'", ())
-            .await
-            .unwrap();
-
-        let stored_path: Option<String> = rows.next().await.unwrap().map(|row| row.get(0).unwrap());
-
-        assert_eq!(stored_path, Some(repo_path_str));
+        // Cache should be in .janus directory
+        assert!(db_path.starts_with(".janus"));
+        // File should exist
+        assert!(db_path.exists());
+        // Should have versioned filename
+        let filename = db_path.file_name().unwrap().to_str().unwrap();
+        assert!(filename.starts_with("cache-v"));
+        assert!(filename.ends_with(".db"));
     }
 
     #[tokio::test]

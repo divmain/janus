@@ -416,7 +416,9 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     // scroll down handler with proper bounds clamping
     let list_scroll_down_handler: Handler<()> = hooks.use_async_handler({
         let scroll_setter = scroll_offset;
-        let max_scroll = filtered.len().saturating_sub(list_height.saturating_sub(2).max(1));
+        let max_scroll = filtered
+            .len()
+            .saturating_sub(list_height.saturating_sub(2).max(1));
         move |()| {
             let mut scroll_setter = scroll_setter;
             let max_scroll = max_scroll;
