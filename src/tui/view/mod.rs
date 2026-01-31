@@ -583,19 +583,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     if selected_index.get() >= filtered.len() && !filtered.is_empty() {
         selected_index.set(filtered.len() - 1);
     }
-    if scroll_offset.get() > selected_index.get() {
-        // Constrain scroll_offset when it would hide the selected item
-        // Allow scroll_offset > selected_index for manual scrolling, but when
-        // selection moves above viewport (e.g., pressing Up), auto-scroll to keep it visible
-        let viewport_size = list_height.saturating_sub(2).max(1);
-        if selected_index.get() >= scroll_offset.get() + viewport_size {
-            // Selected item is below viewport, scroll down to keep it visible
-            scroll_offset.set(selected_index.get().saturating_sub(viewport_size - 1));
-        } else {
-            // Selected item is above viewport, scroll up to keep it visible
-            scroll_offset.set(selected_index.get());
-        }
-    }
+    // Note: Manual scrolling is handled independently by scroll handlers.
+    // Keyboard navigation handlers (in handlers/navigation.rs) already
+    // constrain scroll_offset to keep selected items visible when navigating
+    // with Up/Down/j/k keys. We intentionally do NOT constrain scroll_offset
+    // here to allow users to scroll independently of the selection.
 
     let ticket_count = filtered.len();
     let tickets_ref_for_count = all_tickets.read();
