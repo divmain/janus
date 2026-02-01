@@ -203,3 +203,144 @@ fn test_set_ticket_not_found() {
         "Should fail for nonexistent ticket"
     );
 }
+
+#[test]
+#[serial]
+fn test_set_design() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+
+    // Set design section
+    let output = janus.run_success(&["set", &id, "design", "This is the design content"]);
+    assert!(output.contains("Updated"));
+    assert!(output.contains("design"));
+
+    // Verify design is set using show command
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("This is the design content"));
+}
+
+#[test]
+#[serial]
+fn test_set_design_clear() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test", "--design", "Initial design"])
+        .trim()
+        .to_string();
+
+    // Verify design is set
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("Initial design"));
+
+    // Clear design by omitting the value argument
+    let output = janus.run_success(&["set", &id, "design"]);
+    assert!(output.contains("Updated"));
+
+    // Verify design is cleared
+    let output = janus.run_success(&["show", &id, "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert!(
+        json["body"]
+            .as_str()
+            .map(|b| !b.contains("Initial design"))
+            .unwrap_or(true),
+        "Design should be cleared"
+    );
+}
+
+#[test]
+#[serial]
+fn test_set_acceptance() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+
+    // Set acceptance criteria section
+    let output = janus.run_success(&["set", &id, "acceptance", "User can log in and log out"]);
+    assert!(output.contains("Updated"));
+    assert!(output.contains("acceptance"));
+
+    // Verify acceptance is set using show command
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("User can log in and log out"));
+}
+
+#[test]
+#[serial]
+fn test_set_acceptance_clear() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test", "--acceptance", "Initial criteria"])
+        .trim()
+        .to_string();
+
+    // Verify acceptance is set
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("Initial criteria"));
+
+    // Clear acceptance by omitting the value argument
+    let output = janus.run_success(&["set", &id, "acceptance"]);
+    assert!(output.contains("Updated"));
+
+    // Verify acceptance is cleared
+    let output = janus.run_success(&["show", &id, "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert!(
+        json["body"]
+            .as_str()
+            .map(|b| !b.contains("Initial criteria"))
+            .unwrap_or(true),
+        "Acceptance should be cleared"
+    );
+}
+
+#[test]
+#[serial]
+fn test_set_description() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+
+    // Set description (main body content)
+    let output = janus.run_success(&["set", &id, "description", "This is the description"]);
+    assert!(output.contains("Updated"));
+    assert!(output.contains("description"));
+
+    // Verify description is set using show command
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("This is the description"));
+}
+
+#[test]
+#[serial]
+fn test_set_description_clear() {
+    let janus = JanusTest::new();
+
+    let id = janus
+        .run_success(&["create", "Test", "--description", "Initial description"])
+        .trim()
+        .to_string();
+
+    // Verify description is set
+    let output = janus.run_success(&["show", &id]);
+    assert!(output.contains("Initial description"));
+
+    // Clear description by omitting the value argument
+    let output = janus.run_success(&["set", &id, "description"]);
+    assert!(output.contains("Updated"));
+
+    // Verify description is cleared
+    let output = janus.run_success(&["show", &id, "--json"]);
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert!(
+        json["body"]
+            .as_str()
+            .map(|b| !b.contains("Initial description"))
+            .unwrap_or(true),
+        "Description should be cleared"
+    );
+}
