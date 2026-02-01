@@ -12,6 +12,8 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
+use tokio::process::Command as TokioCommand;
+
 use owo_colors::OwoColorize;
 use serde::Deserialize;
 use serde_json::json;
@@ -454,10 +456,11 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
     println!();
 
     // Execute the script
-    let output = std::process::Command::new(&script_path)
+    let output = TokioCommand::new(&script_path)
         .envs(env_vars)
         .current_dir(&j_root)
-        .output()?;
+        .output()
+        .await?;
 
     // Print output
     if !output.stdout.is_empty() {

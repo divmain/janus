@@ -557,6 +557,7 @@ fn atty_check() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_generate_unique_id_with_prefix_format() {
@@ -914,6 +915,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_generated_id_is_file_safe() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_generated_id_safe");
