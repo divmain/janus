@@ -123,6 +123,37 @@ impl TicketCache {
         Ok(map)
     }
 
+    /// Update or insert a single ticket in the cache.
+    ///
+    /// This is used for cache repair when validation detects stale data.
+    /// The ticket's file_path should be set to determine the mtime.
+    pub async fn update_ticket(&self, ticket: &TicketMetadata) -> Result<()> {
+        use super::traits::CacheableItem;
+
+        // Get the file mtime from the file_path
+        let file_path = ticket.file_path.as_ref().ok_or_else(|| {
+            CacheError::CacheDataIntegrity(
+                "Ticket missing file_path - cannot update cache".to_string(),
+            )
+        })?;
+
+        let metadata = std::fs::metadata(file_path).map_err(CacheError::Io)?;
+        let mtime = metadata
+            .modified()
+            .map_err(|e| CacheError::Io(std::io::Error::other(e)))?;
+        let mtime_ns = mtime
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .map_err(|e| CacheError::Io(std::io::Error::other(e)))?
+            .as_nanos() as i64;
+
+        let conn = self.create_connection().await?;
+        let tx = conn.unchecked_transaction().await?;
+        ticket.insert_into_cache(&tx, mtime_ns).await?;
+        tx.commit().await?;
+
+        Ok(())
+    }
+
     // =========================================================================
     // Plan queries
     // =========================================================================

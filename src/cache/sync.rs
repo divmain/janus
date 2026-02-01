@@ -135,6 +135,15 @@ impl TicketCache {
         self.sync_items_with_stats::<PlanMetadata>().await
     }
 
+    /// Force a complete rebuild of the ticket cache.
+    ///
+    /// This clears all ticket entries and re-parses every ticket file from disk.
+    /// Returns the sync stats from the rebuild operation.
+    pub async fn force_rebuild_tickets(&self) -> Result<SyncStats> {
+        let (_, stats) = self.force_rebuild_sync::<TicketMetadata>().await?;
+        Ok(stats)
+    }
+
     /// Generic sync implementation that returns detailed statistics.
     async fn sync_items_with_stats<T: CacheableItem>(&self) -> Result<(bool, SyncStats)> {
         let dir = T::directory();

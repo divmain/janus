@@ -94,6 +94,10 @@ pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
 ///
 /// Uses mtime comparison to avoid unnecessary file reads - only re-reads
 /// files that have been modified since they were cached.
+///
+/// When validation detects stale or corrupted cache data, this function will:
+/// 1. Repair individual cache entries for successfully validated tickets
+/// 2. Trigger a full cache rebuild if the validation failure rate exceeds 10%
 pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusError> {
     if let Some(cache) = cache::get_or_init_cache().await {
         if let Ok(cached_tickets) = cache.get_all_tickets().await {
@@ -130,6 +134,11 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
                 .filter_map(|t| t.id.clone().map(|id| (id, t)))
                 .collect();
 
+            // Track tickets that need cache repair and validation failures
+            let mut tickets_to_repair: Vec<TicketMetadata> = Vec::new();
+            let mut validation_failures = 0_usize;
+            let total_validated = disk_files.len();
+
             // Process each file on disk
             for (id, disk_mtime) in disk_files {
                 let file_path = items_dir.join(format!("{}.md", id));
@@ -149,9 +158,12 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
                                     metadata.id = Some(id.clone());
                                 }
                                 metadata.file_path = Some(file_path);
+                                // Queue for cache repair
+                                tickets_to_repair.push(metadata.clone());
                                 result.add_ticket(metadata);
                             }
                             Err(e) => {
+                                validation_failures += 1;
                                 result.add_failure(
                                     file_path.to_string_lossy().into_owned(),
                                     e.to_string(),
@@ -159,6 +171,7 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
                             }
                         },
                         Err(e) => {
+                            validation_failures += 1;
                             result.add_failure(
                                 file_path.to_string_lossy().into_owned(),
                                 e.to_string(),
@@ -170,6 +183,39 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
                     let mut metadata = cached_ticket.clone();
                     metadata.file_path = Some(file_path);
                     result.add_ticket(metadata);
+                }
+            }
+
+            // Calculate validation failure rate
+            let failure_rate = if total_validated > 0 {
+                (validation_failures as f64 / total_validated as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            // Decide on cache recovery strategy based on failure rate
+            if failure_rate > 10.0 {
+                // High failure rate - trigger full cache rebuild
+                eprintln!(
+                    "Warning: {} validation failures out of {} files ({:.1}%) exceeds threshold. Triggering cache rebuild...",
+                    validation_failures, total_validated, failure_rate
+                );
+                if let Err(e) = cache.force_rebuild_tickets().await {
+                    eprintln!(
+                        "Warning: cache rebuild failed: {}. Continuing with disk data.",
+                        e
+                    );
+                }
+            } else if !tickets_to_repair.is_empty() {
+                // Low failure rate - repair individual cache entries
+                for ticket in &tickets_to_repair {
+                    if let Err(e) = cache.update_ticket(ticket).await {
+                        eprintln!(
+                            "Warning: failed to repair cache entry for ticket '{}': {}.",
+                            ticket.id.as_deref().unwrap_or("unknown"),
+                            e
+                        );
+                    }
                 }
             }
 
