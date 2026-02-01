@@ -75,11 +75,11 @@ pub fn key_to_action(
     }
 
     match code {
-        // Navigation
-        KeyCode::Char('h') | KeyCode::Left => Some(BoardAction::MoveLeft),
-        KeyCode::Char('l') | KeyCode::Right => Some(BoardAction::MoveRight),
-        KeyCode::Char('j') | KeyCode::Down => Some(BoardAction::MoveDown),
-        KeyCode::Char('k') | KeyCode::Up => Some(BoardAction::MoveUp),
+        // Navigation (arrow keys only - standardized across all views)
+        KeyCode::Left => Some(BoardAction::MoveLeft),
+        KeyCode::Right => Some(BoardAction::MoveRight),
+        KeyCode::Down => Some(BoardAction::MoveDown),
+        KeyCode::Up => Some(BoardAction::MoveUp),
         KeyCode::Char('g') => Some(BoardAction::GoToTop),
         KeyCode::Char('G') => Some(BoardAction::GoToBottom),
         KeyCode::PageDown => Some(BoardAction::PageDown),
@@ -130,33 +130,18 @@ mod tests {
 
     #[test]
     fn test_key_to_action_navigation() {
-        assert_eq!(
-            key_to_action(KeyCode::Char('h'), KeyModifiers::NONE, false),
-            Some(BoardAction::MoveLeft)
-        );
+        // Arrow keys only
         assert_eq!(
             key_to_action(KeyCode::Left, KeyModifiers::NONE, false),
             Some(BoardAction::MoveLeft)
-        );
-        assert_eq!(
-            key_to_action(KeyCode::Char('l'), KeyModifiers::NONE, false),
-            Some(BoardAction::MoveRight)
         );
         assert_eq!(
             key_to_action(KeyCode::Right, KeyModifiers::NONE, false),
             Some(BoardAction::MoveRight)
         );
         assert_eq!(
-            key_to_action(KeyCode::Char('j'), KeyModifiers::NONE, false),
-            Some(BoardAction::MoveDown)
-        );
-        assert_eq!(
             key_to_action(KeyCode::Down, KeyModifiers::NONE, false),
             Some(BoardAction::MoveDown)
-        );
-        assert_eq!(
-            key_to_action(KeyCode::Char('k'), KeyModifiers::NONE, false),
-            Some(BoardAction::MoveUp)
         );
         assert_eq!(
             key_to_action(KeyCode::Up, KeyModifiers::NONE, false),
@@ -297,15 +282,9 @@ mod tests {
 
     #[test]
     fn test_key_to_action_navigation_ignored_in_search_mode() {
-        // Navigation keys in search mode should be handled by search, not navigation
-        assert_eq!(
-            key_to_action(KeyCode::Char('h'), KeyModifiers::NONE, true),
-            None
-        );
-        assert_eq!(
-            key_to_action(KeyCode::Char('j'), KeyModifiers::NONE, true),
-            None
-        );
+        // Arrow keys in search mode should be handled by search, not navigation
+        assert_eq!(key_to_action(KeyCode::Left, KeyModifiers::NONE, true), None);
+        assert_eq!(key_to_action(KeyCode::Down, KeyModifiers::NONE, true), None);
     }
 
     #[test]
