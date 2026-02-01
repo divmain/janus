@@ -7,3 +7,5 @@ target/
 
 # Allow test fixtures
 !tests/fixtures/**/.janus/
+# But exclude generated event logs
+**/.janus/events.ndjson

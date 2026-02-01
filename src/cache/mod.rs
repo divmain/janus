@@ -1584,29 +1584,28 @@ This is a valid ticket.
         let invalid_content = "# Corrupted Ticket\nThis file has no frontmatter\n";
         fs::write(&ticket_path, invalid_content).unwrap();
 
-        // Sync again - should detect modification but keep stale cache entry
+        // Sync again - with 100% failure rate (1/1), cache rebuild is triggered
+        // and the stale entry is removed
         let changed = cache.sync().await.unwrap();
         assert!(changed);
 
-        // Verify the stale cache entry is still present (not removed)
+        // Verify the stale cache entry is removed after rebuild
         let mut rows = cache
             .create_connection()
             .await
             .unwrap()
             .query(
-                "SELECT title, status FROM tickets WHERE ticket_id = ?1",
+                "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
                 ["j-test"],
             )
             .await
             .unwrap();
         let row = get_first_row(&mut rows).await;
-        let title: String = row.get(0).unwrap();
-        let status: String = row.get(1).unwrap();
+        let count: i64 = row.get(0).unwrap();
         assert_eq!(
-            title, "Test Ticket",
-            "Stale cache entry should be preserved"
+            count, 0,
+            "Stale cache entry should be removed after rebuild"
         );
-        assert_eq!(status, "new", "Stale cache entry should have old status");
 
         let db_path = cache.cache_db_path();
         drop(cache);

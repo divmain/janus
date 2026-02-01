@@ -36,6 +36,9 @@ pub trait CacheableItem: Sized {
     /// The human-readable name of this item type (e.g., "ticket", "plan")
     fn item_name() -> &'static str;
 
+    /// The plural form of the item name (e.g., "tickets", "plans")
+    fn item_name_plural() -> &'static str;
+
     /// Parse an item from its file on disk.
     /// Returns the parsed item and the file's mtime in nanoseconds.
     #[allow(clippy::manual_async_fn)]
@@ -68,6 +71,10 @@ impl CacheableItem for TicketMetadata {
 
     fn item_name() -> &'static str {
         "ticket"
+    }
+
+    fn item_name_plural() -> &'static str {
+        "tickets"
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -262,6 +269,10 @@ impl CacheableItem for PlanMetadata {
 
     fn item_name() -> &'static str {
         "plan"
+    }
+
+    fn item_name_plural() -> &'static str {
+        "plans"
     }
 
     #[allow(clippy::manual_async_fn)]

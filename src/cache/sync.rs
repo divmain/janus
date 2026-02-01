@@ -28,11 +28,28 @@ pub struct SyncStats {
     pub modified: usize,
     pub removed: usize,
     pub cache_was_empty: bool,
+    pub parse_failures: usize,
+    pub total_attempted: usize,
 }
 
 impl SyncStats {
     pub fn total_changes(&self) -> usize {
         self.added + self.modified + self.removed
+    }
+
+    /// Calculate the parse failure rate as a percentage (0-100)
+    pub fn failure_rate(&self) -> f64 {
+        if self.total_attempted == 0 {
+            0.0
+        } else {
+            (self.parse_failures as f64 / self.total_attempted as f64) * 100.0
+        }
+    }
+
+    /// Check if failure rate exceeds the threshold for forced rebuild
+    pub fn should_force_rebuild(&self) -> bool {
+        const FAILURE_THRESHOLD_PERCENT: f64 = 10.0;
+        self.failure_rate() > FAILURE_THRESHOLD_PERCENT
     }
 }
 
@@ -161,12 +178,9 @@ impl TicketCache {
             ));
         }
 
-        let stats = SyncStats {
-            added: added.len(),
-            modified: modified.len(),
-            removed: removed.len(),
-            cache_was_empty,
-        };
+        // Track parse failures for threshold-based rebuild
+        let mut parse_failures = 0_usize;
+        let total_attempted = added.len() + modified.len();
 
         // Read and parse items before starting the transaction
         let mut items_to_upsert = Vec::new();
@@ -176,6 +190,7 @@ impl TicketCache {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
                 Err(e) => {
+                    parse_failures += 1;
                     eprintln!(
                         "Warning: failed to parse {} '{}': {}. Skipping...",
                         T::item_name(),
@@ -191,6 +206,7 @@ impl TicketCache {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
                 Err(e) => {
+                    parse_failures += 1;
                     eprintln!(
                         "Warning: keeping stale cache entry for {} '{}' due to parse failure: {}",
                         T::item_name(),
@@ -199,6 +215,27 @@ impl TicketCache {
                     );
                 }
             }
+        }
+
+        // Check if failure rate exceeds threshold and force rebuild if needed
+        let stats = SyncStats {
+            added: added.len(),
+            modified: modified.len(),
+            removed: removed.len(),
+            cache_was_empty,
+            parse_failures,
+            total_attempted,
+        };
+
+        if stats.should_force_rebuild() {
+            eprintln!(
+                "Warning: {} parse failures out of {} attempts ({:.1}%) exceeds threshold. Forcing cache rebuild for {}...",
+                parse_failures,
+                total_attempted,
+                stats.failure_rate(),
+                T::item_name_plural()
+            );
+            return self.force_rebuild_sync::<T>().await;
         }
 
         // Use transaction for atomicity
@@ -224,6 +261,65 @@ impl TicketCache {
         }
 
         tx.commit().await?;
+
+        Ok((true, stats))
+    }
+
+    /// Force a complete cache rebuild by clearing the table and re-syncing all items.
+    async fn force_rebuild_sync<T: CacheableItem>(&self) -> Result<(bool, SyncStats)> {
+        let conn = self.create_connection().await?;
+
+        // Clear the table
+        conn.execute(&format!("DELETE FROM {}", T::table_name()), ())
+            .await?;
+
+        // Get all files and re-parse them
+        let dir = T::directory();
+        let disk_files = Self::scan_directory_static(&dir)?;
+
+        let mut items_to_upsert = Vec::new();
+        let mut parse_failures = 0_usize;
+        let total_attempted = disk_files.len();
+
+        for id in disk_files.keys() {
+            match T::parse_from_file(id).await {
+                Ok((metadata, mtime_ns)) => {
+                    items_to_upsert.push((metadata, mtime_ns));
+                }
+                Err(e) => {
+                    parse_failures += 1;
+                    eprintln!(
+                        "Warning: failed to parse {} '{}' during rebuild: {}. Skipping...",
+                        T::item_name(),
+                        id,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Insert all successfully parsed items
+        let tx = conn.unchecked_transaction().await?;
+        for (metadata, mtime_ns) in &items_to_upsert {
+            metadata.insert_into_cache(&tx, *mtime_ns).await?;
+        }
+        tx.commit().await?;
+
+        let stats = SyncStats {
+            added: items_to_upsert.len(),
+            modified: 0,
+            removed: 0,
+            cache_was_empty: false,
+            parse_failures,
+            total_attempted,
+        };
+
+        eprintln!(
+            "Cache rebuild complete: {} {} synced, {} failures",
+            items_to_upsert.len(),
+            T::item_name_plural(),
+            parse_failures
+        );
 
         Ok((true, stats))
     }
