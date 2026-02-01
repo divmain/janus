@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 
 use super::{
     CommandOutput, FormatOptions, format_deps, format_ticket_line, get_next_items_phased,
@@ -241,18 +242,18 @@ pub async fn cmd_ls(
 
     let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
 
-    // Build text output eagerly
-    let text_output = display_tickets
-        .iter()
-        .map(|t| {
-            let opts = FormatOptions {
-                suffix: Some(format_deps(&t.deps)),
-                ..Default::default()
-            };
-            format_ticket_line(t, opts)
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    // Build text output incrementally to avoid intermediate allocations
+    let mut text_output = String::new();
+    for (i, t) in display_tickets.iter().enumerate() {
+        let opts = FormatOptions {
+            suffix: Some(format_deps(&t.deps)),
+            ..Default::default()
+        };
+        if i > 0 {
+            writeln!(text_output).unwrap();
+        }
+        write!(text_output, "{}", format_ticket_line(t, opts)).unwrap();
+    }
 
     CommandOutput::new(serde_json::Value::Array(json_tickets))
         .with_text(text_output)
@@ -332,18 +333,18 @@ async fn cmd_ls_next_in_plan(
 
     let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
 
-    // Build text output
-    let text_output = display_tickets
-        .iter()
-        .map(|t| {
-            let opts = FormatOptions {
-                suffix: Some(format_deps(&t.deps)),
-                ..Default::default()
-            };
-            format_ticket_line(t, opts)
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    // Build text output incrementally to avoid intermediate allocations
+    let mut text_output = String::new();
+    for (i, t) in display_tickets.iter().enumerate() {
+        let opts = FormatOptions {
+            suffix: Some(format_deps(&t.deps)),
+            ..Default::default()
+        };
+        if i > 0 {
+            writeln!(text_output).unwrap();
+        }
+        write!(text_output, "{}", format_ticket_line(t, opts)).unwrap();
+    }
 
     CommandOutput::new(serde_json::Value::Array(json_tickets))
         .with_text(text_output)
