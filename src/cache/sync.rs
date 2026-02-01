@@ -266,7 +266,9 @@ impl TicketCache {
     }
 
     /// Get cached mtimes for a specific item type.
-    async fn get_cached_mtimes_for<T: CacheableItem>(&self) -> Result<HashMap<String, i64>> {
+    pub(crate) async fn get_cached_mtimes_for<T: CacheableItem>(
+        &self,
+    ) -> Result<HashMap<String, i64>> {
         let mut mtimes = HashMap::new();
 
         let query = format!(
@@ -284,6 +286,22 @@ impl TicketCache {
         }
 
         Ok(mtimes)
+    }
+
+    /// Get cached mtimes for all tickets.
+    ///
+    /// Returns a map of ticket ID to mtime_ns for efficient validation
+    /// against disk files.
+    pub async fn get_cached_mtimes(&self) -> Result<HashMap<String, i64>> {
+        self.get_cached_mtimes_for::<TicketMetadata>().await
+    }
+
+    /// Get cached mtimes for all plans.
+    ///
+    /// Returns a map of plan ID to mtime_ns for efficient validation
+    /// against disk files.
+    pub async fn get_cached_plan_mtimes(&self) -> Result<HashMap<String, i64>> {
+        self.get_cached_mtimes_for::<PlanMetadata>().await
     }
 
     /// Check if embeddings need to be regenerated due to model version mismatch.

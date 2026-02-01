@@ -90,41 +90,85 @@ pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
 ///
 /// Returns a `TicketLoadResult` containing both successfully loaded tickets
 /// and any failures that occurred during loading.
+///
+/// Uses mtime comparison to avoid unnecessary file reads - only re-reads
+/// files that have been modified since they were cached.
 pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusError> {
     if let Some(cache) = cache::get_or_init_cache().await {
         if let Ok(cached_tickets) = cache.get_all_tickets().await {
             let mut result = TicketLoadResult::new();
             let items_dir = crate::types::tickets_items_dir();
 
-            // Re-read from disk to validate and capture any failures
-            for ticket in cached_tickets {
-                if let Some(id) = &ticket.id {
-                    let file_path = items_dir.join(format!("{}.md", id));
-                    if file_path.exists() {
-                        match fs::read_to_string(&file_path) {
-                            Ok(content) => match content::parse(&content) {
-                                Ok(mut metadata) => {
-                                    if metadata.id.is_none() {
-                                        metadata.id = Some(id.clone());
-                                    }
-                                    metadata.file_path = Some(file_path);
-                                    result.add_ticket(metadata);
+            // Scan directory to get current file mtimes
+            let disk_files = match cache::TicketCache::scan_directory_static(&items_dir) {
+                Ok(files) => files,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: failed to scan tickets directory: {}. Falling back to file reads.",
+                        e
+                    );
+                    return Ok(get_all_tickets_from_disk());
+                }
+            };
+
+            // Get cached mtimes for comparison
+            let cached_mtimes = match cache.get_cached_mtimes().await {
+                Ok(mtimes) => mtimes,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: failed to get cached mtimes: {}. Falling back to file reads.",
+                        e
+                    );
+                    return Ok(get_all_tickets_from_disk());
+                }
+            };
+
+            // Build a map of cached tickets by ID for quick lookup
+            let cached_map: std::collections::HashMap<_, _> = cached_tickets
+                .into_iter()
+                .filter_map(|t| t.id.clone().map(|id| (id, t)))
+                .collect();
+
+            // Process each file on disk
+            for (id, disk_mtime) in disk_files {
+                let file_path = items_dir.join(format!("{}.md", id));
+
+                // Check if file needs re-reading (not in cache or mtime differs)
+                let needs_reread = match cached_mtimes.get(&id) {
+                    Some(&cached_mtime) => disk_mtime != cached_mtime,
+                    None => true, // Not in cache, must read
+                };
+
+                if needs_reread {
+                    // File modified or not cached - read from disk
+                    match fs::read_to_string(&file_path) {
+                        Ok(content) => match content::parse(&content) {
+                            Ok(mut metadata) => {
+                                if metadata.id.is_none() {
+                                    metadata.id = Some(id.clone());
                                 }
-                                Err(e) => {
-                                    result.add_failure(
-                                        file_path.to_string_lossy().into_owned(),
-                                        e.to_string(),
-                                    );
-                                }
-                            },
+                                metadata.file_path = Some(file_path);
+                                result.add_ticket(metadata);
+                            }
                             Err(e) => {
                                 result.add_failure(
                                     file_path.to_string_lossy().into_owned(),
                                     e.to_string(),
                                 );
                             }
+                        },
+                        Err(e) => {
+                            result.add_failure(
+                                file_path.to_string_lossy().into_owned(),
+                                e.to_string(),
+                            );
                         }
                     }
+                } else if let Some(cached_ticket) = cached_map.get(&id) {
+                    // File unchanged - use cached data, just update file_path
+                    let mut metadata = cached_ticket.clone();
+                    metadata.file_path = Some(file_path);
+                    result.add_ticket(metadata);
                 }
             }
 
