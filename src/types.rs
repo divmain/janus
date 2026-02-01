@@ -237,6 +237,12 @@ impl FromStr for TicketSize {
 
 pub const VALID_SIZES: &[&str] = &["xsmall", "small", "medium", "large", "xlarge"];
 
+/// Default priority value (P2 - normal priority)
+pub const DEFAULT_PRIORITY: u8 = 2;
+
+/// Default priority as a string for CLI arguments
+pub const DEFAULT_PRIORITY_STR: &str = "2";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TicketField {
     Id,
@@ -424,9 +430,11 @@ pub struct TicketMetadata {
 }
 
 impl TicketMetadata {
-    /// Get priority as a number for sorting (defaults to 2)
+    /// Get priority as a number for sorting (defaults to DEFAULT_PRIORITY)
     pub fn priority_num(&self) -> u8 {
-        self.priority.map(|p| p.as_num()).unwrap_or(2)
+        self.priority
+            .map(|p| p.as_num())
+            .unwrap_or(DEFAULT_PRIORITY)
     }
 
     /// Compute the effective depth of this ticket.

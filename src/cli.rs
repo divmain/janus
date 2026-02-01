@@ -4,8 +4,8 @@ use std::io;
 use std::str::FromStr;
 
 use crate::types::{
-    TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES, VALID_SIZES,
-    VALID_STATUSES, VALID_TYPES,
+    DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES,
+    VALID_SIZES, VALID_STATUSES, VALID_TYPES,
 };
 
 #[derive(Parser)]
@@ -38,7 +38,7 @@ pub enum Commands {
         acceptance: Option<String>,
 
         /// Priority (0-4, default: 2)
-        #[arg(short, long, default_value = "2", value_parser = parse_priority)]
+        #[arg(short, long, default_value = DEFAULT_PRIORITY_STR, value_parser = parse_priority)]
         priority: TicketPriority,
 
         /// Type: bug, feature, task, epic, chore (case-insensitive, default: task)
