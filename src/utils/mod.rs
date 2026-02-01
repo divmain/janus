@@ -160,15 +160,20 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
         ));
     }
 
-    // Use the generic identifier validator and convert the error to InvalidPrefix
-    validate_identifier(prefix, "Prefix").map_err(|_| {
-        JanusError::InvalidPrefix(
+    // Use the generic identifier validator, preserving specific error context
+    validate_identifier(prefix, "Prefix").map_err(|e| match e {
+        JanusError::ValidationEmpty(_) => JanusError::InvalidPrefix(
+            prefix.to_string(),
+            "Prefix cannot be empty or only whitespace".to_string(),
+        ),
+        JanusError::ValidationInvalidCharacters(_, value) => JanusError::InvalidPrefix(
             prefix.to_string(),
             format!(
                 "Prefix '{}' contains invalid characters. Use only letters, numbers, hyphens, and underscores",
-                prefix
+                value
             ),
-        )
+        ),
+        other => other,
     })?;
 
     Ok(())
