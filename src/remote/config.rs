@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 
@@ -84,15 +85,31 @@ pub struct AuthConfig {
 }
 
 /// GitHub authentication
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GitHubAuth {
     pub token: String,
 }
 
+impl fmt::Debug for GitHubAuth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GitHubAuth")
+            .field("token", &"[REDACTED]")
+            .finish()
+    }
+}
+
 /// Linear authentication
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct LinearAuth {
     pub api_key: String,
+}
+
+impl fmt::Debug for LinearAuth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LinearAuth")
+            .field("api_key", &"[REDACTED]")
+            .finish()
+    }
 }
 
 /// Hooks configuration
