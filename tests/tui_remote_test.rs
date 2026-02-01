@@ -397,7 +397,7 @@ fn test_linked_tickets_fixture_loads() {
         .unwrap()
         .block_on(async { janus::ticket::get_all_tickets().await })
         .expect("Failed to load tickets from linked_tickets fixture");
-    let tickets = result.tickets;
+    let tickets = result.items;
 
     // Verify we have 3 tickets
     assert_eq!(
@@ -456,7 +456,7 @@ fn test_linked_tickets_fixture_statuses() {
         .unwrap()
         .block_on(async { janus::ticket::get_all_tickets().await })
         .expect("Failed to load tickets from linked_tickets fixture");
-    let tickets = result.tickets;
+    let tickets = result.items;
 
     // Verify statuses
     let linear_ticket = tickets

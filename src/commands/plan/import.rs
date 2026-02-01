@@ -42,7 +42,7 @@ pub fn cmd_show_import_spec() -> Result<()> {
 async fn check_duplicate_plan_title(title: &str) -> Result<()> {
     let result = get_all_plans().await?;
 
-    for plan in result.plans {
+    for plan in result.items {
         if let Some(ref existing_title) = plan.title
             && existing_title.eq_ignore_ascii_case(title)
         {

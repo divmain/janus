@@ -4,6 +4,7 @@
 //! All functions are async and support caching when available.
 
 use crate::ticket::content;
+use crate::types::LoadResult;
 use crate::utils::DirScanner;
 use crate::{TicketMetadata, cache};
 use std::collections::HashMap;
@@ -12,46 +13,12 @@ use std::path::Path;
 use tokio::fs as tokio_fs;
 
 /// Result of loading tickets from disk, including both successes and failures
-#[derive(Debug, Clone)]
-pub struct TicketLoadResult {
-    /// Successfully loaded tickets
-    pub tickets: Vec<TicketMetadata>,
-    /// Failed files with their error messages (filename, error)
-    pub failed: Vec<(String, String)>,
-}
+pub type TicketLoadResult = LoadResult<TicketMetadata>;
 
 impl TicketLoadResult {
-    /// Create a new empty result
-    pub fn new() -> Self {
-        TicketLoadResult {
-            tickets: Vec::new(),
-            failed: Vec::new(),
-        }
-    }
-
     /// Add a successfully loaded ticket
     pub fn add_ticket(&mut self, ticket: TicketMetadata) {
-        self.tickets.push(ticket);
-    }
-
-    /// Add a failed file with its error
-    pub fn add_failure(&mut self, filename: impl Into<String>, error: impl Into<String>) {
-        self.failed.push((filename.into(), error.into()));
-    }
-
-    /// Check if any failures occurred
-    pub fn has_failures(&self) -> bool {
-        !self.failed.is_empty()
-    }
-
-    /// Get the number of successfully loaded tickets
-    pub fn success_count(&self) -> usize {
-        self.tickets.len()
-    }
-
-    /// Get the number of failed files
-    pub fn failure_count(&self) -> usize {
-        self.failed.len()
+        self.items.push(ticket);
     }
 
     /// Convert to a Result, returning Err if there are failures
@@ -64,19 +31,13 @@ impl TicketLoadResult {
                 .collect();
             Err(crate::error::JanusError::TicketLoadFailed(failure_msgs))
         } else {
-            Ok(self.tickets)
+            Ok(self.items)
         }
     }
 
     /// Get just the tickets, ignoring failures
     pub fn into_tickets(self) -> Vec<TicketMetadata> {
-        self.tickets
-    }
-}
-
-impl Default for TicketLoadResult {
-    fn default() -> Self {
-        Self::new()
+        self.items
     }
 }
 
@@ -288,7 +249,7 @@ pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate
     // Fallback: get all tickets and build map
     let result = get_all_tickets().await?;
     let map: HashMap<_, _> = result
-        .tickets
+        .items
         .into_iter()
         .filter_map(|m| m.id.clone().map(|id| (id, m)))
         .collect();
@@ -300,11 +261,11 @@ pub async fn get_all_tickets_with_map()
 -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError> {
     let result = get_all_tickets().await?;
     let map: HashMap<_, _> = result
-        .tickets
+        .items
         .iter()
         .filter_map(|m| m.id.clone().map(|id| (id, m.clone())))
         .collect();
-    Ok((result.tickets, map))
+    Ok((result.items, map))
 }
 
 /// Get file modification time
@@ -327,7 +288,7 @@ pub async fn get_children_count(ticket_id: &str) -> Result<usize, crate::error::
     // Fallback: scan all tickets and count matches
     let result = get_all_tickets().await?;
     Ok(result
-        .tickets
+        .items
         .iter()
         .filter(|t| t.spawned_from.as_ref() == Some(&ticket_id.to_string()))
         .count())
@@ -348,7 +309,7 @@ pub async fn get_all_children_counts() -> Result<HashMap<String, usize>, crate::
     // Fallback: scan all tickets and build counts map
     let result = get_all_tickets().await?;
     let mut counts: HashMap<String, usize> = HashMap::new();
-    for ticket in &result.tickets {
+    for ticket in &result.items {
         if let Some(parent_id) = &ticket.spawned_from {
             *counts.entry(parent_id.clone()).or_insert(0) += 1;
         }

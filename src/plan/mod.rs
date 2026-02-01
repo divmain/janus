@@ -390,7 +390,7 @@ pub async fn get_all_plans() -> Result<PlanLoadResult> {
 pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
     let result = get_all_plans().await?;
     let map: HashMap<_, _> = result
-        .plans
+        .items
         .into_iter()
         .filter_map(|m| m.id.clone().map(|id| (id, m)))
         .collect();
@@ -401,7 +401,7 @@ pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
 pub async fn get_all_plans_with_map() -> Result<(PlanLoadResult, HashMap<String, PlanMetadata>)> {
     let result = get_all_plans().await?;
     let map: HashMap<_, _> = result
-        .plans
+        .items
         .iter()
         .filter_map(|m| m.id.clone().map(|id| (id, m.clone())))
         .collect();

@@ -502,6 +502,63 @@ pub fn validate_field_name(field: &str, operation: &str) -> crate::error::Result
     Ok(())
 }
 
+/// Generic result type for loading items from disk, including both successes and failures.
+///
+/// This type is used as the basis for `TicketLoadResult` and `PlanLoadResult` via type aliases.
+#[derive(Debug, Clone)]
+pub struct LoadResult<T> {
+    /// Successfully loaded items
+    pub items: Vec<T>,
+    /// Failed files with their error messages (filename, error)
+    pub failed: Vec<(String, String)>,
+}
+
+impl<T> LoadResult<T> {
+    /// Create a new empty result
+    pub fn new() -> Self {
+        LoadResult {
+            items: Vec::new(),
+            failed: Vec::new(),
+        }
+    }
+
+    /// Add a successfully loaded item
+    pub fn add_item(&mut self, item: T) {
+        self.items.push(item);
+    }
+
+    /// Add a failed file with its error
+    pub fn add_failure(&mut self, filename: impl Into<String>, error: impl Into<String>) {
+        self.failed.push((filename.into(), error.into()));
+    }
+
+    /// Check if any failures occurred
+    pub fn has_failures(&self) -> bool {
+        !self.failed.is_empty()
+    }
+
+    /// Get the number of successfully loaded items
+    pub fn success_count(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Get the number of failed files
+    pub fn failure_count(&self) -> usize {
+        self.failed.len()
+    }
+
+    /// Get just the items, ignoring failures
+    pub fn into_items(self) -> Vec<T> {
+        self.items
+    }
+}
+
+impl<T> Default for LoadResult<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

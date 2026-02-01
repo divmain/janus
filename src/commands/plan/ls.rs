@@ -18,7 +18,7 @@ use crate::types::TicketStatus;
 /// * `output_json` - If true, output as JSON
 pub async fn cmd_plan_ls(status_filter: Option<&str>, output_json: bool) -> Result<()> {
     let result = get_all_plans().await?;
-    let plans = result.plans;
+    let plans = result.items;
     let ticket_map = build_ticket_map().await?;
 
     // Parse the status filter if provided

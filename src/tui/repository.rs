@@ -51,7 +51,7 @@ impl TicketRepository {
                             eprintln!("Warning: failed to load {}: {}", file, error);
                         }
                     }
-                    result.tickets
+                    result.items
                 }
             }
         } else {
@@ -61,7 +61,7 @@ impl TicketRepository {
                     eprintln!("Warning: failed to load {}: {}", file, error);
                 }
             }
-            result.tickets
+            result.items
         }
     }
 

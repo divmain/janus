@@ -10,7 +10,7 @@ use crate::ticket::{get_all_children_counts, get_all_tickets};
 /// Output tickets as JSON, optionally filtered with jq syntax
 pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
     let result = get_all_tickets().await?;
-    let tickets = result.tickets;
+    let tickets = result.items;
 
     // Get all children counts in a single query (avoids N+1 pattern)
     let children_counts = get_all_children_counts().await?;
