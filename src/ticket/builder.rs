@@ -240,18 +240,7 @@ impl TicketBuilder {
         let file_path = items_dir.join(format!("{}.md", id));
 
         // Ensure parent directory exists
-        if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to create directory for ticket at {}: {}",
-                        crate::utils::format_relative_path(parent),
-                        e
-                    ),
-                ))
-            })?;
-        }
+        crate::utils::ensure_parent_dir(&file_path)?;
 
         if self.run_hooks {
             let context = HookContext::new()

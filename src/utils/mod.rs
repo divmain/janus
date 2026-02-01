@@ -12,6 +12,37 @@ use uuid::Uuid;
 use crate::error::{JanusError, Result};
 use crate::types::{janus_root, tickets_items_dir};
 
+/// Ensure the parent directory of a path exists, creating it if necessary.
+///
+/// This is a DRY helper that encapsulates the common pattern of:
+/// - Checking if a path has a parent
+/// - Checking if that parent exists
+/// - Creating the directory (and all ancestors) if not
+///
+/// # Arguments
+/// * `path` - The path whose parent directory should exist
+///
+/// # Returns
+/// * `Ok(())` - If the parent directory exists or was created successfully
+/// * `Err(JanusError)` - If directory creation failed
+pub fn ensure_parent_dir(path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to create directory at {}: {}",
+                    format_relative_path(parent),
+                    e
+                ),
+            ))
+        })?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 use std::path::PathBuf;
 

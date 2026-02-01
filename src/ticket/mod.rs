@@ -169,21 +169,7 @@ impl Ticket {
 
     /// Ensure the parent directory exists (blocking - for sync contexts).
     fn ensure_parent_dir(&self) -> Result<()> {
-        if let Some(parent) = self.file_path.parent()
-            && !parent.exists()
-        {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to create directory for ticket at {}: {}",
-                        crate::utils::format_relative_path(parent),
-                        e
-                    ),
-                ))
-            })?;
-        }
-        Ok(())
+        crate::utils::ensure_parent_dir(&self.file_path)
     }
 
     /// Update a field in the ticket's frontmatter.

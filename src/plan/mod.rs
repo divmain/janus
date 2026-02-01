@@ -160,21 +160,7 @@ impl Plan {
 
     /// Ensure the parent directory exists
     fn ensure_parent_dir(&self) -> Result<()> {
-        if let Some(parent) = self.file_path.parent()
-            && !parent.exists()
-        {
-            fs::create_dir_all(parent).map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to create directory for plan at {}: {}",
-                        crate::utils::format_relative_path(parent),
-                        e
-                    ),
-                ))
-            })?;
-        }
-        Ok(())
+        crate::utils::ensure_parent_dir(&self.file_path)
     }
 
     /// Delete the plan file
