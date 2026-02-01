@@ -129,7 +129,6 @@ pub async fn cmd_ls(
     filter_blocked: bool,
     filter_closed: bool,
     filter_active: bool,
-    include_all: bool,
     status_filter: Option<&str>,
     spawned_from: Option<&str>,
     depth: Option<u32>,
@@ -241,11 +240,8 @@ pub async fn cmd_ls(
                     || is_blocked
                     || (filter_closed && is_closed)
                     || (filter_active && !is_closed)
-            } else if include_all {
-                // --all flag passed - show ALL tickets including closed
-                true
             } else {
-                // Default: exclude closed tickets unless --all is specified
+                // Default: exclude closed tickets
                 !is_closed
             }
         })

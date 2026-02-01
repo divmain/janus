@@ -221,10 +221,6 @@ pub enum Commands {
         #[arg(long, conflicts_with_all = ["ready", "blocked", "closed", "status"])]
         active: bool,
 
-        /// Include closed/cancelled tickets in output (deprecated: this is now the default behavior)
-        #[arg(long)]
-        all: bool,
-
         /// Filter by specific status (mutually exclusive with --ready, --blocked, --closed, --active)
         #[arg(long, conflicts_with_all = ["ready", "blocked", "closed", "active"])]
         status: Option<String>,
