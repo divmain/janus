@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
+
+use tokio::sync::Mutex;
 
 use directories::BaseDirs;
 use fastembed::{EmbeddingModel as FastembedModel, InitOptions, TextEmbedding};
@@ -47,11 +49,8 @@ impl EmbeddingModel {
     }
 
     /// Generate embedding for a single text
-    pub fn embed(&self, text: &str) -> Result<Vec<f32>, String> {
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|e| format!("Mutex poisoned: {}", e))?;
+    pub async fn embed(&self, text: &str) -> Result<Vec<f32>, String> {
+        let mut guard = self.inner.lock().await;
 
         let embeddings = guard
             .embed(vec![text], None)
@@ -64,11 +63,8 @@ impl EmbeddingModel {
     }
 
     /// Generate embeddings for a batch of texts
-    pub fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, String> {
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|e| format!("Mutex poisoned: {}", e))?;
+    pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, String> {
+        let mut guard = self.inner.lock().await;
 
         let texts_vec: Vec<&str> = texts.to_vec();
         guard.embed(texts_vec, None).map_err(|e| format!("{}", e))
@@ -96,18 +92,21 @@ pub fn get_embedding_model() -> Result<&'static EmbeddingModel, String> {
 }
 
 /// Generate embedding for a single text (convenience function)
-pub fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
+pub async fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
     let model = get_embedding_model()?;
-    model.embed(text)
+    model.embed(text).await
 }
 
 /// Generate embedding for a ticket with title and optional body
-pub fn generate_ticket_embedding(title: &str, body: Option<&str>) -> Result<Vec<f32>, String> {
+pub async fn generate_ticket_embedding(
+    title: &str,
+    body: Option<&str>,
+) -> Result<Vec<f32>, String> {
     let full_text = match body {
         Some(b) => format!("{}\n\n{}", title, b),
         None => title.to_string(),
     };
-    generate_embedding(&full_text)
+    generate_embedding(&full_text).await
 }
 
 /// Compute cosine similarity between two embeddings
@@ -138,13 +137,13 @@ mod tests {
         assert_eq!(EMBEDDING_DIMENSIONS, 768);
     }
 
-    #[test]
-    fn test_ticket_embedding() {
+    #[tokio::test]
+    async fn test_ticket_embedding() {
         let title = "Test Ticket";
         let body = "This is a test body";
 
         // Note: This test will download the model on first run (~161MB)
-        let embedding = generate_ticket_embedding(title, Some(body));
+        let embedding = generate_ticket_embedding(title, Some(body)).await;
 
         // The model download might fail in test environments, so we just check
         // that we get a result (either Ok or Err)
@@ -162,15 +161,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_similar_texts_have_similar_embeddings() {
+    #[tokio::test]
+    async fn test_similar_texts_have_similar_embeddings() {
         let text1 = "Rust programming language";
         let text2 = "The Rust programming language is great";
         let text3 = "Python is a different language";
 
-        let emb1 = generate_embedding(text1);
-        let emb2 = generate_embedding(text2);
-        let emb3 = generate_embedding(text3);
+        let emb1 = generate_embedding(text1).await;
+        let emb2 = generate_embedding(text2).await;
+        let emb3 = generate_embedding(text3).await;
 
         // If we can generate embeddings, check similarity
         if let (Ok(e1), Ok(e2), Ok(e3)) = (emb1, emb2, emb3) {

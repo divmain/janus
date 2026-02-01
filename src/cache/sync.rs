@@ -462,7 +462,7 @@ impl TicketCache {
             let title = ticket.title.as_deref().unwrap_or("");
             let body = ticket.body.as_deref();
 
-            match generate_ticket_embedding(title, body) {
+            match generate_ticket_embedding(title, body).await {
                 Ok(embedding) => {
                     // Update the embedding in the cache
                     if let Err(e) = self.update_ticket_embedding(ticket_id, &embedding).await {

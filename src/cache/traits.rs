@@ -152,25 +152,25 @@ impl CacheableItem for TicketMetadata {
         let body = self.body.clone();
         let size = self.size.map(|s| s.to_string());
 
-        // Generate embedding when semantic-search feature is enabled
-        #[cfg(feature = "semantic-search")]
-        let embedding_blob = {
-            let title_ref = title.as_deref().unwrap_or("");
-            let body_ref = body.as_deref();
-            match generate_ticket_embedding(title_ref, body_ref) {
-                Ok(embedding) => Some(embedding_to_blob(&embedding)),
-                Err(e) => {
-                    eprintln!("Warning: failed to generate embedding for ticket: {}", e);
-                    None
-                }
-            }
-        };
-
-        #[cfg(not(feature = "semantic-search"))]
-        let _embedding_blob: Option<Vec<u8>> = None;
-
         async move {
             let ticket_id = ticket_id?;
+
+            // Generate embedding when semantic-search feature is enabled
+            #[cfg(feature = "semantic-search")]
+            let embedding_blob = {
+                let title_ref = title.as_deref().unwrap_or("");
+                let body_ref = body.as_deref();
+                match generate_ticket_embedding(title_ref, body_ref).await {
+                    Ok(embedding) => Some(embedding_to_blob(&embedding)),
+                    Err(e) => {
+                        eprintln!("Warning: failed to generate embedding for ticket: {}", e);
+                        None
+                    }
+                }
+            };
+
+            #[cfg(not(feature = "semantic-search"))]
+            let _embedding_blob: Option<Vec<u8>> = None;
 
             #[cfg(feature = "semantic-search")]
             {

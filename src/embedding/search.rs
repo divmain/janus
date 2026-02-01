@@ -41,7 +41,9 @@ impl TicketCache {
     #[cfg(feature = "semantic-search")]
     pub async fn semantic_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         // Generate query embedding
-        let query_embedding = generate_embedding(query).map_err(JanusError::EmbeddingModel)?;
+        let query_embedding = generate_embedding(query)
+            .await
+            .map_err(JanusError::EmbeddingModel)?;
 
         // Convert embedding to blob for SQL query
         let embedding_blob = embedding_to_blob(&query_embedding);
