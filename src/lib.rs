@@ -29,7 +29,10 @@ pub mod embedding;
 
 pub use entity::Entity;
 pub use error::{JanusError, Result};
-pub use hooks::{HookContext, HookEvent, context_to_env, run_post_hooks, run_pre_hooks};
+pub use hooks::{
+    HookContext, HookEvent, context_to_env, run_post_hooks, run_post_hooks_async, run_pre_hooks,
+    run_pre_hooks_async,
+};
 pub use plan::parser::parse_plan_content;
 pub use plan::types::{FreeFormSection, Phase, PhaseStatus, PlanMetadata, PlanSection, PlanStatus};
 pub use plan::{

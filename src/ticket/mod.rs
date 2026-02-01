@@ -18,7 +18,10 @@ pub use repository::{
 
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{
+    HookContext, HookEvent, run_post_hooks, run_post_hooks_async, run_pre_hooks,
+    run_pre_hooks_async,
+};
 use crate::parser::parse_document;
 use crate::ticket::content::validate_field_name;
 use crate::ticket::locator::TicketLocator;
@@ -346,7 +349,7 @@ impl Ticket {
 
         let context = self.hook_context();
 
-        run_pre_hooks(HookEvent::PreDelete, &context)?;
+        run_pre_hooks_async(HookEvent::PreDelete, &context).await?;
 
         tokio_fs::remove_file(&self.file_path).await.map_err(|e| {
             JanusError::Io(std::io::Error::new(
@@ -359,7 +362,7 @@ impl Ticket {
             ))
         })?;
 
-        run_post_hooks(HookEvent::PostDelete, &context);
+        run_post_hooks_async(HookEvent::PostDelete, &context).await;
 
         Ok(())
     }

@@ -36,7 +36,7 @@ rand = "0.9"
 uuid = { version = "1.11", features = ["v4"] }
 
 # Async runtime for HTTP clients
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "process", "time"] }
 futures = "0.3"
 async-trait = "0.1"
 

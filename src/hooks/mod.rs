@@ -35,9 +35,10 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use tokio::process::Command as TokioCommand;
+use tokio::time::timeout;
 use wait_timeout::ChildExt;
 
 pub use types::{HookContext, HookEvent};
@@ -117,6 +118,68 @@ pub fn run_post_hooks(event: HookEvent, context: &HookContext) {
     }
 }
 
+/// Run pre-operation hooks for the given event (async version).
+///
+/// Pre-hooks can abort the operation by returning a non-zero exit code.
+/// If any pre-hook fails, this function returns an error.
+///
+/// # Arguments
+/// * `event` - The hook event to run
+/// * `context` - The context to pass to the hook script
+///
+/// # Returns
+/// * `Ok(())` if all hooks succeeded or no hooks are configured
+/// * `Err(JanusError::PreHookFailed)` if a hook failed
+pub async fn run_pre_hooks_async(event: HookEvent, context: &HookContext) -> Result<()> {
+    if !event.is_pre_hook() {
+        return Ok(());
+    }
+
+    let config = Config::load()?;
+    if !config.hooks.enabled {
+        return Ok(());
+    }
+
+    if let Some(script_name) = config.hooks.get_script(event.as_str()) {
+        execute_hook_async(event, script_name, context, &config, true).await?;
+    }
+
+    Ok(())
+}
+
+/// Run post-operation hooks for the given event (async version).
+///
+/// Post-hooks run after the operation completes. Failures are logged as warnings
+/// but do not return errors.
+///
+/// # Arguments
+/// * `event` - The hook event to run
+/// * `context` - The context to pass to the hook script
+pub async fn run_post_hooks_async(event: HookEvent, context: &HookContext) {
+    if event.is_pre_hook() {
+        return;
+    }
+
+    let config = match Config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Warning: failed to load config for hooks: {}", e);
+            return;
+        }
+    };
+
+    if !config.hooks.enabled {
+        return;
+    }
+
+    if let Some(script_name) = config.hooks.get_script(event.as_str())
+        && let Err(e) = execute_hook_async(event, script_name, context, &config, false).await
+    {
+        log_hook_failure(script_name, &e);
+        eprintln!("Warning: post-hook '{}' failed: {}", script_name, e);
+    }
+}
+
 /// Execute a hook script with the given context.
 ///
 /// # Arguments
@@ -164,7 +227,7 @@ fn execute_hook(
     let context_with_event = context.clone().with_event(event);
     let env_vars = context_to_env(&context_with_event, &j_root);
 
-    let mut cmd = Command::new(&script_path);
+    let mut cmd = std::process::Command::new(&script_path);
     cmd.envs(env_vars);
     cmd.current_dir(&j_root);
 
@@ -191,7 +254,10 @@ fn execute_hook(
             }
         }
     } else {
-        let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        let mut child = cmd
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
 
         match child.wait_timeout(Duration::from_secs(timeout_secs))? {
             Some(status) => {
@@ -231,6 +297,134 @@ fn execute_hook(
                     Err(e) => eprintln!(
                         "Warning: error waiting for hook '{}' cleanup: {}",
                         script_name, e
+                    ),
+                }
+
+                return Err(JanusError::HookTimeout {
+                    hook_name: script_name.to_string(),
+                    seconds: timeout_secs,
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Execute a hook script with the given context (async version).
+///
+/// # Arguments
+/// * `event` - The hook event being run
+/// * `script_name` - The name of the script (relative to .janus/hooks/)
+/// * `context` - The context to pass to the hook script
+/// * `config` - The configuration containing hook settings
+/// * `is_pre_hook` - Whether this is a pre-hook (affects error handling)
+///
+/// # Returns
+/// * `Ok(())` if the hook succeeded
+/// * `Err` if the hook failed and is_pre_hook is true
+async fn execute_hook_async(
+    event: HookEvent,
+    script_name: &str,
+    context: &HookContext,
+    config: &Config,
+    is_pre_hook: bool,
+) -> Result<()> {
+    if script_name.contains('/') || script_name.contains('\\') || script_name.contains('\0') {
+        return Err(JanusError::HookSecurity("Invalid script name".to_string()));
+    }
+
+    let j_root = janus_root();
+    let hooks_dir = j_root.join(HOOKS_DIR).canonicalize()?;
+    let script_path = hooks_dir.join(script_name);
+
+    if !script_path.exists() {
+        return Err(JanusError::HookScriptNotFound(script_path));
+    }
+
+    // Canonicalize the script path to resolve any symlinks (especially important on macOS
+    // where /var is a symlink to /private/var)
+    let script_path = script_path.canonicalize()?;
+
+    // Security check: ensure the canonicalized script path is still within the hooks directory
+    if !script_path.starts_with(&hooks_dir) {
+        return Err(JanusError::HookSecurity(format!(
+            "Script path '{}' resolves outside hooks directory",
+            crate::utils::format_relative_path(&script_path)
+        )));
+    }
+
+    // Use the event parameter to override context.event for env vars
+    let context_with_event = context.clone().with_event(event);
+    let env_vars = context_to_env(&context_with_event, &j_root);
+
+    let mut cmd = TokioCommand::new(&script_path);
+    cmd.envs(env_vars);
+    cmd.current_dir(&j_root);
+
+    let timeout_secs = config.hooks.timeout;
+
+    if timeout_secs == 0 {
+        let output = cmd.output().await?;
+
+        if !output.status.success() {
+            let exit_code = output.status.code().unwrap_or(-1);
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+            if is_pre_hook {
+                return Err(JanusError::PreHookFailed {
+                    hook_name: script_name.to_string(),
+                    exit_code,
+                    message: stderr,
+                });
+            } else {
+                return Err(JanusError::PostHookFailed {
+                    hook_name: script_name.to_string(),
+                    message: stderr,
+                });
+            }
+        }
+    } else {
+        let mut child = cmd.spawn()?;
+
+        match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
+            Ok(Ok(status)) => {
+                let output = child.wait_with_output().await?;
+
+                if !status.success() {
+                    let exit_code = status.code().unwrap_or(-1);
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+                    if is_pre_hook {
+                        return Err(JanusError::PreHookFailed {
+                            hook_name: script_name.to_string(),
+                            exit_code,
+                            message: stderr,
+                        });
+                    } else {
+                        return Err(JanusError::PostHookFailed {
+                            hook_name: script_name.to_string(),
+                            message: stderr,
+                        });
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                return Err(JanusError::Io(e));
+            }
+            Err(_) => {
+                if let Err(e) = child.kill().await {
+                    eprintln!(
+                        "Warning: failed to kill timed-out hook '{}': {}",
+                        script_name, e
+                    );
+                }
+                // Give it a moment to clean up
+                match timeout(Duration::from_secs(5), child.wait()).await {
+                    Ok(_) => {}
+                    Err(_) => eprintln!(
+                        "Warning: hook '{}' did not terminate after SIGKILL",
+                        script_name
                     ),
                 }
 
