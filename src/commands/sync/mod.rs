@@ -103,7 +103,7 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
 
     let default_remote = config.default_remote.as_ref().ok_or_else(|| {
         JanusError::Config(
-            "No default_remote configured. Run: janus config set default_remote <platform:org>"
+            "No default.remote configured. Run: janus config set default.remote <platform:org>"
                 .to_string(),
         )
     })?;

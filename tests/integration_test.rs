@@ -730,7 +730,7 @@ fn test_config_show_empty() {
 fn test_config_set_default_remote() {
     let janus = JanusTest::new();
 
-    janus.run_success(&["config", "set", "default_remote", "github:myorg/myrepo"]);
+    janus.run_success(&["config", "set", "default.remote", "github:myorg/myrepo"]);
     let output = janus.run_success(&["config", "show"]);
     assert!(output.contains("github"));
     assert!(output.contains("myorg"));
@@ -740,7 +740,7 @@ fn test_config_set_default_remote() {
 fn test_config_set_linear_default_remote() {
     let janus = JanusTest::new();
 
-    janus.run_success(&["config", "set", "default_remote", "linear:myorg"]);
+    janus.run_success(&["config", "set", "default.remote", "linear:myorg"]);
     let output = janus.run_success(&["config", "show"]);
     assert!(output.contains("linear"));
     assert!(output.contains("myorg"));
@@ -766,7 +766,7 @@ fn test_config_set_invalid_key() {
 fn test_config_set_invalid_default_remote_format() {
     let janus = JanusTest::new();
 
-    let stderr = janus.run_failure(&["config", "set", "default_remote", "invalid"]);
+    let stderr = janus.run_failure(&["config", "set", "default.remote", "invalid"]);
     assert!(stderr.contains("invalid") || stderr.contains("format"));
 }
 
@@ -774,7 +774,7 @@ fn test_config_set_invalid_default_remote_format() {
 fn test_config_file_created() {
     let janus = JanusTest::new();
 
-    janus.run_success(&["config", "set", "default_remote", "github:owner/repo"]);
+    janus.run_success(&["config", "set", "default.remote", "github:owner/repo"]);
 
     let config_path = janus.temp_dir.path().join(".janus").join("config.yaml");
     assert!(config_path.exists(), "Config file should be created");
@@ -838,9 +838,9 @@ fn test_push_not_configured() {
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     let stderr = janus.run_failure(&["remote", "push", &id]);
-    // Should fail due to no default_remote config
+    // Should fail due to no default.remote config
     assert!(
-        stderr.contains("not configured") || stderr.contains("default_remote"),
+        stderr.contains("not configured") || stderr.contains("default.remote"),
         "Should fail due to missing config: {}",
         stderr
     );

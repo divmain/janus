@@ -62,9 +62,9 @@ fn test_push_not_configured() {
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
     let stderr = janus.run_failure(&["remote", "push", &id]);
-    // Should fail due to no default_remote config
+    // Should fail due to no default.remote config
     assert!(
-        stderr.contains("not configured") || stderr.contains("default_remote"),
+        stderr.contains("not configured") || stderr.contains("default.remote"),
         "Should fail due to missing config: {}",
         stderr
     );

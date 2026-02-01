@@ -466,7 +466,7 @@ pub enum ConfigAction {
     },
     /// Set a configuration value
     Set {
-        /// Configuration key (github.token, linear.api_key, default_remote)
+        /// Configuration key (github.token, linear.api_key, default.remote)
         key: String,
         /// Value to set
         value: String,
@@ -476,7 +476,7 @@ pub enum ConfigAction {
     },
     /// Get a configuration value
     Get {
-        /// Configuration key (github.token, linear.api_key, default_remote)
+        /// Configuration key (github.token, linear.api_key, default.remote)
         key: String,
         /// Output as JSON
         #[arg(long)]

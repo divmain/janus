@@ -10,6 +10,20 @@ use super::print_json;
 use crate::error::{JanusError, Result};
 use crate::remote::config::{Config, Platform};
 
+/// Validate a config key and convert underscore notation to dot notation suggestion
+fn validate_config_key(key: &str) -> Result<&str> {
+    // Check if key uses underscore notation that should be dot notation
+    // Only the first underscore should be replaced with a dot (e.g., linear_api_key -> linear.api_key)
+    if let Some(pos) = key.find('_') {
+        let dot_version = format!("{}.{}", &key[..pos], &key[pos + 1..]);
+        return Err(JanusError::Config(format!(
+            "invalid config key '{}'. Use dot notation: '{}'",
+            key, dot_version
+        )));
+    }
+    Ok(key)
+}
+
 /// Mask a sensitive value by showing only the first 2 and last 2 characters
 fn mask_sensitive_value(value: &str) -> String {
     if value.len() > 4 {
@@ -94,6 +108,8 @@ pub fn cmd_config_show(output_json: bool) -> Result<()> {
 
 /// Set a configuration value
 pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
+    validate_config_key(key)?;
+
     let mut config = Config::load()?;
 
     match key {
@@ -123,7 +139,7 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
                 println!("Set {}", "linear.api_key".cyan());
             }
         }
-        "default.remote" | "default_remote" => {
+        "default.remote" => {
             // Format: "platform:org" or "platform:org/repo"
             let (platform, rest) = parse_default_remote(value)?;
             let (org, repo) = if let Some(idx) = rest.find('/') {
@@ -145,13 +161,13 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
             } else if let Some(r) = repo {
                 println!(
                     "Set {} to {}:{}/{}",
-                    "default_remote".cyan(),
+                    "default.remote".cyan(),
                     platform,
                     org,
                     r
                 );
             } else {
-                println!("Set {} to {}:{}", "default_remote".cyan(), platform, org);
+                println!("Set {} to {}:{}", "default.remote".cyan(), platform, org);
             }
         }
         _ => {
@@ -189,6 +205,8 @@ fn parse_default_remote(value: &str) -> Result<(Platform, String)> {
 
 /// Get a specific configuration value
 pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
+    validate_config_key(key)?;
+
     let config = Config::load()?;
 
     match key {
@@ -233,7 +251,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                 return Err(JanusError::Config("linear.api_key not set".to_string()));
             }
         }
-        "default.remote" | "default_remote" => {
+        "default.remote" => {
             if let Some(ref default) = config.default_remote {
                 let value = if let Some(ref repo) = default.repo {
                     format!("{}:{}/{}", default.platform, default.org, repo)
@@ -250,7 +268,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                     println!("{}", value);
                 }
             } else {
-                return Err(JanusError::Config("default_remote not set".to_string()));
+                return Err(JanusError::Config("default.remote not set".to_string()));
             }
         }
         _ => {
