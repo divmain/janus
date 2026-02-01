@@ -34,6 +34,10 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
 
     if let Some(filter_expr) = filter {
         // Spawn jq to process the filter
+        // NOTE: The filter expression is passed directly to the jq binary via
+        // Command::args(), which does NOT perform shell interpolation. This
+        // prevents shell injection attacks since arguments are passed directly
+        // to the process without being interpreted by a shell.
         let filter_str = format!("select({})", filter_expr);
 
         let mut child = Command::new("jq")
