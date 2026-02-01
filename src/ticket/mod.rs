@@ -78,7 +78,7 @@ impl Ticket {
                 e.kind(),
                 format!(
                     "Failed to read ticket at {}: {}",
-                    self.file_path.display(),
+                    crate::utils::format_relative_path(&self.file_path),
                     e
                 ),
             ))
@@ -102,7 +102,7 @@ impl Ticket {
                 e.kind(),
                 format!(
                     "Failed to write ticket at {}: {}",
-                    self.file_path.display(),
+                    crate::utils::format_relative_path(&self.file_path),
                     e
                 ),
             ))
@@ -119,7 +119,7 @@ impl Ticket {
                     e.kind(),
                     format!(
                         "Failed to create directory for ticket at {}: {}",
-                        parent.display(),
+                        crate::utils::format_relative_path(parent),
                         e
                     ),
                 ))
@@ -259,7 +259,7 @@ impl Ticket {
             JanusError::InvalidFormat(format!(
                 "Failed to parse ticket {} at {}: {}",
                 self.id,
-                self.file_path.display(),
+                crate::utils::format_relative_path(&self.file_path),
                 e
             ))
         })?;
@@ -313,7 +313,7 @@ impl Entity for Ticket {
                 e.kind(),
                 format!(
                     "Failed to delete ticket at {}: {}",
-                    self.file_path.display(),
+                    crate::utils::format_relative_path(&self.file_path),
                     e
                 ),
             ))

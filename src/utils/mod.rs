@@ -10,13 +10,36 @@ use std::process::Command;
 use uuid::Uuid;
 
 use crate::error::{JanusError, Result};
-use crate::types::tickets_items_dir;
+use crate::types::{janus_root, tickets_items_dir};
 
 #[cfg(test)]
 use std::path::PathBuf;
 
 // Re-export DirScanner for convenience
 pub use dir_scanner::DirScanner;
+
+/// Format a path for display by making it relative to the janus root directory.
+///
+/// This is used for user-facing output (error messages, CLI output) to avoid
+/// exposing sensitive directory structures like usernames and internal paths.
+///
+/// # Arguments
+/// * `path` - The path to format
+///
+/// # Returns
+/// A String containing the relative path, or the original path if it cannot be made relative
+///
+/// # Example
+/// ```rust,ignore
+/// let full_path = PathBuf::from("/home/user/project/.janus/items/ticket.md");
+/// let display = format_relative_path(&full_path);
+/// // display == ".janus/items/ticket.md"
+/// ```
+pub fn format_relative_path(path: &Path) -> String {
+    path.strip_prefix(janus_root())
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path.display().to_string())
+}
 
 /// Ensure the tickets directory exists
 pub fn ensure_dir() -> io::Result<()> {
@@ -49,7 +72,7 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
             JanusError::InvalidFormat(format!(
                 "Invalid {} file path: {}",
                 entity_type,
-                file_path.display()
+                format_relative_path(file_path)
             ))
         })
 }

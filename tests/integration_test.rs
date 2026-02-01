@@ -2566,13 +2566,22 @@ fn test_cache_path_command() {
     let path_str = output.trim();
     let cache_path = std::path::PathBuf::from(path_str);
 
-    assert!(cache_path.is_absolute());
-    assert!(cache_path.to_string_lossy().contains("janus"));
+    // After security fix SEC-004, cache path returns relative path for privacy
+    assert!(
+        !cache_path.is_absolute() || cache_path.starts_with(".janus"),
+        "Cache path should be relative for privacy (SEC-004), got: {:?}",
+        cache_path
+    );
+    assert!(
+        cache_path.to_string_lossy().contains("janus"),
+        "Cache path should contain 'janus'"
+    );
     assert!(
         cache_path
             .extension()
             .map(|ext| ext == "db")
-            .unwrap_or(false)
+            .unwrap_or(false),
+        "Cache path should have .db extension"
     );
 }
 
@@ -2601,9 +2610,15 @@ priority: 2
     let _ = janus.run(&["ls"]);
 
     let cache_path_output = janus.run_success(&["cache", "path"]);
-    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
+    let cache_path_relative = std::path::PathBuf::from(cache_path_output.trim());
+    // Resolve relative path against temp directory (SEC-004: cache path now returns relative)
+    let cache_path = janus.temp_dir.path().join(&cache_path_relative);
 
-    assert!(cache_path.exists(), "Cache file should exist after ls");
+    assert!(
+        cache_path.exists(),
+        "Cache file should exist after ls: {:?}",
+        cache_path
+    );
 
     let corrupted_data = b"This is corrupted database data, not SQLite format";
     fs::write(&cache_path, corrupted_data).unwrap();
@@ -2648,7 +2663,9 @@ priority: 2
     let _ = janus.run(&["ls"]);
 
     let cache_path_output = janus.run_success(&["cache", "path"]);
-    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
+    let cache_path_relative = std::path::PathBuf::from(cache_path_output.trim());
+    // Resolve relative path against temp directory (SEC-004: cache path now returns relative)
+    let cache_path = janus.temp_dir.path().join(&cache_path_relative);
 
     fs::write(&cache_path, b"corrupted data").unwrap();
 
@@ -2721,7 +2738,9 @@ priority: 2
     let _ = janus.run(&["ls"]);
 
     let cache_path_output = janus.run_success(&["cache", "path"]);
-    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
+    let cache_path_relative = std::path::PathBuf::from(cache_path_output.trim());
+    // Resolve relative path against temp directory (SEC-004: cache path now returns relative)
+    let cache_path = janus.temp_dir.path().join(&cache_path_relative);
 
     let corrupt_content = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA];
     fs::write(&cache_path, &corrupt_content).unwrap();

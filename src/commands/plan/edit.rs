@@ -28,7 +28,10 @@ pub async fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
         open_in_editor(&plan.file_path)?;
     } else {
         // Non-interactive mode: just print the file path
-        println!("Edit plan file: {}", plan.file_path.display());
+        println!(
+            "Edit plan file: {}",
+            crate::utils::format_relative_path(&plan.file_path)
+        );
     }
 
     Ok(())

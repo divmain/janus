@@ -94,7 +94,11 @@ fn log_event_impl(event: Event) -> std::io::Result<()> {
         .map_err(|e| {
             std::io::Error::new(
                 e.kind(),
-                format!("Failed to open events file at {}: {}", path.display(), e),
+                format!(
+                    "Failed to open events file at {}: {}",
+                    crate::utils::format_relative_path(&path),
+                    e
+                ),
             )
         })?;
 
@@ -143,7 +147,11 @@ pub fn read_events() -> std::io::Result<Vec<Event>> {
     let content = std::fs::read_to_string(&path).map_err(|e| {
         std::io::Error::new(
             e.kind(),
-            format!("Failed to read events file at {}: {}", path.display(), e),
+            format!(
+                "Failed to read events file at {}: {}",
+                crate::utils::format_relative_path(&path),
+                e
+            ),
         )
     })?;
     let mut events = Vec::new();
@@ -181,7 +189,11 @@ pub fn clear_events() -> std::io::Result<()> {
         std::fs::remove_file(&path).map_err(|e| {
             std::io::Error::new(
                 e.kind(),
-                format!("Failed to remove events file at {}: {}", path.display(), e),
+                format!(
+                    "Failed to remove events file at {}: {}",
+                    crate::utils::format_relative_path(&path),
+                    e
+                ),
             )
         })?;
     }

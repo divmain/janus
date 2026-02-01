@@ -214,7 +214,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
                     e.kind(),
                     format!(
                         "Failed to create directory for hook at {}: {}",
-                        parent.display(),
+                        crate::utils::format_relative_path(parent),
                         e
                     ),
                 ))
@@ -223,7 +223,11 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
         fs::write(path, content).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to write hook file at {}: {}", path.display(), e),
+                format!(
+                    "Failed to write hook file at {}: {}",
+                    crate::utils::format_relative_path(path),
+                    e
+                ),
             ))
         })?;
 
@@ -235,7 +239,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
                         e.kind(),
                         format!(
                             "Failed to get metadata for hook at {}: {}",
-                            path.display(),
+                            crate::utils::format_relative_path(path),
                             e
                         ),
                     ))
@@ -247,7 +251,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
                     e.kind(),
                     format!(
                         "Failed to set permissions for hook at {}: {}",
-                        path.display(),
+                        crate::utils::format_relative_path(path),
                         e
                     ),
                 ))
@@ -255,7 +259,10 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
         }
 
         if !output_json {
-            println!("  Installed {}", path.display().to_string().green());
+            println!(
+                "  Installed {}",
+                crate::utils::format_relative_path(path).green()
+            );
         }
     }
 
@@ -405,7 +412,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
     if !script_path.starts_with(&hooks_dir) {
         return Err(JanusError::HookSecurity(format!(
             "Script path '{}' resolves outside hooks directory",
-            script_path.display()
+            crate::utils::format_relative_path(&script_path)
         )));
     }
 
@@ -519,7 +526,10 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
             println!("No hook failures logged.");
             println!();
             println!("The hook failure log will appear here after a post-hook fails.");
-            println!("Log file: {}", log_path.display());
+            println!(
+                "Log file: {}",
+                crate::utils::format_relative_path(&log_path)
+            );
         }
         return Ok(());
     }
@@ -527,7 +537,11 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
     let content = fs::read_to_string(&log_path).map_err(|e| {
         JanusError::Io(std::io::Error::new(
             e.kind(),
-            format!("Failed to read hook log at {}: {}", log_path.display(), e),
+            format!(
+                "Failed to read hook log at {}: {}",
+                crate::utils::format_relative_path(&log_path),
+                e
+            ),
         ))
     })?;
     let mut log_lines: Vec<&str> = content.lines().collect();
@@ -595,7 +609,10 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
         println!();
         println!("{} entries shown", count);
         if lines.is_some() {
-            println!("Log file: {}", log_path.display());
+            println!(
+                "Log file: {}",
+                crate::utils::format_relative_path(&log_path)
+            );
         }
     }
 

@@ -66,7 +66,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 #[allow(unused_mut)]
                 let mut text = format!(
                     "Cache status:\n  Database path: {}\n  Cached tickets: {}\n  Database size: {} bytes\n{}",
-                    db_path.display(),
+                    crate::utils::format_relative_path(&db_path),
                     tickets.len(),
                     size,
                     modified_text
@@ -107,7 +107,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 #[allow(unused_mut)]
                 let mut text = format!(
                     "Cache status:\n  Database path: {}\n  Cached tickets: {}",
-                    db_path.display(),
+                    crate::utils::format_relative_path(&db_path),
                     tickets.len()
                 );
 
@@ -172,7 +172,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
             } else if is_permission_error(&e) {
                 format!(
                     "Cache database cannot be accessed due to permission issues.\n\nTo fix this issue:\n  1. Check file permissions for:\n     {}\n  2. Ensure the .janus directory is writable\n  3. Try 'janus cache rebuild' after fixing permissions",
-                    crate::cache::cache_db_path().display()
+                    crate::utils::format_relative_path(&crate::cache::cache_db_path())
                 )
             } else {
                 format!(
@@ -218,14 +218,20 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
     };
 
     if !output_json {
-        println!("Deleting cache database: {}", db_path.display());
+        println!(
+            "Deleting cache database: {}",
+            crate::utils::format_relative_path(&db_path)
+        );
     }
 
     if let Err(e) = crate::cache::delete_cache_files(&db_path) {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
             if !output_json {
                 println!("Error: Permission denied when trying to delete cache.");
-                println!("Please check file permissions for: {}", db_path.display());
+                println!(
+                    "Please check file permissions for: {}",
+                    crate::utils::format_relative_path(&db_path)
+                );
             }
             return Err(e.into());
         }
@@ -236,7 +242,7 @@ pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
         "action": "cache_cleared",
         "database_path": db_path.to_string_lossy(),
         "success": true,
-        "message": format!("Cache database deleted: {}", db_path.display()),
+        "message": format!("Cache database deleted: {}", crate::utils::format_relative_path(&db_path)),
     }))
     .with_text("Cache cleared successfully.\n\nNote: The cache will be rebuilt automatically on the next janus command.")
     .print(output_json)
@@ -253,13 +259,19 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
     if db_path.exists() {
         if !output_json {
-            println!("Found existing cache at: {}", db_path.display());
+            println!(
+                "Found existing cache at: {}",
+                crate::utils::format_relative_path(&db_path)
+            );
         }
         if let Err(e) = crate::cache::delete_cache_files(&db_path) {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 if !output_json {
                     println!("Error: Permission denied when trying to delete existing cache.");
-                    println!("Please check file permissions for: {}", db_path.display());
+                    println!(
+                        "Please check file permissions for: {}",
+                        crate::utils::format_relative_path(&db_path)
+                    );
                 }
                 return Err(e.into());
             }
@@ -377,7 +389,10 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
                 if is_permission_error(&e) {
                     println!("\nPermission denied when accessing .janus directory.");
-                    println!("Cache path: {}", crate::cache::cache_db_path().display());
+                    println!(
+                        "Cache path: {}",
+                        crate::utils::format_relative_path(&crate::cache::cache_db_path())
+                    );
                     println!("Please check file permissions and try again.");
                 }
             }
@@ -397,6 +412,8 @@ pub async fn cmd_cache_path(output_json: bool) -> Result<()> {
     let cache = TicketCache::open().await?;
     let path = cache.cache_db_path();
 
+    // Note: cache path command returns the full path (not relative) because
+    // it's meant to be used programmatically (e.g., for scripts)
     CommandOutput::new(json!({
         "path": path.to_string_lossy(),
     }))

@@ -110,7 +110,7 @@ impl TicketCache {
         {
             eprintln!(
                 "Warning: Cache file appears corrupted at: {}",
-                db_path.display()
+                crate::utils::format_relative_path(&db_path)
             );
             eprintln!("Deleting corrupted cache and attempting rebuild...");
 

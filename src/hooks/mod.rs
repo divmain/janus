@@ -156,7 +156,7 @@ fn execute_hook(
     if !script_path.starts_with(&hooks_dir) {
         return Err(JanusError::HookSecurity(format!(
             "Script path '{}' resolves outside hooks directory",
-            script_path.display()
+            crate::utils::format_relative_path(&script_path)
         )));
     }
 
@@ -253,7 +253,7 @@ fn execute_hook(
 ///
 /// # Returns
 /// A HashMap of environment variable names to values
-pub fn context_to_env(context: &HookContext, janus_root: &Path) -> HashMap<String, String> {
+pub fn context_to_env(context: &HookContext, _janus_root: &Path) -> HashMap<String, String> {
     let mut env = HashMap::new();
 
     if let Some(event) = &context.event {
@@ -271,7 +271,7 @@ pub fn context_to_env(context: &HookContext, janus_root: &Path) -> HashMap<Strin
     if let Some(file_path) = &context.file_path {
         env.insert(
             "JANUS_FILE_PATH".to_string(),
-            file_path.display().to_string(),
+            crate::utils::format_relative_path(file_path),
         );
     }
 
@@ -287,7 +287,7 @@ pub fn context_to_env(context: &HookContext, janus_root: &Path) -> HashMap<Strin
         env.insert("JANUS_NEW_VALUE".to_string(), new_value.clone());
     }
 
-    env.insert("JANUS_ROOT".to_string(), janus_root.display().to_string());
+    env.insert("JANUS_ROOT".to_string(), ".janus".to_string());
 
     env
 }

@@ -246,7 +246,7 @@ impl TicketBuilder {
                     e.kind(),
                     format!(
                         "Failed to create directory for ticket at {}: {}",
-                        parent.display(),
+                        crate::utils::format_relative_path(parent),
                         e
                     ),
                 ))
@@ -264,7 +264,11 @@ impl TicketBuilder {
             std::fs::write(&file_path, &content).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
                     e.kind(),
-                    format!("Failed to write ticket at {}: {}", file_path.display(), e),
+                    format!(
+                        "Failed to write ticket at {}: {}",
+                        crate::utils::format_relative_path(&file_path),
+                        e
+                    ),
                 ))
             })?;
 
@@ -274,7 +278,11 @@ impl TicketBuilder {
             std::fs::write(&file_path, &content).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
                     e.kind(),
-                    format!("Failed to write ticket at {}: {}", file_path.display(), e),
+                    format!(
+                        "Failed to write ticket at {}: {}",
+                        crate::utils::format_relative_path(&file_path),
+                        e
+                    ),
                 ))
             })?;
         }

@@ -132,7 +132,7 @@ pub(crate) fn edit_in_editor(content: &str) -> Result<String> {
                 e.kind(),
                 format!(
                     "Failed to open temp file for editing at {}: {}",
-                    temp_path.display(),
+                    crate::utils::format_relative_path(&temp_path),
                     e
                 ),
             ))
@@ -141,7 +141,11 @@ pub(crate) fn edit_in_editor(content: &str) -> Result<String> {
         .map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to read temp file at {}: {}", temp_path.display(), e),
+                format!(
+                    "Failed to read temp file at {}: {}",
+                    crate::utils::format_relative_path(&temp_path),
+                    e
+                ),
             ))
         })?;
 

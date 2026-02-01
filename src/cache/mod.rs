@@ -56,7 +56,10 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
 
                         if is_corruption_error(&e) {
                             let db_path = cache.cache_db_path();
-                            eprintln!("Cache appears corrupted at: {}", db_path.display());
+                            eprintln!(
+                                "Cache appears corrupted at: {}",
+                                crate::utils::format_relative_path(&db_path)
+                            );
                             eprintln!(
                                 "Run 'janus cache clear' or 'janus cache rebuild' to fix this issue."
                             );

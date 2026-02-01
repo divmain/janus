@@ -176,7 +176,11 @@ impl Config {
         let content = fs::read_to_string(&path).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to read config at {}: {}", path.display(), e),
+                format!(
+                    "Failed to read config at {}: {}",
+                    crate::utils::format_relative_path(&path),
+                    e
+                ),
             ))
         })?;
         let config: Config = serde_yaml_ng::from_str(&content)?;
@@ -194,7 +198,7 @@ impl Config {
                     e.kind(),
                     format!(
                         "Failed to create directory for config at {}: {}",
-                        parent.display(),
+                        crate::utils::format_relative_path(parent),
                         e
                     ),
                 ))
@@ -205,7 +209,11 @@ impl Config {
         fs::write(&path, content).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to write config at {}: {}", path.display(), e),
+                format!(
+                    "Failed to write config at {}: {}",
+                    crate::utils::format_relative_path(&path),
+                    e
+                ),
             ))
         })?;
         Ok(())

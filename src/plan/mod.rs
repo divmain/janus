@@ -106,7 +106,11 @@ impl Plan {
         fs::read_to_string(&self.file_path).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to read plan at {}: {}", self.file_path.display(), e),
+                format!(
+                    "Failed to read plan at {}: {}",
+                    crate::utils::format_relative_path(&self.file_path),
+                    e
+                ),
             ))
         })
     }
@@ -147,7 +151,7 @@ impl Plan {
                 e.kind(),
                 format!(
                     "Failed to write plan at {}: {}",
-                    self.file_path.display(),
+                    crate::utils::format_relative_path(&self.file_path),
                     e
                 ),
             ))
@@ -164,7 +168,7 @@ impl Plan {
                     e.kind(),
                     format!(
                         "Failed to create directory for plan at {}: {}",
-                        parent.display(),
+                        crate::utils::format_relative_path(parent),
                         e
                     ),
                 ))
@@ -191,7 +195,7 @@ impl Plan {
                 e.kind(),
                 format!(
                     "Failed to delete plan at {}: {}",
-                    self.file_path.display(),
+                    crate::utils::format_relative_path(&self.file_path),
                     e
                 ),
             ))
@@ -372,7 +376,7 @@ pub fn ensure_plans_dir() -> Result<()> {
             e.kind(),
             format!(
                 "Failed to create plans directory at {}: {}",
-                p_dir.display(),
+                crate::utils::format_relative_path(&p_dir),
                 e
             ),
         ))
