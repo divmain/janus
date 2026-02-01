@@ -285,3 +285,26 @@ pub async fn get_children_count(ticket_id: &str) -> Result<usize, crate::error::
         .filter(|t| t.spawned_from.as_ref() == Some(&ticket_id.to_string()))
         .count())
 }
+
+/// Get the count of children for all tickets that have spawned children.
+///
+/// This performs a single GROUP BY query instead of N individual queries.
+/// Returns a HashMap mapping parent ticket IDs to their children count.
+pub async fn get_all_children_counts() -> Result<HashMap<String, usize>, crate::error::JanusError> {
+    if let Some(cache) = cache::get_or_init_cache().await {
+        if let Ok(counts) = cache.get_all_children_counts().await {
+            return Ok(counts);
+        }
+        eprintln!("Warning: cache read failed, falling back to file reads");
+    }
+
+    // Fallback: scan all tickets and build counts map
+    let result = get_all_tickets().await?;
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for ticket in &result.tickets {
+        if let Some(parent_id) = &ticket.spawned_from {
+            *counts.entry(parent_id.clone()).or_insert(0) += 1;
+        }
+    }
+    Ok(counts)
+}

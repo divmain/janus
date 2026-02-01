@@ -200,6 +200,28 @@ impl TicketCache {
         }
     }
 
+    /// Get the count of children for all tickets that have spawned children.
+    ///
+    /// This performs a single GROUP BY query instead of N individual queries.
+    /// Returns a HashMap mapping parent ticket IDs to their children count.
+    pub async fn get_all_children_counts(&self) -> Result<HashMap<String, usize>> {
+        let conn = self.create_connection().await?;
+        let mut rows = conn
+            .query(
+                "SELECT spawned_from, COUNT(*) FROM tickets WHERE spawned_from IS NOT NULL GROUP BY spawned_from",
+                (),
+            )
+            .await?;
+
+        let mut counts = HashMap::new();
+        while let Some(row) = rows.next().await? {
+            let parent_id: String = row.get(0)?;
+            let count: i64 = row.get(1)?;
+            counts.insert(parent_id, count as usize);
+        }
+        Ok(counts)
+    }
+
     /// Search tickets using SQL LIKE with optional priority filter.
     ///
     /// Parses priority shorthand (p0-p4) from query and applies as exact filter.

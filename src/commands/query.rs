@@ -5,22 +5,25 @@ use serde_json::json;
 
 use crate::commands::ticket_to_json;
 use crate::error::{JanusError, Result};
-use crate::ticket::{get_all_tickets, get_children_count};
+use crate::ticket::{get_all_children_counts, get_all_tickets};
 
 /// Output tickets as JSON, optionally filtered with jq syntax
 pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
     let result = get_all_tickets().await?;
     let tickets = result.tickets;
 
+    // Get all children counts in a single query (avoids N+1 pattern)
+    let children_counts = get_all_children_counts().await?;
+
     // Build JSON lines output with children_count for each ticket
     let mut json_lines = Vec::new();
     for t in &tickets {
         let mut json_val = ticket_to_json(t);
-        // Add children_count (computed on demand)
+        // Add children_count from the pre-fetched map (O(1) lookup)
         if let Some(id) = &t.id {
-            let children_count = get_children_count(id).await?;
+            let count = children_counts.get(id).copied().unwrap_or(0);
             if let serde_json::Value::Object(ref mut map) = json_val {
-                map.insert("children_count".to_string(), json!(children_count));
+                map.insert("children_count".to_string(), json!(count));
             }
         }
         let json_str = serde_json::to_string(&json_val)
