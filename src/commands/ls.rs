@@ -11,6 +11,29 @@ use crate::plan::Plan;
 use crate::ticket::{build_ticket_map, find_ticket_by_id, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketSize, TicketStatus};
 
+/// Formats a list of tickets for output, handling both JSON and text formats.
+/// This helper consolidates the common output formatting logic used by listing commands.
+fn format_ticket_list(display_tickets: &[TicketMetadata], output_json: bool) -> Result<()> {
+    let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
+
+    // Build text output incrementally to avoid intermediate allocations
+    let mut text_output = String::new();
+    for (i, t) in display_tickets.iter().enumerate() {
+        let opts = FormatOptions {
+            suffix: Some(format_deps(&t.deps)),
+            ..Default::default()
+        };
+        if i > 0 {
+            writeln!(text_output).unwrap();
+        }
+        write!(text_output, "{}", format_ticket_line(t, opts)).unwrap();
+    }
+
+    CommandOutput::new(serde_json::Value::Array(json_tickets))
+        .with_text(text_output)
+        .print(output_json)
+}
+
 /// Options for spawning-related filters
 #[derive(Default)]
 struct SpawningFilters<'a> {
@@ -240,24 +263,7 @@ pub async fn cmd_ls(
         display_tickets.truncate(limit);
     }
 
-    let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
-
-    // Build text output incrementally to avoid intermediate allocations
-    let mut text_output = String::new();
-    for (i, t) in display_tickets.iter().enumerate() {
-        let opts = FormatOptions {
-            suffix: Some(format_deps(&t.deps)),
-            ..Default::default()
-        };
-        if i > 0 {
-            writeln!(text_output).unwrap();
-        }
-        write!(text_output, "{}", format_ticket_line(t, opts)).unwrap();
-    }
-
-    CommandOutput::new(serde_json::Value::Array(json_tickets))
-        .with_text(text_output)
-        .print(output_json)
+    format_ticket_list(&display_tickets, output_json)
 }
 
 /// Check if a ticket matches the spawning filters
@@ -331,24 +337,7 @@ async fn cmd_ls_next_in_plan(
         display_tickets.truncate(limit);
     }
 
-    let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
-
-    // Build text output incrementally to avoid intermediate allocations
-    let mut text_output = String::new();
-    for (i, t) in display_tickets.iter().enumerate() {
-        let opts = FormatOptions {
-            suffix: Some(format_deps(&t.deps)),
-            ..Default::default()
-        };
-        if i > 0 {
-            writeln!(text_output).unwrap();
-        }
-        write!(text_output, "{}", format_ticket_line(t, opts)).unwrap();
-    }
-
-    CommandOutput::new(serde_json::Value::Array(json_tickets))
-        .with_text(text_output)
-        .print(output_json)
+    format_ticket_list(&display_tickets, output_json)
 }
 
 #[cfg(test)]
