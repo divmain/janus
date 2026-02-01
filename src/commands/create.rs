@@ -5,12 +5,16 @@ use crate::error::{JanusError, Result};
 use crate::events::log_ticket_created;
 use crate::ticket::{TicketBuilder, parse_ticket};
 use crate::types::{TicketPriority, TicketSize, TicketType, tickets_items_dir};
+use crate::utils::validate_filename;
 
 /// Compute the depth for a spawned ticket based on the parent's depth.
 /// Returns None if no spawned_from is provided, or parent.depth + 1 otherwise.
 /// If spawned_from is provided but the parent can't be found or read, defaults to depth 1.
 fn compute_depth(spawned_from: Option<&str>) -> Option<u32> {
     let spawned_from_id = spawned_from?;
+
+    // Validate the filename to prevent path traversal attacks
+    validate_filename(spawned_from_id).ok()?;
 
     // Try to find and read the parent ticket from disk
     let parent_path = tickets_items_dir().join(format!("{}.md", spawned_from_id));
