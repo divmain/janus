@@ -21,6 +21,67 @@ const SUPPORTED_FIELDS: &[&str] = &[
     "size",
 ];
 
+/// Validate a priority value
+fn validate_priority(value: &str) -> Result<TicketPriority> {
+    value.parse().map_err(|_| JanusError::InvalidFieldValue {
+        field: "priority".to_string(),
+        value: value.to_string(),
+        valid_values: VALID_PRIORITIES.iter().map(|s| s.to_string()).collect(),
+    })
+}
+
+/// Validate a ticket type value
+fn validate_type(value: &str) -> Result<TicketType> {
+    value.parse().map_err(|_| JanusError::InvalidFieldValue {
+        field: "type".to_string(),
+        value: value.to_string(),
+        valid_values: VALID_TYPES.iter().map(|s| s.to_string()).collect(),
+    })
+}
+
+/// Validate a status value
+fn validate_status(value: &str) -> Result<TicketStatus> {
+    TicketStatus::from_str(value).map_err(|_| JanusError::InvalidFieldValue {
+        field: "status".to_string(),
+        value: value.to_string(),
+        valid_values: VALID_STATUSES.iter().map(|s| s.to_string()).collect(),
+    })
+}
+
+/// Validate a size value
+fn validate_size(value: &str) -> Result<TicketSize> {
+    value.parse().map_err(|_| JanusError::InvalidFieldValue {
+        field: "size".to_string(),
+        value: value.to_string(),
+        valid_values: VALID_SIZES.iter().map(|s| s.to_string()).collect(),
+    })
+}
+
+/// Validate a parent ticket exists and is not self-referencing
+async fn validate_parent(value: &str, ticket: &Ticket) -> Result<String> {
+    let parent_ticket = Ticket::find(value).await?;
+    if parent_ticket.id == ticket.id {
+        return Err(JanusError::SelfParentTicket);
+    }
+    Ok(parent_ticket.id)
+}
+
+/// Validate external_ref (free-form string)
+fn validate_external_ref(value: &str) -> String {
+    value.to_string()
+}
+
+/// Format a field change for display
+fn format_field_change(prev: Option<&str>, new: &str) -> (String, String) {
+    let prev_display = prev.unwrap_or("(none)").to_string();
+    let new_display = if new.is_empty() {
+        "(none)".to_string()
+    } else {
+        new.to_string()
+    };
+    (prev_display, new_display)
+}
+
 /// Set a field on a ticket
 pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id).await?;
@@ -47,13 +108,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
                 value: "(none)".to_string(),
                 valid_values: VALID_PRIORITIES.iter().map(|s| s.to_string()).collect(),
             })?;
-            // Validate priority
-            let _parsed: TicketPriority =
-                value.parse().map_err(|_| JanusError::InvalidFieldValue {
-                    field: field.to_string(),
-                    value: value.to_string(),
-                    valid_values: VALID_PRIORITIES.iter().map(|s| s.to_string()).collect(),
-                })?;
+            validate_priority(value)?;
             new_value = value.to_string();
             ticket.update_field("priority", value)?;
         }
@@ -64,27 +119,17 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
                 value: "(none)".to_string(),
                 valid_values: VALID_TYPES.iter().map(|s| s.to_string()).collect(),
             })?;
-            // Validate type
-            let _parsed: TicketType = value.parse().map_err(|_| JanusError::InvalidFieldValue {
-                field: field.to_string(),
-                value: value.to_string(),
-                valid_values: VALID_TYPES.iter().map(|s| s.to_string()).collect(),
-            })?;
+            validate_type(value)?;
             new_value = value.to_string();
             ticket.update_field("type", value)?;
         }
         "parent" => {
             previous_value = metadata.parent.clone();
             if let Some(value) = value {
-                // Validate parent ticket exists
-                let parent_ticket = Ticket::find(value).await?;
-                if parent_ticket.id == ticket.id {
-                    return Err(JanusError::SelfParentTicket);
-                }
-                new_value = parent_ticket.id.clone();
-                ticket.update_field("parent", &parent_ticket.id)?;
+                let parent_id = validate_parent(value, &ticket).await?;
+                new_value = parent_id.clone();
+                ticket.update_field("parent", &parent_id)?;
             } else {
-                // Clear parent
                 ticket.remove_field("parent")?;
                 new_value = String::new();
             }
@@ -96,23 +141,16 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
                 value: "(none)".to_string(),
                 valid_values: VALID_STATUSES.iter().map(|s| s.to_string()).collect(),
             })?;
-            // Validate status
-            let _parsed: TicketStatus =
-                TicketStatus::from_str(value).map_err(|_| JanusError::InvalidFieldValue {
-                    field: field.to_string(),
-                    value: value.to_string(),
-                    valid_values: VALID_STATUSES.iter().map(|s| s.to_string()).collect(),
-                })?;
+            validate_status(value)?;
             new_value = value.to_string();
             ticket.update_field("status", value)?;
         }
         "external_ref" => {
             previous_value = metadata.external_ref.clone();
             if let Some(value) = value {
-                new_value = value.to_string();
+                new_value = validate_external_ref(value);
                 ticket.update_field("external_ref", value)?;
             } else {
-                // Clear external_ref
                 ticket.remove_field("external_ref")?;
                 new_value = String::new();
             }
@@ -120,17 +158,10 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
         "size" => {
             previous_value = metadata.size.map(|s| s.to_string());
             if let Some(value) = value {
-                // Validate size
-                let _parsed: TicketSize =
-                    value.parse().map_err(|_| JanusError::InvalidFieldValue {
-                        field: field.to_string(),
-                        value: value.to_string(),
-                        valid_values: VALID_SIZES.iter().map(|s| s.to_string()).collect(),
-                    })?;
+                validate_size(value)?;
                 new_value = value.to_string();
                 ticket.update_field("size", value)?;
             } else {
-                // Clear size
                 ticket.remove_field("size")?;
                 new_value = String::new();
             }
@@ -138,12 +169,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
         _ => unreachable!(), // Already validated above
     }
 
-    let prev_display = previous_value.as_deref().unwrap_or("(none)").to_string();
-    let new_display = if new_value.is_empty() {
-        "(none)".to_string()
-    } else {
-        new_value.clone()
-    };
+    let (prev_display, new_display) = format_field_change(previous_value.as_deref(), &new_value);
 
     // Log the event
     log_field_updated(&ticket.id, field, previous_value.as_deref(), &new_value);
