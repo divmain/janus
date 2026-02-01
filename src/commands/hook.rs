@@ -487,29 +487,49 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
 /// Enable hooks
 pub fn cmd_hook_enable(output_json: bool) -> Result<()> {
     let mut config = Config::load()?;
-    config.hooks.enabled = true;
-    config.save()?;
 
-    CommandOutput::new(json!({
-        "action": "enabled",
-        "hooks_enabled": true,
-    }))
-    .with_text(format!("{} Hooks enabled", "✓".green()))
-    .print(output_json)
+    if config.hooks.enabled {
+        CommandOutput::new(json!({
+            "action": "no_change",
+            "hooks_enabled": true,
+        }))
+        .with_text(format!("{} Hooks already enabled", "ℹ".cyan()))
+        .print(output_json)
+    } else {
+        config.hooks.enabled = true;
+        config.save()?;
+
+        CommandOutput::new(json!({
+            "action": "enabled",
+            "hooks_enabled": true,
+        }))
+        .with_text(format!("{} Hooks enabled", "✓".green()))
+        .print(output_json)
+    }
 }
 
 /// Disable hooks
 pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
     let mut config = Config::load()?;
-    config.hooks.enabled = false;
-    config.save()?;
 
-    CommandOutput::new(json!({
-        "action": "disabled",
-        "hooks_enabled": false,
-    }))
-    .with_text(format!("{} Hooks disabled", "✓".red()))
-    .print(output_json)
+    if !config.hooks.enabled {
+        CommandOutput::new(json!({
+            "action": "no_change",
+            "hooks_enabled": false,
+        }))
+        .with_text(format!("{} Hooks already disabled", "ℹ".cyan()))
+        .print(output_json)
+    } else {
+        config.hooks.enabled = false;
+        config.save()?;
+
+        CommandOutput::new(json!({
+            "action": "disabled",
+            "hooks_enabled": false,
+        }))
+        .with_text(format!("{} Hooks disabled", "✓".red()))
+        .print(output_json)
+    }
 }
 
 /// Display hook failure log
