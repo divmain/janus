@@ -379,7 +379,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         let mut offsets = col_scroll_offsets.get();
                         // Get the total count for this column dynamically
                         // We use a large max value and let the view handle clamping
-                        offsets[col_idx] = offsets[col_idx] + 3;
+                        offsets[col_idx] += 3;
                         col_scroll_offsets.set(offsets);
                     }
                 }
@@ -413,7 +413,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                     let mut col_scroll_offsets = col_scroll_offsets;
                     async move {
                         let mut offsets = col_scroll_offsets.get();
-                        offsets[col_idx] = offsets[col_idx] + cards_per_col;
+                        offsets[col_idx] += cards_per_col;
                         col_scroll_offsets.set(offsets);
                     }
                 }

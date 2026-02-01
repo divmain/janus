@@ -64,11 +64,11 @@ impl TicketCache {
         let db_path = cache_db_path();
 
         // Ensure .janus directory exists
-        if let Some(parent) = db_path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .map_err(|_e| CacheError::CacheAccessDenied(parent.to_path_buf()))?;
-            }
+        if let Some(parent) = db_path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent)
+                .map_err(|_e| CacheError::CacheAccessDenied(parent.to_path_buf()))?;
         }
 
         let db_path_str = db_path.to_string_lossy();
