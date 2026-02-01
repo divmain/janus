@@ -19,6 +19,17 @@ use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use regex::Regex;
 use std::sync::Arc;
+use std::sync::LazyLock;
+
+/// Regex to parse priority filter (e.g., "p0", "p1", "P2")
+static PRIORITY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bp([0-4])\b").expect("priority filter regex should be valid")
+});
+
+/// Regex to strip priority shorthand from query
+static PRIORITY_SHORTHAND_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bp[0-4]\b").expect("priority shorthand regex should be valid")
+});
 
 use crate::types::TicketMetadata;
 
@@ -190,15 +201,17 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
 
 /// Parse a priority filter from the query (e.g., "p0", "p1", "P2")
 pub fn parse_priority_filter(query: &str) -> Option<u8> {
-    let re = Regex::new(r"(?i)\bp([0-4])\b").expect("priority filter regex should be valid");
-    re.captures(query)
+    PRIORITY_RE
+        .captures(query)
         .and_then(|c| c.get(1)?.as_str().parse().ok())
 }
 
 /// Strip priority shorthand from the query for fuzzy matching
 pub fn strip_priority_shorthand(query: &str) -> String {
-    let re = Regex::new(r"(?i)\bp[0-4]\b").expect("priority shorthand regex should be valid");
-    re.replace_all(query, "").trim().to_string()
+    PRIORITY_SHORTHAND_RE
+        .replace_all(query, "")
+        .trim()
+        .to_string()
 }
 
 /// Calculate search debounce delay based on ticket count.
