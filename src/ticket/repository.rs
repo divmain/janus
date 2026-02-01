@@ -9,6 +9,7 @@ use crate::{TicketMetadata, cache};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use tokio::fs as tokio_fs;
 
 /// Result of loading tickets from disk, including both successes and failures
 #[derive(Debug, Clone)]
@@ -141,7 +142,7 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
 
                 if needs_reread {
                     // File modified or not cached - read from disk
-                    match fs::read_to_string(&file_path) {
+                    match tokio_fs::read_to_string(&file_path).await {
                         Ok(content) => match content::parse(&content) {
                             Ok(mut metadata) => {
                                 if metadata.id.is_none() {

@@ -31,6 +31,7 @@ use crate::types::TicketMetadata;
 use crate::utils::extract_id_from_path;
 use serde_json;
 use std::path::PathBuf;
+use tokio::fs as tokio_fs;
 
 /// A ticket represents a task, bug, feature, or chore stored as a markdown file.
 ///
@@ -71,7 +72,23 @@ impl Ticket {
         Ok(metadata)
     }
 
-    /// Read the raw content of the ticket file.
+    /// Read the raw content of the ticket file (async).
+    pub async fn read_content_async(&self) -> Result<String> {
+        tokio_fs::read_to_string(&self.file_path)
+            .await
+            .map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to read ticket at {}: {}",
+                        crate::utils::format_relative_path(&self.file_path),
+                        e
+                    ),
+                ))
+            })
+    }
+
+    /// Read the raw content of the ticket file (blocking - for sync contexts).
     pub fn read_content(&self) -> Result<String> {
         std::fs::read_to_string(&self.file_path).map_err(|e| {
             JanusError::Io(std::io::Error::new(
@@ -94,7 +111,25 @@ impl Ticket {
         )
     }
 
-    /// Write raw content without hooks.
+    /// Write raw content without hooks (async).
+    #[allow(dead_code)]
+    async fn write_raw_async(&self, content: &str) -> Result<()> {
+        self.ensure_parent_dir_async().await?;
+        tokio_fs::write(&self.file_path, content)
+            .await
+            .map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to write ticket at {}: {}",
+                        crate::utils::format_relative_path(&self.file_path),
+                        e
+                    ),
+                ))
+            })
+    }
+
+    /// Write raw content without hooks (blocking - for sync contexts).
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
         std::fs::write(&self.file_path, content).map_err(|e| {
@@ -109,7 +144,27 @@ impl Ticket {
         })
     }
 
-    /// Ensure the parent directory exists.
+    /// Ensure the parent directory exists (async).
+    #[allow(dead_code)]
+    async fn ensure_parent_dir_async(&self) -> Result<()> {
+        if let Some(parent) = self.file_path.parent()
+            && !parent.exists()
+        {
+            tokio_fs::create_dir_all(parent).await.map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create directory for ticket at {}: {}",
+                        crate::utils::format_relative_path(parent),
+                        e
+                    ),
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Ensure the parent directory exists (blocking - for sync contexts).
     fn ensure_parent_dir(&self) -> Result<()> {
         if let Some(parent) = self.file_path.parent()
             && !parent.exists()
@@ -281,6 +336,32 @@ impl Ticket {
     /// Check if the ticket file exists.
     pub fn exists(&self) -> bool {
         self.file_path.exists()
+    }
+
+    /// Delete the ticket file (async).
+    pub async fn delete_async(&self) -> Result<()> {
+        if !self.file_path.exists() {
+            return Ok(());
+        }
+
+        let context = self.hook_context();
+
+        run_pre_hooks(HookEvent::PreDelete, &context)?;
+
+        tokio_fs::remove_file(&self.file_path).await.map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to delete ticket at {}: {}",
+                    crate::utils::format_relative_path(&self.file_path),
+                    e
+                ),
+            ))
+        })?;
+
+        run_post_hooks(HookEvent::PostDelete, &context);
+
+        Ok(())
     }
 }
 
