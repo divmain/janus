@@ -241,6 +241,15 @@ impl Ticket {
         )
     }
 
+    /// Check if a value exists in an array field (deps or links).
+    pub fn has_in_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        let field_enum: ArrayField = field.parse()?;
+        let raw_content = self.read_content()?;
+        let metadata = parse(&raw_content)?;
+        let current_array = Self::get_array_field(&metadata, field_enum)?;
+        Ok(current_array.contains(&value.to_string()))
+    }
+
     /// Generic helper for mutating array fields (deps, links).
     fn mutate_array_field<F>(
         &self,

@@ -30,16 +30,37 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
     }
 
     let mut added_count = 0;
+    let mut asymmetric_warnings: Vec<(String, String)> = Vec::new();
 
     // Add links between all pairs
     for ticket in &tickets {
         for other in &tickets {
-            if ticket.id != other.id && ticket.add_to_array_field("links", &other.id)? {
-                added_count += 1;
-                // Log the event for each link added
-                log_link_added(&ticket.id, &other.id);
+            if ticket.id != other.id {
+                let has_existing_link = ticket.has_in_array_field("links", &other.id)?;
+                let other_has_link = other.has_in_array_field("links", &ticket.id)?;
+
+                // Check for asymmetric link before adding
+                if !has_existing_link && other_has_link {
+                    // We're about to add A->B but B->A already exists
+                    // This is expected behavior, but warn about the asymmetry
+                    asymmetric_warnings.push((other.id.clone(), ticket.id.clone()));
+                }
+
+                if ticket.add_to_array_field("links", &other.id)? {
+                    added_count += 1;
+                    // Log the event for each link added
+                    log_link_added(&ticket.id, &other.id);
+                }
             }
         }
+    }
+
+    // Warn about asymmetric links (where only one direction existed before we added)
+    for (from, to) in asymmetric_warnings {
+        eprintln!(
+            "Warning: Link from {} -> {} already existed but not vice versa. Link state is asymmetric.",
+            from, to
+        );
     }
 
     let mut links_updated = serde_json::Map::new();
