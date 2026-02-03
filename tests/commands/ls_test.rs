@@ -208,22 +208,22 @@ fn test_ls_ready_and_blocked_flags() {
 
 #[test]
 #[serial]
-fn test_ls_all_flag() {
+fn test_ls_default_excludes_closed() {
     let janus = JanusTest::new();
 
     let open_id = janus.run_success(&["create", "Open"]).trim().to_string();
     let closed_id = janus.run_success(&["create", "Closed"]).trim().to_string();
     janus.run_success(&["close", &closed_id, "--no-summary"]);
 
-    // Without --all, closed tickets should not appear
-    let output_without_all = janus.run_success(&["ls"]);
-    assert!(output_without_all.contains(&open_id));
-    assert!(!output_without_all.contains(&closed_id));
+    // By default, closed tickets should not appear
+    let output = janus.run_success(&["ls"]);
+    assert!(output.contains(&open_id));
+    assert!(!output.contains(&closed_id));
 
-    // With --all, closed tickets should appear
-    let output_with_all = janus.run_success(&["ls", "--all"]);
-    assert!(output_with_all.contains(&open_id));
-    assert!(output_with_all.contains(&closed_id));
+    // Using --closed shows closed tickets
+    let output_closed = janus.run_success(&["ls", "--closed"]);
+    assert!(!output_closed.contains(&open_id));
+    assert!(output_closed.contains(&closed_id));
 }
 
 #[test]
@@ -389,7 +389,7 @@ fn test_ls_closed_custom_limit() {
 
 #[test]
 #[serial]
-fn test_ls_all_with_other_filters() {
+fn test_ls_closed_with_status_filter() {
     let janus = JanusTest::new();
 
     let open_id = janus
@@ -402,13 +402,13 @@ fn test_ls_all_with_other_filters() {
         .to_string();
     janus.run_success(&["close", &closed_id, "--no-summary"]);
 
-    // --all should show all tickets
-    let output = janus.run_success(&["ls", "--all"]);
-    assert!(output.contains(&open_id));
+    // --closed shows only closed tickets
+    let output = janus.run_success(&["ls", "--closed"]);
+    assert!(!output.contains(&open_id));
     assert!(output.contains(&closed_id));
 
-    // --all with --status should still filter by status
-    let output = janus.run_success(&["ls", "--all", "--status", "complete"]);
+    // --status complete shows only complete tickets
+    let output = janus.run_success(&["ls", "--status", "complete"]);
     assert!(!output.contains(&open_id));
     assert!(output.contains(&closed_id));
 }
