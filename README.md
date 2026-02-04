@@ -490,6 +490,8 @@ Options:
       --external-ref <REF>    External reference (e.g., gh-123)
       --parent <ID>           Parent ticket ID
       --prefix <PREFIX>       Custom prefix for ticket ID (e.g., 'perf' for 'perf-a982')
+      --spawned-from <ID>     ID of ticket this was spawned from (decomposition tracking)
+      --spawn-context <TEXT>  Context explaining why this ticket was spawned
 ```
 
 #### `janus show` / `janus s`
@@ -520,6 +522,24 @@ janus add-note <ID> [NOTE_TEXT]
 
 If no note text provided, reads from stdin.
 
+#### `janus set`
+
+Update any ticket field without opening an editor.
+
+```bash
+janus set <ID> <FIELD> <VALUE>
+
+# Supported fields:
+janus set <ID> priority <0-4>           # Update priority
+janus set <ID> type <TYPE>              # Update type (bug/feature/task/epic/chore)
+janus set <ID> size <SIZE>              # Update size (xs/s/m/l/xl)
+janus set <ID> parent <ID>              # Update parent ticket
+janus set <ID> external-ref <REF>       # Update external reference
+janus set <ID> description <TEXT>       # Update description section
+janus set <ID> design <TEXT>            # Update design notes section
+janus set <ID> acceptance <TEXT>        # Update acceptance criteria section
+```
+
 ### Status Management
 
 #### `janus start`
@@ -532,10 +552,20 @@ janus start <ID>
 
 #### `janus close`
 
-Mark ticket as complete.
+Mark ticket as complete or cancelled.
 
 ```bash
-janus close <ID>
+janus close <ID> [OPTIONS]
+
+Options:
+      --summary <TEXT>     Add completion summary when closing
+      --no-summary         Close without adding a summary
+      --cancel             Mark as cancelled instead of complete
+
+# Examples
+janus close j-a1b2 --summary "Implemented OAuth flow successfully"
+janus close j-a1b2 --no-summary
+janus close j-a1b2 --cancel
 ```
 
 #### `janus reopen`
@@ -608,6 +638,43 @@ Remove a link between tickets.
 janus link remove <ID1> <ID2>
 ```
 
+### Decomposition (Spawning)
+
+Decomposition allows you to track hierarchical ticket relationships - breaking down large tickets into smaller, manageable subtasks.
+
+#### Key Concepts
+
+- **spawned-from**: Track the parent ticket that spawned this one
+- **spawn-context**: Document why the ticket was created (e.g., "Breaking down into smaller pieces")
+- **depth**: Auto-computed decomposition level (0 = root tickets, 1 = direct children, etc.)
+
+#### Creating Spawned Tickets
+
+```bash
+# Create a subtask with spawning metadata
+janus create "Implement OAuth endpoints" \
+  --spawned-from j-parent \
+  --spawn-context "Breaking down authentication feature into smaller tasks"
+
+# Or use the parent flag which also sets spawned-from
+janus create "Subtask" --parent j-parent
+```
+
+#### Querying Spawned Tickets
+
+```bash
+# Show direct children of a ticket
+janus ls --spawned_from j-a1b2
+
+# Show tickets at specific depth levels
+janus ls --depth 0          # Root tickets only
+janus ls --depth 1          # Direct children
+janus ls --max-depth 2      # Tickets up to 2 levels deep
+
+# Visualize spawning relationships
+janus graph --spawn --root j-a1b2
+```
+
 ### Listing
 
 #### `janus ls` / `janus l`
@@ -618,15 +685,20 @@ List tickets with optional filters.
 janus ls [OPTIONS]
 
 Options:
-      --ready          Show tickets ready to work on (no incomplete deps, status=new|next)
-      --blocked        Show tickets with incomplete dependencies
-      --closed         Show recently closed/cancelled tickets
-      --all            Include closed/cancelled tickets in output
-      --status <STATUS> Filter by specific status
-      --triaged <BOOL> Filter by triage status (true|false)
-      --size <SIZE>    Filter by size (can specify multiple: --size small,medium)
-      --limit <N>      Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
-      --json           Output as JSON
+      --ready              Show tickets ready to work on (no incomplete deps, status=new|next)
+      --blocked            Show tickets with incomplete dependencies
+      --closed             Show recently closed/cancelled tickets
+      --all                Include closed/cancelled tickets in output
+      --active             Show only active tickets (exclude closed/cancelled)
+      --status <STATUS>    Filter by specific status
+      --triaged <BOOL>     Filter by triage status (true|false)
+      --size <SIZE>        Filter by size (can specify multiple: --size small,medium)
+      --spawned_from <ID>  Filter to show only tickets spawned from parent
+      --depth <N>          Show tickets at specific decomposition depth (0 = root tickets)
+      --max-depth <N>      Show tickets up to specified depth
+      --limit <N>          Maximum tickets to show (defaults to 20 for --closed, unlimited otherwise)
+      --sort_by <FIELD>    Sort by: priority (default), created, id
+      --json               Output as JSON
 
 # Examples
 janus ls                              # All open tickets
@@ -639,6 +711,9 @@ janus ls --triaged false              # Untriaged tickets (status=new|next, tria
 janus ls --triaged true               # Triaged tickets
 janus ls --ready --blocked            # Show union of ready AND blocked tickets
 janus ls --limit 10                   # Any tickets (limit 10)
+janus ls --depth 0                    # Root tickets only
+janus ls --spawned_from j-a1b2        # Direct children of j-a1b2
+janus ls --sort_by created            # Sort by creation date
 ```
 
 #### `janus next` / `janus n`
@@ -709,6 +784,36 @@ janus query '.priority <= 1'              # high priority only
 janus query '.type == "feature"'          # filter by type
 ```
 
+#### `janus graph`
+
+Visualize ticket relationships as a graph.
+
+```bash
+janus graph [OPTIONS]
+
+Options:
+      --spawn          Show spawning (parent/child) relationships instead of dependencies
+      --root <ID>      Show graph starting from a specific ticket
+      --plan <ID>      Graph all tickets in a plan
+      --format <FMT>   Output format: dot (default) or mermaid
+
+# Examples
+janus graph                               # Dependency graph in DOT format
+janus graph --spawn                       # Spawning graph (parent/child)
+janus graph --root j-a1b2                 # Subtree from j-a1b2
+janus graph --plan plan-a1b2              # Graph all tickets in a plan
+janus graph --format mermaid              # Mermaid format for diagrams
+```
+
+#### `janus doctor`
+
+Health check - scan all tickets for parsing errors or corruption.
+
+```bash
+janus doctor
+janus doctor --json                       # Output as JSON
+```
+
 ### TUI Interfaces
 
 #### `janus view`
@@ -723,9 +828,18 @@ Interactive issue browser with fuzzy search.
 |-----|--------|
 | `t` | Mark ticket as triaged (sets `triaged: true`) |
 | `c` | Cancel ticket (press twice to confirm) |
+| `n` | Add note to ticket |
 | `/` | Search/filter tickets |
 | `j/k` | Navigate tickets |
-| `q` | Quit triage mode (or press `Ctrl+T` again) |
+| `Ctrl+T` | Exit triage mode |
+| `Ctrl+Q` | Quit application |
+
+**Other TUI Shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `y` | Copy ticket ID to clipboard |
+| `PageUp/PageDown` | Scroll in detail view |
 
 Search and filter functionality remain fully available in triage mode.
 
@@ -1025,12 +1139,38 @@ janus plan next plan-a1b2 --count 3
 # Add a new phase
 janus plan add-phase plan-a1b2 "Testing"
 
+# Add phase at specific position
+janus plan add-phase plan-a1b2 "Testing" --after "Phase 1"
+janus plan add-phase plan-a1b2 "Testing" --position 2
+
 # Remove an empty phase
 janus plan remove-phase plan-a1b2 "Testing"
 
 # Remove phase with tickets (requires --force or --migrate)
 janus plan remove-phase plan-a1b2 "Old Phase" --force
 janus plan remove-phase plan-a1b2 "Old Phase" --migrate "New Phase"
+```
+
+### Additional Plan Commands
+
+```bash
+# Delete a plan
+janus plan delete plan-a1b2
+janus plan delete plan-a1b2 --force
+
+# Rename a plan
+janus plan rename plan-a1b2 "New Title"
+
+# Reorder tickets or phases
+janus plan reorder plan-a1b2 --phase "Phase 1"           # Interactive reorder
+janus plan reorder plan-a1b2 --reorder-phases            # Reorder phases
+
+# View import format specification
+janus plan import-spec
+
+# Validate all plan files
+janus plan verify
+janus plan verify --json
 ```
 
 ### Plan Status
@@ -1481,6 +1621,40 @@ MCP tools are automatically available alongside built-in tools. You can manage t
   }
 }
 ```
+
+## Additional Features
+
+Less commonly used features and advanced options:
+
+### Ticket Management
+
+- `janus edit j-a1b2 --json` - Print file path as JSON without opening editor
+- `janus plan edit plan-a1b2 --json` - Print plan file path as JSON
+
+### Plan Management
+
+- `janus plan move-ticket plan-a1b2 j-x1y2 --to-phase "Phase 2" --after j-xyz9` - Move ticket after another
+- `janus plan move-ticket plan-a1b2 j-x1y2 --to-phase "Phase 2" --position 3` - Move to specific position
+- `janus plan add-ticket plan-a1b2 j-x1y2 --after j-xyz9` - Add ticket after another
+- `janus plan add-ticket plan-a1b2 j-x1y2 --position 3` - Add at specific position
+- `janus plan show plan-a1b2 --tickets-only` - Show only ticket list
+- `janus plan show plan-a1b2 --phases-only` - Show only phase summary
+- `janus plan show plan-a1b2 --verbose-phase "Phase 1"` - Show full completion summaries for phase
+
+### Hook Management
+
+- `janus hook log` - View hook failure logs
+- `janus hook log --lines 10` - Show last 10 lines
+- `janus hook log --json` - Output as JSON
+
+### MCP Server
+
+- `janus mcp --version` - Show MCP protocol version
+
+### Remote Sync
+
+- `janus remote browse github` - Browse GitHub issues specifically
+- `janus remote browse linear` - Browse Linear issues specifically
 
 ## Tips
 
