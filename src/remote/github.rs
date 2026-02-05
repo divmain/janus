@@ -129,52 +129,25 @@ impl AsHttpError for GitHubError {
     }
 
     fn is_transient(&self) -> bool {
-        if let Some((status, _)) = self.as_http_error() {
-            if status.is_server_error() {
-                return true;
-            }
-            return false;
-        }
-
-        let error_msg = self.inner.to_string().to_lowercase();
-        error_msg.contains("timed out")
-            || error_msg.contains("timeout")
-            || error_msg.contains("connection")
-            || error_msg.contains("network")
-            || error_msg.contains("service unavailable")
+        use super::error;
+        error::is_github_transient(&self.inner)
     }
 
     fn is_rate_limited(&self) -> bool {
-        if let Some((status, _)) = self.as_http_error() {
-            return status.as_u16() == 403 || status.as_u16() == 429;
-        }
-
-        let error_msg = self.inner.to_string().to_lowercase();
-        error_msg.contains("rate limit") || error_msg.contains("api rate limit exceeded")
+        use super::error;
+        error::is_github_rate_limited(&self.inner)
     }
 
     fn get_retry_after(&self) -> Option<std::time::Duration> {
-        if let Some((status, retry_after)) = self.as_http_error()
-            && (status.as_u16() == 403 || status.as_u16() == 429)
-        {
-            if let Some(seconds) = retry_after {
-                return Some(std::time::Duration::from_secs(seconds));
-            }
-            return Some(std::time::Duration::from_secs(60));
-        }
-        None
+        use super::error;
+        error::get_github_retry_after(&self.inner)
     }
 }
 
 impl From<GitHubError> for JanusError {
     fn from(error: GitHubError) -> Self {
-        GitHubProvider::handle_octocrab_error(error)
-    }
-}
+        use super::error;
 
-impl GitHubProvider {
-    /// Convert a GitHubError to a JanusError
-    fn handle_octocrab_error(error: GitHubError) -> JanusError {
         if error.is_rate_limited() {
             return if let Some(duration) = error.get_retry_after() {
                 JanusError::RateLimited(duration.as_secs())
@@ -183,61 +156,8 @@ impl GitHubProvider {
             };
         }
 
-        match &error.inner {
-            octocrab::Error::GitHub { source, .. } => {
-                let status = source.status_code;
-                let status_text = status.canonical_reason().unwrap_or("Unknown");
-                let mut message = format!(
-                    "GitHub API error ({} {}): {}",
-                    status.as_u16(),
-                    status_text,
-                    source.message
-                );
-
-                if let Some(errors) = &source.errors
-                    && !errors.is_empty()
-                {
-                    message.push_str("\n\nErrors:");
-                    for error in errors {
-                        message.push_str(&format!("\n- {error}"));
-                    }
-                }
-
-                if let Some(doc_url) = &source.documentation_url {
-                    message.push_str(&format!("\n\nDocumentation URL: {doc_url}"));
-                }
-
-                if let Some((_, _)) = error.as_http_error() {
-                    JanusError::Api(message)
-                } else {
-                    JanusError::Api(message)
-                }
-            }
-            octocrab::Error::Http { source, .. } => {
-                JanusError::Api(format!("HTTP error: {source}"))
-            }
-            octocrab::Error::Service { source, .. } => {
-                JanusError::Api(format!("Service error: {source}"))
-            }
-            octocrab::Error::Serde { source, .. } => {
-                JanusError::Api(format!("Serialization error: {source}"))
-            }
-            octocrab::Error::Json { source, .. } => JanusError::Api(format!(
-                "JSON error in {}: {}",
-                source.path(),
-                source.inner()
-            )),
-            octocrab::Error::JWT { source, .. } => {
-                JanusError::Api(format!("JWT error: {source}"))
-            }
-            _ => {
-                if let Some((status, _)) = error.as_http_error() {
-                    JanusError::Api(format!("GitHub API error ({}): {}", status.as_u16(), error))
-                } else {
-                    JanusError::Api(format!("GitHub API error: {error}"))
-                }
-            }
-        }
+        let message = error::build_github_error_message(&error.inner);
+        JanusError::Api(message)
     }
 }
 

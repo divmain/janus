@@ -436,68 +436,50 @@ impl LinearProvider {
     }
 }
 
-/// Wrapper for Linear API errors that implements AsHttpError
+/// Wrapper for Linear API errors that implements AsHttpError.
+///
+/// Uses the shared ApiError type from the error module for common functionality.
 pub struct LinearError {
-    status: Option<reqwest::StatusCode>,
-    retry_after: Option<u64>,
-    message: String,
+    inner: super::error::ApiError,
 }
 
 impl fmt::Display for LinearError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
+        write!(f, "{}", self.inner.message)
     }
 }
 
 impl AsHttpError for LinearError {
     fn as_http_error(&self) -> Option<(reqwest::StatusCode, Option<u64>)> {
-        self.status.map(|s| (s, self.retry_after))
+        self.inner.as_http_error()
     }
 
     fn is_transient(&self) -> bool {
-        if let Some(status) = self.status {
-            return status.is_server_error();
-        }
-        false
+        self.inner.is_transient()
     }
 
     fn is_rate_limited(&self) -> bool {
-        if let Some(status) = self.status {
-            return status.as_u16() == 429;
-        }
-        false
+        self.inner.is_rate_limited()
     }
 
     fn get_retry_after(&self) -> Option<Duration> {
-        if let (Some(status), Some(seconds)) = (self.status, self.retry_after)
-            && status.as_u16() == 429
-        {
-            return Some(Duration::from_secs(seconds));
-        }
-        if self.is_rate_limited() {
-            return Some(Duration::from_secs(60));
-        }
-        None
+        self.inner.get_retry_after()
     }
 }
 
 impl From<reqwest::Error> for LinearError {
     fn from(err: reqwest::Error) -> Self {
         let status = err.status();
-        Self {
-            status,
-            retry_after: None,
-            message: err.to_string(),
-        }
+        let message = err.to_string();
+        let mut error = super::error::ApiError::new(message, "Linear");
+        error.status = status;
+        Self { inner: error }
     }
 }
 
 impl From<LinearError> for JanusError {
     fn from(err: LinearError) -> Self {
-        if let Some(duration) = err.get_retry_after() {
-            return JanusError::RateLimited(duration.as_secs());
-        }
-        JanusError::Api(format!("Linear API error: {}", err.message))
+        err.inner.to_janus_error()
     }
 }
 
@@ -531,15 +513,18 @@ impl LinearProvider {
             let status = response.status();
 
             if !status.is_success() {
-                return Err(LinearError {
-                    status: Some(status),
-                    retry_after: response
-                        .headers()
-                        .get("Retry-After")
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|s| s.parse::<u64>().ok()),
-                    message: format!("HTTP {status}"),
-                });
+                let retry_after = response
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
+                let error = super::error::ApiError::with_status(
+                    format!("HTTP {status}"),
+                    "Linear",
+                    status,
+                )
+                .with_retry_after(retry_after.unwrap_or(60));
+                return Err(LinearError { inner: error });
             }
 
             Ok(response)
