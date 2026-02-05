@@ -4,7 +4,6 @@ use iocraft::prelude::{KeyCode, State};
 
 use crate::tui::board::model::COLUMNS;
 
-use super::actions::get_ticket_at;
 use super::context::BoardHandlerContext;
 use super::HandleResult;
 
@@ -54,7 +53,7 @@ fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
         return;
     }
 
-    if let Some(ticket) = get_ticket_at(ctx, col, row)
+    if let Some(ticket) = ctx.get_ticket_at(col, row)
         && let Some(id) = &ticket.id
     {
         let next_status = COLUMNS[col + 1];
@@ -71,7 +70,7 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
         return;
     }
 
-    if let Some(ticket) = get_ticket_at(ctx, col, row)
+    if let Some(ticket) = ctx.get_ticket_at(col, row)
         && let Some(id) = &ticket.id
     {
         let prev_status = COLUMNS[col - 1];

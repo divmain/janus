@@ -5,10 +5,7 @@ use std::fs;
 use clipboard_rs::Clipboard;
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
-use crate::tui::board::model::COLUMNS;
 use crate::tui::edit::extract_body_for_edit;
-use crate::tui::search::filter_tickets;
-use crate::types::TicketMetadata;
 
 use super::context::BoardHandlerContext;
 use super::HandleResult;
@@ -53,7 +50,7 @@ fn handle_edit_ticket(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
 
-    if let Some(ticket) = get_ticket_at(ctx, col, row)
+    if let Some(ticket) = ctx.get_ticket_at(col, row)
         && let Some(ref file_path) = ticket.file_path
     {
         // Read body content synchronously from file
@@ -77,7 +74,7 @@ fn handle_copy_ticket_id(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
     let row = ctx.current_row.get();
 
-    if let Some(ticket) = get_ticket_at(ctx, col, row)
+    if let Some(ticket) = ctx.get_ticket_at(col, row)
         && let Some(id) = &ticket.id
         && clipboard_rs::ClipboardContext::new()
             .and_then(|ctx| ctx.set_text(id.clone()))
@@ -85,27 +82,4 @@ fn handle_copy_ticket_id(ctx: &mut BoardHandlerContext<'_>) {
     {
         // Silently fail if clipboard operations don't work
     }
-}
-
-/// Get the ticket at a specific column and row
-pub fn get_ticket_at(
-    ctx: &BoardHandlerContext<'_>,
-    column: usize,
-    row: usize,
-) -> Option<TicketMetadata> {
-    if column >= COLUMNS.len() {
-        return None;
-    }
-
-    let tickets_read = ctx.all_tickets.read();
-    let query = ctx.search_query.to_string();
-    let filtered = filter_tickets(&tickets_read, &query);
-    let status = COLUMNS[column];
-
-    let column_tickets: Vec<_> = filtered
-        .iter()
-        .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
-        .collect();
-
-    column_tickets.get(row).map(|ft| ft.ticket.as_ref().clone())
 }

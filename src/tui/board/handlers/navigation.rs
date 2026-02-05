@@ -2,8 +2,6 @@
 
 use iocraft::prelude::KeyCode;
 
-use crate::tui::board::model::get_column_ticket_count;
-
 use super::context::BoardHandlerContext;
 use super::HandleResult;
 
@@ -130,7 +128,7 @@ fn handle_right(ctx: &mut BoardHandlerContext<'_>) {
 /// Move down in the current column
 fn handle_down(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
-    let total_count = get_column_count(ctx, col);
+    let total_count = ctx.get_column_count(col);
     let max_row = total_count.saturating_sub(1);
     let new_row = (ctx.current_row.get() + 1).min(max_row);
     ctx.current_row.set(new_row);
@@ -166,7 +164,7 @@ fn handle_up(ctx: &mut BoardHandlerContext<'_>) {
 
 /// Adjust row when changing columns if current row is out of bounds
 fn adjust_row_for_column(ctx: &mut BoardHandlerContext<'_>, column: usize) {
-    let total_count = get_column_count(ctx, column);
+    let total_count = ctx.get_column_count(column);
     let max_row = total_count.saturating_sub(1);
     if ctx.current_row.get() > max_row {
         ctx.current_row.set(max_row);
@@ -187,12 +185,6 @@ fn adjust_row_for_column(ctx: &mut BoardHandlerContext<'_>, column: usize) {
     ctx.column_scroll_offsets.set(scroll_offsets);
 }
 
-/// Get the number of tickets in a column
-fn get_column_count(ctx: &BoardHandlerContext<'_>, column: usize) -> usize {
-    let tickets_read = ctx.all_tickets.read();
-    get_column_ticket_count(&tickets_read, &ctx.search_query.to_string(), column)
-}
-
 /// Jump to top of current column
 fn handle_go_to_top(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
@@ -206,7 +198,7 @@ fn handle_go_to_top(ctx: &mut BoardHandlerContext<'_>) {
 /// Jump to bottom of current column
 fn handle_go_to_bottom(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
-    let total_count = get_column_count(ctx, col);
+    let total_count = ctx.get_column_count(col);
     let max_row = total_count.saturating_sub(1);
     ctx.current_row.set(max_row);
 
@@ -225,7 +217,7 @@ fn handle_go_to_bottom(ctx: &mut BoardHandlerContext<'_>) {
 /// Page down (half page)
 fn handle_page_down(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
-    let total_count = get_column_count(ctx, col);
+    let total_count = ctx.get_column_count(col);
     let max_row = total_count.saturating_sub(1);
     let effective_height = effective_column_height(
         ctx.column_scroll_offsets.get()[col],
@@ -249,7 +241,7 @@ fn handle_page_down(ctx: &mut BoardHandlerContext<'_>) {
 /// Page up (half page)
 fn handle_page_up(ctx: &mut BoardHandlerContext<'_>) {
     let col = ctx.current_column.get();
-    let total_count = get_column_count(ctx, col);
+    let total_count = ctx.get_column_count(col);
     let effective_height = effective_column_height(
         ctx.column_scroll_offsets.get()[col],
         ctx.column_height,

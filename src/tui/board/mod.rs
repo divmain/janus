@@ -231,6 +231,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         handlers: BoardAsyncHandlers {
                             update_status: &update_status_handler_for_events,
                         },
+                        cache: std::cell::RefCell::new(None),
                     };
 
                     handlers::handle_key_event(&mut ctx, code, modifiers);
