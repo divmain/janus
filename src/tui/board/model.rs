@@ -10,7 +10,7 @@ use crate::tui::components::{
     board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::repository::InitResult;
-use crate::tui::search::{FilteredTicket, filter_tickets};
+use crate::tui::search::{filter_tickets, FilteredTicket};
 use crate::types::{TicketMetadata, TicketStatus};
 
 // Column configuration constants
@@ -390,12 +390,13 @@ pub fn reduce_board_state(
             let new_col = find_prev_visible_column(&state.visible_columns, state.current_column);
             state.current_column = new_col;
             // Adjust row for new column
-            let max_row = get_column_ticket_count(&state, new_col).saturating_sub(1);
+            let max_row = get_column_ticket_count(&state.tickets, &state.search_query, new_col)
+                .saturating_sub(1);
             if state.current_row > max_row {
                 state.current_row = max_row;
             }
             // Adjust scroll for new column
-            let total_items = get_column_ticket_count(&state, new_col);
+            let total_items = get_column_ticket_count(&state.tickets, &state.search_query, new_col);
             state.column_scroll_offsets[new_col] = adjust_column_scroll(
                 state.column_scroll_offsets[new_col],
                 state.current_row,
@@ -407,12 +408,13 @@ pub fn reduce_board_state(
             let new_col = find_next_visible_column(&state.visible_columns, state.current_column);
             state.current_column = new_col;
             // Adjust row for new column
-            let max_row = get_column_ticket_count(&state, new_col).saturating_sub(1);
+            let max_row = get_column_ticket_count(&state.tickets, &state.search_query, new_col)
+                .saturating_sub(1);
             if state.current_row > max_row {
                 state.current_row = max_row;
             }
             // Adjust scroll for new column
-            let total_items = get_column_ticket_count(&state, new_col);
+            let total_items = get_column_ticket_count(&state.tickets, &state.search_query, new_col);
             state.column_scroll_offsets[new_col] = adjust_column_scroll(
                 state.column_scroll_offsets[new_col],
                 state.current_row,
@@ -423,7 +425,7 @@ pub fn reduce_board_state(
         BoardAction::MoveUp => {
             state.current_row = state.current_row.saturating_sub(1);
             let col = state.current_column;
-            let total_items = get_column_ticket_count(&state, col);
+            let total_items = get_column_ticket_count(&state.tickets, &state.search_query, col);
             state.column_scroll_offsets[col] = adjust_column_scroll(
                 state.column_scroll_offsets[col],
                 state.current_row,
@@ -433,7 +435,7 @@ pub fn reduce_board_state(
         }
         BoardAction::MoveDown => {
             let col = state.current_column;
-            let total_items = get_column_ticket_count(&state, col);
+            let total_items = get_column_ticket_count(&state.tickets, &state.search_query, col);
             let max_row = total_items.saturating_sub(1);
             state.current_row = (state.current_row + 1).min(max_row);
             state.column_scroll_offsets[col] = adjust_column_scroll(
@@ -493,13 +495,13 @@ pub fn reduce_board_state(
 
         // Scroll navigation
         BoardAction::GoToTop => {
-            state.current_row = 0;
             let col = state.current_column;
+            state.current_row = 0;
             state.column_scroll_offsets[col] = 0;
         }
         BoardAction::GoToBottom => {
             let col = state.current_column;
-            let total_items = get_column_ticket_count(&state, col);
+            let total_items = get_column_ticket_count(&state.tickets, &state.search_query, col);
             let max_row = total_items.saturating_sub(1);
             state.current_row = max_row;
             state.column_scroll_offsets[col] = adjust_column_scroll(
@@ -511,7 +513,7 @@ pub fn reduce_board_state(
         }
         BoardAction::PageDown => {
             let col = state.current_column;
-            let total_items = get_column_ticket_count(&state, col);
+            let total_items = get_column_ticket_count(&state.tickets, &state.search_query, col);
             let max_row = total_items.saturating_sub(1);
             let jump = column_height / 2;
             state.current_row = (state.current_row + jump).min(max_row);
@@ -524,7 +526,7 @@ pub fn reduce_board_state(
         }
         BoardAction::PageUp => {
             let col = state.current_column;
-            let total_items = get_column_ticket_count(&state, col);
+            let total_items = get_column_ticket_count(&state.tickets, &state.search_query, col);
             let jump = column_height / 2;
             state.current_row = state.current_row.saturating_sub(jump);
             state.column_scroll_offsets[col] = adjust_column_scroll(
@@ -596,12 +598,20 @@ fn get_column_tickets(filtered: &[FilteredTicket], status: TicketStatus) -> Vec<
 }
 
 /// Get the count of tickets in a specific column
-fn get_column_ticket_count(state: &BoardState, column: usize) -> usize {
+///
+/// Can be called with either:
+/// - A BoardState reference (from model code)
+/// - Individual tickets and search query (from handlers)
+pub fn get_column_ticket_count(
+    tickets: &[TicketMetadata],
+    search_query: &str,
+    column: usize,
+) -> usize {
     if column >= COLUMNS.len() {
         return 0;
     }
 
-    let filtered = filter_tickets(&state.tickets, &state.search_query);
+    let filtered = filter_tickets(tickets, search_query);
     let status = COLUMNS[column];
 
     filtered
@@ -1256,22 +1266,23 @@ mod tests {
     #[test]
     fn test_column_change_preserves_scroll_in_target() {
         // Have scrolled state in column 0, move to column 2
-        let mut state = BoardState {
-            tickets: {
-                let mut tickets: Vec<_> = (0..10)
-                    .map(|i| make_ticket(&format!("j-new-{i}"), "Task", TicketStatus::New))
-                    .collect();
-                tickets.extend((0..10).map(|i| {
-                    make_ticket(&format!("j-wip-{i}"), "Task", TicketStatus::InProgress)
-                }));
-                tickets
-            },
-            current_column: 0,
-            current_row: 8,
-            column_scroll_offsets: [4, 0, 0, 0, 0],
-            visible_columns: [true; 5],
-            ..default_state()
-        };
+        let mut state =
+            BoardState {
+                tickets: {
+                    let mut tickets: Vec<_> = (0..10)
+                        .map(|i| make_ticket(&format!("j-new-{i}"), "Task", TicketStatus::New))
+                        .collect();
+                    tickets.extend((0..10).map(|i| {
+                        make_ticket(&format!("j-wip-{i}"), "Task", TicketStatus::InProgress)
+                    }));
+                    tickets
+                },
+                current_column: 0,
+                current_row: 8,
+                column_scroll_offsets: [4, 0, 0, 0, 0],
+                visible_columns: [true; 5],
+                ..default_state()
+            };
 
         // Move right to Next column (empty), then right to InProgress
         state = reduce_board_state(state, BoardAction::MoveRight, 5);

@@ -2,8 +2,7 @@
 
 use iocraft::prelude::KeyCode;
 
-use crate::tui::board::model::COLUMNS;
-use crate::tui::search::filter_tickets;
+use crate::tui::board::model::get_column_ticket_count;
 
 use super::context::BoardHandlerContext;
 use super::HandleResult;
@@ -190,19 +189,8 @@ fn adjust_row_for_column(ctx: &mut BoardHandlerContext<'_>, column: usize) {
 
 /// Get the number of tickets in a column
 fn get_column_count(ctx: &BoardHandlerContext<'_>, column: usize) -> usize {
-    if column >= COLUMNS.len() {
-        return 0;
-    }
-
     let tickets_read = ctx.all_tickets.read();
-    let query = ctx.search_query.to_string();
-    let filtered = filter_tickets(&tickets_read, &query);
-    let status = COLUMNS[column];
-
-    filtered
-        .iter()
-        .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
-        .count()
+    get_column_ticket_count(&tickets_read, &ctx.search_query.to_string(), column)
 }
 
 /// Jump to top of current column
