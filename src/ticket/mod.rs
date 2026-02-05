@@ -1,6 +1,5 @@
 mod builder;
 mod content;
-mod editor;
 mod locator;
 mod manipulator;
 mod parser;
@@ -9,7 +8,6 @@ mod repository;
 pub use crate::types::ArrayField;
 pub use builder::TicketBuilder;
 pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
-pub use editor::TicketEditor;
 pub use locator::find_ticket_by_id;
 pub use repository::{
     TicketLoadResult, build_ticket_map, find_tickets, get_all_children_counts, get_all_tickets,
