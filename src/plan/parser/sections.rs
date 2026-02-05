@@ -8,17 +8,12 @@ use regex::Regex;
 
 use crate::plan::types::Phase;
 
-use super::{parse_list_items_with_regex, H2Section};
+use super::{parse_list_items, H2Section};
 
 // Compile regex once at program startup
 static TICKET_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^[\s]*(?:[-*+]|\d+\.)\s+([\w-]+)").expect("ticket item regex should be valid")
 });
-
-/// Parse a bullet or numbered list into string items
-pub fn parse_list_items(content: &str) -> Vec<String> {
-    parse_list_items_with_regex(content)
-}
 
 /// Parse a ticket list, extracting just the ticket IDs
 /// Handles formats like:

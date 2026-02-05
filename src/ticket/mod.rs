@@ -112,24 +112,6 @@ impl Ticket {
         )
     }
 
-    /// Write raw content without hooks (async).
-    #[allow(dead_code)]
-    async fn write_raw_async(&self, content: &str) -> Result<()> {
-        self.ensure_parent_dir_async().await?;
-        tokio_fs::write(&self.file_path, content)
-            .await
-            .map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to write ticket at {}: {}",
-                        crate::utils::format_relative_path(&self.file_path),
-                        e
-                    ),
-                ))
-            })
-    }
-
     /// Write raw content without hooks (blocking - for sync contexts).
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
@@ -143,26 +125,6 @@ impl Ticket {
                 ),
             ))
         })
-    }
-
-    /// Ensure the parent directory exists (async).
-    #[allow(dead_code)]
-    async fn ensure_parent_dir_async(&self) -> Result<()> {
-        if let Some(parent) = self.file_path.parent()
-            && !parent.exists()
-        {
-            tokio_fs::create_dir_all(parent).await.map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to create directory for ticket at {}: {}",
-                        crate::utils::format_relative_path(parent),
-                        e
-                    ),
-                ))
-            })?;
-        }
-        Ok(())
     }
 
     /// Ensure the parent directory exists (blocking - for sync contexts).

@@ -274,7 +274,7 @@ fn classify_and_add_section(
     // Check for Acceptance Criteria (case-insensitive, exact match)
     // Only the first occurrence is parsed as structured data
     if heading_lower == "acceptance criteria" && seen_sections.insert("acceptance_criteria") {
-        metadata.acceptance_criteria = sections::parse_list_items(&section.content);
+        metadata.acceptance_criteria = parse_list_items(&section.content);
         return;
     }
 
@@ -382,7 +382,7 @@ pub(crate) fn render_node_to_markdown<'a>(node: &'a AstNode<'a>, options: &Optio
 }
 
 /// Parse a bullet or numbered list into string items (used by sections module)
-pub(crate) fn parse_list_items_with_regex(content: &str) -> Vec<String> {
+pub fn parse_list_items(content: &str) -> Vec<String> {
     let mut items = Vec::new();
 
     for caps in LIST_ITEM_RE.captures_iter(content) {
