@@ -176,6 +176,7 @@ See [MCP Guide](docs/mcp.md) for integration setup.
 | [Plans](docs/plans.md) | Organizing tickets into plans |
 | [Hooks](docs/hooks.md) | Automation and scripting |
 | [MCP Server](docs/mcp.md) | AI assistant integration |
+| [Semantic Search](docs/semantic-search.md) | Natural language ticket search |
 | [Reference](docs/reference.md) | File formats, statuses, types |
 
 ## Tips

@@ -66,3 +66,42 @@ The cache may become temporarily stale if concurrent syncs conflict, but it will
 ### What to Expect
 
 In typical usage (occasional concurrent commands), you won't notice any issues. In heavy concurrent scenarios (many simultaneous writes), some commands may run slower due to cache fallback, but data integrity is always maintained.
+
+## Semantic Search
+
+When Janus is built with the `semantic-search` feature, the cache also stores vector embeddings for each ticket. This enables natural language search that matches by intent rather than exact keywords.
+
+**Important**: Semantic search requires the cache - it cannot work without it. The embeddings are stored in the cache database and generated during cache sync.
+
+### Enabling Semantic Search
+
+Semantic search is an optional feature that must be enabled at compile time:
+
+```bash
+# Build with semantic search support
+cargo build --release --features semantic-search
+```
+
+Or install via Homebrew (includes semantic search by default):
+
+```bash
+brew install janus
+```
+
+### How It Works
+
+1. When the cache syncs, it generates vector embeddings for each ticket's title and description
+2. Embeddings are stored in the cache database alongside ticket metadata
+3. Queries are converted to vectors and compared against stored embeddings
+4. Results are ranked by cosine similarity
+
+### Cache File Naming
+
+Different builds use separate cache files to avoid conflicts:
+
+- Standard build: `cache-v{VERSION}.db`
+- Semantic search build: `cache-v{VERSION}-semantic.db`
+
+This means you can switch between builds without corrupting the cache.
+
+See [Semantic Search Guide](semantic-search.md) for usage details.

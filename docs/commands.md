@@ -306,6 +306,29 @@ janus query '.priority <= 1'              # high priority only
 janus query '.type == "feature"'          # filter by type
 ```
 
+### `janus search`
+
+Search tickets using semantic similarity (requires `semantic-search` feature).
+
+```bash
+janus search <QUERY> [OPTIONS]
+
+Options:
+  -l, --limit <N>         Maximum results to return (default: 10)
+      --threshold <0-1>   Minimum similarity threshold
+      --json              Output as JSON
+
+# Examples
+janus search "authentication problems"
+janus search "performance issues" --limit 5
+janus search "database errors" --threshold 0.7
+janus search "user login" --json
+```
+
+Unlike regular text search, semantic search matches by meaning. "authentication problems" will find tickets about "login failures" or "OAuth errors" even without those exact words.
+
+See [Semantic Search Guide](semantic-search.md) for details.
+
 ### `janus graph`
 
 Visualize ticket relationships as a graph.

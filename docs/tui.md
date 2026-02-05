@@ -30,6 +30,16 @@ janus view
 
 Type to filter tickets by title, ID, or content.
 
+**Semantic search**: Prefix your query with `~` to search by meaning instead of exact text:
+
+```
+/~authentication problems
+```
+
+The search box border changes color to indicate semantic search mode. Results merge fuzzy matches (first) with semantic matches (deduplicated).
+
+Requires the `semantic-search` feature - see [Semantic Search Guide](semantic-search.md).
+
 ### Ticket Actions
 
 | Key | Action |
