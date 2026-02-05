@@ -13,11 +13,11 @@ use crate::tui::components::toast::Toast;
 use crate::types::TicketMetadata;
 
 use super::filter::{
-    FilteredLocalTicket, FilteredRemoteIssue, filter_local_tickets, filter_remote_issues,
+    filter_local_tickets, filter_remote_issues, FilteredLocalTicket, FilteredRemoteIssue,
 };
 use super::filter_modal::FilterState;
 use super::link_mode::LinkModeState;
-use super::shortcuts::{ModalVisibility, compute_shortcuts};
+use super::shortcuts::{compute_shortcuts, ModalVisibility};
 use super::state::ViewMode;
 use super::sync_preview::SyncPreviewState;
 
@@ -1018,28 +1018,6 @@ fn normal_key_to_action(code: KeyCode, modifiers: KeyModifiers) -> Option<Remote
     }
 }
 
-/// Get the local ticket at a specific index from the filtered list
-pub fn get_local_ticket_at(state: &RemoteState, index: usize) -> Option<TicketMetadata> {
-    let filtered = filter_local_tickets(&state.local_tickets, &state.search_query);
-    filtered.get(index).map(|ft| ft.ticket.clone())
-}
-
-/// Get the remote issue at a specific index from the filtered list
-pub fn get_remote_issue_at(state: &RemoteState, index: usize) -> Option<RemoteIssue> {
-    let filtered = filter_remote_issues(&state.remote_issues, &state.search_query);
-    filtered.get(index).map(|fi| fi.issue.clone())
-}
-
-/// Get the currently selected local ticket
-pub fn get_selected_local_ticket(state: &RemoteState) -> Option<TicketMetadata> {
-    get_local_ticket_at(state, state.local_selected_index)
-}
-
-/// Get the currently selected remote issue
-pub fn get_selected_remote_issue(state: &RemoteState) -> Option<RemoteIssue> {
-    get_remote_issue_at(state, state.remote_selected_index)
-}
-
 // ============================================================================
 // Tests
 // ============================================================================
@@ -1625,44 +1603,6 @@ mod tests {
 
         // Zero height
         assert_eq!(adjust_scroll(5, 10, 0), 0);
-    }
-
-    #[test]
-    fn test_get_local_ticket_at() {
-        let state = state_with_data();
-        let ticket = get_local_ticket_at(&state, 0);
-        assert!(ticket.is_some());
-        assert_eq!(ticket.unwrap().id, Some("j-1".to_string()));
-
-        assert!(get_local_ticket_at(&state, 10).is_none());
-    }
-
-    #[test]
-    fn test_get_remote_issue_at() {
-        let state = state_with_data();
-        let issue = get_remote_issue_at(&state, 0);
-        assert!(issue.is_some());
-        assert_eq!(issue.unwrap().id, "GH-1");
-
-        assert!(get_remote_issue_at(&state, 10).is_none());
-    }
-
-    #[test]
-    fn test_get_selected_local_ticket() {
-        let mut state = state_with_data();
-        state.local_selected_index = 1;
-        let ticket = get_selected_local_ticket(&state);
-        assert!(ticket.is_some());
-        assert_eq!(ticket.unwrap().id, Some("j-2".to_string()));
-    }
-
-    #[test]
-    fn test_get_selected_remote_issue() {
-        let mut state = state_with_data();
-        state.remote_selected_index = 1;
-        let issue = get_selected_remote_issue(&state);
-        assert!(issue.is_some());
-        assert_eq!(issue.unwrap().id, "GH-2");
     }
 
     // ========================================================================

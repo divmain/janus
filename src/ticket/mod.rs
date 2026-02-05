@@ -31,8 +31,45 @@ use crate::types::EntityType;
 use crate::types::TicketMetadata;
 use crate::utils::extract_id_from_path;
 use serde_json;
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::fs as tokio_fs;
+
+/// Format a read error for consistent error messages.
+fn format_read_error(path: &Path, source: std::io::Error) -> JanusError {
+    JanusError::Io(std::io::Error::new(
+        source.kind(),
+        format!(
+            "Failed to read ticket at {}: {}",
+            crate::utils::format_relative_path(path),
+            source
+        ),
+    ))
+}
+
+/// Format a write error for consistent error messages.
+fn format_write_error(path: &Path, source: std::io::Error) -> JanusError {
+    JanusError::Io(std::io::Error::new(
+        source.kind(),
+        format!(
+            "Failed to write ticket at {}: {}",
+            crate::utils::format_relative_path(path),
+            source
+        ),
+    ))
+}
+
+/// Format a delete error for consistent error messages.
+fn format_delete_error(path: &Path, source: std::io::Error) -> JanusError {
+    JanusError::Io(std::io::Error::new(
+        source.kind(),
+        format!(
+            "Failed to delete ticket at {}: {}",
+            crate::utils::format_relative_path(path),
+            source
+        ),
+    ))
+}
 
 /// A ticket represents a task, bug, feature, or chore stored as a markdown file.
 ///
@@ -77,30 +114,12 @@ impl Ticket {
     pub async fn read_content_async(&self) -> Result<String> {
         tokio_fs::read_to_string(&self.file_path)
             .await
-            .map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to read ticket at {}: {}",
-                        crate::utils::format_relative_path(&self.file_path),
-                        e
-                    ),
-                ))
-            })
+            .map_err(|e| format_read_error(&self.file_path, e))
     }
 
     /// Read the raw content of the ticket file (blocking - for sync contexts).
     pub fn read_content(&self) -> Result<String> {
-        std::fs::read_to_string(&self.file_path).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to read ticket at {}: {}",
-                    crate::utils::format_relative_path(&self.file_path),
-                    e
-                ),
-            ))
-        })
+        std::fs::read_to_string(&self.file_path).map_err(|e| format_read_error(&self.file_path, e))
     }
 
     /// Write content to the ticket file with hooks.
@@ -115,16 +134,8 @@ impl Ticket {
     /// Write raw content without hooks (blocking - for sync contexts).
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
-        std::fs::write(&self.file_path, content).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to write ticket at {}: {}",
-                    crate::utils::format_relative_path(&self.file_path),
-                    e
-                ),
-            ))
-        })
+        std::fs::write(&self.file_path, content)
+            .map_err(|e| format_write_error(&self.file_path, e))
     }
 
     /// Ensure the parent directory exists (blocking - for sync contexts).
@@ -306,16 +317,9 @@ impl Ticket {
 
         run_pre_hooks_async(HookEvent::PreDelete, &context).await?;
 
-        tokio_fs::remove_file(&self.file_path).await.map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to delete ticket at {}: {}",
-                    crate::utils::format_relative_path(&self.file_path),
-                    e
-                ),
-            ))
-        })?;
+        tokio_fs::remove_file(&self.file_path)
+            .await
+            .map_err(|e| format_delete_error(&self.file_path, e))?;
 
         run_post_hooks_async(HookEvent::PostDelete, &context).await;
 
@@ -347,16 +351,8 @@ impl Entity for Ticket {
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        std::fs::remove_file(&self.file_path).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to delete ticket at {}: {}",
-                    crate::utils::format_relative_path(&self.file_path),
-                    e
-                ),
-            ))
-        })?;
+        std::fs::remove_file(&self.file_path)
+            .map_err(|e| format_delete_error(&self.file_path, e))?;
 
         run_post_hooks(HookEvent::PostDelete, &context);
 
