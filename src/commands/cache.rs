@@ -8,6 +8,30 @@ use crate::events::log_cache_rebuilt;
 
 use crate::embedding::model::EMBEDDING_MODEL_NAME;
 
+/// Format the embedding status text for display.
+fn format_embedding_status(
+    with_embedding: usize,
+    total: usize,
+    percentage: u32,
+    model_version_ok: bool,
+) -> String {
+    let mut text = format!(
+        "\n\nEmbedding Coverage: {with_embedding}/{total} ({percentage}%)\n"
+    );
+    text.push_str(&format!("Embedding Model: {EMBEDDING_MODEL_NAME}\n"));
+
+    if model_version_ok {
+        text.push_str("Model Version: ✓");
+    } else {
+        text.push_str(&format!(
+            "Model Version: ⚠ (expected: {EMBEDDING_MODEL_NAME})\n"
+        ));
+        text.push_str("  Run 'janus cache rebuild' to update embeddings");
+    }
+
+    text
+}
+
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     match TicketCache::open().await {
         Ok(cache) => {
@@ -58,69 +82,27 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                     String::new()
                 };
 
-                #[allow(unused_mut)]
-                let mut text = format!(
+                format!(
                     "Cache status:\n  Database path: {}\n  Cached tickets: {}\n  Database size: {} bytes\n{}",
                     crate::utils::format_relative_path(&db_path),
                     tickets.len(),
                     size,
                     modified_text
-                );
-
-                // Add embedding status to text output
-                if let Some((with_embedding, total, percentage, _model_version_ok)) = embedding_info
-                {
-                    text.push_str(&format!(
-                        "\n\nEmbedding Coverage: {with_embedding}/{total} ({percentage}%)\n"
-                    ));
-                    text.push_str(&format!("Embedding Model: {EMBEDDING_MODEL_NAME}\n"));
-
-                    // Get stored model version from cache
-                    let stored_model = cache.get_meta("embedding_model").await.ok().flatten();
-
-                    match stored_model {
-                        Some(model) if model == EMBEDDING_MODEL_NAME => {
-                            text.push_str(&format!("Model Version: {model} ✓"));
-                        }
-                        Some(model) => {
-                            text.push_str(&format!(
-                                "Model Version: {model} ⚠ (current: {EMBEDDING_MODEL_NAME})\n"
-                            ));
-                            text.push_str("  Run 'janus cache rebuild' to update embeddings");
-                        }
-                        None => {
-                            text.push_str("Model Version: Not tracked");
-                        }
-                    }
-                }
-
-                text
+                )
             } else {
-                #[allow(unused_mut)]
-                let mut text = format!(
+                format!(
                     "Cache status:\n  Database path: {}\n  Cached tickets: {}",
                     crate::utils::format_relative_path(&db_path),
                     tickets.len()
-                );
+                )
+            };
 
-                // Add embedding status to text output
-                if let Some((with_embedding, total, percentage, model_version_ok)) = embedding_info
-                {
-                    text.push_str(&format!(
-                        "\n\nEmbedding Coverage: {with_embedding}/{total} ({percentage}%)\n"
-                    ));
-                    text.push_str(&format!("Embedding Model: {EMBEDDING_MODEL_NAME}\n"));
-
-                    if model_version_ok {
-                        text.push_str("Model Version: ✓");
-                    } else {
-                        text.push_str(&format!(
-                            "Model Version: ⚠ (expected: {EMBEDDING_MODEL_NAME})\n"
-                        ));
-                        text.push_str("  Run 'janus cache rebuild' to update embeddings");
-                    }
-                }
-
+            // Add embedding status to text output
+            let text = if let Some((with_embedding, total, percentage, model_version_ok)) =
+                embedding_info
+            {
+                text + &format_embedding_status(with_embedding, total, percentage, model_version_ok)
+            } else {
                 text
             };
 
