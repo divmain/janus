@@ -15,6 +15,21 @@ use crate::error::{JanusError, Result};
 use crate::types::{plans_dir, tickets_items_dir};
 use crate::utils::DirScanner;
 
+/// Validate that an ID is safe for filesystem use (no path traversal)
+fn validate_id(id: &str) -> Result<()> {
+    // Check for path separators and parent directory references
+    if id.contains('/') || id.contains('\\') || id.contains("..") {
+        return Err(JanusError::InvalidPlanId(id.to_string()));
+    }
+
+    // Ensure ID contains only alphanumeric characters, hyphens, and underscores
+    if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        return Err(JanusError::InvalidPlanId(id.to_string()));
+    }
+
+    Ok(())
+}
+
 /// Find a ticket by partial ID.
 ///
 /// Searches for a ticket file matching the given partial ID in the tickets directory.
@@ -22,6 +37,9 @@ use crate::utils::DirScanner;
 /// or if multiple tickets match (ambiguous).
 pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     let dir = tickets_items_dir();
+
+    // Validate ID before any path construction
+    validate_id(partial_id)?;
 
     // Try cache first
     match cache::get_or_init_cache().await {
@@ -71,6 +89,9 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
 /// or if multiple plans match (ambiguous).
 pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     let dir = plans_dir();
+
+    // Validate ID before any path construction
+    validate_id(partial_id)?;
 
     // Try cache first
     match cache::get_or_init_cache().await {
