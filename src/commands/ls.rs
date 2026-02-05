@@ -1,5 +1,4 @@
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Write;
 
 use super::{
@@ -8,8 +7,12 @@ use super::{
 };
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
+use crate::query::{
+    ActiveFilter, ClosedFilter, SizeFilter, SpawningFilter, StatusFilter, TicketFilter,
+    TicketQueryBuilder, TriagedFilter,
+};
 use crate::ticket::{build_ticket_map, find_ticket_by_id, get_all_tickets_with_map};
-use crate::types::{TicketMetadata, TicketSize, TicketStatus};
+use crate::types::{TicketMetadata, TicketSize};
 
 /// Formats a list of tickets for output, handling both JSON and text formats.
 /// This helper consolidates the common output formatting logic used by listing commands.
@@ -32,94 +35,6 @@ fn format_ticket_list(display_tickets: &[TicketMetadata], output_json: bool) -> 
     CommandOutput::new(serde_json::Value::Array(json_tickets))
         .with_text(text_output)
         .print(output_json)
-}
-
-/// Options for spawning-related filters
-#[derive(Default)]
-struct SpawningFilters<'a> {
-    /// Filter by parent ticket ID (spawned_from field must match)
-    spawned_from: Option<&'a str>,
-    /// Filter by exact depth
-    depth: Option<u32>,
-    /// Filter by maximum depth
-    max_depth: Option<u32>,
-}
-
-/// Engine for filtering tickets based on dependency status
-struct TicketFilterEngine<'a> {
-    ticket_map: &'a HashMap<String, TicketMetadata>,
-    /// Track dangling dependencies we've already warned about to avoid duplicate warnings
-    warned_dangling: RefCell<HashSet<String>>,
-}
-
-impl<'a> TicketFilterEngine<'a> {
-    fn new(ticket_map: &'a HashMap<String, TicketMetadata>) -> Self {
-        Self {
-            ticket_map,
-            warned_dangling: RefCell::new(HashSet::new()),
-        }
-    }
-
-    /// Warn about a dangling dependency if we haven't already warned about it.
-    /// Returns true if this is a new dangling dependency that was just warned about.
-    fn warn_dangling(&self, ticket_id: &str, dep_id: &str) -> bool {
-        let mut warned = self.warned_dangling.borrow_mut();
-        if warned.insert(dep_id.to_string()) {
-            eprintln!(
-                "Warning: Ticket {} references dangling dependency {}",
-                ticket_id, dep_id
-            );
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Check if a ticket is "ready" - has New/Next status and all deps are complete
-    fn is_ready(&self, ticket: &TicketMetadata) -> bool {
-        if !matches!(
-            ticket.status,
-            Some(TicketStatus::New) | Some(TicketStatus::Next)
-        ) {
-            return false;
-        }
-        // All deps must be complete
-        let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
-        ticket.deps.iter().all(|dep_id| {
-            self.ticket_map
-                .get(dep_id)
-                .map(|dep| dep.status == Some(TicketStatus::Complete))
-                .unwrap_or_else(|| {
-                    self.warn_dangling(ticket_id, dep_id);
-                    false
-                })
-        })
-    }
-
-    /// Check if a ticket is "blocked" - has New/Next status, has deps, and any dep is incomplete
-    fn is_blocked(&self, ticket: &TicketMetadata) -> bool {
-        if !matches!(
-            ticket.status,
-            Some(TicketStatus::New) | Some(TicketStatus::Next)
-        ) {
-            return false;
-        }
-        // Must have deps
-        if ticket.deps.is_empty() {
-            return false;
-        }
-        // Check if any dep is incomplete
-        let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
-        ticket.deps.iter().any(|dep_id| {
-            self.ticket_map
-                .get(dep_id)
-                .map(|dep| dep.status != Some(TicketStatus::Complete))
-                .unwrap_or_else(|| {
-                    self.warn_dangling(ticket_id, dep_id);
-                    true
-                })
-        })
-    }
 }
 
 /// List all tickets, optionally filtered by status or other criteria
@@ -152,7 +67,7 @@ pub async fn cmd_ls(
         return cmd_ls_next_in_plan(plan_id, limit, sort_by, output_json).await;
     }
 
-    let (tickets, ticket_map) = get_all_tickets_with_map().await?;
+    let (tickets, _ticket_map) = get_all_tickets_with_map().await?;
 
     // Resolve spawned_from partial ID to full ID if provided
     let resolved_spawned_from = if let Some(partial_id) = spawned_from {
@@ -168,125 +83,144 @@ pub async fn cmd_ls(
         None
     };
 
-    // Build spawning filters
-    let spawning_filters = SpawningFilters {
-        spawned_from: resolved_spawned_from.as_deref(),
-        depth,
-        max_depth,
-    };
+    // Build query using TicketQueryBuilder
+    let mut builder = TicketQueryBuilder::new().with_sort(sort_by);
 
-    // Create filter engine for dependency-based filtering
-    let filter_engine = TicketFilterEngine::new(&ticket_map);
+    // Add spawning filter if any spawning criteria are specified
+    if resolved_spawned_from.is_some() || depth.is_some() || max_depth.is_some() {
+        builder = builder.with_filter(Box::new(SpawningFilter::new(
+            resolved_spawned_from.as_deref(),
+            depth,
+            max_depth,
+        )));
+    }
 
-    let filtered: Vec<TicketMetadata> = tickets
-        .iter()
-        .filter(|t| {
-            // Apply spawning filters first (these are AND conditions)
-            if !matches_spawning_filters(t, &spawning_filters) {
-                return false;
-            }
+    // Add triaged filter if specified
+    if let Some(triaged_value) = triaged {
+        let filter_value = triaged_value == "true";
+        builder = builder.with_filter(Box::new(TriagedFilter::new(filter_value)));
+    }
 
-            // Filter by triaged status if specified
-            // Treat triaged: None as false for backward compatibility
-            if let Some(filter_triaged) = triaged {
-                let ticket_triaged = t.triaged.unwrap_or(false);
-                let filter_value = filter_triaged == "true";
-                if ticket_triaged != filter_value {
-                    return false;
-                }
-            }
+    // Add size filter if specified
+    if let Some(sizes) = size_filter {
+        builder = builder.with_filter(Box::new(SizeFilter::new(sizes)));
+    }
 
-            // Filter by size if specified (OR logic - match any of the specified sizes)
-            if let Some(ref sizes) = size_filter {
-                let ticket_size = t.size;
-                let matches_size = sizes
-                    .iter()
-                    .any(|filter_size| ticket_size == Some(*filter_size));
-                if !matches_size {
-                    return false;
-                }
-            }
+    // Add status-based filters
+    if let Some(status) = status_filter {
+        // --status flag is mutually exclusive with --ready, --blocked, --closed
+        builder = builder.with_filter(Box::new(StatusFilter::new(status)));
+    } else if filter_ready || filter_blocked || filter_closed || filter_active {
+        // Union behavior: combine filters with OR logic
+        // We use a custom approach here since filters are normally AND-based
+        // For union filters, we need to handle them specially
+        let (ready_tickets, blocked_tickets, closed_tickets, active_tickets) =
+            if filter_ready || filter_blocked {
+                // We need to compute these using the context
+                use crate::query::{BlockedFilter, ReadyFilter, TicketFilterContext};
+                let context = TicketFilterContext::new().await?;
 
-            // Check if we should include closed/cancelled tickets
-            let is_closed = matches!(
-                t.status,
-                Some(TicketStatus::Complete) | Some(TicketStatus::Cancelled)
-            );
-
-            // --status flag is mutually exclusive with --ready, --blocked, --closed
-            // (enforced by clap's conflicts_with_all in main.rs)
-            if let Some(filter) = status_filter {
-                let ticket_status = match t.status {
-                    Some(status) => status.to_string(),
-                    None => {
-                        eprintln!(
-                            "Warning: ticket '{}' has missing status field, treating as 'new'",
-                            t.id.as_deref().unwrap_or("unknown")
-                        );
-                        TicketStatus::New.to_string()
-                    }
+                let ready: Vec<_> = if filter_ready {
+                    tickets
+                        .iter()
+                        .filter(|t| ReadyFilter.matches(t, &context))
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
                 };
-                return ticket_status == filter;
-            }
 
-            // Calculate individual filter results using the filter engine
-            let is_ready = filter_ready && filter_engine.is_ready(t);
-            let is_blocked = filter_blocked && filter_engine.is_blocked(t);
+                let blocked: Vec<_> = if filter_blocked {
+                    tickets
+                        .iter()
+                        .filter(|t| BlockedFilter.matches(t, &context))
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
 
-            // Calculate final result based on filter combination
-            if filter_ready || filter_blocked || filter_closed || filter_active {
-                // At least one special filter is active - use union behavior
-                is_ready
-                    || is_blocked
-                    || (filter_closed && is_closed)
-                    || (filter_active && !is_closed)
+                let closed: Vec<_> = if filter_closed {
+                    tickets
+                        .iter()
+                        .filter(|t| ClosedFilter.matches(t, &context))
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
+                let active: Vec<_> = if filter_active {
+                    tickets
+                        .iter()
+                        .filter(|t| ActiveFilter.matches(t, &context))
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
+                (ready, blocked, closed, active)
             } else {
-                // Default: exclude closed tickets
-                !is_closed
+                // Only closed/active filters, no need for complex context
+                use crate::query::TicketFilterContext;
+                let context = TicketFilterContext::new().await?;
+
+                let closed: Vec<_> = if filter_closed {
+                    tickets
+                        .iter()
+                        .filter(|t| ClosedFilter.matches(t, &context))
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
+                let active: Vec<_> = if filter_active {
+                    tickets
+                        .iter()
+                        .filter(|t| ActiveFilter.matches(t, &context))
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
+                (Vec::new(), Vec::new(), closed, active)
+            };
+
+        // Combine all matching tickets (union)
+        let mut display_tickets: Vec<TicketMetadata> = ready_tickets;
+        display_tickets.extend(blocked_tickets);
+        display_tickets.extend(closed_tickets);
+        display_tickets.extend(active_tickets);
+
+        // Remove duplicates
+        display_tickets.sort_by(|a, b| a.id.cmp(&b.id));
+        display_tickets.dedup_by(|a, b| a.id == b.id);
+
+        // Sort and apply limit
+        sort_tickets_by(&mut display_tickets, sort_by);
+        if let Some(limit) = limit {
+            if limit < display_tickets.len() {
+                display_tickets.truncate(limit);
             }
-        })
-        .cloned()
-        .collect();
-
-    // Sort by priority then apply limit if specified
-    let mut display_tickets = filtered;
-    sort_tickets_by(&mut display_tickets, sort_by);
-
-    // Apply limit (unlimited if not specified)
-    if let Some(limit) = limit
-        && limit < display_tickets.len()
-    {
-        display_tickets.truncate(limit);
-    }
-
-    format_ticket_list(&display_tickets, output_json)
-}
-
-/// Check if a ticket matches the spawning filters
-fn matches_spawning_filters(ticket: &TicketMetadata, filters: &SpawningFilters) -> bool {
-    // Filter by spawned_from (direct children only)
-    if let Some(parent_id) = filters.spawned_from {
-        match &ticket.spawned_from {
-            Some(spawned_from) if spawned_from == parent_id => {}
-            _ => return false,
         }
+
+        return format_ticket_list(&display_tickets, output_json);
+    } else {
+        // Default: exclude closed tickets (use ActiveFilter as the base)
+        builder = builder.with_filter(Box::new(ActiveFilter));
     }
 
-    // Filter by exact depth
-    if let Some(target_depth) = filters.depth
-        && ticket.compute_depth() != target_depth
-    {
-        return false;
+    // Apply limit if specified
+    if let Some(lim) = limit {
+        builder = builder.with_limit(lim);
     }
 
-    // Filter by max depth
-    if let Some(max) = filters.max_depth
-        && ticket.compute_depth() > max
-    {
-        return false;
-    }
-
-    true
+    // Execute the query
+    let display_tickets = builder.execute(tickets).await?;
+    format_ticket_list(&display_tickets, output_json)
 }
 
 /// Handle --next-in-plan filter using plan next logic
@@ -338,7 +272,11 @@ async fn cmd_ls_next_in_plan(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
     use super::*;
+    use crate::query::{SpawningFilter, TicketFilter, TicketFilterContext};
 
     fn make_ticket(id: &str, spawned_from: Option<&str>, depth: Option<u32>) -> TicketMetadata {
         TicketMetadata {
@@ -349,109 +287,92 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_matches_spawning_filters_spawned_from() {
-        let ticket = make_ticket("child-1", Some("parent-1"), Some(1));
-        let filters = SpawningFilters {
-            spawned_from: Some("parent-1"),
-            ..Default::default()
-        };
-        assert!(matches_spawning_filters(&ticket, &filters));
+    fn empty_context() -> TicketFilterContext {
+        TicketFilterContext {
+            ticket_map: HashMap::new(),
+            warned_dangling: RefCell::new(HashSet::new()),
+        }
+    }
 
-        let filters_wrong_parent = SpawningFilters {
-            spawned_from: Some("parent-2"),
-            ..Default::default()
-        };
-        assert!(!matches_spawning_filters(&ticket, &filters_wrong_parent));
+    #[test]
+    fn test_spawning_filter_spawned_from() {
+        let context = empty_context();
+        let ticket = make_ticket("child-1", Some("parent-1"), Some(1));
+        let filter = SpawningFilter::new(Some("parent-1"), None, None);
+        assert!(filter.matches(&ticket, &context));
+
+        let filter_wrong_parent = SpawningFilter::new(Some("parent-2"), None, None);
+        assert!(!filter_wrong_parent.matches(&ticket, &context));
 
         // Root ticket should not match spawned_from filter
         let root = make_ticket("root-1", None, None);
-        let filters_parent = SpawningFilters {
-            spawned_from: Some("parent-1"),
-            ..Default::default()
-        };
-        assert!(!matches_spawning_filters(&root, &filters_parent));
+        let filter_parent = SpawningFilter::new(Some("parent-1"), None, None);
+        assert!(!filter_parent.matches(&root, &context));
     }
 
     #[test]
-    fn test_matches_spawning_filters_depth_exact() {
+    fn test_spawning_filter_depth_exact() {
+        let context = empty_context();
         // Root ticket (no spawned_from, no depth) should match depth 0
         let root = make_ticket("root-1", None, None);
-        let filters_depth_0 = SpawningFilters {
-            depth: Some(0),
-            ..Default::default()
-        };
-        assert!(matches_spawning_filters(&root, &filters_depth_0));
+        let filter_depth_0 = SpawningFilter::new(None, Some(0), None);
+        assert!(filter_depth_0.matches(&root, &context));
 
         // Root ticket should not match depth 1
-        let filters_depth_1 = SpawningFilters {
-            depth: Some(1),
-            ..Default::default()
-        };
-        assert!(!matches_spawning_filters(&root, &filters_depth_1));
+        let filter_depth_1 = SpawningFilter::new(None, Some(1), None);
+        assert!(!filter_depth_1.matches(&root, &context));
 
         // Child with explicit depth 1 should match depth 1
         let child = make_ticket("child-1", Some("root-1"), Some(1));
-        assert!(matches_spawning_filters(&child, &filters_depth_1));
-        assert!(!matches_spawning_filters(&child, &filters_depth_0));
+        assert!(filter_depth_1.matches(&child, &context));
+        assert!(!filter_depth_0.matches(&child, &context));
 
         // Child with explicit depth 0 (unusual but valid) should match depth 0
         let explicit_root = make_ticket("explicit-root", None, Some(0));
-        assert!(matches_spawning_filters(&explicit_root, &filters_depth_0));
+        assert!(filter_depth_0.matches(&explicit_root, &context));
     }
 
     #[test]
-    fn test_matches_spawning_filters_max_depth() {
+    fn test_spawning_filter_max_depth() {
+        let context = empty_context();
         let root = make_ticket("root-1", None, None);
         let child = make_ticket("child-1", Some("root-1"), Some(1));
         let grandchild = make_ticket("grandchild-1", Some("child-1"), Some(2));
 
-        let filters_max_1 = SpawningFilters {
-            max_depth: Some(1),
-            ..Default::default()
-        };
+        let filter_max_1 = SpawningFilter::new(None, None, Some(1));
 
-        assert!(matches_spawning_filters(&root, &filters_max_1));
-        assert!(matches_spawning_filters(&child, &filters_max_1));
-        assert!(!matches_spawning_filters(&grandchild, &filters_max_1));
+        assert!(filter_max_1.matches(&root, &context));
+        assert!(filter_max_1.matches(&child, &context));
+        assert!(!filter_max_1.matches(&grandchild, &context));
 
-        let filters_max_0 = SpawningFilters {
-            max_depth: Some(0),
-            ..Default::default()
-        };
-        assert!(matches_spawning_filters(&root, &filters_max_0));
-        assert!(!matches_spawning_filters(&child, &filters_max_0));
+        let filter_max_0 = SpawningFilter::new(None, None, Some(0));
+        assert!(filter_max_0.matches(&root, &context));
+        assert!(!filter_max_0.matches(&child, &context));
     }
 
     #[test]
-    fn test_matches_spawning_filters_no_filters() {
+    fn test_spawning_filter_no_filters() {
+        let context = empty_context();
         let root = make_ticket("root-1", None, None);
         let child = make_ticket("child-1", Some("root-1"), Some(1));
 
-        let no_filters = SpawningFilters::default();
+        let no_filter = SpawningFilter::new(None, None, None);
 
-        assert!(matches_spawning_filters(&root, &no_filters));
-        assert!(matches_spawning_filters(&child, &no_filters));
+        assert!(no_filter.matches(&root, &context));
+        assert!(no_filter.matches(&child, &context));
     }
 
     #[test]
-    fn test_matches_spawning_filters_combined() {
+    fn test_spawning_filter_combined() {
+        let context = empty_context();
         let child = make_ticket("child-1", Some("parent-1"), Some(1));
 
         // Should match: spawned_from matches AND depth matches
-        let filters = SpawningFilters {
-            spawned_from: Some("parent-1"),
-            depth: Some(1),
-            ..Default::default()
-        };
-        assert!(matches_spawning_filters(&child, &filters));
+        let filter = SpawningFilter::new(Some("parent-1"), Some(1), None);
+        assert!(filter.matches(&child, &context));
 
         // Should not match: spawned_from matches but depth doesn't
-        let filters_wrong_depth = SpawningFilters {
-            spawned_from: Some("parent-1"),
-            depth: Some(2),
-            ..Default::default()
-        };
-        assert!(!matches_spawning_filters(&child, &filters_wrong_depth));
+        let filter_wrong_depth = SpawningFilter::new(Some("parent-1"), Some(2), None);
+        assert!(!filter_wrong_depth.matches(&child, &context));
     }
 }

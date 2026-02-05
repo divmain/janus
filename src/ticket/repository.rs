@@ -27,25 +27,24 @@ pub enum CacheRecoveryAction {
 ///
 /// Returns a HashMap mapping ticket IDs to their modification times.
 fn scan_disk_files(items_dir: &Path) -> crate::error::Result<HashMap<String, i64>> {
-    cache::TicketCache::scan_directory_static(items_dir)
-        .map_err(|e| crate::error::JanusError::CacheAccessFailed(items_dir.to_path_buf(), e.to_string()))
+    cache::TicketCache::scan_directory_static(items_dir).map_err(|e| {
+        crate::error::JanusError::CacheAccessFailed(items_dir.to_path_buf(), e.to_string())
+    })
 }
 
 /// Read and parse a single ticket from disk.
 ///
 /// Reads the file content and parses it into TicketMetadata.
 /// The ticket ID is set from the provided ID if not already present in the metadata.
-async fn read_ticket_from_disk(
-    id: &str,
-    file_path: &Path,
-) -> crate::error::Result<TicketMetadata> {
-    let content = tokio_fs::read_to_string(file_path).await
-        .map_err(|e| crate::error::JanusError::StorageError {
+async fn read_ticket_from_disk(id: &str, file_path: &Path) -> crate::error::Result<TicketMetadata> {
+    let content = tokio_fs::read_to_string(file_path).await.map_err(|e| {
+        crate::error::JanusError::StorageError {
             operation: "read",
             item_type: "ticket",
             path: file_path.to_path_buf(),
             source: e,
-        })?;
+        }
+    })?;
 
     let mut metadata = content::parse(&content)
         .map_err(|e| crate::error::JanusError::InvalidFormat(e.to_string()))?;
@@ -126,7 +125,10 @@ async fn repair_cache_entries(
                 validation_failures, total_validated
             );
             if let Err(e) = cache.force_rebuild_tickets().await {
-                eprintln!("Warning: cache rebuild failed: {}. Continuing with disk data.", e);
+                eprintln!(
+                    "Warning: cache rebuild failed: {}. Continuing with disk data.",
+                    e
+                );
             }
         }
         CacheRecoveryAction::RepairIndividual => {
@@ -257,7 +259,13 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
 
     // Step 6: Repair cache if needed
     let total_validated = disk_files.len();
-    repair_cache_entries(&cache, &tickets_to_repair, validation_failures, total_validated).await?;
+    repair_cache_entries(
+        &cache,
+        &tickets_to_repair,
+        validation_failures,
+        total_validated,
+    )
+    .await?;
 
     // Fallback to disk if all cache reads failed
     if result.success_count() == 0 && result.failure_count() > 0 {

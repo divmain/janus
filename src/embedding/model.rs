@@ -99,7 +99,10 @@ pub fn get_embedding_model() -> Result<&'static EmbeddingModel, String> {
             }
         }
         Err(e) => {
-            eprintln!("Warning: failed to load config: {}. Proceeding with semantic search enabled by default.", e);
+            eprintln!(
+                "Warning: failed to load config: {}. Proceeding with semantic search enabled by default.",
+                e
+            );
         }
     }
 

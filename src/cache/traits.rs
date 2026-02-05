@@ -164,7 +164,10 @@ impl CacheableItem for TicketMetadata {
                         match generate_ticket_embedding(title_ref, body_ref).await {
                             Ok(embedding) => Some(embedding_to_blob(&embedding)),
                             Err(e) => {
-                                eprintln!("Warning: failed to generate embedding for ticket: {}", e);
+                                eprintln!(
+                                    "Warning: failed to generate embedding for ticket: {}",
+                                    e
+                                );
                                 None
                             }
                         }
@@ -174,7 +177,10 @@ impl CacheableItem for TicketMetadata {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: failed to load config: {}. Skipping embedding generation.", e);
+                    eprintln!(
+                        "Warning: failed to load config: {}. Skipping embedding generation.",
+                        e
+                    );
                     None
                 }
             };

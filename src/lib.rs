@@ -16,6 +16,7 @@ pub mod mcp;
 pub mod next;
 pub mod parser;
 pub mod plan;
+pub mod query;
 pub mod remote;
 pub mod status;
 pub mod storage;

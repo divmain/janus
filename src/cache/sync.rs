@@ -196,12 +196,7 @@ impl TicketCache {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
                 Err(e) => {
-                    parse_failures.push(format!(
-                        "{} '{}': {}",
-                        T::item_name(),
-                        id,
-                        e
-                    ));
+                    parse_failures.push(format!("{} '{}': {}", T::item_name(), id, e));
                 }
             }
         }
@@ -283,12 +278,7 @@ impl TicketCache {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
                 Err(e) => {
-                    parse_failures.push(format!(
-                        "{} '{}': {}",
-                        T::item_name(),
-                        id,
-                        e
-                    ));
+                    parse_failures.push(format!("{} '{}': {}", T::item_name(), id, e));
                 }
             }
         }
@@ -422,7 +412,9 @@ impl TicketCache {
         let config = Config::load()?;
         if !config.semantic_search_enabled() {
             if !output_json {
-                eprintln!("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true");
+                eprintln!(
+                    "Semantic search is disabled. Enable with: janus config set semantic_search.enabled true"
+                );
             }
             return Ok(());
         }

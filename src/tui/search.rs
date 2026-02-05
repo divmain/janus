@@ -257,7 +257,10 @@ pub async fn perform_semantic_search(
             }
         }
         Err(e) => {
-            eprintln!("Warning: failed to load config: {}. Proceeding with semantic search.", e);
+            eprintln!(
+                "Warning: failed to load config: {}. Proceeding with semantic search.",
+                e
+            );
         }
     }
 

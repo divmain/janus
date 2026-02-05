@@ -45,7 +45,9 @@ pub async fn cmd_search(
     // Check if semantic search is enabled
     let config = Config::load()?;
     if !config.semantic_search_enabled() {
-        eprintln!("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true");
+        eprintln!(
+            "Semantic search is disabled. Enable with: janus config set semantic_search.enabled true"
+        );
         return Err(JanusError::Config(
             "Semantic search is disabled".to_string(),
         ));
