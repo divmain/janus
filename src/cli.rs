@@ -4,7 +4,7 @@ use std::io;
 use std::str::FromStr;
 
 use crate::types::{
-    DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES,
+    TicketPriority, TicketSize, TicketStatus, TicketType, DEFAULT_PRIORITY_STR, VALID_PRIORITIES,
     VALID_SIZES, VALID_STATUSES, VALID_TYPES,
 };
 
@@ -906,29 +906,54 @@ pub enum PlanAction {
     },
 }
 
-fn parse_priority(s: &str) -> Result<TicketPriority, String> {
-    s.parse().map_err(|_| {
+/// Generic validation helper for parsing values with a standard error message format.
+fn parse_with_validation<T, F>(
+    s: &str,
+    parser: F,
+    field_name: &str,
+    valid_values: &[&str],
+) -> Result<T, String>
+where
+    F: FnOnce(&str) -> Result<T, String>,
+{
+    parser(s).map_err(|_| {
         format!(
-            "Invalid priority. Must be one of: {}",
-            VALID_PRIORITIES.join(", ")
+            "Invalid {}. Must be one of: {}",
+            field_name,
+            valid_values.join(", ")
         )
     })
 }
 
+fn parse_priority(s: &str) -> Result<TicketPriority, String> {
+    parse_with_validation(
+        s,
+        |v| v.parse().map_err(|_| String::new()),
+        "priority",
+        VALID_PRIORITIES,
+    )
+}
+
 fn parse_type(s: &str) -> Result<TicketType, String> {
-    s.parse()
-        .map_err(|_| format!("Invalid type. Must be one of: {}", VALID_TYPES.join(", ")))
+    parse_with_validation(
+        s,
+        |v| v.parse().map_err(|_| String::new()),
+        "type",
+        VALID_TYPES,
+    )
 }
 
 fn parse_status(s: &str) -> Result<String, String> {
-    TicketStatus::from_str(s)
-        .map(|_| s.to_string())
-        .map_err(|_| {
-            format!(
-                "Invalid status. Must be one of: {}",
-                VALID_STATUSES.join(", ")
-            )
-        })
+    parse_with_validation(
+        s,
+        |v| {
+            TicketStatus::from_str(v)
+                .map(|_| v.to_string())
+                .map_err(|_| String::new())
+        },
+        "status",
+        VALID_STATUSES,
+    )
 }
 
 fn parse_ticket_id(s: &str) -> Result<String, String> {
@@ -953,12 +978,14 @@ fn parse_ticket_id(s: &str) -> Result<String, String> {
 }
 
 fn parse_size(s: &str) -> Result<TicketSize, String> {
-    s.parse().map_err(|_| {
-        format!(
-            "Invalid size. Must be one of: {} (or aliases: xs, s, m, l, xl)",
-            VALID_SIZES.join(", ")
-        )
-    })
+    let mut valid_values = VALID_SIZES.to_vec();
+    valid_values.extend(["xs", "s", "m", "l", "xl"]);
+    parse_with_validation(
+        s,
+        |v| v.parse().map_err(|_| String::new()),
+        "size",
+        &valid_values,
+    )
 }
 
 pub fn generate_completions(shell: Shell) {
