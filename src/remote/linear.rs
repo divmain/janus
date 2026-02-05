@@ -33,6 +33,18 @@ use super::{
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
 
+/// Create an HTTP client with Linear's standard configuration.
+///
+/// This helper centralizes the HTTP client builder configuration to avoid duplication.
+fn build_linear_http_client() -> Result<Client> {
+    Ok(Client::builder()
+        .http1_title_case_headers()
+        .http2_prior_knowledge()
+        .timeout(Duration::from_secs(60))
+        .connect_timeout(Duration::from_secs(30))
+        .build()?)
+}
+
 /// Wrapper for sensitive header values that redacts the value when formatted.
 ///
 /// This prevents API keys and other secrets from being leaked in logs when
@@ -384,12 +396,7 @@ impl LinearProvider {
             }
         });
 
-        let client = Client::builder()
-            .http1_title_case_headers()
-            .http2_prior_knowledge()
-            .timeout(Duration::from_secs(60))
-            .connect_timeout(Duration::from_secs(30))
-            .build()?;
+        let client = build_linear_http_client()?;
 
         Ok(Self {
             client,
@@ -404,12 +411,7 @@ impl LinearProvider {
     ///
     /// Configures HTTP client with 30s connect timeout and 60s total timeout.
     pub fn new(api_key: &str) -> Self {
-        let client = Client::builder()
-            .http1_title_case_headers()
-            .http2_prior_knowledge()
-            .timeout(Duration::from_secs(60))
-            .connect_timeout(Duration::from_secs(30))
-            .build()
+        let client = build_linear_http_client()
             .expect("Failed to create HTTP client");
 
         Self {
