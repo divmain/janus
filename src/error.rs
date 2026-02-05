@@ -282,6 +282,9 @@ pub enum JanusError {
     #[error("failed to load {} ticket file(s):\n{}", .0.len(), .0.join("\n"))]
     TicketLoadFailed(Vec<String>),
 
+    #[error("cache sync failed: {} parse failure(s)\n{}", .0.len(), .0.join("\n"))]
+    CacheSyncParseFailed(Vec<String>),
+
     #[error("--verbose-phase can only be used with phased plans")]
     VerbosePhaseRequiresPhasedPlan,
 

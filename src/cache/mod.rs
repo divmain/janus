@@ -1464,7 +1464,7 @@ remote: github
 
     #[tokio::test]
     #[serial]
-    async fn test_sync_logs_warnings_for_parse_errors() {
+    async fn test_sync_fails_with_parse_errors() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_parse_errors");
         fs::create_dir_all(&repo_path).unwrap();
@@ -1482,42 +1482,17 @@ remote: github
             "This is not a valid ticket file - no frontmatter\n\n# Invalid Ticket\n";
         fs::write(&invalid_path, invalid_content).unwrap();
 
-        // Capture stderr to verify warning is logged
         let cache = TicketCache::open().await.unwrap();
 
-        // Sync should succeed and log a warning about the invalid ticket
-        let changed = cache.sync().await.unwrap();
-        assert!(changed);
-
-        // Verify the valid ticket was synced
-        let mut rows = cache
-            .create_connection()
-            .await
-            .unwrap()
-            .query(
-                "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
-                ["j-valid"],
-            )
-            .await
-            .unwrap();
-        let row = get_first_row(&mut rows).await;
-        let count: i64 = row.get(0).unwrap();
-        assert_eq!(count, 1);
-
-        // Verify the invalid ticket was not synced
-        let mut rows = cache
-            .create_connection()
-            .await
-            .unwrap()
-            .query(
-                "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
-                ["j-invalid"],
-            )
-            .await
-            .unwrap();
-        let row = get_first_row(&mut rows).await;
-        let count: i64 = row.get(0).unwrap();
-        assert_eq!(count, 0);
+        // Sync should fail with CacheSyncParseFailed error
+        let result = cache.sync().await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("cache sync failed"),
+            "Expected error message to contain 'cache sync failed', got: {}",
+            err.to_string()
+        );
 
         let db_path = cache.cache_db_path();
         drop(cache);
@@ -1527,7 +1502,7 @@ remote: github
 
     #[tokio::test]
     #[serial]
-    async fn test_sync_removes_stale_cache_on_parse_failure() {
+    async fn test_sync_fails_on_parse_failure() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("stale_cache_test");
         fs::create_dir_all(&repo_path).unwrap();
@@ -1581,28 +1556,31 @@ This is a valid ticket.
         let invalid_content = "# Corrupted Ticket\nThis file has no frontmatter\n";
         fs::write(&ticket_path, invalid_content).unwrap();
 
-        // Sync again - with 100% failure rate (1/1), cache rebuild is triggered
-        // and the stale entry is removed
-        let changed = cache.sync().await.unwrap();
-        assert!(changed);
-
-        // Verify the stale cache entry is removed after rebuild
+        // Sync should fail with CacheSyncParseFailed error
+        let result = cache.sync().await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("cache sync failed"),
+            "Expected error message to contain 'cache sync failed', got: {}",
+            err.to_string()
+        );
+        // Cache entry should remain unchanged since sync failed
         let mut rows = cache
             .create_connection()
             .await
             .unwrap()
             .query(
-                "SELECT COUNT(*) FROM tickets WHERE ticket_id = ?1",
+                "SELECT title, status FROM tickets WHERE ticket_id = ?1",
                 ["j-test"],
             )
             .await
             .unwrap();
         let row = get_first_row(&mut rows).await;
-        let count: i64 = row.get(0).unwrap();
-        assert_eq!(
-            count, 0,
-            "Stale cache entry should be removed after rebuild"
-        );
+        let title: String = row.get(0).unwrap();
+        let status: String = row.get(1).unwrap();
+        assert_eq!(title, "Test Ticket");
+        assert_eq!(status, "new");
 
         let db_path = cache.cache_db_path();
         drop(cache);

@@ -186,25 +186,22 @@ impl TicketCache {
             ));
         }
 
-        // Track parse failures for threshold-based rebuild
-        let mut parse_failures = 0_usize;
-        let total_attempted = added.len() + modified.len();
-
         // Read and parse items before starting the transaction
         let mut items_to_upsert = Vec::new();
+        let mut parse_failures = Vec::new();
+
         for id in &added {
             match T::parse_from_file(id).await {
                 Ok((metadata, mtime_ns)) => {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
                 Err(e) => {
-                    parse_failures += 1;
-                    eprintln!(
-                        "Warning: failed to parse {} '{}': {}. Skipping...",
+                    parse_failures.push(format!(
+                        "{} '{}': {}",
                         T::item_name(),
                         id,
                         e
-                    );
+                    ));
                 }
             }
         }
@@ -214,37 +211,29 @@ impl TicketCache {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
                 Err(e) => {
-                    parse_failures += 1;
-                    eprintln!(
-                        "Warning: keeping stale cache entry for {} '{}' due to parse failure: {}",
+                    parse_failures.push(format!(
+                        "{} '{}' (stale cache): {}",
                         T::item_name(),
                         id,
                         e
-                    );
+                    ));
                 }
             }
         }
 
-        // Check if failure rate exceeds threshold and force rebuild if needed
+        // If there were any parse failures, return an error with all failures
+        if !parse_failures.is_empty() {
+            return Err(CacheError::CacheSyncParseFailed(parse_failures));
+        }
+
         let stats = SyncStats {
             added: added.len(),
             modified: modified.len(),
             removed: removed.len(),
             cache_was_empty,
-            parse_failures,
-            total_attempted,
+            parse_failures: 0,
+            total_attempted: added.len() + modified.len(),
         };
-
-        if stats.should_force_rebuild() {
-            eprintln!(
-                "Warning: {} parse failures out of {} attempts ({:.1}%) exceeds threshold. Forcing cache rebuild for {}...",
-                parse_failures,
-                total_attempted,
-                stats.failure_rate(),
-                T::item_name_plural()
-            );
-            return self.force_rebuild_sync::<T>().await;
-        }
 
         // Use transaction for atomicity
         let conn = self.create_connection().await?;
@@ -286,8 +275,7 @@ impl TicketCache {
         let disk_files = Self::scan_directory_static(&dir)?;
 
         let mut items_to_upsert = Vec::new();
-        let mut parse_failures = 0_usize;
-        let total_attempted = disk_files.len();
+        let mut parse_failures = Vec::new();
 
         for id in disk_files.keys() {
             match T::parse_from_file(id).await {
@@ -295,15 +283,19 @@ impl TicketCache {
                     items_to_upsert.push((metadata, mtime_ns));
                 }
                 Err(e) => {
-                    parse_failures += 1;
-                    eprintln!(
-                        "Warning: failed to parse {} '{}' during rebuild: {}. Skipping...",
+                    parse_failures.push(format!(
+                        "{} '{}': {}",
                         T::item_name(),
                         id,
                         e
-                    );
+                    ));
                 }
             }
+        }
+
+        // If there were any parse failures, return an error
+        if !parse_failures.is_empty() {
+            return Err(CacheError::CacheSyncParseFailed(parse_failures));
         }
 
         // Insert all successfully parsed items
@@ -318,16 +310,9 @@ impl TicketCache {
             modified: 0,
             removed: 0,
             cache_was_empty: false,
-            parse_failures,
-            total_attempted,
+            parse_failures: 0,
+            total_attempted: disk_files.len(),
         };
-
-        eprintln!(
-            "Cache rebuild complete: {} {} synced, {} failures",
-            items_to_upsert.len(),
-            T::item_name_plural(),
-            parse_failures
-        );
 
         Ok((true, stats))
     }
