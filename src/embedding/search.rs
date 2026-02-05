@@ -7,7 +7,6 @@ use crate::cache::TicketCache;
 use crate::error::{JanusError, Result};
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
 
-#[cfg(feature = "semantic-search")]
 use crate::embedding::model::generate_embedding;
 
 /// Result of a semantic search query containing the ticket metadata and similarity score.
@@ -38,7 +37,6 @@ impl TicketCache {
     /// Returns an error if:
     /// - The embedding model fails to generate an embedding
     /// - The database query fails
-    #[cfg(feature = "semantic-search")]
     pub async fn semantic_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         // Generate query embedding
         let query_embedding = generate_embedding(query)
@@ -83,12 +81,6 @@ impl TicketCache {
         Ok(results)
     }
 
-    /// Perform semantic search (stub when semantic-search feature is disabled).
-    #[cfg(not(feature = "semantic-search"))]
-    pub async fn semantic_search(&self, _query: &str, _limit: usize) -> Result<Vec<SearchResult>> {
-        Err(JanusError::EmbeddingsNotAvailable)
-    }
-
     /// Get statistics on embedding coverage in the cache.
     ///
     /// Returns a tuple of (tickets_with_embeddings, total_tickets)
@@ -125,7 +117,6 @@ impl TicketCache {
 
 /// Convert embedding vector to byte blob for storage.
 /// Each f32 is serialized as 4 little-endian bytes.
-#[cfg(feature = "semantic-search")]
 fn embedding_to_blob(embedding: &[f32]) -> Vec<u8> {
     embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
@@ -218,8 +209,6 @@ fn parse_ticket_row(row: &turso::Row) -> Result<TicketMetadata> {
 #[cfg(test)]
 mod tests {
     use crate::cache::TicketCache;
-    #[cfg(not(feature = "semantic-search"))]
-    use crate::error::JanusError;
     use serial_test::serial;
     use std::fs;
 
@@ -293,19 +282,10 @@ priority: {}
         // Total should be 2
         assert_eq!(total, 2);
 
-        // With embeddings count depends on feature flag
-        // Without semantic-search, it should be 0
-        // With semantic-search, it should be 2 (after sync generates embeddings)
-        #[cfg(feature = "semantic-search")]
+        // Both tickets should have embeddings after sync
         assert_eq!(
             with_emb, 2,
-            "With semantic-search feature, both tickets should have embeddings"
-        );
-
-        #[cfg(not(feature = "semantic-search"))]
-        assert_eq!(
-            with_emb, 0,
-            "Without semantic-search feature, no tickets should have embeddings"
+            "Both tickets should have embeddings after sync"
         );
 
         let db_path = cache.cache_db_path();
@@ -342,7 +322,6 @@ priority: {}
 
     #[tokio::test]
     #[serial]
-    #[cfg(feature = "semantic-search")]
     async fn test_semantic_search_basic() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_semantic_search");
@@ -411,7 +390,6 @@ priority: {}
 
     #[tokio::test]
     #[serial]
-    #[cfg(feature = "semantic-search")]
     async fn test_semantic_search_limit() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_search_limit");
@@ -441,7 +419,6 @@ priority: {}
 
     #[tokio::test]
     #[serial]
-    #[cfg(feature = "semantic-search")]
     async fn test_semantic_search_no_embeddings() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_search_no_embeddings");
@@ -470,7 +447,6 @@ priority: {}
 
     #[tokio::test]
     #[serial]
-    #[cfg(feature = "semantic-search")]
     async fn test_semantic_search_empty_query() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_search_empty_query");
@@ -489,36 +465,6 @@ priority: {}
             results.len() <= 5,
             "Should respect the limit even with empty query"
         );
-
-        let db_path = cache.cache_db_path();
-        drop(cache);
-        fs::remove_file(&db_path).ok();
-        fs::remove_dir_all(&repo_path).ok();
-    }
-
-    #[tokio::test]
-    #[serial]
-    #[cfg(not(feature = "semantic-search"))]
-    async fn test_semantic_search_disabled() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_search_disabled");
-        fs::create_dir_all(&repo_path).unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
-
-        let tickets_dir = repo_path.join(".janus/items");
-        fs::create_dir_all(&tickets_dir).unwrap();
-
-        let cache = TicketCache::open().await.unwrap();
-
-        // When semantic-search feature is disabled, should return EmbeddingsNotAvailable error
-        let result = cache.semantic_search("test query", 5).await;
-
-        match result {
-            Err(JanusError::EmbeddingsNotAvailable) => {
-                // Expected error
-            }
-            _ => panic!("Expected EmbeddingsNotAvailable error when feature is disabled"),
-        }
 
         let db_path = cache.cache_db_path();
         drop(cache);

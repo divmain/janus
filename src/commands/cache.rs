@@ -6,7 +6,6 @@ use crate::cache::TicketCache;
 use crate::error::{Result, is_corruption_error, is_permission_error};
 use crate::events::log_cache_rebuilt;
 
-#[cfg(feature = "semantic-search")]
 use crate::embedding::model::EMBEDDING_MODEL_NAME;
 
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
@@ -28,8 +27,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 "status": "healthy",
             });
 
-            // Add embedding status for semantic-search feature
-            #[cfg(feature = "semantic-search")]
+            // Add embedding status
             let embedding_info = match cache.embedding_coverage().await {
                 Ok((with_embedding, total)) => {
                     let percentage = if total > 0 {
@@ -52,9 +50,6 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 }
             };
 
-            #[cfg(not(feature = "semantic-search"))]
-            let _embedding_info: Option<(usize, usize, u32, bool)> = None;
-
             let text = if let Ok(meta) = fs::metadata(&db_path) {
                 let size = meta.len();
                 let modified_text = if let Ok(modified) = meta.modified() {
@@ -73,7 +68,6 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 );
 
                 // Add embedding status to text output
-                #[cfg(feature = "semantic-search")]
                 if let Some((with_embedding, total, percentage, _model_version_ok)) = embedding_info
                 {
                     text.push_str(&format!(
@@ -112,7 +106,6 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 );
 
                 // Add embedding status to text output
-                #[cfg(feature = "semantic-search")]
                 if let Some((with_embedding, total, percentage, model_version_ok)) = embedding_info
                 {
                     text.push_str(&format!(
@@ -143,7 +136,6 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
             }
 
             // Add embedding info to JSON output
-            #[cfg(feature = "semantic-search")]
             if let Some((with_embedding, total, percentage, model_version_ok)) = embedding_info {
                 output["embedding_coverage"] = json!({
                     "with_embedding": with_embedding,
@@ -294,20 +286,14 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                     let ticket_count = cache.get_all_tickets().await?.len();
 
                     // Check if we need to regenerate embeddings due to model version mismatch
-                    #[cfg(feature = "semantic-search")]
                     let needs_reemb = cache.needs_reembedding().await.unwrap_or(true);
 
-                    #[cfg(not(feature = "semantic-search"))]
-                    let _needs_reemb = false;
-
                     // Regenerate embeddings if needed (model version mismatch)
-                    #[cfg(feature = "semantic-search")]
                     if needs_reemb && !output_json {
                         println!("\nEmbedding model version mismatch detected.");
                         println!("Regenerating embeddings for all tickets...");
                     }
 
-                    #[cfg(feature = "semantic-search")]
                     if needs_reemb {
                         cache.regenerate_all_embeddings(output_json).await?;
                     }
@@ -315,7 +301,6 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                     let total_duration = start_total.elapsed();
 
                     // Update model version in meta table after successful rebuild
-                    #[cfg(feature = "semantic-search")]
                     {
                         let conn = cache.create_connection().await?;
                         conn.execute(
@@ -333,7 +318,6 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                         "success": true,
                     });
 
-                    #[cfg(feature = "semantic-search")]
                     {
                         output["embeddings_regenerated"] = json!(needs_reemb);
                         output["embedding_model"] = json!(EMBEDDING_MODEL_NAME);
@@ -347,10 +331,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                         .print(output_json)?;
 
                     // Log the cache rebuild event with detailed information
-                    #[cfg(feature = "semantic-search")]
                     let embeddings_regenerated = needs_reemb;
-                    #[cfg(not(feature = "semantic-search"))]
-                    let embeddings_regenerated = false;
 
                     let details = json!({
                         "sync_time_ms": sync_duration.as_millis(),

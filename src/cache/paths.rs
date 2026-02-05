@@ -3,9 +3,10 @@
 //! This module provides functions for determining cache file locations.
 //! The cache is stored locally within the `.janus` directory of each repository.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::database::CACHE_VERSION;
+use crate::error::Result;
 
 /// Get the path to the cache database file.
 ///
@@ -15,7 +16,49 @@ use super::database::CACHE_VERSION;
 /// - Different feature builds don't conflict (e.g., semantic vs non-semantic)
 /// - Version changes are handled gracefully without constant rebuilds
 pub fn cache_db_path() -> PathBuf {
-    PathBuf::from(".janus").join(format!("cache-v{}.db", CACHE_VERSION))
+    let janus_root = PathBuf::from(".janus");
+
+    // Attempt to migrate old cache files from the feature-flag era
+    // This is best-effort; if it fails, we'll use the standard path
+    let _ = migrate_old_cache_files(&janus_root);
+
+    janus_root.join(format!("cache-v{}.db", CACHE_VERSION))
+}
+
+/// Migrate old cache files from the feature-flag era to new unified naming.
+///
+/// Before semantic search was always enabled, there were two cache file variants:
+/// - `cache-v13.db` (non-semantic builds)
+/// - `cache-v13-semantic.db` (semantic search builds)
+///
+/// Now that semantic search is always enabled, we use a single unified name:
+/// - `cache-v13.db` (all builds)
+///
+/// This function renames the old semantic cache file if it exists and the new
+/// file doesn't, preserving the user's cached data.
+fn migrate_old_cache_files(janus_root: &Path) -> Result<()> {
+    let old_path = janus_root.join(format!("cache-v{}-semantic.db", CACHE_VERSION));
+    let new_path = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
+
+    if old_path.exists() && !new_path.exists() {
+        // Rename old semantic cache to new unified name
+        std::fs::rename(&old_path, &new_path)?;
+    }
+
+    // Also handle WAL and SHM files
+    let old_wal = janus_root.join(format!("cache-v{}-semantic.db-wal", CACHE_VERSION));
+    let new_wal = janus_root.join(format!("cache-v{}.db-wal", CACHE_VERSION));
+    if old_wal.exists() && !new_wal.exists() {
+        std::fs::rename(&old_wal, &new_wal)?;
+    }
+
+    let old_shm = janus_root.join(format!("cache-v{}-semantic.db-shm", CACHE_VERSION));
+    let new_shm = janus_root.join(format!("cache-v{}.db-shm", CACHE_VERSION));
+    if old_shm.exists() && !new_shm.exists() {
+        std::fs::rename(&old_shm, &new_shm)?;
+    }
+
+    Ok(())
 }
 
 /// Delete the cache database and all associated WAL/SHM files.
@@ -49,6 +92,7 @@ pub fn delete_cache_files(db_path: &PathBuf) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_cache_db_path_format() {
@@ -63,13 +107,6 @@ mod tests {
         // Should contain version number
         let filename = path.file_name().unwrap().to_str().unwrap();
         assert!(filename.starts_with("cache-v"));
-
-        // Check feature-specific naming
-        #[cfg(feature = "semantic-search")]
-        assert!(filename.contains("-semantic"));
-
-        #[cfg(not(feature = "semantic-search"))]
-        assert!(!filename.contains("-semantic"));
     }
 
     #[test]
@@ -117,5 +154,93 @@ mod tests {
 
         // Should succeed even if nothing exists
         delete_cache_files(&db_path).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_cache_migration_semantic_to_unified() {
+        use std::fs;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let janus_root = temp.path();
+
+        // Create old-style semantic cache file
+        let old_db = janus_root.join(format!("cache-v{}-semantic.db", CACHE_VERSION));
+        let old_wal = janus_root.join(format!("cache-v{}-semantic.db-wal", CACHE_VERSION));
+        let old_shm = janus_root.join(format!("cache-v{}-semantic.db-shm", CACHE_VERSION));
+
+        fs::write(&old_db, "db content").unwrap();
+        fs::write(&old_wal, "wal content").unwrap();
+        fs::write(&old_shm, "shm content").unwrap();
+
+        // Create a new unified path for comparison
+        let new_db = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
+        let new_wal = janus_root.join(format!("cache-v{}.db-wal", CACHE_VERSION));
+        let new_shm = janus_root.join(format!("cache-v{}.db-shm", CACHE_VERSION));
+
+        // Ensure new paths don't exist yet
+        assert!(!new_db.exists());
+        assert!(!new_wal.exists());
+        assert!(!new_shm.exists());
+
+        // Run migration
+        migrate_old_cache_files(janus_root).unwrap();
+
+        // Verify old files are gone and new files exist
+        assert!(!old_db.exists());
+        assert!(!old_wal.exists());
+        assert!(!old_shm.exists());
+        assert!(new_db.exists());
+        assert!(new_wal.exists());
+        assert!(new_shm.exists());
+
+        // Verify content was preserved
+        assert_eq!(fs::read_to_string(&new_db).unwrap(), "db content");
+        assert_eq!(fs::read_to_string(&new_wal).unwrap(), "wal content");
+        assert_eq!(fs::read_to_string(&new_shm).unwrap(), "shm content");
+    }
+
+    #[test]
+    #[serial]
+    fn test_cache_migration_skips_if_new_exists() {
+        use std::fs;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let janus_root = temp.path();
+
+        // Create old-style semantic cache file
+        let old_db = janus_root.join(format!("cache-v{}-semantic.db", CACHE_VERSION));
+        fs::write(&old_db, "old content").unwrap();
+
+        // Create new unified cache file
+        let new_db = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
+        fs::write(&new_db, "new content").unwrap();
+
+        // Run migration
+        migrate_old_cache_files(janus_root).unwrap();
+
+        // Verify both files still exist (migration skipped)
+        assert!(old_db.exists());
+        assert!(new_db.exists());
+
+        // Verify content unchanged
+        assert_eq!(fs::read_to_string(&old_db).unwrap(), "old content");
+        assert_eq!(fs::read_to_string(&new_db).unwrap(), "new content");
+    }
+
+    #[test]
+    #[serial]
+    fn test_cache_migration_no_old_files() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let janus_root = temp.path();
+
+        // Don't create any old files
+        let new_db = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
+
+        // Run migration - should succeed without doing anything
+        migrate_old_cache_files(janus_root).unwrap();
+
+        // Verify new file wasn't created
+        assert!(!new_db.exists());
     }
 }

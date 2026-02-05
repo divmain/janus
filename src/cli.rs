@@ -371,8 +371,7 @@ pub enum Commands {
         version: bool,
     },
 
-    /// Search tickets using semantic similarity (requires semantic-search feature)
-    #[cfg(feature = "semantic-search")]
+    /// Search tickets using semantic similarity
     Search {
         /// Natural language search query (e.g., "authentication problems")
         query: String,

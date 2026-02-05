@@ -7,6 +7,7 @@ use crate::cache::get_or_init_cache;
 use crate::commands::print_json;
 use crate::embedding::search::SearchResult;
 use crate::error::{JanusError, Result};
+use crate::remote::config::Config;
 use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
@@ -38,6 +39,15 @@ pub async fn cmd_search(
     if query.trim().is_empty() {
         return Err(JanusError::Other(
             "Search query cannot be empty".to_string(),
+        ));
+    }
+
+    // Check if semantic search is enabled
+    let config = Config::load()?;
+    if !config.semantic_search_enabled() {
+        eprintln!("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true");
+        return Err(JanusError::Config(
+            "Semantic search is disabled".to_string(),
         ));
     }
 

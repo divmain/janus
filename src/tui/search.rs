@@ -12,7 +12,7 @@
 //! - Fuzzy matching across id, title, and type
 //! - Priority shorthand: `p0`, `p1`, `p2`, `p3`, `p4`
 //! - Smart case: case-insensitive unless query contains uppercase
-//! - Semantic search with `~` prefix (requires semantic-search feature)
+//! - Semantic search with `~` prefix
 //! - Result merging: Fuzzy results first, then semantic (deduplicated)
 
 use fuzzy_matcher::FuzzyMatcher;
@@ -241,9 +241,54 @@ pub fn strip_semantic_modifier(query: &str) -> &str {
     }
 }
 
+/// Perform semantic search using the cache.
+/// Returns SearchResults on success, or an error string on failure.
+pub async fn perform_semantic_search(
+    query: &str,
+) -> std::result::Result<Vec<crate::embedding::search::SearchResult>, String> {
+    use crate::cache::get_or_init_cache;
+    use crate::remote::config::Config;
+
+    // Check if semantic search is enabled
+    match Config::load() {
+        Ok(config) => {
+            if !config.semantic_search_enabled() {
+                return Err("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true".to_string());
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to load config: {}. Proceeding with semantic search.", e);
+        }
+    }
+
+    // Get cache
+    let cache = get_or_init_cache().await.ok_or("Cache not available")?;
+
+    // Check if embeddings are available
+    let (with_embedding, total) = cache
+        .embedding_coverage()
+        .await
+        .map_err(|e| format!("Failed to check embeddings: {}", e))?;
+
+    if total == 0 {
+        return Err("No tickets in cache".to_string());
+    }
+
+    if with_embedding == 0 {
+        return Err("No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings for all tickets.".to_string());
+    }
+
+    // Perform semantic search with hard-coded limit of 10
+    let results = cache
+        .semantic_search(query, 10)
+        .await
+        .map_err(|e| format!("Semantic search failed: {}", e))?;
+
+    Ok(results)
+}
+
 /// Merge fuzzy and semantic results, removing duplicates
 /// Fuzzy results take precedence (appear first)
-#[cfg(feature = "semantic-search")]
 pub fn merge_search_results(
     fuzzy: Vec<FilteredTicket>,
     semantic: Vec<crate::embedding::search::SearchResult>,
@@ -272,41 +317,6 @@ pub fn merge_search_results(
     result
 }
 
-#[cfg(feature = "semantic-search")]
-/// Perform semantic search using the cache.
-/// Returns SearchResults on success, or an error string on failure.
-pub async fn perform_semantic_search(
-    query: &str,
-) -> std::result::Result<Vec<crate::embedding::search::SearchResult>, String> {
-    use crate::cache::get_or_init_cache;
-
-    // Get cache
-    let cache = get_or_init_cache().await.ok_or("Cache not available")?;
-
-    // Check if embeddings are available
-    let (with_embedding, total) = cache
-        .embedding_coverage()
-        .await
-        .map_err(|e| format!("Failed to check embeddings: {}", e))?;
-
-    if total == 0 {
-        return Err("No tickets in cache".to_string());
-    }
-
-    if with_embedding == 0 {
-        return Err("No ticket embeddings available. Run 'janus cache rebuild' with semantic-search feature enabled.".to_string());
-    }
-
-    // Perform semantic search with hard-coded limit of 10
-    let results = cache
-        .semantic_search(query, 10)
-        .await
-        .map_err(|e| format!("Semantic search failed: {}", e))?;
-
-    Ok(results)
-}
-
-#[cfg(feature = "semantic-search")]
 impl From<crate::embedding::search::SearchResult> for FilteredTicket {
     fn from(result: crate::embedding::search::SearchResult) -> Self {
         Self {
@@ -543,7 +553,6 @@ mod tests {
         assert_eq!(strip_semantic_modifier("~"), "");
     }
 
-    #[cfg(feature = "semantic-search")]
     #[test]
     fn test_merge_search_results() {
         // Create fuzzy results

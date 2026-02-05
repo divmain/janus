@@ -6,7 +6,6 @@ use janus::cli::{
     generate_completions,
 };
 use janus::cli::{Cli, Commands};
-#[cfg(feature = "semantic-search")]
 use janus::commands::cmd_search;
 use janus::commands::{
     cmd_add_note, cmd_adopt, cmd_board, cmd_cache_clear, cmd_cache_path, cmd_cache_rebuild,
@@ -358,7 +357,6 @@ async fn main() -> ExitCode {
             }
         }
 
-        #[cfg(feature = "semantic-search")]
         Commands::Search {
             query,
             limit,

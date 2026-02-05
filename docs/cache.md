@@ -69,24 +69,9 @@ In typical usage (occasional concurrent commands), you won't notice any issues. 
 
 ## Semantic Search
 
-When Janus is built with the `semantic-search` feature, the cache also stores vector embeddings for each ticket. This enables natural language search that matches by intent rather than exact keywords.
+When semantic search is enabled, the cache also stores vector embeddings for each ticket. This enables natural language search that matches by intent rather than exact keywords.
 
 **Important**: Semantic search requires the cache - it cannot work without it. The embeddings are stored in the cache database and generated during cache sync.
-
-### Enabling Semantic Search
-
-Semantic search is an optional feature that must be enabled at compile time:
-
-```bash
-# Build with semantic search support
-cargo build --release --features semantic-search
-```
-
-Or install via Homebrew (includes semantic search by default):
-
-```bash
-brew install janus
-```
 
 ### How It Works
 
@@ -97,11 +82,6 @@ brew install janus
 
 ### Cache File Naming
 
-Different builds use separate cache files to avoid conflicts:
-
-- Standard build: `cache-v{VERSION}.db`
-- Semantic search build: `cache-v{VERSION}-semantic.db`
-
-This means you can switch between builds without corrupting the cache.
+Cache files are named `cache-v{VERSION}.db` where VERSION is the schema version number.
 
 See [Semantic Search Guide](semantic-search.md) for usage details.

@@ -2,25 +2,21 @@
 
 Semantic search lets you find tickets by meaning rather than exact keywords. Instead of searching for "login bug", you can search for "authentication problems" and find relevant tickets even if they don't contain those exact words.
 
-## Requirements
+## Enabling/Disabling Semantic Search
 
-Semantic search is an optional feature that requires:
-
-1. **Compile-time feature flag**: Janus must be built with `--features semantic-search`
-2. **SQLite cache**: Embeddings are stored in the cache database (see [Cache Guide](cache.md))
-
-If you installed via Homebrew, semantic search is included by default.
-
-## Building with Semantic Search
+Semantic search is enabled by default. To disable it (to avoid model downloads or embedding generation):
 
 ```bash
-# From source
-cargo build --release --features semantic-search
-
-# Verify the feature is enabled
-janus --version
-# Should show "semantic-search" in the features list
+janus config set semantic_search.enabled false
 ```
+
+To re-enable:
+
+```bash
+janus config set semantic_search.enabled true
+```
+
+When disabled, semantic search commands will show a helpful message explaining how to enable it.
 
 ## Usage
 
@@ -98,20 +94,6 @@ Run `janus cache rebuild` to regenerate embeddings:
 
 ```bash
 janus cache rebuild
-```
-
-### Semantic search not available
-
-Verify Janus was built with the feature:
-
-```bash
-janus --version
-```
-
-If `semantic-search` is not listed, you need to rebuild:
-
-```bash
-cargo build --release --features semantic-search
 ```
 
 ### Cache version mismatch

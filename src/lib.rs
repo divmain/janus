@@ -24,7 +24,6 @@ pub mod tui;
 pub mod types;
 pub mod utils;
 
-#[cfg(feature = "semantic-search")]
 pub mod embedding;
 
 pub use entity::Entity;

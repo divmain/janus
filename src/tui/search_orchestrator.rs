@@ -27,8 +27,7 @@ pub struct SearchState {
     pub semantic_pending: State<bool>,
     /// Store semantic search error for toast display
     pub semantic_error: State<Option<String>>,
-    /// Handler for semantic search (feature-gated)
-    #[cfg(feature = "semantic-search")]
+    /// Handler for semantic search
     pub semantic_handler: Handler<String>,
 }
 
@@ -77,8 +76,7 @@ impl SearchState {
             }
         });
 
-        // Semantic search handler (only with feature flag)
-        #[cfg(feature = "semantic-search")]
+        // Semantic search handler
         let semantic_handler: Handler<String> = hooks.use_async_handler({
             let semantic_filtered_setter = search_filtered;
             let semantic_pending_setter = semantic_pending;
@@ -95,6 +93,20 @@ impl SearchState {
                         return;
                     };
                     let clean_query = clean_query.trim_start();
+
+                    // Check if semantic search is enabled before attempting search
+                    match crate::remote::config::Config::load() {
+                        Ok(config) => {
+                            if !config.semantic_search_enabled() {
+                                // Gracefully skip semantic search - don't show error, just don't run
+                                semantic_pending_setter.set(false);
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: failed to load config: {}. Proceeding with semantic search.", e);
+                        }
+                    }
 
                     // Perform semantic search
                     match crate::tui::search::perform_semantic_search(clean_query).await {
@@ -132,7 +144,6 @@ impl SearchState {
             handler: search_handler,
             semantic_pending,
             semantic_error,
-            #[cfg(feature = "semantic-search")]
             semantic_handler,
         }
     }
@@ -151,7 +162,6 @@ impl SearchState {
         self.handler.clone()(query.clone());
 
         // Trigger semantic if query starts with ~
-        #[cfg(feature = "semantic-search")]
         if query.starts_with('~') {
             self.semantic_pending.set(true);
             self.semantic_handler.clone()(query);

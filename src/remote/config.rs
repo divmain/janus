@@ -29,6 +29,10 @@ pub struct Config {
     /// Hooks configuration
     #[serde(default, skip_serializing_if = "HooksConfig::is_default")]
     pub hooks: HooksConfig,
+
+    /// Semantic search configuration
+    #[serde(default, skip_serializing_if = "SemanticSearchConfig::is_default")]
+    pub semantic_search: SemanticSearchConfig,
 }
 
 /// Default remote configuration
@@ -126,6 +130,33 @@ pub struct HooksConfig {
     /// Mapping of event names to script paths (relative to .janus/hooks/)
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub scripts: HashMap<String, String>,
+}
+
+/// Semantic search configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticSearchConfig {
+    /// Whether semantic search is enabled (default: true)
+    #[serde(default = "default_semantic_search_enabled")]
+    pub enabled: bool,
+}
+
+fn default_semantic_search_enabled() -> bool {
+    true
+}
+
+impl Default for SemanticSearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_semantic_search_enabled(),
+        }
+    }
+}
+
+impl SemanticSearchConfig {
+    /// Check if this config has default values
+    pub fn is_default(&self) -> bool {
+        self.enabled == default_semantic_search_enabled()
+    }
 }
 
 fn default_hooks_enabled() -> bool {
@@ -263,6 +294,16 @@ impl Config {
             repo,
         });
     }
+
+    /// Check if semantic search is enabled
+    pub fn semantic_search_enabled(&self) -> bool {
+        self.semantic_search.enabled
+    }
+
+    /// Set semantic search enabled status
+    pub fn set_semantic_search_enabled(&mut self, enabled: bool) {
+        self.semantic_search.enabled = enabled;
+    }
 }
 
 #[cfg(test)]
@@ -310,5 +351,63 @@ mod tests {
         assert_eq!(default.platform, Platform::GitHub);
         assert_eq!(default.org, "myorg");
         assert_eq!(default.repo, Some("myrepo".to_string()));
+    }
+
+    #[test]
+    fn test_config_semantic_search_default() {
+        // Test that configs without semantic_search field default to enabled
+        let yaml_without_semantic = r#"
+default_remote:
+  platform: github
+  org: myorg
+"#;
+
+        let config: Config = serde_yaml_ng::from_str(yaml_without_semantic).unwrap();
+        assert!(config.semantic_search_enabled());
+    }
+
+    #[test]
+    fn test_config_semantic_search_explicit_false() {
+        // Test that explicit false is respected
+        let yaml_with_disabled = r#"
+semantic_search:
+  enabled: false
+"#;
+
+        let config: Config = serde_yaml_ng::from_str(yaml_with_disabled).unwrap();
+        assert!(!config.semantic_search_enabled());
+    }
+
+    #[test]
+    fn test_config_semantic_search_explicit_true() {
+        // Test that explicit true works
+        let yaml_with_enabled = r#"
+semantic_search:
+  enabled: true
+"#;
+
+        let config: Config = serde_yaml_ng::from_str(yaml_with_enabled).unwrap();
+        assert!(config.semantic_search_enabled());
+    }
+
+    #[test]
+    fn test_config_semantic_search_roundtrip() {
+        // Test that semantic search setting persists through serialization
+        let mut config = Config::default();
+        assert!(config.semantic_search_enabled()); // Default is enabled
+
+        // Disable and save
+        config.set_semantic_search_enabled(false);
+        let yaml = serde_yaml_ng::to_string(&config).unwrap();
+
+        // Load and verify
+        let loaded: Config = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert!(!loaded.semantic_search_enabled());
+    }
+
+    #[test]
+    fn test_config_default_semantic_search_is_enabled() {
+        let config = Config::default();
+        assert!(config.semantic_search_enabled());
     }
 }

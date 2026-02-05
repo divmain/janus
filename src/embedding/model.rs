@@ -7,6 +7,8 @@ use tokio::sync::Mutex;
 use directories::BaseDirs;
 use fastembed::{EmbeddingModel as FastembedModel, InitOptions, TextEmbedding};
 
+use crate::remote::config::Config;
+
 pub const EMBEDDING_DIMENSIONS: usize = 768;
 pub const EMBEDDING_MODEL_NAME: &str = "jinaai/jina-embeddings-v2-base-code";
 
@@ -84,7 +86,23 @@ fn get_embedding_cache_dir() -> Result<PathBuf, String> {
 }
 
 /// Get or initialize the global embedding model singleton
+///
+/// Returns an error if semantic search is disabled in the config.
 pub fn get_embedding_model() -> Result<&'static EmbeddingModel, String> {
+    // Check if semantic search is enabled before loading the model
+    match Config::load() {
+        Ok(config) => {
+            if !config.semantic_search_enabled() {
+                return Err(
+                    "Semantic search is disabled. Enable with: janus config set semantic_search.enabled true".to_string()
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to load config: {}. Proceeding with semantic search enabled by default.", e);
+        }
+    }
+
     EMBEDDING_MODEL
         .get_or_init(EmbeddingModel::load)
         .as_ref()

@@ -336,9 +336,6 @@ Description of the plan.
         let stored_version: Option<String> =
             rows.next().await.unwrap().map(|row| row.get(0).unwrap());
 
-        #[cfg(feature = "semantic-search")]
-        assert_eq!(stored_version, Some("13-semantic".to_string()));
-        #[cfg(not(feature = "semantic-search"))]
         assert_eq!(stored_version, Some("13".to_string()));
 
         let db_path = cache.cache_db_path();
@@ -2390,9 +2387,6 @@ size: {}
 
         // Verify cache version was updated
         let version = cache.get_meta("cache_version").await.unwrap();
-        #[cfg(feature = "semantic-search")]
-        assert_eq!(version, Some("13-semantic".to_string()));
-        #[cfg(not(feature = "semantic-search"))]
         assert_eq!(version, Some("13".to_string()));
 
         drop(cache);

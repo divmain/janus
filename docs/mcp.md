@@ -30,7 +30,7 @@ The MCP server exposes 13 tools for ticket and plan management:
 | `get_plan_status` | Get plan progress including percentage and phase breakdown |
 | `get_children` | Get all tickets spawned from a parent ticket |
 | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
-| `semantic_search` | Find tickets semantically similar to a query (requires semantic-search feature) |
+| `semantic_search` | Find tickets semantically similar to a query |
 
 ## Available Resources
 

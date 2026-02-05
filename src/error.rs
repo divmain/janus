@@ -408,11 +408,9 @@ pub enum JanusError {
     #[error("failed to extract column {column} from database row: {error}")]
     CacheColumnExtraction { column: usize, error: String },
 
-    #[cfg(feature = "semantic-search")]
     #[error("embedding model error: {0}")]
     EmbeddingModel(String),
 
-    #[cfg(feature = "semantic-search")]
     #[error("semantic search not available: embeddings not generated")]
     EmbeddingsNotAvailable,
 }

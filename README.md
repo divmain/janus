@@ -11,7 +11,7 @@ Plain-text issue tracking with TUI interfaces and remote synchronization.
 - **Remote sync**: Two-way sync with GitHub Issues and Linear
 - **CLI-first**: All operations available via command line with aliases
 - **JSON queries**: Export tickets as JSON with flexible filtering
-- **Semantic search** (optional): Find tickets by intent using AI-powered vector embeddings
+- **Semantic search**: Find tickets by intent using AI-powered vector embeddings
 
 ## Installation
 

@@ -308,7 +308,7 @@ janus query '.type == "feature"'          # filter by type
 
 ### `janus search`
 
-Search tickets using semantic similarity (requires `semantic-search` feature).
+Search tickets using semantic similarity.
 
 ```bash
 janus search <QUERY> [OPTIONS]

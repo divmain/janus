@@ -12,6 +12,11 @@ use crate::remote::config::{Config, Platform};
 
 /// Validate a config key and convert underscore notation to dot notation suggestion
 fn validate_config_key(key: &str) -> Result<&str> {
+    // Allow keys that are explicitly valid (some have underscores in section names)
+    if key == "semantic_search.enabled" {
+        return Ok(key);
+    }
+
     // Check if key uses underscore notation that should be dot notation
     // Only the first underscore should be replaced with a dot (e.g., linear_api_key -> linear.api_key)
     if let Some(pos) = key.find('_') {
@@ -51,6 +56,9 @@ pub fn cmd_config_show(output_json: bool) -> Result<()> {
             "auth": {
                 "github_token_configured": config.github_token().is_some(),
                 "linear_api_key_configured": config.linear_api_key().is_some(),
+            },
+            "semantic_search": {
+                "enabled": config.semantic_search_enabled(),
             },
             "config_file": Config::config_path().to_string_lossy(),
         }))?;
@@ -96,6 +104,12 @@ pub fn cmd_config_show(output_json: bool) -> Result<()> {
             "not configured".dimmed().to_string()
         }
     );
+
+    println!();
+
+    // Semantic search status
+    println!("{}:", "semantic_search".cyan());
+    println!("  enabled: {}", config.semantic_search_enabled());
 
     println!();
     println!(
@@ -170,9 +184,29 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
                 println!("Set {} to {}:{}", "default.remote".cyan(), platform, org);
             }
         }
+        "semantic_search.enabled" => {
+            let enabled = value.parse::<bool>().map_err(|_| {
+                JanusError::Config(format!(
+                    "invalid value '{}' for semantic_search.enabled. Expected: true or false",
+                    value
+                ))
+            })?;
+            config.set_semantic_search_enabled(enabled);
+            config.save()?;
+            if output_json {
+                print_json(&json!({
+                    "action": "config_set",
+                    "key": key,
+                    "value": enabled,
+                    "success": true,
+                }))?;
+            } else {
+                println!("Set {} to {}", "semantic_search.enabled".cyan(), enabled);
+            }
+        }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote",
+                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled",
                 key
             )));
         }
@@ -271,9 +305,21 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                 return Err(JanusError::Config("default.remote not set".to_string()));
             }
         }
+        "semantic_search.enabled" => {
+            let enabled = config.semantic_search_enabled();
+            if output_json {
+                print_json(&json!({
+                    "key": key,
+                    "value": enabled,
+                    "configured": true,
+                }))?;
+            } else {
+                println!("{}", enabled);
+            }
+        }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote",
+                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled",
                 key
             )));
         }

@@ -18,7 +18,6 @@ use crate::types::TicketMetadata;
 use super::database::TicketCache;
 use super::traits::CacheableItem;
 
-#[cfg(feature = "semantic-search")]
 use crate::embedding::model::{EMBEDDING_MODEL_NAME, generate_ticket_embedding};
 
 /// Statistics from a sync operation
@@ -414,7 +413,6 @@ impl TicketCache {
     /// This method checks the stored embedding model version in the cache metadata
     /// against the current model version. Returns true if they don't match or if
     /// no model version is stored.
-    #[cfg(feature = "semantic-search")]
     pub async fn needs_reembedding(&self) -> Result<bool> {
         let stored_model = self.get_meta("embedding_model").await?;
 
@@ -432,8 +430,18 @@ impl TicketCache {
     ///
     /// # Arguments
     /// * `output_json` - If true, suppresses progress output
-    #[cfg(feature = "semantic-search")]
     pub async fn regenerate_all_embeddings(&self, output_json: bool) -> Result<()> {
+        use crate::remote::config::Config;
+
+        // Check if semantic search is enabled before proceeding
+        let config = Config::load()?;
+        if !config.semantic_search_enabled() {
+            if !output_json {
+                eprintln!("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true");
+            }
+            return Ok(());
+        }
+
         // Get all tickets
         let tickets = self.get_all_tickets().await?;
         let total = tickets.len();

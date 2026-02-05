@@ -38,8 +38,6 @@ Type to filter tickets by title, ID, or content.
 
 The search box border changes color to indicate semantic search mode. Results merge fuzzy matches (first) with semantic matches (deduplicated).
 
-Requires the `semantic-search` feature - see [Semantic Search Guide](semantic-search.md).
-
 ### Ticket Actions
 
 | Key | Action |

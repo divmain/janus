@@ -33,13 +33,13 @@ use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
 
-#[cfg(feature = "semantic-search")]
 use crate::cache::get_ticket_cache;
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
+use crate::remote::config::Config;
 use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
@@ -984,123 +984,124 @@ impl JanusTools {
     /// Find tickets semantically similar to a natural language query.
     #[tool(
         name = "semantic_search",
-        description = "Find tickets semantically similar to a natural language query. Uses vector embeddings for fuzzy matching by intent rather than exact keywords. (Requires semantic-search feature)"
+        description = "Find tickets semantically similar to a natural language query. Uses vector embeddings for fuzzy matching by intent rather than exact keywords."
     )]
     async fn semantic_search(
         &self,
-        #[cfg(not(feature = "semantic-search"))] Parameters(_request): Parameters<
-            SemanticSearchRequest,
-        >,
-        #[cfg(feature = "semantic-search")] Parameters(request): Parameters<SemanticSearchRequest>,
+        Parameters(request): Parameters<SemanticSearchRequest>,
     ) -> Result<String, String> {
-        #[cfg(feature = "semantic-search")]
-        {
-            // Validate query
-            if request.query.trim().is_empty() {
-                return Err("Search query cannot be empty".to_string());
-            }
-
-            // Get cache
-            let cache = get_ticket_cache()
-                .await
-                .map_err(|e| format!("Failed to access ticket cache: {}. Ensure the cache is initialized with 'janus cache'.", e))?;
-
-            // Check if embeddings available
-            let (with_embedding, total) = cache
-                .embedding_coverage()
-                .await
-                .map_err(|e| format!("Failed to check embedding coverage: {}", e))?;
-
-            if total == 0 {
-                return Err("No tickets found in the cache.".to_string());
-            }
-
-            if with_embedding == 0 {
-                return Err("No ticket embeddings available. Run 'janus cache rebuild' with semantic-search feature enabled.".to_string());
-            }
-
-            // Check for model version mismatch
-            let needs_reembed = cache.needs_reembedding().await.unwrap_or(false);
-
-            // Set defaults
-            let limit = request.limit.unwrap_or(10);
-            let threshold = request.threshold.unwrap_or(0.0);
-
-            // Perform search
-            let results = cache
-                .semantic_search(&request.query, limit)
-                .await
-                .map_err(|e| format!("Search failed: {}", e))?;
-
-            // Filter by threshold
-            let results = results
-                .into_iter()
-                .filter(|r| r.similarity >= threshold)
-                .collect::<Vec<_>>();
-
-            // Format as table for LLM consumption using tabled
-            if results.is_empty() {
-                return Ok("No tickets found matching the query.".to_string());
-            }
-
-            use tabled::settings::Style;
-            use tabled::{Table, Tabled};
-
-            #[derive(Tabled)]
-            struct SearchRow {
-                #[tabled(rename = "ID")]
-                id: String,
-                #[tabled(rename = "Similarity")]
-                similarity: String,
-                #[tabled(rename = "Title")]
-                title: String,
-                #[tabled(rename = "Status")]
-                status: String,
-            }
-
-            let rows: Vec<SearchRow> = results
-                .iter()
-                .map(|r| SearchRow {
-                    id: r.ticket.id.as_deref().unwrap_or("unknown").to_string(),
-                    similarity: format!("{:.2}", r.similarity),
-                    title: r.ticket.title.as_deref().unwrap_or("Untitled").to_string(),
-                    status: r
-                        .ticket
-                        .status
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "new".to_string()),
-                })
-                .collect();
-
-            let mut table = Table::new(rows);
-            table.with(Style::modern());
-
-            let mut output = format!(
-                "Found {} ticket(s) semantically similar to: {}\n\n",
-                results.len(),
-                request.query
-            );
-            output.push_str(&table.to_string());
-
-            if with_embedding < total {
-                let percentage = (with_embedding * 100) / total;
-                output.push_str(&format!(
-                    "\n\n*Note: Only {}/{} tickets have embeddings ({}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*",
-                    with_embedding, total, percentage
-                ));
-            }
-
-            if needs_reembed {
-                output.push_str("\n\n*Warning: Embedding model version mismatch detected. Run 'janus cache rebuild' to update embeddings to the current model.*");
-            }
-
-            Ok(output)
+        // Validate query
+        if request.query.trim().is_empty() {
+            return Err("Search query cannot be empty".to_string());
         }
 
-        #[cfg(not(feature = "semantic-search"))]
-        {
-            Err("Semantic search is not available. This feature requires the 'semantic-search' feature flag to be enabled at compile time.".to_string())
+        // Check if semantic search is enabled
+        match Config::load() {
+            Ok(config) => {
+                if !config.semantic_search_enabled() {
+                    return Ok("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true".to_string());
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to load config: {}. Proceeding with semantic search.", e);
+            }
         }
+
+        // Get cache
+        let cache = get_ticket_cache()
+            .await
+            .map_err(|e| format!("Failed to access ticket cache: {}. Ensure the cache is initialized with 'janus cache'.", e))?;
+
+        // Check if embeddings available
+        let (with_embedding, total) = cache
+            .embedding_coverage()
+            .await
+            .map_err(|e| format!("Failed to check embedding coverage: {}", e))?;
+
+        if total == 0 {
+            return Err("No tickets found in the cache.".to_string());
+        }
+
+        if with_embedding == 0 {
+            return Err("No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings for all tickets.".to_string());
+        }
+
+        // Check for model version mismatch
+        let needs_reembed = cache.needs_reembedding().await.unwrap_or(false);
+
+        // Set defaults
+        let limit = request.limit.unwrap_or(10);
+        let threshold = request.threshold.unwrap_or(0.0);
+
+        // Perform search
+        let results = cache
+            .semantic_search(&request.query, limit)
+            .await
+            .map_err(|e| format!("Search failed: {}", e))?;
+
+        // Filter by threshold
+        let results = results
+            .into_iter()
+            .filter(|r| r.similarity >= threshold)
+            .collect::<Vec<_>>();
+
+        // Format as table for LLM consumption using tabled
+        if results.is_empty() {
+            return Ok("No tickets found matching the query.".to_string());
+        }
+
+        use tabled::settings::Style;
+        use tabled::{Table, Tabled};
+
+        #[derive(Tabled)]
+        struct SearchRow {
+            #[tabled(rename = "ID")]
+            id: String,
+            #[tabled(rename = "Similarity")]
+            similarity: String,
+            #[tabled(rename = "Title")]
+            title: String,
+            #[tabled(rename = "Status")]
+            status: String,
+        }
+
+        let rows: Vec<SearchRow> = results
+            .iter()
+            .map(|r| SearchRow {
+                id: r.ticket.id.as_deref().unwrap_or("unknown").to_string(),
+                similarity: format!("{:.2}", r.similarity),
+                title: r.ticket.title.as_deref().unwrap_or("Untitled").to_string(),
+                status: r
+                    .ticket
+                    .status
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "new".to_string()),
+            })
+            .collect();
+
+        let mut table = Table::new(rows);
+        table.with(Style::modern());
+
+        let mut output = format!(
+            "Found {} ticket(s) semantically similar to: {}\n\n",
+            results.len(),
+            request.query
+        );
+        output.push_str(&table.to_string());
+
+        if with_embedding < total {
+            let percentage = (with_embedding * 100) / total;
+            output.push_str(&format!(
+                "\n\n*Note: Only {}/{} tickets have embeddings ({}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*",
+                with_embedding, total, percentage
+            ));
+        }
+
+        if needs_reembed {
+            output.push_str("\n\n*Warning: Embedding model version mismatch detected. Run 'janus cache rebuild' to update embeddings to the current model.*");
+        }
+
+        Ok(output)
     }
 }
 

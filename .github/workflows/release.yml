@@ -23,11 +23,11 @@ jobs:
           targets: ${{ matrix.target }}
           
       - name: Run tests
-        run: cargo test --features semantic-search
+        run: cargo test
         
       - name: Build binary
         run: |
-          cargo build --release --target ${{ matrix.target }} --features semantic-search
+          cargo build --release --target ${{ matrix.target }}
           strip target/${{ matrix.target }}/release/janus || true
           
       - name: Prepare release archive

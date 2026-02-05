@@ -22,10 +22,6 @@ use super::paths::{cache_db_path, delete_cache_files};
 const BUSY_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Current cache schema version. Increment when schema changes.
-/// This includes feature flags to ensure caches with different features are isolated.
-#[cfg(feature = "semantic-search")]
-pub(crate) const CACHE_VERSION: &str = "13-semantic";
-#[cfg(not(feature = "semantic-search"))]
 pub(crate) const CACHE_VERSION: &str = "13";
 
 /// Maximum number of retry attempts when creating database connections.
@@ -218,7 +214,6 @@ impl TicketCache {
         )
         .await?;
 
-        #[cfg(feature = "semantic-search")]
         {
             // Add embedding column for semantic search (F32_BLOB with 384 dimensions)
             // Note: This is a no-op if the column already exists due to IF NOT EXISTS
@@ -266,7 +261,6 @@ impl TicketCache {
         )
         .await?;
 
-        #[cfg(feature = "semantic-search")]
         {
             // Track the embedding model version
             use crate::embedding::model::EMBEDDING_MODEL_NAME;
@@ -410,7 +404,6 @@ impl TicketCache {
         )
         .await?;
 
-        #[cfg(feature = "semantic-search")]
         {
             // Add embedding column for semantic search (F32_BLOB with 384 dimensions)
             conn.execute("ALTER TABLE tickets ADD COLUMN embedding F32_BLOB(384)", ())
@@ -493,7 +486,6 @@ impl TicketCache {
     /// # Arguments
     /// * `ticket_id` - The ID of the ticket to update
     /// * `embedding` - The embedding vector to store
-    #[cfg(feature = "semantic-search")]
     pub async fn update_ticket_embedding(&self, ticket_id: &str, embedding: &[f32]) -> Result<()> {
         let blob = embedding_to_blob(embedding);
         let conn = self.create_connection().await?;
@@ -508,7 +500,6 @@ impl TicketCache {
 
 /// Convert embedding vector to byte blob for storage.
 /// Each f32 is serialized as 4 little-endian bytes.
-#[cfg(feature = "semantic-search")]
 fn embedding_to_blob(embedding: &[f32]) -> Vec<u8> {
     embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
