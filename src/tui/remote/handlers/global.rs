@@ -1,25 +1,21 @@
 //! Global keyboard handlers (q, /, P, r, f, ?, e, Enter, Tab, etc.)
 
-use std::collections::HashSet;
-
 use iocraft::prelude::KeyCode;
 
 use super::super::error_toast::Toast;
 use super::super::filter_modal::FilterState;
-use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
-use super::sync;
+use super::HandleResult;
 
 /// Handle global keys that work in most contexts
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
         KeyCode::Char('q') | KeyCode::Esc => {
-            ctx.view_state.should_exit.set(true);
+            ctx.view_state.set_should_exit(true);
             HandleResult::Handled
         }
         KeyCode::Char('/') => {
-            ctx.search.focused.set(true);
+            ctx.search.set_focused(true);
             HandleResult::Handled
         }
         KeyCode::Char('P') => {
@@ -31,106 +27,87 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
             HandleResult::Handled
         }
         KeyCode::Char('f') => {
-            handle_open_filter(ctx);
-            HandleResult::Handled
-        }
-        KeyCode::Char('s') => {
-            // Start sync (only when sync preview is not open)
-            if ctx.modals.sync_preview.read().is_none() {
-                sync::handle_start_sync(ctx);
-            }
+            handle_filter(ctx);
             HandleResult::Handled
         }
         KeyCode::Char('?') => {
-            ctx.modals.show_help_modal.set(true);
+            ctx.modals.toggle_help();
             HandleResult::Handled
         }
         KeyCode::Char('e') => {
-            if ctx.modals.last_error.read().is_some() {
-                ctx.modals.show_error_modal.set(true);
-            }
+            ctx.modals.toggle_error();
             HandleResult::Handled
         }
         KeyCode::Enter => {
-            // Toggle detail pane focus or visibility (only when no modal is open)
-            if ctx.filters.filter_modal.read().is_none() {
-                let detail_focused = ctx.view_state.detail_pane_focused.get();
-                if detail_focused {
-                    // When detail is focused, press Enter to focus back on list
-                    ctx.view_state.detail_pane_focused.set(false);
-                } else {
-                    // Toggle detail pane visibility
-                    let detail_visible = ctx.view_state.show_detail.get();
-                    if detail_visible {
-                        // Detail visible but not focused - focus it
-                        ctx.view_state.detail_pane_focused.set(true);
-                    } else {
-                        // Show detail pane and focus it
-                        ctx.view_state.show_detail.set(true);
-                        ctx.view_state.detail_pane_focused.set(true);
-                    }
-                }
-            }
+            handle_enter(ctx);
             HandleResult::Handled
         }
         KeyCode::Tab => {
-            // Switch views (only when filter modal is not open)
-            if ctx.filters.filter_modal.read().is_none() {
-                let new_view = match ctx.view_state.active_view.get() {
-                    ViewMode::Local => ViewMode::Remote,
-                    ViewMode::Remote => ViewMode::Local,
-                };
-                ctx.view_state.active_view.set(new_view);
-            }
+            handle_tab(ctx);
+            HandleResult::Handled
+        }
+        KeyCode::BackTab => {
+            handle_backtab(ctx);
             HandleResult::Handled
         }
         _ => HandleResult::NotHandled,
     }
 }
 
+/// Handle 'P' key - switch provider
 fn handle_switch_provider(ctx: &mut HandlerContext<'_>) {
-    use crate::remote::config::Platform;
-
-    let new_provider = match ctx.filters.provider.get() {
-        Platform::GitHub => Platform::Linear,
-        Platform::Linear => Platform::GitHub,
+    let current = ctx.filters.provider();
+    let new_provider = match current {
+        crate::remote::config::Platform::GitHub => crate::remote::config::Platform::Linear,
+        crate::remote::config::Platform::Linear => crate::remote::config::Platform::GitHub,
     };
-    ctx.filters.provider.set(new_provider);
-
-    // Clear selections when switching providers
-    ctx.view_data.local_nav.selected_ids.set(HashSet::new());
-    ctx.view_data.remote_nav.selected_ids.set(HashSet::new());
-    ctx.view_data.local_nav.selected_index.set(0);
-    ctx.view_data.remote_nav.selected_index.set(0);
-    ctx.view_data.local_nav.scroll_offset.set(0);
-    ctx.view_data.remote_nav.scroll_offset.set(0);
-    ctx.view_data.remote_issues.set(Vec::new());
-    ctx.remote.loading.set(true);
-
-    // Fetch issues for the new provider
-    let current_query = ctx.filters.active_filters.read().clone();
-    ctx.handlers.fetch_handler.clone()((new_provider, current_query));
+    ctx.filters.set_provider(new_provider);
     ctx.modals
         .toast
-        .set(Some(Toast::info(format!("Switched to {new_provider}"))));
+        .set(Some(Toast::info(format!("Switched to {}", new_provider))));
 }
 
+/// Handle 'r' key - refresh
 fn handle_refresh(ctx: &mut HandlerContext<'_>) {
-    if !ctx.remote.loading.get() {
-        ctx.remote.loading.set(true);
-        ctx.modals
-            .toast
-            .set(Some(Toast::info("Refreshing remote issues...")));
-        let current_query = ctx.filters.active_filters.read().clone();
-        ctx.handlers.fetch_handler.clone()((ctx.filters.provider.get(), current_query));
-    }
+    ctx.view_state.set_loading(true);
+    let current_provider = ctx.filters.provider();
+    let current_query = ctx.filters.active_filters();
+    ctx.handlers.fetch_handler.clone()((current_provider, current_query));
 }
 
-fn handle_open_filter(ctx: &mut HandlerContext<'_>) {
-    // Always derive modal state from active_filters when opening
-    // This ensures consistency even if modal was previously cancelled
-    let current_query = ctx.filters.active_filters.read().clone();
+/// Handle 'f' key - open filter modal
+fn handle_filter(ctx: &mut HandlerContext<'_>) {
+    let current_query = ctx.filters.active_filters();
     ctx.filters
         .filter_modal
         .set(Some(FilterState::from_query(&current_query)));
+}
+
+/// Handle Enter key - depends on context
+fn handle_enter(ctx: &mut HandlerContext<'_>) {
+    if ctx.search.is_focused() {
+        // Execute search
+        ctx.search.set_focused(false);
+    } else {
+        // Toggle detail view
+        ctx.view_state.toggle_show_detail();
+    }
+}
+
+/// Handle Tab key - toggle view or focus
+fn handle_tab(ctx: &mut HandlerContext<'_>) {
+    if ctx.view_state.show_detail() {
+        // Toggle between detail pane and list
+        ctx.view_state
+            .set_detail_pane_focused(!ctx.view_state.detail_pane_focused());
+    } else {
+        // Toggle between local and remote views
+        ctx.view_state.toggle_view();
+    }
+}
+
+/// Handle BackTab key
+fn handle_backtab(ctx: &mut HandlerContext<'_>) {
+    // Same as Tab for now
+    handle_tab(ctx);
 }

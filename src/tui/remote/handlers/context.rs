@@ -10,6 +10,10 @@ use iocraft::prelude::{Handler, State};
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteQuery};
 use crate::tui::remote::link_mode::LinkSource;
+use crate::tui::remote::state::{
+    DetailScrollData, FilterConfigData, ModalVisibilityData, NavigationData, SearchUiData,
+    ViewDisplayData, ViewMode,
+};
 use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::types::TicketMetadata;
 
@@ -17,14 +21,55 @@ use super::super::confirm_modal::ConfirmDialogState;
 use super::super::error_toast::Toast;
 use super::super::filter_modal::FilterState;
 use super::super::link_mode::LinkModeState;
-use super::super::state::ViewMode;
 use super::super::sync_preview::SyncPreviewState;
 
-/// Navigation state for a single view (local or remote)
+/// Navigation state for a single view (local or remote) - using grouped state
 pub struct NavigationState<'a> {
-    pub selected_index: &'a mut State<usize>,
-    pub scroll_offset: &'a mut State<usize>,
-    pub selected_ids: &'a mut State<HashSet<String>>,
+    pub nav: &'a mut State<NavigationData>,
+}
+
+impl<'a> NavigationState<'a> {
+    pub fn selected_index(&self) -> usize {
+        self.nav.read().clone().selected_index
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.nav.read().clone().scroll_offset
+    }
+
+    pub fn selected_ids(&self) -> HashSet<String> {
+        self.nav.read().clone().selected_ids.clone()
+    }
+
+    pub fn set_selected_index(&mut self, index: usize) {
+        let mut nav = self.nav.read().clone();
+        nav.selected_index = index;
+        self.nav.set(nav);
+    }
+
+    pub fn set_scroll_offset(&mut self, offset: usize) {
+        let mut nav = self.nav.read().clone();
+        nav.scroll_offset = offset;
+        self.nav.set(nav);
+    }
+
+    pub fn set_selected_ids(&mut self, ids: HashSet<String>) {
+        let mut nav = self.nav.read().clone();
+        nav.selected_ids = ids;
+        self.nav.set(nav);
+    }
+
+    pub fn clear_selection(&mut self) {
+        let mut nav = self.nav.read().clone();
+        nav.clear_selection();
+        self.nav.set(nav);
+    }
+
+    pub fn select_item(&mut self, index: usize) {
+        let mut nav = self.nav.read().clone();
+        nav.select_item(index);
+        self.nav.set(nav);
+    }
 }
 
 /// Data and navigation state for both local and remote views
@@ -40,30 +85,110 @@ pub struct ViewData<'a> {
     pub remote_count: usize,
     /// Height of the list area for scroll calculations
     pub list_height: usize,
-    /// Scroll offset for local detail pane
-    pub local_detail_scroll_offset: &'a mut State<usize>,
-    /// Scroll offset for remote detail pane
-    pub remote_detail_scroll_offset: &'a mut State<usize>,
+    /// Scroll offset for detail panes (grouped)
+    pub detail_scroll: &'a mut State<DetailScrollData>,
     /// Cloned local tickets data (avoids complex re-read patterns)
     pub local_tickets_data: Vec<TicketMetadata>,
     /// Cloned remote issues data (avoids complex re-read patterns)
     pub remote_issues_data: Vec<RemoteIssue>,
 }
 
-/// Global view state (which view is active, exit flag, etc.)
+/// Global view state (which view is active, exit flag, etc.) - using grouped state
 pub struct ViewState<'a> {
-    pub active_view: &'a mut State<ViewMode>,
-    pub show_detail: &'a mut State<bool>,
-    pub should_exit: &'a mut State<bool>,
-    pub detail_pane_focused: &'a mut State<bool>,
+    pub display: &'a mut State<ViewDisplayData>,
 }
 
-/// Search functionality state
+impl<'a> ViewState<'a> {
+    pub fn active_view(&self) -> ViewMode {
+        self.display.get().active_view
+    }
+
+    pub fn show_detail(&self) -> bool {
+        self.display.get().show_detail
+    }
+
+    pub fn should_exit(&self) -> bool {
+        self.display.get().should_exit
+    }
+
+    pub fn detail_pane_focused(&self) -> bool {
+        self.display.get().detail_pane_focused
+    }
+
+    pub fn set_active_view(&mut self, view: ViewMode) {
+        let mut display = self.display.get();
+        display.active_view = view;
+        self.display.set(display);
+    }
+
+    pub fn toggle_view(&mut self) {
+        let mut display = self.display.get();
+        display.toggle_view();
+        self.display.set(display);
+    }
+
+    pub fn set_show_detail(&mut self, show: bool) {
+        let mut display = self.display.get();
+        display.show_detail = show;
+        self.display.set(display);
+    }
+
+    pub fn toggle_show_detail(&mut self) {
+        let mut display = self.display.get();
+        display.show_detail = !display.show_detail;
+        self.display.set(display);
+    }
+
+    pub fn set_should_exit(&mut self, exit: bool) {
+        let mut display = self.display.get();
+        display.should_exit = exit;
+        self.display.set(display);
+    }
+
+    pub fn set_detail_pane_focused(&mut self, focused: bool) {
+        let mut display = self.display.read().clone();
+        display.detail_pane_focused = focused;
+        self.display.set(display);
+    }
+
+    pub fn loading(&self) -> bool {
+        self.display.read().clone().remote_loading
+    }
+
+    pub fn set_loading(&mut self, loading: bool) {
+        let mut display = self.display.read().clone();
+        display.remote_loading = loading;
+        self.display.set(display);
+    }
+}
+
+/// Search functionality state - using grouped state
 pub struct SearchState<'a> {
-    pub query: &'a mut State<String>,
-    pub focused: &'a mut State<bool>,
+    pub ui: &'a mut State<SearchUiData>,
     /// Search orchestrator for Enter-triggered search
     pub orchestrator: &'a mut SearchOrchestrator,
+}
+
+impl<'a> SearchState<'a> {
+    pub fn query(&self) -> String {
+        self.ui.read().clone().query.clone()
+    }
+
+    pub fn is_focused(&self) -> bool {
+        self.ui.read().clone().focused
+    }
+
+    pub fn set_query(&mut self, query: String) {
+        let mut ui = self.ui.read().clone();
+        ui.query = query;
+        self.ui.set(ui);
+    }
+
+    pub fn set_focused(&mut self, focused: bool) {
+        let mut ui = self.ui.read().clone();
+        ui.focused = focused;
+        self.ui.set(ui);
+    }
 }
 
 /// Modal and operation states
@@ -72,22 +197,94 @@ pub struct ModalState<'a> {
     pub link_mode: &'a mut State<Option<LinkModeState>>,
     pub sync_preview: &'a mut State<Option<SyncPreviewState>>,
     pub confirm_dialog: &'a mut State<Option<ConfirmDialogState>>,
-    pub show_help_modal: &'a mut State<bool>,
-    pub help_modal_scroll: &'a mut State<usize>,
-    pub show_error_modal: &'a mut State<bool>,
+    /// Modal visibility state (grouped)
+    pub visibility: &'a mut State<ModalVisibilityData>,
     pub last_error: &'a State<Option<(String, String)>>,
 }
 
-/// Filter and provider state
-pub struct FilteringState<'a> {
-    pub filter_modal: &'a mut State<Option<FilterState>>,
-    pub active_filters: &'a mut State<RemoteQuery>,
-    pub provider: &'a mut State<Platform>,
+impl<'a> ModalState<'a> {
+    pub fn show_help(&self) -> bool {
+        self.visibility.get().show_help
+    }
+
+    pub fn help_scroll(&self) -> usize {
+        self.visibility.get().help_scroll
+    }
+
+    pub fn show_error(&self) -> bool {
+        self.visibility.get().show_error
+    }
+
+    pub fn set_show_help(&mut self, show: bool) {
+        let mut visibility = self.visibility.get();
+        visibility.show_help = show;
+        self.visibility.set(visibility);
+    }
+
+    pub fn toggle_help(&mut self) {
+        let mut visibility = self.visibility.get();
+        visibility.show_help = !visibility.show_help;
+        self.visibility.set(visibility);
+    }
+
+    pub fn set_help_scroll(&mut self, scroll: usize) {
+        let mut visibility = self.visibility.get();
+        visibility.help_scroll = scroll;
+        self.visibility.set(visibility);
+    }
+
+    pub fn scroll_help_up(&mut self, lines: usize) {
+        let mut visibility = self.visibility.get();
+        visibility.help_scroll = visibility.help_scroll.saturating_sub(lines);
+        self.visibility.set(visibility);
+    }
+
+    pub fn scroll_help_down(&mut self, lines: usize) {
+        let mut visibility = self.visibility.get();
+        visibility.help_scroll += lines;
+        self.visibility.set(visibility);
+    }
+
+    pub fn set_show_error(&mut self, show: bool) {
+        let mut visibility = self.visibility.get();
+        visibility.show_error = show;
+        self.visibility.set(visibility);
+    }
+
+    pub fn toggle_error(&mut self) {
+        let mut visibility = self.visibility.get();
+        visibility.show_error = !visibility.show_error;
+        self.visibility.set(visibility);
+    }
 }
 
-/// Remote data loading state
-pub struct RemoteState<'a> {
-    pub loading: &'a mut State<bool>,
+/// Filter and provider state - using grouped state
+pub struct FilteringState<'a> {
+    pub filter_modal: &'a mut State<Option<FilterState>>,
+    /// Filter configuration (grouped)
+    pub config: &'a mut State<FilterConfigData>,
+}
+
+impl<'a> FilteringState<'a> {
+    pub fn active_filters(&self) -> RemoteQuery {
+        self.config.read().clone().active_filters.clone()
+    }
+
+    pub fn provider(&self) -> Platform {
+        self.config.read().clone().provider
+    }
+
+    pub fn set_active_filters(&mut self, filters: RemoteQuery) {
+        let mut config = self.config.read().clone();
+        config.active_filters = filters;
+        self.config.set(config);
+    }
+
+    pub fn set_provider(&mut self, platform: Platform) {
+        let mut config = self.config.read().clone();
+        config.provider = platform;
+        self.config.set(config);
+    }
 }
 
 /// Async operation handlers
@@ -112,6 +309,5 @@ pub struct HandlerContext<'a> {
     pub search: SearchState<'a>,
     pub modals: ModalState<'a>,
     pub filters: FilteringState<'a>,
-    pub remote: RemoteState<'a>,
     pub handlers: AsyncHandlers<'a>,
 }

@@ -95,51 +95,45 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     let theme = theme();
 
-    // State management - using individual State values like view.rs
-    let mut active_view = hooks.use_state(|| ViewMode::Local);
+    // Grouped state management - related state fields are organized into logical structs
+    // This reduces the number of individual State values and makes the code more maintainable
+
+    // Data state: collections of tickets and issues
     let mut local_tickets: State<Vec<TicketMetadata>> =
         hooks.use_state(|| get_all_tickets_from_disk().items);
     let mut remote_issues: State<Vec<RemoteIssue>> = hooks.use_state(Vec::new);
 
-    let mut local_selected_index = hooks.use_state(|| 0usize);
-    let mut remote_selected_index = hooks.use_state(|| 0usize);
-    let mut local_scroll_offset = hooks.use_state(|| 0usize);
-    let mut remote_scroll_offset = hooks.use_state(|| 0usize);
+    // Navigation state for list views (selected index, scroll offset, selected IDs)
+    let mut local_nav: State<super::state::NavigationData> = hooks.use_state(Default::default);
+    let mut remote_nav: State<super::state::NavigationData> = hooks.use_state(Default::default);
 
-    let mut local_selected_ids: State<HashSet<String>> = hooks.use_state(HashSet::new);
-    let mut remote_selected_ids: State<HashSet<String>> = hooks.use_state(HashSet::new);
+    // View display state (active view, loading, detail visibility, focus, exit flag)
+    let mut view_display: State<super::state::ViewDisplayData> =
+        hooks.use_state(super::state::ViewDisplayData::new);
 
-    let mut remote_loading = hooks.use_state(|| true);
-    let mut show_detail = hooks.use_state(|| true);
-    let mut should_exit = hooks.use_state(|| false);
+    // Detail pane scroll state (separate for local and remote)
+    let mut detail_scroll: State<super::state::DetailScrollData> = hooks.use_state(Default::default);
 
-    let mut detail_pane_focused = hooks.use_state(|| false);
-    let mut local_detail_scroll_offset = hooks.use_state(|| 0usize);
-    let mut remote_detail_scroll_offset = hooks.use_state(|| 0usize);
-
-    // Operation state
+    // Operation/modal state
     let mut toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut link_mode: State<Option<LinkModeState>> = hooks.use_state(|| None);
     let mut confirm_dialog: State<Option<ConfirmDialogState>> = hooks.use_state(|| None);
     let mut sync_preview: State<Option<SyncPreviewState>> = hooks.use_state(|| None);
-    let mut show_help_modal = hooks.use_state(|| false);
-    let mut help_modal_scroll = hooks.use_state(|| 0usize);
-    let mut show_error_modal = hooks.use_state(|| false);
+    let mut modal_visibility: State<super::state::ModalVisibilityData> = hooks.use_state(Default::default);
 
     // Last error info (for error detail modal) - stores (type, message)
     let last_error: State<Option<(String, String)>> = hooks.use_state(|| None);
 
-    // Search state - search is executed on Enter, not while typing
+    // Search state - search_query is separate for InlineSearchBox compatibility
     let mut search_query = hooks.use_state(String::new);
+    let mut search_ui: State<super::state::SearchUiData> = hooks.use_state(Default::default);
     let mut search_state = SearchState::use_state(&mut hooks);
-    let mut search_focused = hooks.use_state(|| false);
 
-    // Provider state (GitHub or Linear)
-    let mut provider = hooks.use_state(|| Platform::GitHub);
+    // Filter and provider configuration
+    let mut filter_config: State<super::state::FilterConfigData> = hooks.use_state(Default::default);
 
-    // Filter state
+    // Filter modal state (separate from config since it's a modal overlay)
     let mut filter_state: State<Option<FilterState>> = hooks.use_state(|| None);
-    let mut active_filters = hooks.use_state(|| RemoteQuery::new());
 
     // Cached linked issue IDs (memoization)
     let mut linked_issue_ids_cache: State<(u64, HashSet<String>)> =
@@ -147,10 +141,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async fetch handler for refreshing remote issues
     let fetch_handler: Handler<(Platform, RemoteQuery)> = hooks.use_async_handler({
-        clone_states!(remote_issues, remote_loading, toast, last_error);
+        clone_states!(remote_issues, view_display, toast, last_error);
         move |(platform, query): (Platform, RemoteQuery)| {
             let mut remote_issues = remote_issues.clone();
-            let mut remote_loading = remote_loading.clone();
+            let mut view_display = view_display.clone();
             let mut toast = toast.clone();
             let mut last_error = last_error.clone();
             async move {
@@ -166,7 +160,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         ))));
                     }
                 }
-                remote_loading.set(false);
+                // Update loading state within view_display struct
+                let mut new_display = view_display.read().clone();
+                new_display.remote_loading = false;
+                view_display.set(new_display);
             }
         }
     });
@@ -177,8 +174,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Trigger initial fetch on startup
     if !fetch_started.get() {
         fetch_started.set(true);
-        let current_provider = provider.get();
-        let current_query = active_filters.read().clone();
+        let filter_config_ref = filter_config.read();
+        let current_provider = filter_config_ref.provider;
+        let current_query = filter_config_ref.active_filters.clone();
         fetch_handler.clone()((current_provider, current_query));
     }
 
@@ -187,13 +185,13 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async push handler for pushing local tickets to remote
     let push_handler: Handler<(Vec<String>, Platform, RemoteQuery)> = hooks.use_async_handler({
-        clone_states!(local_tickets, fetch_handler, toast, last_error, local_selected_ids);
+        clone_states!(local_tickets, fetch_handler, toast, last_error, local_nav);
         move |(ticket_ids, platform, query): (Vec<String>, Platform, RemoteQuery)| {
             let mut local_tickets = local_tickets.clone();
             let fetch_handler = fetch_handler.clone();
             let mut toast = toast.clone();
             let mut last_error = last_error.clone();
-            let mut local_selected_ids = local_selected_ids.clone();
+            let mut local_nav = local_nav.clone();
 
             async move {
                 let (successes, errors) =
@@ -244,8 +242,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 // Refresh local tickets to show updated remote links
                 local_tickets.set(get_all_tickets_from_disk().items);
 
-                // Clear selection
-                local_selected_ids.set(HashSet::new());
+                // Clear selection via NavigationData method
+                let mut new_nav = local_nav.read().clone();
+                new_nav.clear_selection();
+                local_nav.set(new_nav);
 
                 // Refresh remote issues to show new issues
                 fetch_handler((platform, query));
@@ -323,19 +323,19 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Accept current change
     let sync_accept_handler: Handler<()> = hooks.use_async_handler({
-        clone_states!(sync_preview, sync_apply_handler, provider, active_filters);
+        clone_states!(sync_preview, sync_apply_handler, filter_config);
         move |()| {
             let mut sync_preview = sync_preview.clone();
             let sync_apply_handler = sync_apply_handler.clone();
-            let provider = provider.clone();
-            let active_filters = active_filters.clone();
+            let filter_config = filter_config.clone();
             async move {
                 let preview = sync_preview.read().clone();
                 if let Some(mut p) = preview {
                     if !p.accept_current() {
                         // No more changes, apply all accepted
-                        let current_platform = provider.get();
-                        let current_query = active_filters.read().clone();
+                        let filter_config_ref = filter_config.read();
+                        let current_platform = filter_config_ref.provider;
+                        let current_query = filter_config_ref.active_filters.clone();
                         sync_apply_handler((p, current_platform, current_query));
                         sync_preview.set(None);
                     } else {
@@ -348,19 +348,19 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Skip current change
     let sync_skip_handler: Handler<()> = hooks.use_async_handler({
-        clone_states!(sync_preview, sync_apply_handler, provider, active_filters);
+        clone_states!(sync_preview, sync_apply_handler, filter_config);
         move |()| {
             let mut sync_preview = sync_preview.clone();
             let sync_apply_handler = sync_apply_handler.clone();
-            let provider = provider.clone();
-            let active_filters = active_filters.clone();
+            let filter_config = filter_config.clone();
             async move {
                 let preview = sync_preview.read().clone();
                 if let Some(mut p) = preview {
                     if !p.skip_current() {
                         // No more changes, apply all accepted
-                        let current_platform = provider.get();
-                        let current_query = active_filters.read().clone();
+                        let filter_config_ref = filter_config.read();
+                        let current_platform = filter_config_ref.provider;
+                        let current_query = filter_config_ref.active_filters.clone();
                         sync_apply_handler((p, current_platform, current_query));
                         sync_preview.set(None);
                     } else {
@@ -373,18 +373,18 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Accept all changes
     let sync_accept_all_handler: Handler<()> = hooks.use_async_handler({
-        clone_states!(sync_preview, sync_apply_handler, provider, active_filters);
+        clone_states!(sync_preview, sync_apply_handler, filter_config);
         move |()| {
             let mut sync_preview = sync_preview.clone();
             let sync_apply_handler = sync_apply_handler.clone();
-            let provider = provider.clone();
-            let active_filters = active_filters.clone();
+            let filter_config = filter_config.clone();
             async move {
                 let preview = sync_preview.read().clone();
                 if let Some(mut p) = preview {
                     p.accept_all();
-                    let current_platform = provider.get();
-                    let current_query = active_filters.read().clone();
+                    let filter_config_ref = filter_config.read();
+                    let current_platform = filter_config_ref.provider;
+                    let current_query = filter_config_ref.active_filters.clone();
                     sync_apply_handler((p, current_platform, current_query));
                     sync_preview.set(None);
                 }
@@ -598,10 +598,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async unlink handler for unlinking local tickets from remote issues
     let unlink_handler: Handler<Vec<String>> = hooks.use_async_handler({
-        clone_states!(local_tickets, local_selected_ids, toast);
+        clone_states!(local_tickets, local_nav, toast);
         move |ticket_ids: Vec<String>| {
             let mut local_tickets = local_tickets.clone();
-            let mut local_selected_ids = local_selected_ids.clone();
+            let mut local_nav = local_nav.clone();
             let mut toast = toast.clone();
 
             async move {
@@ -618,7 +618,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 // Always refresh and clear selection if any operations succeeded
                 if unlinked > 0 {
                     local_tickets.set(get_all_tickets_from_disk().items);
-                    local_selected_ids.set(HashSet::new());
+                    // Clear selection via NavigationData
+                    let mut new_nav = local_nav.read().clone();
+                    new_nav.clear_selection();
+                    local_nav.set(new_nav);
                 }
 
                 // Report results
@@ -663,120 +666,119 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Click handlers for TabBar - must be defined at top level (not in element! macro)
     let tab_local_click_handler = hooks.use_async_handler({
-        let active_view_setter = active_view;
+        clone_states!(view_display);
         move |()| {
-            let mut active_view_setter = active_view_setter;
+            let mut view_display = view_display.clone();
             async move {
-                active_view_setter.set(ViewMode::Local);
+                let mut new_display = view_display.read().clone();
+                new_display.set_view(ViewMode::Local);
+                view_display.set(new_display);
             }
         }
     });
     let tab_remote_click_handler = hooks.use_async_handler({
-        let active_view_setter = active_view;
+        clone_states!(view_display);
         move |()| {
-            let mut active_view_setter = active_view_setter;
+            let mut view_display = view_display.clone();
             async move {
-                active_view_setter.set(ViewMode::Remote);
+                let mut new_display = view_display.read().clone();
+                new_display.set_view(ViewMode::Remote);
+                view_display.set(new_display);
             }
         }
     });
 
     // Click handler for search box
     let search_click_handler = hooks.use_async_handler({
-        let search_focused_setter = search_focused;
+        clone_states!(search_ui);
         move |()| {
-            let mut search_focused_setter = search_focused_setter;
+            let mut search_ui = search_ui.clone();
             async move {
-                search_focused_setter.set(true);
+                let mut new_ui = search_ui.read().clone();
+                new_ui.focused = true;
+                search_ui.set(new_ui);
             }
         }
     });
 
     // Click handler for list pane
     let list_pane_click_handler = hooks.use_async_handler({
-        let search_focused_setter = search_focused;
-        let detail_pane_focused_setter = detail_pane_focused;
+        clone_states!(search_ui, view_display);
         move |()| {
-            let mut search_focused_setter = search_focused_setter;
-            let mut detail_pane_focused_setter = detail_pane_focused_setter;
+            let mut search_ui = search_ui.clone();
+            let mut view_display = view_display.clone();
             async move {
-                search_focused_setter.set(false);
-                detail_pane_focused_setter.set(false);
+                let mut new_ui = search_ui.read().clone();
+                new_ui.focused = false;
+                search_ui.set(new_ui);
+                let mut new_display = view_display.read().clone();
+                new_display.detail_pane_focused = false;
+                view_display.set(new_display);
             }
         }
     });
 
     // Click handlers for list rows
     let local_row_click_handler = hooks.use_async_handler({
-        let selected_setter = local_selected_index;
-        let scroll_setter = local_scroll_offset;
+        clone_states!(local_nav);
         move |idx: usize| {
-            let mut selected_setter = selected_setter;
-            let mut scroll_setter = scroll_setter;
+            let mut local_nav = local_nav.clone();
             async move {
-                selected_setter.set(idx);
-                // Update scroll offset if needed to keep selection visible
-                if idx < scroll_setter.get() {
-                    scroll_setter.set(idx);
-                }
+                let mut new_nav = local_nav.read().clone();
+                new_nav.select_item(idx);
+                local_nav.set(new_nav);
             }
         }
     });
     let remote_row_click_handler = hooks.use_async_handler({
-        let selected_setter = remote_selected_index;
-        let scroll_setter = remote_scroll_offset;
+        clone_states!(remote_nav);
         move |idx: usize| {
-            let mut selected_setter = selected_setter;
-            let mut scroll_setter = scroll_setter;
+            let mut remote_nav = remote_nav.clone();
             async move {
-                selected_setter.set(idx);
-                // Update scroll offset if needed to keep selection visible
-                if idx < scroll_setter.get() {
-                    scroll_setter.set(idx);
-                }
+                let mut new_nav = remote_nav.read().clone();
+                new_nav.select_item(idx);
+                remote_nav.set(new_nav);
             }
         }
     });
 
     // Click handler for detail pane
     let detail_pane_click_handler = hooks.use_async_handler({
-        let detail_pane_focused_setter = detail_pane_focused;
+        clone_states!(view_display);
         move |()| {
-            let mut detail_pane_focused_setter = detail_pane_focused_setter;
+            let mut view_display = view_display.clone();
             async move {
-                detail_pane_focused_setter.set(true);
+                let mut new_display = view_display.read().clone();
+                new_display.detail_pane_focused = true;
+                view_display.set(new_display);
             }
         }
     });
 
     // Scroll handlers for detail pane
     let detail_scroll_up_handler = hooks.use_async_handler({
-        let current_view = active_view.get();
-        let scroll_setter = if current_view == ViewMode::Local {
-            local_detail_scroll_offset
-        } else {
-            remote_detail_scroll_offset
-        };
+        clone_states!(view_display, detail_scroll);
         move |()| {
-            let mut scroll_setter = scroll_setter;
+            let view_display = view_display.clone();
+            let mut detail_scroll = detail_scroll.clone();
             async move {
-                // Scroll up: decrease offset by 3 lines
-                scroll_setter.set(scroll_setter.get().saturating_sub(3));
+                let current_view = view_display.get().active_view;
+                let mut new_scroll = detail_scroll.read().clone();
+                new_scroll.scroll_up(current_view, 3);
+                detail_scroll.set(new_scroll);
             }
         }
     });
     let detail_scroll_down_handler = hooks.use_async_handler({
-        let current_view = active_view.get();
-        let scroll_setter = if current_view == ViewMode::Local {
-            local_detail_scroll_offset
-        } else {
-            remote_detail_scroll_offset
-        };
+        clone_states!(view_display, detail_scroll);
         move |()| {
-            let mut scroll_setter = scroll_setter;
+            let view_display = view_display.clone();
+            let mut detail_scroll = detail_scroll.clone();
             async move {
-                // Scroll down: increase offset by 3 lines
-                scroll_setter.set(scroll_setter.get() + 3);
+                let current_view = view_display.get().active_view;
+                let mut new_scroll = detail_scroll.read().clone();
+                new_scroll.scroll_down(current_view, 3);
+                detail_scroll.set(new_scroll);
             }
         }
     });
@@ -785,7 +787,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let filter_status_click_handler = hooks.use_async_handler({
         clone_states!(filter_state);
         move |()| {
-            let mut filter_state = filter_state;
+            let mut filter_state = filter_state.clone();
             async move {
                 let state = filter_state.read().clone();
                 if let Some(mut s) = state {
@@ -799,7 +801,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let filter_assignee_click_handler = hooks.use_async_handler({
         clone_states!(filter_state);
         move |()| {
-            let mut filter_state = filter_state;
+            let mut filter_state = filter_state.clone();
             async move {
                 let state = filter_state.read().clone();
                 if let Some(mut s) = state {
@@ -812,7 +814,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let filter_labels_click_handler = hooks.use_async_handler({
         clone_states!(filter_state);
         move |()| {
-            let mut filter_state = filter_state;
+            let mut filter_state = filter_state.clone();
             async move {
                 let state = filter_state.read().clone();
                 if let Some(mut s) = state {
@@ -825,22 +827,24 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Help modal scroll handlers
     let help_scroll_up_handler = hooks.use_async_handler({
-        clone_states!(help_modal_scroll);
+        clone_states!(modal_visibility);
         move |()| {
-            let mut help_modal_scroll = help_modal_scroll;
+            let mut modal_visibility = modal_visibility.clone();
             async move {
-                // Scroll up: decrease offset by 3 lines
-                help_modal_scroll.set(help_modal_scroll.get().saturating_sub(3));
+                let mut visibility = modal_visibility.read().clone();
+                visibility.help_scroll = visibility.help_scroll.saturating_sub(3);
+                modal_visibility.set(visibility);
             }
         }
     });
     let help_scroll_down_handler = hooks.use_async_handler({
-        clone_states!(help_modal_scroll);
+        clone_states!(modal_visibility);
         move |()| {
-            let mut help_modal_scroll = help_modal_scroll;
+            let mut modal_visibility = modal_visibility.clone();
             async move {
-                // Scroll down: increase offset by 3 lines
-                help_modal_scroll.set(help_modal_scroll.get() + 3);
+                let mut visibility = modal_visibility.read().clone();
+                visibility.help_scroll += 3;
+                modal_visibility.set(visibility);
             }
         }
     });
@@ -851,16 +855,24 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Additional elements: tabs(1) + search(1) + link_banner(1) + selection_bar(1) + borders(1) = 5
     let list_height = calculate_list_height(height, 5);
 
-    // Get current values for rendering
-    let current_view = active_view.get();
-    let is_loading = remote_loading.get();
-    let detail_visible = show_detail.get();
+    // Get current values from grouped state for rendering
+    let view_display_ref = view_display.read();
+    let local_nav_ref = local_nav.read();
+    let remote_nav_ref = remote_nav.read();
+    let search_ui_ref = search_ui.read();
+    let filter_config_ref = filter_config.read();
+
+    let current_view = view_display_ref.active_view;
+    let is_loading = view_display_ref.remote_loading;
+    let detail_visible = view_display_ref.show_detail;
 
     // Read collections for rendering
     let local_tickets_ref = local_tickets.read();
     let remote_issues_ref = remote_issues.read();
-    let local_selected_ref = local_selected_ids.read();
-    let remote_selected_ref = remote_selected_ids.read();
+
+    // Get selected IDs from grouped navigation state
+    let local_selected_ids = &local_nav_ref.selected_ids;
+    let remote_selected_ids = &remote_nav_ref.selected_ids;
 
     // Compute linked issue IDs (memoized by local tickets length)
     let linked_issue_ids = {
@@ -905,38 +917,36 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let local_count = filtered_local.len();
     let remote_count = filtered_remote.len();
 
-    // Note: We don't pre-compute selected_local/selected_remote here since we need them
-    // after the event closure, which would move them. We compute them at render time.
-
     // Counts for footer
-    let local_sel_count = local_selected_ref.len();
-    let remote_sel_count = remote_selected_ref.len();
+    let local_sel_count = local_selected_ids.len();
+    let remote_sel_count = remote_selected_ids.len();
 
     // Cloned data for list rendering
     let local_list: Vec<FilteredLocalTicket> = filtered_local
         .iter()
-        .skip(local_scroll_offset.get())
+        .skip(local_nav_ref.scroll_offset)
         .take(list_height)
         .cloned()
         .collect();
     let remote_list: Vec<FilteredRemoteIssue> = filtered_remote
         .iter()
-        .skip(remote_scroll_offset.get())
+        .skip(remote_nav_ref.scroll_offset)
         .take(list_height)
         .cloned()
         .collect();
 
     // Clone collection data for the event closure before dropping refs.
-    // This simplifies the pattern: instead of complex drop ordering, we clone
-    // what the closure needs and pass it through the context.
     let local_tickets_data = local_tickets_ref.clone();
     let remote_issues_data = remote_issues_ref.clone();
 
     // Drop refs before creating the event closure (which captures mutable State handles)
+    drop(view_display_ref);
+    drop(local_nav_ref);
+    drop(remote_nav_ref);
+    drop(search_ui_ref);
+    drop(filter_config_ref);
     drop(local_tickets_ref);
     drop(remote_issues_ref);
-    drop(local_selected_ref);
-    drop(remote_selected_ref);
 
     // Keyboard event handling - dispatched to separate handler modules
     hooks.use_terminal_events({
@@ -949,41 +959,32 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             }) if should_process_key_event(kind) => {
                 // Build the handler context with grouped state references
                 use handlers::context::{
-                    AsyncHandlers, FilteringState, ModalState, NavigationState, RemoteState,
+                    AsyncHandlers, FilteringState, ModalState, NavigationState,
                     SearchState, ViewData, ViewState,
                 };
 
                 let mut ctx = HandlerContext {
                     view_state: ViewState {
-                        active_view: &mut active_view,
-                        show_detail: &mut show_detail,
-                        should_exit: &mut should_exit,
-                        detail_pane_focused: &mut detail_pane_focused,
+                        display: &mut view_display,
                     },
                     view_data: ViewData {
                         local_tickets: &mut local_tickets,
                         remote_issues: &mut remote_issues,
                         local_nav: NavigationState {
-                            selected_index: &mut local_selected_index,
-                            scroll_offset: &mut local_scroll_offset,
-                            selected_ids: &mut local_selected_ids,
+                            nav: &mut local_nav,
                         },
                         remote_nav: NavigationState {
-                            selected_index: &mut remote_selected_index,
-                            scroll_offset: &mut remote_scroll_offset,
-                            selected_ids: &mut remote_selected_ids,
+                            nav: &mut remote_nav,
                         },
                         local_count,
                         remote_count,
                         list_height,
-                        local_detail_scroll_offset: &mut local_detail_scroll_offset,
-                        remote_detail_scroll_offset: &mut remote_detail_scroll_offset,
+                        detail_scroll: &mut detail_scroll,
                         local_tickets_data: local_tickets_data.clone(),
                         remote_issues_data: remote_issues_data.clone(),
                     },
                     search: SearchState {
-                        query: &mut search_query,
-                        focused: &mut search_focused,
+                        ui: &mut search_ui,
                         orchestrator: &mut search_state,
                     },
                     modals: ModalState {
@@ -991,18 +992,12 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         link_mode: &mut link_mode,
                         sync_preview: &mut sync_preview,
                         confirm_dialog: &mut confirm_dialog,
-                        show_help_modal: &mut show_help_modal,
-                        help_modal_scroll: &mut help_modal_scroll,
-                        show_error_modal: &mut show_error_modal,
+                        visibility: &mut modal_visibility,
                         last_error: &last_error,
                     },
                     filters: FilteringState {
                         filter_modal: &mut filter_state,
-                        active_filters: &mut active_filters,
-                        provider: &mut provider,
-                    },
-                    remote: RemoteState {
-                        loading: &mut remote_loading,
+                        config: &mut filter_config,
                     },
                     handlers: AsyncHandlers {
                         fetch_handler: &fetch_handler_for_events,
@@ -1022,28 +1017,33 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     // Exit if requested
-    if should_exit.get() {
+    let view_display_ref = view_display.read();
+    if view_display_ref.should_exit {
         system.exit();
     }
 
     // Get selected items from filtered data
+    let local_nav_ref = local_nav.read();
+    let remote_nav_ref = remote_nav.read();
     let selected_local = filtered_local
-        .get(local_selected_index.get())
+        .get(local_nav_ref.selected_index)
         .map(|f| f.ticket.clone());
     let selected_remote = filtered_remote
-        .get(remote_selected_index.get())
+        .get(remote_nav_ref.selected_index)
         .map(|f| f.issue.clone());
 
     // Shortcuts for footer - check modals first, then normal mode
+    let modal_visibility_ref = modal_visibility.read();
+    let search_ui_ref = search_ui.read();
     let shortcuts = compute_shortcuts(
         &ModalVisibility {
-            show_help_modal: show_help_modal.get(),
-            show_error_modal: show_error_modal.get(),
+            show_help_modal: modal_visibility_ref.show_help,
+            show_error_modal: modal_visibility_ref.show_error,
             show_sync_preview: sync_preview.read().is_some(),
             show_confirm_dialog: confirm_dialog.read().is_some(),
             show_link_mode: link_mode.read().is_some(),
             show_filter: filter_state.read().is_some(),
-            search_focused: search_focused.get(),
+            search_focused: search_ui_ref.focused,
         },
         current_view,
     );
@@ -1057,13 +1057,21 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let sync_preview_state_clone = sync_preview.read().clone();
     let confirm_dialog_state_clone = confirm_dialog.read().clone();
 
+    // Read grouped state values for rendering
+    let search_ui_ref = search_ui.read();
+    let local_nav_ref = local_nav.read();
+    let remote_nav_ref = remote_nav.read();
+    let detail_scroll_ref = detail_scroll.read();
+    let filter_config_ref = filter_config.read();
+    let modal_visibility_ref = modal_visibility.read();
+
     // Render the UI using sub-components
     element! {
         ScreenLayout(
             width: width,
             height: height,
             header_title: Some("janus remote"),
-            header_provider: Some(format!("{}", provider.get())),
+            header_provider: Some(format!("{}", filter_config_ref.provider)),
             header_extra: Some(vec![element! {
                 Text(content: "[?]", color: theme.text_dimmed)
             }.into()]),
@@ -1088,9 +1096,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     padding_right: 1,
                     height: 1,
                 ) {
-                    InlineSearchBox(
+                        InlineSearchBox(
                         value: Some(search_query),
-                        has_focus: search_focused.get(),
+                        has_focus: search_ui_ref.focused,
                         is_semantic: query_str.starts_with('~'),
                     )
                 }
@@ -1117,12 +1125,12 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         remote_list: remote_list.clone(),
                         local_count,
                         remote_count,
-                        local_scroll_offset: local_scroll_offset.get(),
-                        remote_scroll_offset: remote_scroll_offset.get(),
-                        local_selected_index: local_selected_index.get(),
-                        remote_selected_index: remote_selected_index.get(),
-                        local_selected_ids: local_selected_ids.read().clone(),
-                        remote_selected_ids: remote_selected_ids.read().clone(),
+                        local_scroll_offset: local_nav_ref.scroll_offset,
+                        remote_scroll_offset: remote_nav_ref.scroll_offset,
+                        local_selected_index: local_nav_ref.selected_index,
+                        remote_selected_index: remote_nav_ref.selected_index,
+                        local_selected_ids: local_nav_ref.selected_ids.clone(),
+                        remote_selected_ids: remote_nav_ref.selected_ids.clone(),
                         all_local_tickets: all_local_tickets.clone(),
                         linked_issue_ids: linked_issue_ids.clone(),
                         on_local_row_click: Some(local_row_click_handler.clone()),
@@ -1139,8 +1147,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     selected_remote: selected_remote.clone(),
                     selected_local: selected_local.clone(),
                     visible: detail_visible,
-                    remote_scroll_offset: remote_detail_scroll_offset.get(),
-                    local_scroll_offset: local_detail_scroll_offset.get(),
+                    remote_scroll_offset: detail_scroll_ref.get_offset(ViewMode::Remote),
+                    local_scroll_offset: detail_scroll_ref.get_offset(ViewMode::Local),
                     all_local_tickets: all_local_tickets.clone(),
                     on_scroll_up: Some(detail_scroll_up_handler.clone()),
                     on_scroll_down: Some(detail_scroll_down_handler.clone()),
@@ -1161,11 +1169,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 on_filter_status_click: Some(filter_status_click_handler.clone()),
                 on_filter_assignee_click: Some(filter_assignee_click_handler.clone()),
                 on_filter_labels_click: Some(filter_labels_click_handler.clone()),
-                show_help_modal: show_help_modal.get(),
-                help_modal_scroll: help_modal_scroll.get(),
+                show_help_modal: modal_visibility_ref.show_help,
+                help_modal_scroll: modal_visibility_ref.help_scroll,
                 on_help_scroll_up: Some(help_scroll_up_handler.clone()),
                 on_help_scroll_down: Some(help_scroll_down_handler.clone()),
-                show_error_modal: show_error_modal.get(),
+                show_error_modal: modal_visibility_ref.show_error,
                 last_error: last_error_clone,
                 sync_preview_state: sync_preview_state_clone,
                 confirm_dialog_state: confirm_dialog_state_clone,

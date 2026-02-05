@@ -3,8 +3,8 @@
 use iocraft::prelude::KeyCode;
 
 use super::super::error_toast::Toast;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle filter modal events
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -47,15 +47,15 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
                     new_state.toggle_status();
                     ctx.filters.filter_modal.set(Some(new_state));
                 } else {
-                    let base_query = ctx.filters.active_filters.read().clone();
+                    let base_query = ctx.filters.active_filters();
                     let new_query = s.to_query(&base_query);
-                    ctx.filters.active_filters.set(new_query.clone());
+                    ctx.filters.set_active_filters(new_query.clone());
                     ctx.filters.filter_modal.set(None);
-                    ctx.remote.loading.set(true);
+                    ctx.view_state.set_loading(true);
                     ctx.modals
                         .toast
                         .set(Some(Toast::info("Applying filters...")));
-                    ctx.handlers.fetch_handler.clone()((ctx.filters.provider.get(), new_query));
+                    ctx.handlers.fetch_handler.clone()((ctx.filters.provider(), new_query));
                 }
                 HandleResult::Handled
             } else {

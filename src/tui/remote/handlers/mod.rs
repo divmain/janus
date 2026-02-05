@@ -40,7 +40,7 @@ pub fn handle_key_event(ctx: &mut HandlerContext<'_>, code: KeyCode, modifiers: 
     let shift_held = modifiers.contains(KeyModifiers::SHIFT);
 
     // 1. Search mode has highest priority - captures all input
-    if ctx.search.focused.get() && search_mode::handle(ctx, code).is_handled() {
+    if ctx.search.is_focused() && search_mode::handle(ctx, code).is_handled() {
         return;
     }
 
@@ -80,7 +80,7 @@ pub fn handle_key_event(ctx: &mut HandlerContext<'_>, code: KeyCode, modifiers: 
     }
 
     // 9. View-specific operations
-    if ctx.view_state.active_view.get() == ViewMode::Local {
+    if ctx.view_state.active_view() == ViewMode::Local {
         if local_ops::handle(ctx, code).is_handled() {
             return;
         }

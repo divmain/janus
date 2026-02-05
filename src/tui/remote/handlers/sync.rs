@@ -6,8 +6,8 @@ use iocraft::prelude::KeyCode;
 
 use super::super::error_toast::Toast;
 use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle sync preview mode events
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -76,18 +76,17 @@ fn apply_sync_changes(
     ctx: &mut HandlerContext<'_>,
     preview: super::super::sync_preview::SyncPreviewState,
 ) {
-    let current_platform = ctx.filters.provider.get();
-    let current_query = ctx.filters.active_filters.read().clone();
+    let current_platform = ctx.filters.provider();
+    let current_query = ctx.filters.active_filters();
     ctx.handlers.sync_apply_handler.clone()((preview, current_platform, current_query));
 }
 
 /// Handle 's' key to start sync operation (called from global handler when sync preview is not open)
 pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
-    let selected_ids: Vec<String> = if ctx.view_state.active_view.get() == ViewMode::Local {
+    let selected_ids: Vec<String> = if ctx.view_state.active_view() == ViewMode::Local {
         ctx.view_data
             .local_nav
-            .selected_ids
-            .read()
+            .selected_ids()
             .iter()
             .cloned()
             .collect()
@@ -96,8 +95,7 @@ pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
         let selected_remote: HashSet<String> = ctx
             .view_data
             .remote_nav
-            .selected_ids
-            .read()
+            .selected_ids()
             .iter()
             .cloned()
             .collect();
@@ -128,7 +126,7 @@ pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
     } else {
         // Sync current item if linked
         let tickets = ctx.view_data.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get()) {
+        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index()) {
             if ticket.remote.is_some() {
                 if let Some(id) = &ticket.id {
                     vec![id.clone()]
@@ -152,6 +150,6 @@ pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
             "Fetching remote data for {} ticket(s)...",
             tickets_to_sync.len()
         ))));
-        ctx.handlers.sync_fetch_handler.clone()((tickets_to_sync, ctx.filters.provider.get()));
+        ctx.handlers.sync_fetch_handler.clone()((tickets_to_sync, ctx.filters.provider()));
     }
 }

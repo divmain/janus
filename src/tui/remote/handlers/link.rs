@@ -5,8 +5,8 @@ use iocraft::prelude::KeyCode;
 use super::super::error_toast::Toast;
 use super::super::link_mode::{LinkModeState, LinkSource};
 use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle link mode completion (when link mode is active and 'l' is pressed)
 pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -22,7 +22,7 @@ pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleRe
         // Source is local ticket, target is remote issue
         let issues = ctx.view_data.remote_issues.read();
         if let Some(issue) = issues
-            .get(ctx.view_data.remote_nav.selected_index.get())
+            .get(ctx.view_data.remote_nav.selected_index())
             .cloned()
         {
             drop(issues);
@@ -40,7 +40,7 @@ pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleRe
         // Source is remote issue, target is local ticket
         let tickets = ctx.view_data.local_tickets.read();
         if let Some(ticket) = tickets
-            .get(ctx.view_data.local_nav.selected_index.get())
+            .get(ctx.view_data.local_nav.selected_index())
             .cloned()
         {
             drop(tickets);
@@ -64,7 +64,7 @@ pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleRe
     }
 
     ctx.modals.link_mode.set(None);
-    ctx.view_state.active_view.set(lm.source_view);
+    ctx.view_state.set_active_view(lm.source_view);
     HandleResult::Handled
 }
 
@@ -75,9 +75,9 @@ pub fn handle_link_start(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleR
     }
 
     // Link mode is not active, so start it
-    if ctx.view_state.active_view.get() == ViewMode::Local {
+    if ctx.view_state.active_view() == ViewMode::Local {
         let tickets = ctx.view_data.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get())
+        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index())
             && let Some(id) = &ticket.id
         {
             let title = ticket.title.as_deref().unwrap_or("").to_string();
@@ -86,15 +86,15 @@ pub fn handle_link_start(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleR
             ctx.modals
                 .link_mode
                 .set(Some(LinkModeState::new(ViewMode::Local, id_clone, title)));
-            ctx.view_state.active_view.set(ViewMode::Remote);
+            ctx.view_state.set_active_view(ViewMode::Remote);
         }
     } else {
         let issues = ctx.view_data.remote_issues.read();
-        if let Some(issue) = issues.get(ctx.view_data.remote_nav.selected_index.get()) {
+        if let Some(issue) = issues.get(ctx.view_data.remote_nav.selected_index()) {
             let lm = LinkModeState::new(ViewMode::Remote, issue.id.clone(), issue.title.clone());
             drop(issues);
             ctx.modals.link_mode.set(Some(lm));
-            ctx.view_state.active_view.set(ViewMode::Local);
+            ctx.view_state.set_active_view(ViewMode::Local);
         }
     }
 

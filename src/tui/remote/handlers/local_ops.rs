@@ -5,8 +5,8 @@ use std::collections::HashSet;
 
 use super::super::confirm_modal::ConfirmDialogState;
 use super::super::error_toast::Toast;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle local view specific operations
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -27,8 +27,7 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
     let selected_ids: Vec<String> = ctx
         .view_data
         .local_nav
-        .selected_ids
-        .read()
+        .selected_ids()
         .iter()
         .cloned()
         .collect();
@@ -37,7 +36,7 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
     } else {
         // Push current item if no selection
         let tickets = ctx.view_data.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get()) {
+        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index()) {
             if let Some(id) = &ticket.id {
                 vec![id.clone()]
             } else {
@@ -85,24 +84,16 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
                 "Pushing {} ticket(s)...",
                 unlinked.len()
             ))));
-            let current_query = ctx.filters.active_filters.read().clone();
-            ctx.handlers.push_handler.clone()((
-                unlinked,
-                ctx.filters.provider.get(),
-                current_query,
-            ));
+            let current_query = ctx.filters.active_filters();
+            ctx.handlers.push_handler.clone()((unlinked, ctx.filters.provider(), current_query));
         }
     } else {
         ctx.modals.toast.set(Some(Toast::info(format!(
             "Pushing {} ticket(s)...",
             tickets_to_push.len()
         ))));
-        let current_query = ctx.filters.active_filters.read().clone();
-        ctx.handlers.push_handler.clone()((
-            tickets_to_push,
-            ctx.filters.provider.get(),
-            current_query,
-        ));
+        let current_query = ctx.filters.active_filters();
+        ctx.handlers.push_handler.clone()((tickets_to_push, ctx.filters.provider(), current_query));
     }
 }
 
@@ -110,8 +101,7 @@ fn handle_unlink(ctx: &mut HandlerContext<'_>) {
     let selected_ids: Vec<String> = ctx
         .view_data
         .local_nav
-        .selected_ids
-        .read()
+        .selected_ids()
         .iter()
         .cloned()
         .collect();
@@ -133,7 +123,7 @@ fn handle_unlink(ctx: &mut HandlerContext<'_>) {
     } else {
         // Unlink current item if it's linked
         let tickets = ctx.view_data.local_tickets.read();
-        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index.get())
+        if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index())
             && let Some(id) = &ticket.id
             && ticket.remote.is_some()
         {
@@ -205,10 +195,12 @@ mod tests {
             create_test_ticket("j-3", Some("linear:acme/ENG-123")),
         ];
 
-        let selected_ids = ["j-1".to_string(),
+        let selected_ids = [
+            "j-1".to_string(),
             "j-2".to_string(),
             "j-3".to_string(),
-            "j-4".to_string()];
+            "j-4".to_string(),
+        ];
 
         // Build HashSet using the optimized approach
         let linked_ids: HashSet<String> = tickets
