@@ -6,9 +6,10 @@
 //! # Architecture
 //!
 //! - `mod.rs` - Server setup and initialization
-//! - `tools.rs` - Tool implementations (11 tools for ticket/plan operations)
-//! - `resources.rs` - Resource implementations (Ticket 9)
+//! - `tools.rs` - Tool implementations (13 tools for ticket/plan operations)
+//! - `resources.rs` - Resource implementations
 //! - `types.rs` - MCP-specific types
+//! - `format.rs` - Centralized ticket and plan formatting utilities
 //!
 //! # Usage
 //!
@@ -35,6 +36,7 @@
 //! | `get_children` | Get tickets spawned from a parent |
 //! | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
 
+pub mod format;
 pub mod resources;
 pub mod tools;
 pub mod types;

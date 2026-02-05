@@ -44,6 +44,8 @@ use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, get_all_tickets_wit
 use crate::types::{TicketMetadata, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
 
+use super::format::{format_children_table_row, format_plan_ticket_entry, format_related_tickets_section, format_ticket_id, format_ticket_table_row, format_ticket_title, format_spawn_context_line};
+
 // ============================================================================
 // Tool Request Types
 // ============================================================================
@@ -1163,8 +1165,8 @@ fn format_ticket_as_markdown(
     let mut output = String::new();
 
     // Title with ID
-    let id = metadata.id.as_deref().unwrap_or("unknown");
-    let title = metadata.title.as_deref().unwrap_or("Untitled");
+    let id = format_ticket_id(metadata);
+    let title = format_ticket_title(metadata);
     output.push_str(&format!("# {id}: {title}\n\n"));
 
     // Metadata table
@@ -1229,51 +1231,18 @@ fn format_ticket_as_markdown(
     }
 
     // Blockers section
-    if !blockers.is_empty() {
-        output.push_str("\n## Blockers\n\n");
-        for blocker in blockers {
-            let blocker_id = blocker.id.as_deref().unwrap_or("unknown");
-            let blocker_title = blocker.title.as_deref().unwrap_or("Untitled");
-            let blocker_status = blocker
-                .status
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "new".to_string());
-            output.push_str(&format!(
-                "- **{blocker_id}**: {blocker_title} [{blocker_status}]\n"
-            ));
-        }
+    if let Some(section) = format_related_tickets_section("Blockers", blockers) {
+        output.push_str(&section);
     }
 
     // Blocking section
-    if !blocking.is_empty() {
-        output.push_str("\n## Blocking\n\n");
-        for blocked in blocking {
-            let blocked_id = blocked.id.as_deref().unwrap_or("unknown");
-            let blocked_title = blocked.title.as_deref().unwrap_or("Untitled");
-            let blocked_status = blocked
-                .status
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "new".to_string());
-            output.push_str(&format!(
-                "- **{blocked_id}**: {blocked_title} [{blocked_status}]\n"
-            ));
-        }
+    if let Some(section) = format_related_tickets_section("Blocking", blocking) {
+        output.push_str(&section);
     }
 
     // Children section
-    if !children.is_empty() {
-        output.push_str("\n## Children\n\n");
-        for child in children {
-            let child_id = child.id.as_deref().unwrap_or("unknown");
-            let child_title = child.title.as_deref().unwrap_or("Untitled");
-            let child_status = child
-                .status
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "new".to_string());
-            output.push_str(&format!(
-                "- **{child_id}**: {child_title} [{child_status}]\n"
-            ));
-        }
+    if let Some(section) = format_related_tickets_section("Children", children) {
+        output.push_str(&section);
     }
 
     output
@@ -1334,30 +1303,9 @@ fn format_ticket_list_as_markdown(tickets: &[&TicketMetadata], filter_summary: &
     output.push_str("| ID | Title | Status | Type | Priority | Size |\n");
     output.push_str("|----|-------|--------|------|----------|------|\n");
 
-    // Table rows
+    // Table rows using centralized formatting
     for ticket in tickets {
-        let id = ticket.id.as_deref().unwrap_or("unknown");
-        let title = ticket.title.as_deref().unwrap_or("Untitled");
-        let status = ticket
-            .status
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "new".to_string());
-        let ticket_type = ticket
-            .ticket_type
-            .map(|t| t.to_string())
-            .unwrap_or_else(|| "task".to_string());
-        let priority = ticket
-            .priority
-            .map(|p| format!("P{}", p.as_num()))
-            .unwrap_or_else(|| "P2".to_string());
-        let size = ticket
-            .size
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "-".to_string());
-
-        output.push_str(&format!(
-            "| {id} | {title} | {status} | {ticket_type} | {priority} | {size} |\n"
-        ));
+        output.push_str(&format_ticket_table_row(ticket));
     }
 
     // Total count
@@ -1446,15 +1394,12 @@ fn format_plan_status_as_markdown(
 
         for (phase, phase_status) in metadata.phases().iter().zip(phase_statuses.iter()) {
             output.push_str(&format!(
-                "\n## Phase {}: {} ({})\n",
+                "\n## Phase {}: {} ({})",
                 phase.number, phase.name, phase_status.status
             ));
 
             for ticket_id in &phase.tickets {
-                let (checkbox, title, status_suffix) = format_ticket_line(ticket_id, ticket_map);
-                output.push_str(&format!(
-                    "- [{checkbox}] {ticket_id}: {title}{status_suffix}"
-                ));
+                output.push_str(&format_plan_ticket_entry(ticket_id, ticket_map));
             }
         }
     } else {
@@ -1463,10 +1408,7 @@ fn format_plan_status_as_markdown(
         if !tickets.is_empty() {
             output.push_str("\n## Tickets\n");
             for ticket_id in tickets {
-                let (checkbox, title, status_suffix) = format_ticket_line(ticket_id, ticket_map);
-                output.push_str(&format!(
-                    "- [{checkbox}] {ticket_id}: {title}{status_suffix}"
-                ));
+                output.push_str(&format_plan_ticket_entry(ticket_id, ticket_map));
             }
         }
     }
@@ -1500,22 +1442,9 @@ fn format_children_as_markdown(
     output.push_str("| ID | Title | Status | Depth |\n");
     output.push_str("|----|-------|--------|-------|\n");
 
-    // Table rows
+    // Table rows using centralized formatting
     for child in children {
-        let id = child.id.as_deref().unwrap_or("unknown");
-        let title = child.title.as_deref().unwrap_or("Untitled");
-        let status = child
-            .status
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "new".to_string());
-        let depth = child
-            .depth
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "1".to_string());
-
-        output.push_str(&format!(
-            "| {id} | {title} | {status} | {depth} |\n"
-        ));
+        output.push_str(&format_children_table_row(child));
     }
 
     // Spawn contexts section (only if any children have spawn_context)
@@ -1527,39 +1456,13 @@ fn format_children_as_markdown(
     if !children_with_context.is_empty() {
         output.push_str("\n**Spawn contexts:**\n");
         for child in children_with_context {
-            let id = child.id.as_deref().unwrap_or("unknown");
-            let context = child.spawn_context.as_deref().unwrap_or("");
-            output.push_str(&format!("- **{id}**: \"{context}\"\n"));
+            if let Some(line) = format_spawn_context_line(child) {
+                output.push_str(&line);
+            }
         }
     }
 
     output
-}
-
-/// Format a single ticket line for plan status display
-/// Returns (checkbox_char, title, status_suffix_with_newline)
-fn format_ticket_line(
-    ticket_id: &str,
-    ticket_map: &HashMap<String, TicketMetadata>,
-) -> (char, String, String) {
-    if let Some(ticket) = ticket_map.get(ticket_id) {
-        let status = ticket.status.unwrap_or(TicketStatus::New);
-        let checkbox = if status == TicketStatus::Complete {
-            'x'
-        } else {
-            ' '
-        };
-        let title = ticket.title.as_deref().unwrap_or("Untitled").to_string();
-        let status_suffix = if status == TicketStatus::InProgress {
-            " (in_progress)\n".to_string()
-        } else {
-            "\n".to_string()
-        };
-        (checkbox, title, status_suffix)
-    } else {
-        // Ticket not found
-        (' ', "Unknown ticket".to_string(), "\n".to_string())
-    }
 }
 
 /// Format next work items as markdown for LLM consumption
@@ -1576,7 +1479,7 @@ fn format_next_work_as_markdown(
     for (idx, item) in work_items.iter().enumerate() {
         let ticket_id = &item.ticket_id;
         let priority = item.metadata.priority_num();
-        let title = item.metadata.title.as_deref().unwrap_or("Untitled");
+        let title = format_ticket_title(&item.metadata);
         let priority_badge = format!("[P{priority}]");
 
         // Format the main line with context
@@ -1643,7 +1546,7 @@ fn format_next_work_as_markdown(
     });
 
     if let Some(ready_item) = first_ready {
-        let ready_title = ready_item.metadata.title.as_deref().unwrap_or("Untitled");
+        let ready_title = format_ticket_title(&ready_item.metadata);
         output.push_str("### Recommended Action\n\n");
         output.push_str(&format!(
             "Start with **{}**: {}\n",
@@ -2021,7 +1924,9 @@ mod tests {
     }
 
     #[test]
-    fn test_format_ticket_line_complete() {
+    fn test_format_plan_ticket_line_complete() {
+        use super::super::format::format_plan_ticket_line;
+
         let mut ticket_map = HashMap::new();
         ticket_map.insert(
             "j-a1b2".to_string(),
@@ -2033,14 +1938,16 @@ mod tests {
             },
         );
 
-        let (checkbox, title, suffix) = format_ticket_line("j-a1b2", &ticket_map);
+        let (checkbox, title, suffix) = format_plan_ticket_line("j-a1b2", &ticket_map);
         assert_eq!(checkbox, 'x');
         assert_eq!(title, "Test ticket");
         assert_eq!(suffix, "\n");
     }
 
     #[test]
-    fn test_format_ticket_line_in_progress() {
+    fn test_format_plan_ticket_line_in_progress() {
+        use super::super::format::format_plan_ticket_line;
+
         let mut ticket_map = HashMap::new();
         ticket_map.insert(
             "j-a1b2".to_string(),
@@ -2052,17 +1959,19 @@ mod tests {
             },
         );
 
-        let (checkbox, title, suffix) = format_ticket_line("j-a1b2", &ticket_map);
+        let (checkbox, title, suffix) = format_plan_ticket_line("j-a1b2", &ticket_map);
         assert_eq!(checkbox, ' ');
         assert_eq!(title, "Test ticket");
         assert_eq!(suffix, " (in_progress)\n");
     }
 
     #[test]
-    fn test_format_ticket_line_not_found() {
+    fn test_format_plan_ticket_line_not_found() {
+        use super::super::format::format_plan_ticket_line;
+
         let ticket_map = HashMap::new();
 
-        let (checkbox, title, suffix) = format_ticket_line("j-unknown", &ticket_map);
+        let (checkbox, title, suffix) = format_plan_ticket_line("j-unknown", &ticket_map);
         assert_eq!(checkbox, ' ');
         assert_eq!(title, "Unknown ticket");
         assert_eq!(suffix, "\n");
