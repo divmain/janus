@@ -6,13 +6,13 @@
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, Options, parse_document};
+use comrak::{parse_document, Arena, Options};
 use regex::Regex;
 
 use crate::error::{JanusError, Result};
 use crate::plan::types::{
-    ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask,
-    display_import_validation_error,
+    display_import_validation_error, ImportValidationError, ImportablePhase, ImportablePlan,
+    ImportableTask,
 };
 
 use super::{extract_text_content, render_node_to_markdown};
@@ -35,7 +35,9 @@ pub const IMPLEMENTATION_SECTION_NAME: &str = "implementation";
 /// where N can be numeric (1, 2, 10) or alphanumeric (1a, 2b)
 pub const PHASE_PATTERN: &str = r"(?i)^(phase|stage|part|step)\s+(\d+[a-z]?)\s*[-:]?\s*(.*)$";
 
-static IMPORT_PHASE_RE: LazyLock<Regex> =
+/// Compiled regex for matching phase headers.
+/// This is the shared source of truth used by both plan parsing and import parsing.
+pub static PHASE_HEADER_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(PHASE_PATTERN).expect("phase regex should be valid"));
 
 /// Check if a heading text matches any alias in a given list (case-insensitive).
@@ -62,7 +64,7 @@ pub fn is_section_alias(heading: &str, aliases: &[&str]) -> bool {
 /// # Returns
 /// `Some((number, name))` if the heading is a valid phase header, `None` otherwise.
 pub fn is_phase_header(heading: &str) -> Option<(String, String)> {
-    IMPORT_PHASE_RE.captures(heading).map(|caps| {
+    PHASE_HEADER_REGEX.captures(heading).map(|caps| {
         let number = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
         let name = caps
             .get(3)
@@ -1026,12 +1028,11 @@ It has no explicit H4 task headers.
         let task = &phase.tasks[0];
         assert_eq!(task.title, "Implement Phase 1: Setup");
         assert!(task.body.is_some());
-        assert!(
-            task.body
-                .as_ref()
-                .unwrap()
-                .contains("sets up the infrastructure")
-        );
+        assert!(task
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("sets up the infrastructure"));
         assert!(!task.is_complete);
     }
 
@@ -1096,13 +1097,11 @@ Test the full workflow.
         assert_eq!(phase2.tasks.len(), 1, "Should have one fallback task");
         assert_eq!(phase2.tasks[0].title, "Implement Phase 2: Integration");
         assert!(phase2.tasks[0].body.is_some());
-        assert!(
-            phase2.tasks[0]
-                .body
-                .as_ref()
-                .unwrap()
-                .contains("no H4 tasks")
-        );
+        assert!(phase2.tasks[0]
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("no H4 tasks"));
 
         // Phase 3: Has explicit H4 tasks
         let phase3 = &plan.phases[2];

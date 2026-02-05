@@ -8,7 +8,7 @@ use regex::Regex;
 
 use crate::plan::types::Phase;
 
-use super::{H2Section, parse_list_items_with_regex};
+use super::{parse_list_items_with_regex, H2Section};
 
 // Compile regex once at program startup
 static TICKET_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {

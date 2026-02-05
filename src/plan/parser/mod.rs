@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, Options, parse_document};
+use comrak::{parse_document, Arena, Options};
 use regex::Regex;
 use serde::Deserialize;
 
@@ -31,17 +31,12 @@ use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection};
 
 // Re-export public functions from submodules
 pub use import::{
-    ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME, PHASE_PATTERN,
     is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
+    ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME,
+    PHASE_HEADER_REGEX, PHASE_PATTERN,
 };
 pub use sections::parse_ticket_list;
 pub use serialize::serialize_plan;
-
-// Compile regexes once at program startup
-static PHASE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^phase\s+(\d+[a-z]?)\s*(?:[-:]\s*)?(.*)$")
-        .expect("phase regex should be valid")
-});
 
 static LIST_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^[\s]*[-*+][\s]+(.+)$|^[\s]*\d+\.[\s]+(.+)$")
@@ -325,10 +320,10 @@ pub(crate) struct H3Section {
 /// Try to parse a heading as a phase header
 /// Matches: "Phase 1: Name", "Phase 2a - Name", "Phase 10:", "Phase 1" (no separator)
 fn try_parse_phase_header(heading: &str) -> Option<(String, String)> {
-    PHASE_RE.captures(heading).map(|caps| {
-        let number = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+    PHASE_HEADER_REGEX.captures(heading).map(|caps| {
+        let number = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
         let name = caps
-            .get(2)
+            .get(3)
             .map(|m| m.as_str().trim())
             .unwrap_or("")
             .to_string();
@@ -688,13 +683,11 @@ No H1 heading, just content.
         let metadata = parse_plan_content(content).unwrap();
         assert!(metadata.title.is_none());
         // Content before first H2 is description
-        assert!(
-            metadata
-                .description
-                .as_ref()
-                .unwrap()
-                .contains("No H1 heading")
-        );
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("No H1 heading"));
     }
 
     #[test]
@@ -1151,13 +1144,11 @@ Implement the core synchronization logic.
             metadata.title,
             Some("SQLite Cache Implementation Plan".to_string())
         );
-        assert!(
-            metadata
-                .description
-                .as_ref()
-                .unwrap()
-                .contains("SQLite-based caching layer")
-        );
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("SQLite-based caching layer"));
 
         // Acceptance criteria
         assert_eq!(metadata.acceptance_criteria.len(), 3);
