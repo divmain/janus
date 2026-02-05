@@ -199,31 +199,7 @@ impl RemoteProvider for GitHubProvider {
                 }
             })?;
 
-            let status = match issue.state {
-                octocrab::models::IssueState::Open => RemoteStatus::Open,
-                octocrab::models::IssueState::Closed => RemoteStatus::Closed,
-                _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
-            };
-
-            let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
-
-            Ok(RemoteIssue {
-                id: issue.number.to_string(),
-                title: issue.title.clone(),
-                body: issue.body.clone().unwrap_or_default(),
-                status,
-                priority: None,
-                assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
-                updated_at: issue.updated_at.to_rfc3339(),
-                url: issue.html_url.to_string(),
-                labels,
-                team: None,
-                project: None,
-                milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
-                due_date: None,
-                created_at: issue.created_at.to_rfc3339(),
-                creator: Some(issue.user.login.clone()),
-            })
+            Ok(self.convert_github_issue(&issue))
         })
     }
 
