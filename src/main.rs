@@ -19,6 +19,21 @@ use janus::commands::{
     cmd_remote_browse, cmd_remote_link, cmd_reopen, cmd_set, cmd_show, cmd_show_import_spec,
     cmd_start, cmd_status, cmd_sync, cmd_view,
 };
+use janus::error::{JanusError, Result};
+
+/// Handles validation results, returning Ok if valid, or an error if invalid.
+fn handle_validation_result<T>(result: Result<(bool, T)>, error_msg: &str) -> Result<()> {
+    match result {
+        Ok((valid, _)) => {
+            if valid {
+                Ok(())
+            } else {
+                Err(JanusError::Other(error_msg.to_string()))
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -179,19 +194,7 @@ async fn main() -> ExitCode {
         },
 
         Commands::Doctor { json } => {
-            match cmd_doctor(json) {
-                Ok((valid, _)) => {
-                    if valid {
-                        Ok(())
-                    } else {
-                        // Return error for verification failures
-                        Err(janus::error::JanusError::Other(
-                            "Ticket health check failed - some files have errors".to_string(),
-                        ))
-                    }
-                }
-                Err(e) => Err(e),
-            }
+            handle_validation_result(cmd_doctor(json), "Ticket health check failed - some files have errors")
         }
 
         Commands::Plan { action } => match action {
@@ -305,19 +308,7 @@ async fn main() -> ExitCode {
             }
             PlanAction::ImportSpec => cmd_show_import_spec(),
             PlanAction::Verify { json } => {
-                match cmd_plan_verify(json) {
-                    Ok((valid, _)) => {
-                        if valid {
-                            Ok(())
-                        } else {
-                            // Return error for verification failures
-                            Err(janus::error::JanusError::Other(
-                                "Plan verification failed - some files have errors".to_string(),
-                            ))
-                        }
-                    }
-                    Err(e) => Err(e),
-                }
+                handle_validation_result(cmd_plan_verify(json), "Plan verification failed - some files have errors")
             }
         },
 
