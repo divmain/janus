@@ -1,6 +1,82 @@
 use crate::error::Result;
 use crate::parser::TITLE_RE;
 
+/// A helper struct for editing YAML frontmatter in ticket files.
+///
+/// Handles the common logic of splitting frontmatter from body,
+/// manipulating fields, and reconstructing the content.
+pub struct FrontmatterEditor {
+    frontmatter_lines: Vec<String>,
+    body: String,
+}
+
+impl FrontmatterEditor {
+    /// Create a new FrontmatterEditor from raw ticket content.
+    pub fn new(raw_content: &str) -> Result<Self> {
+        let normalized = raw_content.replace("\r\n", "\n");
+        let (frontmatter, body) = crate::parser::split_frontmatter(&normalized)?;
+
+        Ok(Self {
+            frontmatter_lines: frontmatter.lines().map(|s| s.to_string()).collect(),
+            body: body.to_string(),
+        })
+    }
+
+    /// Update a field in the frontmatter.
+    ///
+    /// If the field exists, it will be updated in place. If it doesn't exist, it will be appended.
+    /// Values are properly escaped using serde_yaml_ng to ensure special YAML characters
+    /// are handled correctly and prevent YAML injection.
+    pub fn update_field(&mut self, field: &str, value: &str) -> Result<()> {
+        use serde_yaml_ng::Value;
+
+        let serialized_value = if let Ok(_v) = serde_yaml_ng::from_str::<Value>(value)
+            && !value.contains('\n')
+            && !value.contains('\r')
+        {
+            value.trim().to_string()
+        } else {
+            serde_yaml_ng::to_string(&Value::String(value.to_string()))
+                .map_err(|e| {
+                    crate::error::JanusError::InvalidFormat(format!(
+                        "Failed to serialize value: {e}"
+                    ))
+                })?
+                .trim()
+                .to_string()
+        };
+
+        let yaml_line = format!("{field}: {serialized_value}");
+        let mut field_found = false;
+
+        for line in &mut self.frontmatter_lines {
+            if line.starts_with(&format!("{field}:")) {
+                *line = yaml_line.clone();
+                field_found = true;
+                break;
+            }
+        }
+
+        if !field_found {
+            self.frontmatter_lines.push(yaml_line);
+        }
+
+        Ok(())
+    }
+
+    /// Remove a field from the frontmatter.
+    pub fn remove_field(&mut self, field: &str) {
+        self.frontmatter_lines
+            .retain(|line| !line.starts_with(&format!("{field}:")));
+    }
+
+    /// Build the final content with the updated frontmatter.
+    pub fn build(self) -> String {
+        let frontmatter = self.frontmatter_lines.join("\n");
+        format!("---\n{frontmatter}\n---\n{}", self.body)
+    }
+}
+
 /// Update a field in the YAML frontmatter of a ticket file.
 ///
 /// If the field exists, it will be updated in place. If it doesn't exist, it will be inserted
@@ -9,62 +85,16 @@ use crate::parser::TITLE_RE;
 /// Values are properly escaped using serde_yaml_ng to ensure special YAML characters
 /// are handled correctly and prevent YAML injection.
 pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
-    use serde_yaml_ng::Value;
-
-    let normalized = raw_content.replace("\r\n", "\n");
-    let (frontmatter, body) = crate::parser::split_frontmatter(&normalized)?;
-
-    let frontmatter_lines: Vec<&str> = frontmatter.lines().collect();
-    let mut updated_lines = Vec::new();
-    let mut field_found = false;
-
-    let serialized_value = if let Ok(_v) = serde_yaml_ng::from_str::<Value>(value)
-        && !value.contains('\n')
-        && !value.contains('\r')
-    {
-        value.trim().to_string()
-    } else {
-        serde_yaml_ng::to_string(&Value::String(value.to_string()))
-            .map_err(|e| {
-                crate::error::JanusError::InvalidFormat(format!("Failed to serialize value: {e}"))
-            })?
-            .trim()
-            .to_string()
-    };
-
-    let yaml_line = format!("{field}: {serialized_value}");
-
-    for line in frontmatter_lines {
-        if line.starts_with(&format!("{field}:")) {
-            updated_lines.push(yaml_line.clone());
-            field_found = true;
-        } else {
-            updated_lines.push(line.to_string());
-        }
-    }
-
-    if !field_found {
-        updated_lines.push(yaml_line);
-    }
-
-    let updated_frontmatter = updated_lines.join("\n");
-
-    Ok(format!("---\n{updated_frontmatter}\n---\n{body}"))
+    let mut editor = FrontmatterEditor::new(raw_content)?;
+    editor.update_field(field, value)?;
+    Ok(editor.build())
 }
 
 /// Remove a field from the YAML frontmatter of a ticket file.
 pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
-    let normalized = raw_content.replace("\r\n", "\n");
-    let (frontmatter, body) = crate::parser::split_frontmatter(&normalized)?;
-
-    let updated_frontmatter: Vec<&str> = frontmatter
-        .lines()
-        .filter(|line| !line.starts_with(&format!("{field}:")))
-        .collect();
-
-    let updated_frontmatter = updated_frontmatter.join("\n");
-
-    Ok(format!("---\n{updated_frontmatter}\n---\n{body}"))
+    let mut editor = FrontmatterEditor::new(raw_content)?;
+    editor.remove_field(field);
+    Ok(editor.build())
 }
 
 /// Extract the body content from a ticket file (everything after the title).
