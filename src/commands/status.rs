@@ -18,8 +18,7 @@ async fn update_status_with_summary(
     summary: Option<&str>,
     output_json: bool,
 ) -> Result<()> {
-    let ticket = Ticket::find(id).await?;
-    let metadata = ticket.read()?;
+    let (ticket, metadata) = Ticket::find_and_read(id).await?;
     let previous_status = metadata.status.unwrap_or_default();
 
     ticket.update_field("status", &new_status.to_string())?;

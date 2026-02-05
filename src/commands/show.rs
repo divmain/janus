@@ -9,9 +9,8 @@ use crate::types::{TicketMetadata, TicketStatus};
 
 /// Display a ticket with its relationships
 pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
-    let ticket = Ticket::find(id).await?;
+    let (ticket, metadata) = Ticket::find_and_read(id).await?;
     let content = ticket.read_content()?;
-    let metadata = ticket.read()?;
     let ticket_map = build_ticket_map().await?;
 
     let mut blockers: Vec<&TicketMetadata> = Vec::new();

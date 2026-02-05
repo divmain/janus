@@ -94,6 +94,13 @@ impl Ticket {
         })
     }
 
+    /// Find a ticket by partial ID and read its metadata in one operation
+    pub async fn find_and_read(partial_id: &str) -> Result<(Self, TicketMetadata)> {
+        let ticket = Self::find(partial_id).await?;
+        let metadata = ticket.read()?;
+        Ok((ticket, metadata))
+    }
+
     /// Create a Ticket from an existing file path.
     ///
     /// Extracts the ticket ID from the file path's stem.
