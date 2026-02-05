@@ -6,7 +6,6 @@ use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::{log_ticket_added_to_plan, log_ticket_moved, log_ticket_removed_from_plan};
 use crate::plan::Plan;
-use crate::plan::parser::serialize_plan;
 use crate::plan::types::PlanSection;
 use crate::ticket::Ticket;
 
@@ -106,8 +105,7 @@ pub async fn cmd_plan_add_ticket(
     }
 
     // Write updated plan
-    let content = serialize_plan(&metadata);
-    plan.write(&content)?;
+    plan.write_metadata(&metadata)?;
 
     // Log the event
     log_ticket_added_to_plan(&plan.id, &resolved_ticket_id, added_to_phase.as_deref());
@@ -170,8 +168,7 @@ pub async fn cmd_plan_remove_ticket(
     }
 
     // Write updated plan
-    let content = serialize_plan(&metadata);
-    plan.write(&content)?;
+    plan.write_metadata(&metadata)?;
 
     // Log the event
     log_ticket_removed_from_plan(&plan.id, &resolved_id, removed_from_phase.as_deref());
@@ -245,8 +242,7 @@ pub async fn cmd_plan_move_ticket(
     }
 
     // Write updated plan
-    let content = serialize_plan(&metadata);
-    plan.write(&content)?;
+    plan.write_metadata(&metadata)?;
 
     // Log the event
     if let Some(from) = &found_in_phase {

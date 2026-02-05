@@ -9,7 +9,6 @@ use serde_json::json;
 use crate::commands::{CommandOutput, print_json};
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
-use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection};
 use crate::plan::{
     ImportablePlan, Plan, ensure_plans_dir, generate_plan_id, get_all_plans, parse_importable_plan,
@@ -329,8 +328,7 @@ pub async fn cmd_plan_import(
         metadata.sections.push(PlanSection::Phase(phase));
     }
 
-    // 10. Serialize and write plan
-    let plan_content = serialize_plan(&metadata);
+    // 10. Write plan
     let plan_handle = Plan::with_id(&plan_id)?;
 
     // Build hook context for plan creation
@@ -340,7 +338,7 @@ pub async fn cmd_plan_import(
     run_pre_hooks(HookEvent::PreWrite, &context)?;
 
     // Write without internal hooks (we handle them here with PlanCreated instead of PlanUpdated)
-    plan_handle.write_without_hooks(&plan_content)?;
+    plan_handle.write_metadata(&metadata)?;
 
     // Run post-write hooks (fire-and-forget)
     run_post_hooks(HookEvent::PostWrite, &context);

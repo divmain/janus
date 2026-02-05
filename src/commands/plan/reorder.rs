@@ -8,7 +8,6 @@ use super::edit_in_editor;
 use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
-use crate::plan::parser::serialize_plan;
 use crate::plan::types::PlanSection;
 
 fn parse_and_validate_ticket_order(
@@ -208,8 +207,7 @@ pub async fn cmd_plan_reorder(
     }
 
     // Write updated plan
-    let content = serialize_plan(&metadata);
-    plan.write(&content)?;
+    plan.write_metadata(&metadata)?;
 
     CommandOutput::new(json!({
         "plan_id": plan.id,

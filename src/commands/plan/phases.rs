@@ -6,7 +6,6 @@ use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::{log_phase_added, log_phase_removed};
 use crate::plan::Plan;
-use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanSection};
 
 /// Add a new phase to a plan
@@ -96,8 +95,7 @@ pub async fn cmd_plan_add_phase(
     }
 
     // Write updated plan
-    let content = serialize_plan(&metadata);
-    plan.write(&content)?;
+    plan.write_metadata(&metadata)?;
 
     // Log the event
     log_phase_added(&plan.id, &next_number.to_string(), phase_name);
@@ -182,8 +180,7 @@ pub async fn cmd_plan_remove_phase(
     metadata.sections.remove(idx);
 
     // Write updated plan
-    let content = serialize_plan(&metadata);
-    plan.write(&content)?;
+    plan.write_metadata(&metadata)?;
 
     // Log the event
     log_phase_removed(&plan.id, &phase_number, &phase_name, migrated_tickets);

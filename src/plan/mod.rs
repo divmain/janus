@@ -20,7 +20,7 @@ use crate::cache;
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
-use crate::plan::parser::parse_plan_content;
+use crate::plan::parser::{parse_plan_content, serialize_plan};
 use crate::types::{EntityType, TicketMetadata, plans_dir};
 use crate::utils::{DirScanner, extract_id_from_path};
 
@@ -137,6 +137,12 @@ impl Plan {
     pub fn write_validated(&self, content: &str) -> Result<()> {
         parse_plan_content(content)?;
         self.write(content)
+    }
+
+    /// Write the given metadata to the plan file
+    pub fn write_metadata(&self, metadata: &PlanMetadata) -> Result<()> {
+        let content = serialize_plan(metadata);
+        self.write(&content)
     }
 
     /// Write content to the plan file without triggering hooks.

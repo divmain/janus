@@ -5,7 +5,6 @@ use serde_json::json;
 use crate::commands::{CommandOutput, interactive};
 use crate::error::Result;
 use crate::plan::Plan;
-use crate::plan::parser::serialize_plan;
 use crate::utils::is_stdin_tty;
 
 /// Delete a plan
@@ -55,8 +54,7 @@ pub async fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Re
     metadata.title = Some(new_title.to_string());
 
     // Write updated plan
-    let content = serialize_plan(&metadata);
-    plan.write(&content)?;
+    plan.write_metadata(&metadata)?;
 
     CommandOutput::new(json!({
         "plan_id": plan.id,
