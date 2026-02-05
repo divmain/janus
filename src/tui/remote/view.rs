@@ -125,7 +125,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let last_error: State<Option<(String, String)>> = hooks.use_state(|| None);
 
     // Search state - search_query is separate for InlineSearchBox compatibility
-    let mut search_query = hooks.use_state(String::new);
+    let search_query = hooks.use_state(String::new);
     let mut search_ui: State<super::state::SearchUiData> = hooks.use_state(Default::default);
     let mut search_state = SearchState::use_state(&mut hooks);
 

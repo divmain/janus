@@ -64,7 +64,7 @@ fn handle_switch_provider(ctx: &mut HandlerContext<'_>) {
     ctx.filters.set_provider(new_provider);
     ctx.modals
         .toast
-        .set(Some(Toast::info(format!("Switched to {}", new_provider))));
+        .set(Some(Toast::info(format!("Switched to {new_provider}"))));
 }
 
 /// Handle 'r' key - refresh

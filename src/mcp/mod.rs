@@ -58,32 +58,9 @@ use resources::{ResourceError, list_all_resource_templates, list_all_resources, 
 use tools::JanusTools;
 use types::{MCP_PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION};
 
-/// The Janus MCP server handler.
-///
-/// This struct implements the MCP ServerHandler trait to handle
-/// incoming MCP requests from AI agents. It delegates tool handling
-/// to the `JanusTools` router.
-#[derive(Clone, Debug)]
-pub struct JanusMcpServer {
-    tools: JanusTools,
-}
 
-impl JanusMcpServer {
-    /// Create a new Janus MCP server instance.
-    pub fn new() -> Self {
-        Self {
-            tools: JanusTools::new(),
-        }
-    }
-}
 
-impl Default for JanusMcpServer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ServerHandler for JanusMcpServer {
+impl ServerHandler for JanusTools {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
@@ -127,7 +104,7 @@ impl ServerHandler for JanusMcpServer {
         _pagination: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> std::result::Result<ListToolsResult, ErrorData> {
-        let items = self.tools.router().list_all();
+        let items = self.router().list_all();
         Ok(ListToolsResult::with_all_items(items))
     }
 
@@ -139,8 +116,8 @@ impl ServerHandler for JanusMcpServer {
         request: CallToolRequestParam,
         context: RequestContext<RoleServer>,
     ) -> std::result::Result<CallToolResult, ErrorData> {
-        let tcc = ToolCallContext::new(&self.tools, request, context);
-        self.tools.router().call(tcc).await
+        let tcc = ToolCallContext::new(self, request, context);
+        self.router().call(tcc).await
     }
 
     /// List available resources.
@@ -206,7 +183,7 @@ pub async fn cmd_mcp() -> Result<()> {
     // Log startup to stderr (stdout is the transport)
     eprintln!("Starting Janus MCP server...");
 
-    let server = JanusMcpServer::new();
+    let server = JanusTools::new();
 
     // Create STDIO transport and serve
     let service = server
@@ -236,7 +213,7 @@ mod tests {
 
     #[test]
     fn test_server_info() {
-        let server = JanusMcpServer::new();
+        let server = JanusTools::new();
         let info = server.get_info();
 
         assert!(info.instructions.is_some());
@@ -250,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_default_server() {
-        let server = JanusMcpServer::default();
+        let server = JanusTools::default();
         let info = server.get_info();
         assert_eq!(info.server_info.name, SERVER_NAME);
     }
@@ -265,8 +242,8 @@ mod tests {
 
     #[test]
     fn test_tools_router_has_tools() {
-        let server = JanusMcpServer::new();
-        let tools = server.tools.router().list_all();
+        let server = JanusTools::new();
+        let tools = server.router().list_all();
         // We should have 13 tools (including semantic_search)
         assert_eq!(tools.len(), 13);
 
@@ -323,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_server_capabilities_include_resources() {
-        let server = JanusMcpServer::new();
+        let server = JanusTools::new();
         let info = server.get_info();
         // Server capabilities should include both tools and resources
         assert!(info.capabilities.tools.is_some());

@@ -59,12 +59,14 @@ impl<'a> NavigationState<'a> {
         self.nav.set(nav);
     }
 
+    #[allow(dead_code)]
     pub fn clear_selection(&mut self) {
         let mut nav = self.nav.read().clone();
         nav.clear_selection();
         self.nav.set(nav);
     }
 
+    #[allow(dead_code)]
     pub fn select_item(&mut self, index: usize) {
         let mut nav = self.nav.read().clone();
         nav.select_item(index);
@@ -107,6 +109,7 @@ impl<'a> ViewState<'a> {
         self.display.get().show_detail
     }
 
+    #[allow(dead_code)]
     pub fn should_exit(&self) -> bool {
         self.display.get().should_exit
     }
@@ -127,6 +130,7 @@ impl<'a> ViewState<'a> {
         self.display.set(display);
     }
 
+    #[allow(dead_code)]
     pub fn set_show_detail(&mut self, show: bool) {
         let mut display = self.display.get();
         display.show_detail = show;
@@ -146,17 +150,18 @@ impl<'a> ViewState<'a> {
     }
 
     pub fn set_detail_pane_focused(&mut self, focused: bool) {
-        let mut display = self.display.read().clone();
+        let mut display = *self.display.read();
         display.detail_pane_focused = focused;
         self.display.set(display);
     }
 
+    #[allow(dead_code)]
     pub fn loading(&self) -> bool {
-        self.display.read().clone().remote_loading
+        self.display.read().remote_loading
     }
 
     pub fn set_loading(&mut self, loading: bool) {
-        let mut display = self.display.read().clone();
+        let mut display = *self.display.read();
         display.remote_loading = loading;
         self.display.set(display);
     }
@@ -170,12 +175,13 @@ pub struct SearchState<'a> {
 }
 
 impl<'a> SearchState<'a> {
+    #[allow(dead_code)]
     pub fn query(&self) -> String {
-        self.ui.read().clone().query.clone()
+        self.ui.read().query.clone()
     }
 
     pub fn is_focused(&self) -> bool {
-        self.ui.read().clone().focused
+        self.ui.read().focused
     }
 
     pub fn set_query(&mut self, query: String) {
@@ -199,6 +205,7 @@ pub struct ModalState<'a> {
     pub confirm_dialog: &'a mut State<Option<ConfirmDialogState>>,
     /// Modal visibility state (grouped)
     pub visibility: &'a mut State<ModalVisibilityData>,
+    #[allow(dead_code)]
     pub last_error: &'a State<Option<(String, String)>>,
 }
 
@@ -233,12 +240,14 @@ impl<'a> ModalState<'a> {
         self.visibility.set(visibility);
     }
 
+    #[allow(dead_code)]
     pub fn scroll_help_up(&mut self, lines: usize) {
         let mut visibility = self.visibility.get();
         visibility.help_scroll = visibility.help_scroll.saturating_sub(lines);
         self.visibility.set(visibility);
     }
 
+    #[allow(dead_code)]
     pub fn scroll_help_down(&mut self, lines: usize) {
         let mut visibility = self.visibility.get();
         visibility.help_scroll += lines;
@@ -291,6 +300,7 @@ impl<'a> FilteringState<'a> {
 pub struct AsyncHandlers<'a> {
     pub fetch_handler: &'a Handler<(Platform, RemoteQuery)>,
     pub push_handler: &'a Handler<(Vec<String>, Platform, RemoteQuery)>,
+    #[allow(dead_code)]
     pub sync_fetch_handler: &'a Handler<(Vec<String>, Platform)>,
     pub sync_apply_handler: &'a Handler<(SyncPreviewState, Platform, RemoteQuery)>,
     pub link_handler: &'a Handler<LinkSource>,

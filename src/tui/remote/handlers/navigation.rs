@@ -69,7 +69,7 @@ fn handle_detail_down(ctx: &mut HandlerContext<'_>) {
             let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
             let body_lines = body.lines().count();
             let visible_lines = 10;
-            let mut scroll_data = ctx.view_data.detail_scroll.read().clone();
+            let mut scroll_data = *ctx.view_data.detail_scroll.read();
             detail_scroll_down(&mut scroll_data.local_offset, body_lines, visible_lines);
             ctx.view_data.detail_scroll.set(scroll_data);
         }
@@ -80,7 +80,7 @@ fn handle_detail_down(ctx: &mut HandlerContext<'_>) {
             let body = &issue.body;
             let body_lines = body.lines().count();
             let visible_lines = 10;
-            let mut scroll_data = ctx.view_data.detail_scroll.read().clone();
+            let mut scroll_data = *ctx.view_data.detail_scroll.read();
             detail_scroll_down(&mut scroll_data.remote_offset, body_lines, visible_lines);
             ctx.view_data.detail_scroll.set(scroll_data);
         }
@@ -95,11 +95,11 @@ fn handle_detail_up(ctx: &mut HandlerContext<'_>) {
     }
 
     if ctx.view_state.active_view() == ViewMode::Local {
-        let mut scroll_data = ctx.view_data.detail_scroll.read().clone();
+        let mut scroll_data = *ctx.view_data.detail_scroll.read();
         detail_scroll_up(&mut scroll_data.local_offset);
         ctx.view_data.detail_scroll.set(scroll_data);
     } else {
-        let mut scroll_data = ctx.view_data.detail_scroll.read().clone();
+        let mut scroll_data = *ctx.view_data.detail_scroll.read();
         detail_scroll_up(&mut scroll_data.remote_offset);
         ctx.view_data.detail_scroll.set(scroll_data);
     }
@@ -207,7 +207,7 @@ fn handle_remote_up(ctx: &mut HandlerContext<'_>, shift_held: bool) {
 
 fn handle_go_top(ctx: &mut HandlerContext<'_>) {
     if ctx.view_state.detail_pane_focused() {
-        let mut scroll_data = ctx.view_data.detail_scroll.read().clone();
+        let mut scroll_data = *ctx.view_data.detail_scroll.read();
         scroll_data.local_offset = 0;
         scroll_data.remote_offset = 0;
         ctx.view_data.detail_scroll.set(scroll_data);
@@ -241,7 +241,7 @@ fn handle_go_bottom(ctx: &mut HandlerContext<'_>) {
                     let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
                     let body_lines = body.lines().count();
                     let visible_lines = 10;
-                    let mut scroll_data = ctx.view_data.detail_scroll.read().clone();
+                    let mut scroll_data = *ctx.view_data.detail_scroll.read();
                     scroll_data.local_offset = body_lines.saturating_sub(visible_lines);
                     ctx.view_data.detail_scroll.set(scroll_data);
                 }
@@ -252,7 +252,7 @@ fn handle_go_bottom(ctx: &mut HandlerContext<'_>) {
                     let body = &issue.body;
                     let body_lines = body.lines().count();
                     let visible_lines = 10;
-                    let mut scroll_data = ctx.view_data.detail_scroll.read().clone();
+                    let mut scroll_data = *ctx.view_data.detail_scroll.read();
                     scroll_data.remote_offset = body_lines.saturating_sub(visible_lines);
                     ctx.view_data.detail_scroll.set(scroll_data);
                 }
