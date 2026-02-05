@@ -134,6 +134,9 @@ pub enum JanusError {
     #[error("plan '{0}' not found")]
     PlanNotFound(String),
 
+    #[error("invalid plan ID '{0}': must contain only alphanumeric characters and hyphens")]
+    InvalidPlanId(String),
+
     #[error("{}", format_ambiguous_plan_id(.0, .1))]
     AmbiguousPlanId(String, Vec<String>),
 

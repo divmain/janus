@@ -331,7 +331,7 @@ pub async fn cmd_plan_import(
 
     // 10. Serialize and write plan
     let plan_content = serialize_plan(&metadata);
-    let plan_handle = Plan::with_id(&plan_id);
+    let plan_handle = Plan::with_id(&plan_id)?;
 
     // Build hook context for plan creation
     let context = plan_handle.hook_context();
