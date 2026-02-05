@@ -152,8 +152,8 @@ fn collect_document_sections<'a>(
 ) -> (Option<String>, Option<String>, Vec<H2Section>) {
     let mut title = None;
     let mut preamble = String::new();
-    let mut h2_sections = Vec::new();
-    let mut collector = SectionCollector::new();
+    let mut h2_sections: Vec<H2Section> = Vec::new();
+    let mut current_h3: Option<H3Section> = None;
 
     for node in root.children() {
         match &node.data.borrow().value {
@@ -165,32 +165,51 @@ fn collect_document_sections<'a>(
                         title = Some(heading_text.trim().to_string());
                     }
                     2 => {
-                        // Finalize any pending section before starting new one
-                        if let Some(section) = collector.finalize_h2() {
-                            h2_sections.push(section);
+                        // Finalize any pending H3 into the last H2
+                        if let Some(h3) = current_h3.take() {
+                            if let Some(last_h2) = h2_sections.last_mut() {
+                                last_h2.h3_sections.push(h3);
+                            }
                         }
-                        collector.start_h2(heading_text.trim().to_string());
+                        // Start new H2 section
+                        h2_sections.push(H2Section {
+                            heading: heading_text.trim().to_string(),
+                            content: String::new(),
+                            h3_sections: Vec::new(),
+                        });
                     }
                     3 => {
-                        collector.start_h3(heading_text.trim().to_string());
+                        // Finalize pending H3 into current H2 before starting new one
+                        if let Some(h3) = current_h3.take() {
+                            if let Some(last_h2) = h2_sections.last_mut() {
+                                last_h2.h3_sections.push(h3);
+                            }
+                        }
+                        // Start new H3 subsection
+                        current_h3 = Some(H3Section {
+                            heading: heading_text.trim().to_string(),
+                            content: String::new(),
+                        });
                     }
                     _ => {
                         // H4+ treated as content
                         let rendered = render_node_to_markdown(node, options);
-                        collector.append_content(&rendered, &mut preamble);
+                        append_content(&mut h2_sections, &mut current_h3, &mut preamble, &rendered);
                     }
                 }
             }
             _ => {
                 let rendered = render_node_to_markdown(node, options);
-                collector.append_content(&rendered, &mut preamble);
+                append_content(&mut h2_sections, &mut current_h3, &mut preamble, &rendered);
             }
         }
     }
 
-    // Finalize last section
-    if let Some(section) = collector.finalize_h2() {
-        h2_sections.push(section);
+    // Finalize any pending H3 into the last H2
+    if let Some(h3) = current_h3.take() {
+        if let Some(last_h2) = h2_sections.last_mut() {
+            last_h2.h3_sections.push(h3);
+        }
     }
 
     let preamble_opt = if preamble.is_empty() {
@@ -202,64 +221,19 @@ fn collect_document_sections<'a>(
     (title, preamble_opt, h2_sections)
 }
 
-/// Helper struct to track section collection state
-struct SectionCollector {
-    current_h2: Option<H2Section>,
-    current_h3: Option<H3Section>,
-    in_preamble: bool,
-}
-
-impl SectionCollector {
-    fn new() -> Self {
-        Self {
-            current_h2: None,
-            current_h3: None,
-            in_preamble: true,
-        }
-    }
-
-    fn start_h2(&mut self, heading: String) {
-        self.in_preamble = false;
-        self.current_h2 = Some(H2Section {
-            heading,
-            content: String::new(),
-            h3_sections: Vec::new(),
-        });
-    }
-
-    fn start_h3(&mut self, heading: String) {
-        // Push any pending H3 to current H2
-        if let Some(h3) = self.current_h3.take()
-            && let Some(ref mut h2) = self.current_h2
-        {
-            h2.h3_sections.push(h3);
-        }
-
-        self.current_h3 = Some(H3Section {
-            heading,
-            content: String::new(),
-        });
-    }
-
-    fn append_content(&mut self, content: &str, preamble: &mut String) {
-        if let Some(ref mut h3) = self.current_h3 {
-            h3.content.push_str(content);
-        } else if let Some(ref mut h2) = self.current_h2 {
-            h2.content.push_str(content);
-        } else if self.in_preamble {
-            preamble.push_str(content);
-        }
-    }
-
-    fn finalize_h2(&mut self) -> Option<H2Section> {
-        // Push any pending H3 to current H2
-        if let Some(h3) = self.current_h3.take()
-            && let Some(ref mut h2) = self.current_h2
-        {
-            h2.h3_sections.push(h3);
-        }
-
-        self.current_h2.take()
+/// Append content to the appropriate location based on current parsing state.
+fn append_content(
+    h2_sections: &mut [H2Section],
+    current_h3: &mut Option<H3Section>,
+    preamble: &mut String,
+    content: &str,
+) {
+    if let Some(h3) = current_h3 {
+        h3.content.push_str(content);
+    } else if let Some(last_h2) = h2_sections.last_mut() {
+        last_h2.content.push_str(content);
+    } else {
+        preamble.push_str(content);
     }
 }
 
