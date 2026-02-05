@@ -394,7 +394,7 @@ pub fn adopt_issues(issues: &[RemoteIssue], _local_ids: &HashSet<String>) -> Res
 /// Build a RemoteRef from a RemoteIssue
 fn build_remote_ref_from_issue(issue: &RemoteIssue) -> Result<RemoteRef> {
     let parsed_url = Url::parse(&issue.url).map_err(|e| {
-        JanusError::InvalidRemoteRef(issue.id.clone(), format!("invalid URL: {}", e))
+        JanusError::InvalidRemoteRef(issue.id.clone(), format!("invalid URL: {e}"))
     })?;
 
     let host = parsed_url.host_str().ok_or_else(|| {
@@ -811,7 +811,7 @@ pub async fn push_ticket_to_remote(
                 let provider = crate::remote::github::GitHubProvider::from_config(&config)
                     .map_err(|e| PushError::Config {
                         ticket_id: ticket_id.to_string(),
-                        message: format!("Failed to create GitHub provider: {}", e),
+                        message: format!("Failed to create GitHub provider: {e}"),
                         source: Some(e),
                     })?;
 
@@ -824,7 +824,7 @@ pub async fn push_ticket_to_remote(
                 let provider = crate::remote::linear::LinearProvider::from_config(&config)
                     .map_err(|e| PushError::Config {
                         ticket_id: ticket_id.to_string(),
-                        message: format!("Failed to create Linear provider: {}", e),
+                        message: format!("Failed to create Linear provider: {e}"),
                         source: Some(e),
                     })?;
 
@@ -840,7 +840,7 @@ pub async fn push_ticket_to_remote(
         .update_field("remote", &remote_ref.to_string())
         .map_err(|e| PushError::TicketWriteError {
             ticket_id: ticket_id.to_string(),
-            message: format!("Failed to update ticket with remote ref: {}", e),
+            message: format!("Failed to update ticket with remote ref: {e}"),
             source: Some(e),
         })?;
 
@@ -1003,7 +1003,7 @@ static UPDATE_TITLE_RE: LazyLock<Regex> =
 /// Update the title in ticket content
 fn update_title_in_content(content: &str, new_title: &str) -> String {
     UPDATE_TITLE_RE
-        .replace(content, format!("# {}", new_title))
+        .replace(content, format!("# {new_title}"))
         .to_string()
 }
 

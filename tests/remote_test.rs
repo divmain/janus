@@ -31,8 +31,7 @@ fn test_adopt_with_reserved_prefix_fails() {
     ]);
     assert!(
         stderr.contains("reserved"),
-        "Error should mention the prefix is reserved, got: {}",
-        stderr
+        "Error should mention the prefix is reserved, got: {stderr}"
     );
 }
 
@@ -50,8 +49,7 @@ fn test_adopt_with_invalid_prefix_characters_fails() {
     ]);
     assert!(
         stderr.contains("invalid characters"),
-        "Error should mention invalid characters, got: {}",
-        stderr
+        "Error should mention invalid characters, got: {stderr}"
     );
 }
 
@@ -65,8 +63,7 @@ fn test_push_not_configured() {
     // Should fail due to no default.remote config
     assert!(
         stderr.contains("not configured") || stderr.contains("default.remote"),
-        "Should fail due to missing config: {}",
-        stderr
+        "Should fail due to missing config: {stderr}"
     );
 }
 

@@ -72,8 +72,7 @@ impl std::str::FromStr for Platform {
             "github" => Ok(Platform::GitHub),
             "linear" => Ok(Platform::Linear),
             _ => Err(JanusError::Config(format!(
-                "unknown platform '{}', expected 'github' or 'linear'",
-                s
+                "unknown platform '{s}', expected 'github' or 'linear'"
             ))),
         }
     }

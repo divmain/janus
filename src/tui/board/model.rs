@@ -1128,7 +1128,7 @@ mod tests {
         // Start at top of a 15-ticket column, column height = 5
         let mut state = BoardState {
             tickets: (0..15)
-                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .map(|i| make_ticket(&format!("j-{i}"), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
             current_row: 4,
@@ -1159,7 +1159,7 @@ mod tests {
     fn test_scroll_up_keeps_selection_centered() {
         let mut state = BoardState {
             tickets: (0..15)
-                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .map(|i| make_ticket(&format!("j-{i}"), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
             current_row: 5,
@@ -1181,7 +1181,7 @@ mod tests {
     fn test_go_to_top_resets_scroll() {
         let mut state = BoardState {
             tickets: (0..15)
-                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .map(|i| make_ticket(&format!("j-{i}"), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
             current_row: 10,
@@ -1201,7 +1201,7 @@ mod tests {
     fn test_go_to_bottom_adjusts_scroll() {
         let mut state = BoardState {
             tickets: (0..15)
-                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .map(|i| make_ticket(&format!("j-{i}"), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
             current_row: 0,
@@ -1223,7 +1223,7 @@ mod tests {
     fn test_page_down_navigation() {
         let mut state = BoardState {
             tickets: (0..20)
-                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .map(|i| make_ticket(&format!("j-{i}"), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
             current_row: 0,
@@ -1240,7 +1240,7 @@ mod tests {
     fn test_page_up_navigation() {
         let mut state = BoardState {
             tickets: (0..20)
-                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .map(|i| make_ticket(&format!("j-{i}"), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
             current_row: 15,
@@ -1259,10 +1259,10 @@ mod tests {
         let mut state = BoardState {
             tickets: {
                 let mut tickets: Vec<_> = (0..10)
-                    .map(|i| make_ticket(&format!("j-new-{}", i), "Task", TicketStatus::New))
+                    .map(|i| make_ticket(&format!("j-new-{i}"), "Task", TicketStatus::New))
                     .collect();
                 tickets.extend((0..10).map(|i| {
-                    make_ticket(&format!("j-wip-{}", i), "Task", TicketStatus::InProgress)
+                    make_ticket(&format!("j-wip-{i}"), "Task", TicketStatus::InProgress)
                 }));
                 tickets
             },
@@ -1287,7 +1287,7 @@ mod tests {
     fn test_view_model_shows_hidden_counts() {
         let state = BoardState {
             tickets: (0..15)
-                .map(|i| make_ticket(&format!("j-{}", i), "Task", TicketStatus::New))
+                .map(|i| make_ticket(&format!("j-{i}"), "Task", TicketStatus::New))
                 .collect(),
             current_column: 0,
             current_row: 7,

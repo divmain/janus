@@ -45,7 +45,7 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     match cache::get_or_init_cache().await {
         Some(cache) => {
             // Exact match check - does file exist?
-            let exact_match_path = dir.join(format!("{}.md", partial_id));
+            let exact_match_path = dir.join(format!("{partial_id}.md"));
             if exact_match_path.exists() {
                 return Ok(exact_match_path);
             }
@@ -64,16 +64,14 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
                 },
                 Err(e) => {
                     eprintln!(
-                        "Warning: cache lookup failed for ticket '{}': {}. Falling back to file reads.",
-                        partial_id, e
+                        "Warning: cache lookup failed for ticket '{partial_id}': {e}. Falling back to file reads."
                     );
                 }
             }
         }
         None => {
             eprintln!(
-                "Warning: cache not available for ticket lookup '{}'. Falling back to file reads.",
-                partial_id
+                "Warning: cache not available for ticket lookup '{partial_id}'. Falling back to file reads."
             );
         }
     }
@@ -97,7 +95,7 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     match cache::get_or_init_cache().await {
         Some(cache) => {
             // Exact match check - does file exist?
-            let exact_match_path = dir.join(format!("{}.md", partial_id));
+            let exact_match_path = dir.join(format!("{partial_id}.md"));
             if exact_match_path.exists() {
                 return Ok(exact_match_path);
             }
@@ -116,16 +114,14 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
                 },
                 Err(e) => {
                     eprintln!(
-                        "Warning: cache lookup failed for plan '{}': {}. Falling back to file reads.",
-                        partial_id, e
+                        "Warning: cache lookup failed for plan '{partial_id}': {e}. Falling back to file reads."
                     );
                 }
             }
         }
         None => {
             eprintln!(
-                "Warning: cache not available for plan lookup '{}'. Falling back to file reads.",
-                partial_id
+                "Warning: cache not available for plan lookup '{partial_id}'. Falling back to file reads."
             );
         }
     }
@@ -142,7 +138,7 @@ fn find_ticket_by_id_filesystem(partial_id: &str, dir: &Path) -> Result<PathBuf>
     });
 
     // Check for exact match first
-    let exact_name = format!("{}.md", partial_id);
+    let exact_name = format!("{partial_id}.md");
     if files.iter().any(|f| f == &exact_name) {
         return Ok(dir.join(&exact_name));
     }
@@ -168,7 +164,7 @@ fn find_plan_by_id_filesystem(partial_id: &str, dir: &Path) -> Result<PathBuf> {
     });
 
     // Check for exact match first
-    let exact_name = format!("{}.md", partial_id);
+    let exact_name = format!("{partial_id}.md");
     if files.iter().any(|f| f == &exact_name) {
         return Ok(dir.join(&exact_name));
     }

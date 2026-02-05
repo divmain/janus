@@ -111,7 +111,7 @@ impl TicketCache {
             eprintln!("Deleting corrupted cache and attempting rebuild...");
 
             if let Err(e) = delete_cache_files(&db_path) {
-                eprintln!("Warning: failed to delete corrupted cache: {}", e);
+                eprintln!("Warning: failed to delete corrupted cache: {e}");
             } else {
                 eprintln!("Cache deleted successfully, rebuilding...");
                 let result = Self::open().await;
@@ -300,8 +300,7 @@ impl TicketCache {
             && stored_version != CACHE_VERSION
         {
             eprintln!(
-                "Cache version outdated (v{} -> v{}), rebuilding automatically...",
-                stored_version, CACHE_VERSION
+                "Cache version outdated (v{stored_version} -> v{CACHE_VERSION}), rebuilding automatically..."
             );
             self.rebuild_schema(conn).await?;
             eprintln!("Cache rebuild complete.");

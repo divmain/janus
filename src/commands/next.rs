@@ -181,8 +181,7 @@ fn print_table(items: &[WorkItem]) {
         };
 
         println!(
-            "{:<ID_WIDTH$}  {:<PRIORITY_WIDTH$}  {:<STATUS_WIDTH$}  {:<TITLE_WIDTH$}  {}",
-            colored_id, colored_priority, colored_status, title, reason
+            "{colored_id:<ID_WIDTH$}  {colored_priority:<PRIORITY_WIDTH$}  {colored_status:<STATUS_WIDTH$}  {title:<TITLE_WIDTH$}  {reason}"
         );
     }
 }
@@ -197,7 +196,7 @@ fn format_reason_text(item: &WorkItem) -> String {
             if dep_count == 1 {
                 "target (1 dep)".to_string()
             } else {
-                format!("target ({} deps)", dep_count)
+                format!("target ({dep_count} deps)")
             }
         }
     }

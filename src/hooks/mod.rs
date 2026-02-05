@@ -101,7 +101,7 @@ pub fn run_post_hooks(event: HookEvent, context: &HookContext) {
     let config = match Config::load() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Warning: failed to load config for hooks: {}", e);
+            eprintln!("Warning: failed to load config for hooks: {e}");
             return;
         }
     };
@@ -114,7 +114,7 @@ pub fn run_post_hooks(event: HookEvent, context: &HookContext) {
         && let Err(e) = execute_hook(event, script_name, context, &config, false)
     {
         log_hook_failure(script_name, &e);
-        eprintln!("Warning: post-hook '{}' failed: {}", script_name, e);
+        eprintln!("Warning: post-hook '{script_name}' failed: {e}");
     }
 }
 
@@ -163,7 +163,7 @@ pub async fn run_post_hooks_async(event: HookEvent, context: &HookContext) {
     let config = match Config::load() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Warning: failed to load config for hooks: {}", e);
+            eprintln!("Warning: failed to load config for hooks: {e}");
             return;
         }
     };
@@ -176,7 +176,7 @@ pub async fn run_post_hooks_async(event: HookEvent, context: &HookContext) {
         && let Err(e) = execute_hook_async(event, script_name, context, &config, false).await
     {
         log_hook_failure(script_name, &e);
-        eprintln!("Warning: post-hook '{}' failed: {}", script_name, e);
+        eprintln!("Warning: post-hook '{script_name}' failed: {e}");
     }
 }
 
@@ -284,19 +284,16 @@ fn execute_hook(
             None => {
                 if let Err(e) = child.kill() {
                     eprintln!(
-                        "Warning: failed to kill timed-out hook '{}': {}",
-                        script_name, e
+                        "Warning: failed to kill timed-out hook '{script_name}': {e}"
                     );
                 }
                 match child.wait_timeout(Duration::from_secs(5)) {
                     Ok(Some(_)) => {}
                     Ok(None) => eprintln!(
-                        "Warning: hook '{}' did not terminate after SIGKILL",
-                        script_name
+                        "Warning: hook '{script_name}' did not terminate after SIGKILL"
                     ),
                     Err(e) => eprintln!(
-                        "Warning: error waiting for hook '{}' cleanup: {}",
-                        script_name, e
+                        "Warning: error waiting for hook '{script_name}' cleanup: {e}"
                     ),
                 }
 
@@ -415,16 +412,14 @@ async fn execute_hook_async(
             Err(_) => {
                 if let Err(e) = child.kill().await {
                     eprintln!(
-                        "Warning: failed to kill timed-out hook '{}': {}",
-                        script_name, e
+                        "Warning: failed to kill timed-out hook '{script_name}': {e}"
                     );
                 }
                 // Give it a moment to clean up
                 match timeout(Duration::from_secs(5), child.wait()).await {
                     Ok(_) => {}
                     Err(_) => eprintln!(
-                        "Warning: hook '{}' did not terminate after SIGKILL",
-                        script_name
+                        "Warning: hook '{script_name}' did not terminate after SIGKILL"
                     ),
                 }
 
@@ -512,8 +507,7 @@ fn log_hook_failure(hook_name: &str, error: &JanusError) {
     };
 
     let log_entry = format!(
-        "{}: post-hook '{}' failed: {}\n",
-        timestamp, hook_name, error_detail
+        "{timestamp}: post-hook '{hook_name}' failed: {error_detail}\n"
     );
 
     // Try to append to the log file, but don't fail if we can't
@@ -525,7 +519,7 @@ fn log_hook_failure(hook_name: &str, error: &JanusError) {
     {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Warning: failed to write to hook log file: {}", e);
+            eprintln!("Warning: failed to write to hook log file: {e}");
         }
     }
 }
@@ -698,7 +692,7 @@ hooks:
             .with_item_id("j-1234");
 
         let result = run_pre_hooks(HookEvent::PreWrite, &context);
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
+        assert!(result.is_ok(), "Expected Ok, got: {result:?}");
     }
 
     #[test]
@@ -890,7 +884,7 @@ hooks:
                 assert_eq!(exit_code, 42);
                 assert!(message.contains("validation failed"));
             }
-            other => panic!("Expected PreHookFailed, got: {:?}", other),
+            other => panic!("Expected PreHookFailed, got: {other:?}"),
         }
     }
 
@@ -976,7 +970,7 @@ hooks:
                 assert_eq!(hook_name, "slow-hook.sh");
                 assert_eq!(seconds, 1);
             }
-            other => panic!("Expected HookTimeout, got: {:?}", other),
+            other => panic!("Expected HookTimeout, got: {other:?}"),
         }
     }
 
@@ -1007,7 +1001,7 @@ hooks:
             Err(JanusError::HookScriptNotFound(path)) => {
                 assert!(path.to_string_lossy().contains("does-not-exist.sh"));
             }
-            other => panic!("Expected HookScriptNotFound, got: {:?}", other),
+            other => panic!("Expected HookScriptNotFound, got: {other:?}"),
         }
     }
 
@@ -1095,7 +1089,7 @@ hooks:
         match result {
             Err(JanusError::HookSecurity(_)) => {}
             Err(JanusError::YamlParse(_)) => {}
-            other => panic!("Expected HookSecurity or YamlParse error, got: {:?}", other),
+            other => panic!("Expected HookSecurity or YamlParse error, got: {other:?}"),
         }
     }
 
@@ -1140,14 +1134,12 @@ hooks:
         let log_content = fs::read_to_string(&log_path).unwrap();
         assert!(
             log_content.contains("post-hook 'post-write.sh' failed"),
-            "Log should contain failure message. Got: {}",
-            log_content
+            "Log should contain failure message. Got: {log_content}"
         );
         // Verify timestamp format (ISO 8601)
         assert!(
             log_content.contains('T') && log_content.contains('Z'),
-            "Log should contain ISO 8601 timestamp. Got: {}",
-            log_content
+            "Log should contain ISO 8601 timestamp. Got: {log_content}"
         );
     }
 

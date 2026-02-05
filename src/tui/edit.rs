@@ -223,7 +223,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                     }
                     Err(e) => {
                         has_error_setter.set(true);
-                        error_text_setter.set(format!("Save failed: {}", e));
+                        error_text_setter.set(format!("Save failed: {e}"));
                     }
                 }
             }

@@ -167,8 +167,7 @@ pub async fn cmd_plan_remove_phase(
             migrated_tickets = phase_tickets.len();
             if !output_json {
                 println!(
-                    "Migrated {} tickets to phase '{}'",
-                    migrated_tickets, migrate_to
+                    "Migrated {migrated_tickets} tickets to phase '{migrate_to}'"
                 );
             }
         } else if !force {

@@ -232,8 +232,8 @@ pub enum ResourceError {
 impl std::fmt::Display for ResourceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ResourceError::NotFound(uri) => write!(f, "Resource not found: {}", uri),
-            ResourceError::Internal(msg) => write!(f, "Internal error: {}", msg),
+            ResourceError::NotFound(uri) => write!(f, "Resource not found: {uri}"),
+            ResourceError::Internal(msg) => write!(f, "Internal error: {msg}"),
         }
     }
 }
@@ -246,11 +246,11 @@ impl std::fmt::Display for ResourceError {
 async fn read_ticket(id: &str) -> Result<ReadResourceResult, ResourceError> {
     let ticket = Ticket::find(id)
         .await
-        .map_err(|e| ResourceError::NotFound(format!("Ticket '{}' not found: {}", id, e)))?;
+        .map_err(|e| ResourceError::NotFound(format!("Ticket '{id}' not found: {e}")))?;
 
     let content = ticket
         .read_content()
-        .map_err(|e| ResourceError::Internal(format!("Failed to read ticket: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to read ticket: {e}")))?;
 
     Ok(ReadResourceResult {
         contents: vec![ResourceContents::TextResourceContents {
@@ -395,15 +395,15 @@ async fn read_in_progress_tickets() -> Result<ReadResourceResult, ResourceError>
 async fn read_plan(id: &str) -> Result<ReadResourceResult, ResourceError> {
     let plan = Plan::find(id)
         .await
-        .map_err(|e| ResourceError::NotFound(format!("Plan '{}' not found: {}", id, e)))?;
+        .map_err(|e| ResourceError::NotFound(format!("Plan '{id}' not found: {e}")))?;
 
     let metadata = plan
         .read()
-        .map_err(|e| ResourceError::Internal(format!("Failed to read plan: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to read plan: {e}")))?;
 
     let ticket_map = build_ticket_map()
         .await
-        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
     let plan_status = compute_plan_status(&metadata, &ticket_map);
 
     let phases_json: Vec<serde_json::Value> = if metadata.is_phased() {
@@ -465,15 +465,15 @@ async fn read_plan(id: &str) -> Result<ReadResourceResult, ResourceError> {
 async fn read_plan_next(id: &str) -> Result<ReadResourceResult, ResourceError> {
     let plan = Plan::find(id)
         .await
-        .map_err(|e| ResourceError::NotFound(format!("Plan '{}' not found: {}", id, e)))?;
+        .map_err(|e| ResourceError::NotFound(format!("Plan '{id}' not found: {e}")))?;
 
     let metadata = plan
         .read()
-        .map_err(|e| ResourceError::Internal(format!("Failed to read plan: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to read plan: {e}")))?;
 
     let ticket_map = build_ticket_map()
         .await
-        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
 
     // Get next items (using a reasonable default count)
     let next_items = if metadata.is_phased() {
@@ -527,11 +527,11 @@ async fn read_plan_next(id: &str) -> Result<ReadResourceResult, ResourceError> {
 async fn read_spawned_from(id: &str) -> Result<ReadResourceResult, ResourceError> {
     let parent = Ticket::find(id)
         .await
-        .map_err(|e| ResourceError::NotFound(format!("Ticket '{}' not found: {}", id, e)))?;
+        .map_err(|e| ResourceError::NotFound(format!("Ticket '{id}' not found: {e}")))?;
 
     let (tickets, _) = get_all_tickets_with_map()
         .await
-        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
 
     let children: Vec<serde_json::Value> = tickets
         .iter()
@@ -559,7 +559,7 @@ async fn read_spawned_from(id: &str) -> Result<ReadResourceResult, ResourceError
 async fn read_graph_deps() -> Result<ReadResourceResult, ResourceError> {
     let ticket_map = build_ticket_map()
         .await
-        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
     let dot = generate_graph_dot(&ticket_map, GraphType::Deps);
 
     Ok(ReadResourceResult {
@@ -576,7 +576,7 @@ async fn read_graph_deps() -> Result<ReadResourceResult, ResourceError> {
 async fn read_graph_spawning() -> Result<ReadResourceResult, ResourceError> {
     let ticket_map = build_ticket_map()
         .await
-        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {}", e)))?;
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
     let dot = generate_graph_dot(&ticket_map, GraphType::Spawn);
 
     Ok(ReadResourceResult {
@@ -658,7 +658,7 @@ fn generate_graph_dot(
             .map(|t| truncate_title(t, 30))
             .unwrap_or_default();
         let label = format!("{}\\n{}", escape_dot(id), escape_dot(&title));
-        lines.push(format!("  \"{}\" [label=\"{}\"];", id, label));
+        lines.push(format!("  \"{id}\" [label=\"{label}\"];"));
     }
 
     if !edges.is_empty() {

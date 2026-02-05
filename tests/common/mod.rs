@@ -67,8 +67,7 @@ impl JanusTest {
         let output = self.run(args);
         assert!(
             !output.status.success(),
-            "Expected command {:?} to fail, but it succeeded",
-            args
+            "Expected command {args:?} to fail, but it succeeded"
         );
         String::from_utf8_lossy(&output.stderr).to_string()
     }
@@ -80,7 +79,7 @@ impl JanusTest {
             .path()
             .join(".janus")
             .join("items")
-            .join(format!("{}.md", id));
+            .join(format!("{id}.md"));
         fs::read_to_string(path).expect("Failed to read ticket file")
     }
 
@@ -91,7 +90,7 @@ impl JanusTest {
             .path()
             .join(".janus")
             .join("items")
-            .join(format!("{}.md", id));
+            .join(format!("{id}.md"));
         path.exists()
     }
 
@@ -99,7 +98,7 @@ impl JanusTest {
     pub fn write_ticket(&self, id: &str, content: &str) {
         let dir = self.temp_dir.path().join(".janus").join("items");
         fs::create_dir_all(&dir).expect("Failed to create .janus/items directory");
-        let path = dir.join(format!("{}.md", id));
+        let path = dir.join(format!("{id}.md"));
         fs::write(path, content).expect("Failed to write ticket file");
     }
 
@@ -110,7 +109,7 @@ impl JanusTest {
             .path()
             .join(".janus")
             .join("plans")
-            .join(format!("{}.md", id));
+            .join(format!("{id}.md"));
         fs::read_to_string(path).expect("Failed to read plan file")
     }
 
@@ -121,7 +120,7 @@ impl JanusTest {
             .path()
             .join(".janus")
             .join("plans")
-            .join(format!("{}.md", id));
+            .join(format!("{id}.md"));
         path.exists()
     }
 
@@ -129,7 +128,7 @@ impl JanusTest {
     pub fn write_plan(&self, id: &str, content: &str) {
         let dir = self.temp_dir.path().join(".janus").join("plans");
         fs::create_dir_all(&dir).expect("Failed to create .janus/plans directory");
-        let path = dir.join(format!("{}.md", id));
+        let path = dir.join(format!("{id}.md"));
         fs::write(path, content).expect("Failed to write plan file");
     }
 

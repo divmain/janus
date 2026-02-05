@@ -105,11 +105,11 @@ fn format_graphql_errors(errors: &[GraphQlError]) -> String {
     for (i, error) in errors.iter().enumerate() {
         msg.push_str(&format!("\n  [{}] ", i + 1));
         if let Some(code) = &error.code {
-            msg.push_str(&format!("[{}] ", code));
+            msg.push_str(&format!("[{code}] "));
         }
         msg.push_str(&error.message);
         if let Some(path) = &error.path {
-            msg.push_str(&format!(" (path: {})", path));
+            msg.push_str(&format!(" (path: {path})"));
         }
     }
     msg

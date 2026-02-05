@@ -25,7 +25,7 @@ use crate::error::Result;
 /// }
 /// ```
 pub fn confirm(prompt: &str) -> Result<bool> {
-    print!("{}? [y/N] ", prompt);
+    print!("{prompt}? [y/N] ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -101,9 +101,9 @@ pub fn select_option(prompt: &str, options: &[&str], default: Option<usize>) -> 
 /// ```
 pub fn prompt_text(prompt: &str, default: Option<&str>) -> Result<String> {
     if let Some(d) = default {
-        print!("{} [{}]: ", prompt, d);
+        print!("{prompt} [{d}]: ");
     } else {
-        print!("{}: ", prompt);
+        print!("{prompt}: ");
     }
     io::stdout().flush()?;
 
@@ -144,9 +144,9 @@ pub fn prompt_choice(
 ) -> Result<usize> {
     loop {
         let default_str = default
-            .map(|d| format!(" (default {})", d))
+            .map(|d| format!(" (default {d})"))
             .unwrap_or_default();
-        print!("{}{}: ", prompt, default_str);
+        print!("{prompt}{default_str}: ");
         io::stdout().flush()?;
 
         let mut input = String::new();

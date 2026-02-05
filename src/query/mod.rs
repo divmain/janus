@@ -31,8 +31,7 @@ impl TicketFilterContext {
         let mut warned = self.warned_dangling.borrow_mut();
         if warned.insert(dep_id.to_string()) {
             eprintln!(
-                "Warning: Ticket {} references dangling dependency {}",
-                ticket_id, dep_id
+                "Warning: Ticket {ticket_id} references dangling dependency {dep_id}"
             );
             true
         } else {

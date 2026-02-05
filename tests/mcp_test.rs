@@ -50,7 +50,7 @@ fn test_mcp_server_starts_and_responds_to_initialize() {
     let initialize_request = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}"#;
 
     if let Some(ref mut stdin) = child.stdin {
-        writeln!(stdin, "{}", initialize_request).expect("Failed to write to stdin");
+        writeln!(stdin, "{initialize_request}").expect("Failed to write to stdin");
     }
 
     // Give server time to respond
@@ -64,8 +64,7 @@ fn test_mcp_server_starts_and_responds_to_initialize() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("Starting Janus MCP server"),
-        "Expected startup message in stderr, got: {}",
-        stderr
+        "Expected startup message in stderr, got: {stderr}"
     );
 }
 

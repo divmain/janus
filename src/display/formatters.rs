@@ -15,7 +15,7 @@ impl TicketFormatter {
         if items.is_empty() {
             return String::new();
         }
-        let mut output = format!("\n\n## {}", title);
+        let mut output = format!("\n\n## {title}");
         for item in items {
             output.push_str(&format!("\n{}", crate::display::format_ticket_bullet(item)));
         }
@@ -72,7 +72,7 @@ impl PlanNextFormatter {
     /// Print ticket priority
     fn print_priority(meta: &TicketMetadata) {
         let priority = meta.priority.map(|p| p.as_num()).unwrap_or(2);
-        println!("  Priority: P{}", priority);
+        println!("  Priority: P{priority}");
     }
 
     /// Print ticket dependencies with their status
@@ -85,9 +85,9 @@ impl PlanNextFormatter {
                     let dep_status = ticket_map
                         .get(dep)
                         .and_then(|t| t.status)
-                        .map(|s| format!("[{}]", s))
+                        .map(|s| format!("[{s}]"))
                         .unwrap_or_else(|| "[missing]".to_string());
-                    format!("{} {}", dep, dep_status)
+                    format!("{dep} {dep_status}")
                 })
                 .collect();
             println!("  Deps: {}", deps_with_status.join(", "));

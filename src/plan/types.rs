@@ -359,7 +359,7 @@ impl PlanLoadResult {
             let failure_msgs: Vec<String> = self
                 .failed
                 .iter()
-                .map(|(f, e)| format!("  - {}: {}", f, e))
+                .map(|(f, e)| format!("  - {f}: {e}"))
                 .collect();
             Err(crate::error::JanusError::PlanLoadFailed(failure_msgs))
         } else {
@@ -610,13 +610,13 @@ pub fn display_import_validation_error(error: &ImportValidationError) -> String 
     let mut result = String::new();
 
     if let Some(line) = error.0 {
-        result.push_str(&format!("Line {}: ", line));
+        result.push_str(&format!("Line {line}: "));
     }
 
     result.push_str(&error.1);
 
     if let Some(hint) = &error.2 {
-        result.push_str(&format!("\n    Hint: {}", hint));
+        result.push_str(&format!("\n    Hint: {hint}"));
     }
 
     result

@@ -167,23 +167,22 @@ impl ParsedDocument {
             let after = &self.body[content_match.end()..];
 
             // Build the new section
-            let new_section = format!("## {}\n\n{}", section_name, section_content);
+            let new_section = format!("## {section_name}\n\n{section_content}");
 
             // Handle spacing after the section
             let after_trimmed = after.trim_start_matches('\n');
             let separator = if after_trimmed.is_empty() {
                 "\n".to_string()
             } else {
-                format!("\n\n{}", after_trimmed)
+                format!("\n\n{after_trimmed}")
             };
 
-            format!("{}{}{}", before, new_section, separator)
+            format!("{before}{new_section}{separator}")
         } else {
             // Section doesn't exist - append it
             let trimmed_body = self.body.trim_end();
             format!(
-                "{}\n\n## {}\n\n{}\n",
-                trimmed_body, section_name, section_content
+                "{trimmed_body}\n\n## {section_name}\n\n{section_content}\n"
             )
         }
     }
@@ -193,7 +192,7 @@ impl ParsedDocument {
     /// This uses the raw YAML string for proper type conversion via serde.
     pub fn deserialize_frontmatter<T: DeserializeOwned>(&self) -> Result<T> {
         yaml::from_str(&self.frontmatter_raw)
-            .map_err(|e| JanusError::Other(format!("YAML parsing error: {}", e)))
+            .map_err(|e| JanusError::Other(format!("YAML parsing error: {e}")))
     }
 }
 
@@ -217,7 +216,7 @@ pub fn parse_document(content: &str) -> Result<ParsedDocument> {
     let (frontmatter_raw, body) = split_frontmatter(content)?;
 
     let frontmatter: HashMap<String, yaml::Value> = yaml::from_str(&frontmatter_raw)
-        .map_err(|e| JanusError::Other(format!("YAML parsing error: {}", e)))?;
+        .map_err(|e| JanusError::Other(format!("YAML parsing error: {e}")))?;
 
     Ok(ParsedDocument {
         frontmatter_raw,

@@ -94,8 +94,7 @@ fn test_status_close_summary_and_no_summary_conflict() {
     let stderr = janus.run_failure(&["close", &id, "--summary", "Test", "--no-summary"]);
     assert!(
         stderr.contains("cannot be used with") || stderr.contains("conflicts"),
-        "Expected conflict error, got: {}",
-        stderr
+        "Expected conflict error, got: {stderr}"
     );
 }
 

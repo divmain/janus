@@ -64,7 +64,7 @@ pub fn events_file_path() -> PathBuf {
 /// - The write operation fails
 pub fn log_event(event: Event) {
     if let Err(e) = log_event_impl(event) {
-        eprintln!("Warning: failed to log event: {}", e);
+        eprintln!("Warning: failed to log event: {e}");
     }
 }
 
@@ -119,7 +119,7 @@ fn log_event_impl(event: Event) -> std::io::Result<()> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
     // Write the event followed by newline
-    writeln!(file, "{}", json)?;
+    writeln!(file, "{json}")?;
 
     // Ensure data is flushed to disk
     file.flush()?;

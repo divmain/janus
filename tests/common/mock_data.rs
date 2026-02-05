@@ -77,7 +77,7 @@ impl TicketBuilder {
 /// Create a basic ticket with minimal setup
 pub fn mock_ticket(id: &str, status: TicketStatus) -> TicketMetadata {
     TicketBuilder::new(id)
-        .title(&format!("Test ticket {}", id))
+        .title(&format!("Test ticket {id}"))
         .status(status)
         .build()
 }
@@ -101,13 +101,13 @@ impl RemoteIssueBuilder {
         Self {
             issue: RemoteIssue {
                 id: id.to_string(),
-                title: format!("Test issue {}", id),
+                title: format!("Test issue {id}"),
                 body: String::new(),
                 status: RemoteStatus::Open,
                 priority: None,
                 assignee: None,
                 updated_at: "2024-01-01T00:00:00Z".to_string(),
-                url: format!("https://example.com/issues/{}", id),
+                url: format!("https://example.com/issues/{id}"),
                 labels: vec![],
                 team: None,
                 project: None,
@@ -182,7 +182,7 @@ impl RemoteIssueBuilder {
 /// Create a basic remote issue with minimal setup
 pub fn mock_remote_issue(id: &str, status: RemoteStatus) -> RemoteIssue {
     RemoteIssueBuilder::new(id)
-        .title(&format!("Test issue {}", id))
+        .title(&format!("Test issue {id}"))
         .status(status)
         .build()
 }
@@ -198,7 +198,7 @@ pub fn mock_remote_issues(specs: &[(&str, RemoteStatus)]) -> Vec<RemoteIssue> {
 /// Create a ticket that is linked to a remote issue
 pub fn mock_linked_ticket(id: &str, remote_ref: &str, status: TicketStatus) -> TicketMetadata {
     TicketBuilder::new(id)
-        .title(&format!("Linked ticket {}", id))
+        .title(&format!("Linked ticket {id}"))
         .status(status)
         .remote(remote_ref)
         .build()

@@ -119,10 +119,10 @@ fn build_help_text() -> String {
 
     for (category, items) in shortcuts {
         lines.push(String::new()); // Blank line before category
-        lines.push(format!("{}:", category));
+        lines.push(format!("{category}:"));
 
         for (key, description) in items {
-            lines.push(format!("  {:<18} {}", key, description));
+            lines.push(format!("  {key:<18} {description}"));
         }
     }
 

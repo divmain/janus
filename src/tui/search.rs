@@ -258,8 +258,7 @@ pub async fn perform_semantic_search(
         }
         Err(e) => {
             eprintln!(
-                "Warning: failed to load config: {}. Proceeding with semantic search.",
-                e
+                "Warning: failed to load config: {e}. Proceeding with semantic search."
             );
         }
     }
@@ -271,7 +270,7 @@ pub async fn perform_semantic_search(
     let (with_embedding, total) = cache
         .embedding_coverage()
         .await
-        .map_err(|e| format!("Failed to check embeddings: {}", e))?;
+        .map_err(|e| format!("Failed to check embeddings: {e}"))?;
 
     if total == 0 {
         return Err("No tickets in cache".to_string());
@@ -285,7 +284,7 @@ pub async fn perform_semantic_search(
     let results = cache
         .semantic_search(query, 10)
         .await
-        .map_err(|e| format!("Semantic search failed: {}", e))?;
+        .map_err(|e| format!("Semantic search failed: {e}"))?;
 
     Ok(results)
 }

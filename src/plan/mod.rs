@@ -39,7 +39,7 @@ pub use crate::plan::parser::{
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
     DirScanner::find_markdown_files(plans_dir()).unwrap_or_else(|e| {
-        eprintln!("Warning: failed to read plans directory: {}", e);
+        eprintln!("Warning: failed to read plans directory: {e}");
         Vec::new()
     })
 }
@@ -82,7 +82,7 @@ impl Plan {
         if !id.chars().all(|c| c.is_alphanumeric() || c == '-') {
             return Err(JanusError::InvalidPlanId(id.to_string()));
         }
-        let file_path = plans_dir().join(format!("{}.md", id));
+        let file_path = plans_dir().join(format!("{id}.md"));
         Ok(Plan {
             file_path,
             id: id.to_string(),
@@ -279,8 +279,7 @@ pub async fn get_all_plans() -> Result<PlanLoadResult> {
                 Ok(files) => files,
                 Err(e) => {
                     eprintln!(
-                        "Warning: failed to scan plans directory: {}. Falling back to file reads.",
-                        e
+                        "Warning: failed to scan plans directory: {e}. Falling back to file reads."
                     );
                     return Ok(get_all_plans_from_disk());
                 }
@@ -291,8 +290,7 @@ pub async fn get_all_plans() -> Result<PlanLoadResult> {
                 Ok(mtimes) => mtimes,
                 Err(e) => {
                     eprintln!(
-                        "Warning: failed to get cached plan mtimes: {}. Falling back to file reads.",
-                        e
+                        "Warning: failed to get cached plan mtimes: {e}. Falling back to file reads."
                     );
                     return Ok(get_all_plans_from_disk());
                 }
@@ -306,7 +304,7 @@ pub async fn get_all_plans() -> Result<PlanLoadResult> {
 
             // Process each file on disk
             for (id, disk_mtime) in disk_files {
-                let file_path = p_dir.join(format!("{}.md", id));
+                let file_path = p_dir.join(format!("{id}.md"));
 
                 // Check if file needs re-reading (not in cache or mtime differs)
                 let needs_reread = match cached_mtimes.get(&id) {
@@ -422,11 +420,11 @@ pub fn get_all_plans_from_disk() -> PlanLoadResult {
                     result.add_plan(metadata);
                 }
                 Err(e) => {
-                    result.add_failure(&file, format!("parse error: {}", e));
+                    result.add_failure(&file, format!("parse error: {e}"));
                 }
             },
             Err(e) => {
-                result.add_failure(&file, format!("read error: {}", e));
+                result.add_failure(&file, format!("read error: {e}"));
             }
         }
     }
@@ -459,8 +457,8 @@ pub fn generate_plan_id() -> String {
     for length in 4..=8 {
         for _ in 0..RETRIES_PER_LENGTH {
             let hash = generate_hash(length);
-            let candidate = format!("plan-{}", hash);
-            let filename = format!("{}.md", candidate);
+            let candidate = format!("plan-{hash}");
+            let filename = format!("{candidate}.md");
 
             if !p_dir.join(&filename).exists() {
                 return candidate;
@@ -469,8 +467,7 @@ pub fn generate_plan_id() -> String {
     }
 
     panic!(
-        "Failed to generate unique plan ID after trying hash lengths 4-8 with {} retries each",
-        RETRIES_PER_LENGTH
+        "Failed to generate unique plan ID after trying hash lengths 4-8 with {RETRIES_PER_LENGTH} retries each"
     );
 }
 

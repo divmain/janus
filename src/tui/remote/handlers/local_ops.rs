@@ -168,7 +168,7 @@ mod tests {
             status: Some(TicketStatus::New),
             ticket_type: Some(TicketType::Task),
             priority: Some(crate::types::TicketPriority::P2),
-            title: Some(format!("Ticket {}", id)),
+            title: Some(format!("Ticket {id}")),
             ..Default::default()
         }
     }
@@ -205,12 +205,10 @@ mod tests {
             create_test_ticket("j-3", Some("linear:acme/ENG-123")),
         ];
 
-        let selected_ids = vec![
-            "j-1".to_string(),
+        let selected_ids = ["j-1".to_string(),
             "j-2".to_string(),
             "j-3".to_string(),
-            "j-4".to_string(),
-        ];
+            "j-4".to_string()];
 
         // Build HashSet using the optimized approach
         let linked_ids: HashSet<String> = tickets
@@ -239,15 +237,15 @@ mod tests {
         let tickets: Vec<_> = (0..100)
             .map(|i| {
                 let remote = if i % 2 == 0 {
-                    Some(format!("remote:{}", i))
+                    Some(format!("remote:{i}"))
                 } else {
                     None
                 };
-                create_test_ticket(&format!("j-{}", i), remote.as_deref())
+                create_test_ticket(&format!("j-{i}"), remote.as_deref())
             })
             .collect();
 
-        let selected_ids: Vec<_> = (0..50).map(|i| format!("j-{}", i)).collect();
+        let selected_ids: Vec<_> = (0..50).map(|i| format!("j-{i}")).collect();
 
         // HashSet approach (optimized)
         let linked_ids: HashSet<String> = tickets

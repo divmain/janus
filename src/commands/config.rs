@@ -22,8 +22,7 @@ fn validate_config_key(key: &str) -> Result<&str> {
     if let Some(pos) = key.find('_') {
         let dot_version = format!("{}.{}", &key[..pos], &key[pos + 1..]);
         return Err(JanusError::Config(format!(
-            "invalid config key '{}'. Use dot notation: '{}'",
-            key, dot_version
+            "invalid config key '{key}'. Use dot notation: '{dot_version}'"
         )));
     }
     Ok(key)
@@ -74,7 +73,7 @@ pub fn cmd_config_show(output_json: bool) -> Result<()> {
         println!("  platform: {}", default.platform);
         println!("  org: {}", default.org);
         if let Some(ref repo) = default.repo {
-            println!("  repo: {}", repo);
+            println!("  repo: {repo}");
         }
     } else {
         println!("{}: {}", "default_remote".cyan(), "not configured".dimmed());
@@ -187,8 +186,7 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
         "semantic_search.enabled" => {
             let enabled = value.parse::<bool>().map_err(|_| {
                 JanusError::Config(format!(
-                    "invalid value '{}' for semantic_search.enabled. Expected: true or false",
-                    value
+                    "invalid value '{value}' for semantic_search.enabled. Expected: true or false"
                 ))
             })?;
             config.set_semantic_search_enabled(enabled);
@@ -206,8 +204,7 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
         }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled",
-                key
+                "unknown config key '{key}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled"
             )));
         }
     }
@@ -220,8 +217,7 @@ fn parse_default_remote(value: &str) -> Result<(Platform, String)> {
     let parts: Vec<&str> = value.splitn(2, ':').collect();
     if parts.len() != 2 {
         return Err(JanusError::Config(format!(
-            "invalid default_remote format '{}'. Expected: platform:org or platform:org/repo",
-            value
+            "invalid default_remote format '{value}'. Expected: platform:org or platform:org/repo"
         )));
     }
 
@@ -257,8 +253,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                     println!("{}", serde_json::to_string_pretty(&output)?);
                 } else {
                     println!(
-                        "{} (masked - showing first 2 and last 2 characters)",
-                        masked
+                        "{masked} (masked - showing first 2 and last 2 characters)"
                     );
                 }
             } else {
@@ -277,8 +272,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                     }))?;
                 } else {
                     println!(
-                        "{} (masked - showing first 2 and last 2 characters)",
-                        masked
+                        "{masked} (masked - showing first 2 and last 2 characters)"
                     );
                 }
             } else {
@@ -299,7 +293,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                         "configured": true,
                     }))?;
                 } else {
-                    println!("{}", value);
+                    println!("{value}");
                 }
             } else {
                 return Err(JanusError::Config("default.remote not set".to_string()));
@@ -314,13 +308,12 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                     "configured": true,
                 }))?;
             } else {
-                println!("{}", enabled);
+                println!("{enabled}");
             }
         }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled",
-                key
+                "unknown config key '{key}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled"
             )));
         }
     }

@@ -240,7 +240,7 @@ impl TicketCache {
 
         if !removed.is_empty() {
             let placeholders: Vec<String> =
-                (1..=removed.len()).map(|i| format!("?{}", i)).collect();
+                (1..=removed.len()).map(|i| format!("?{i}")).collect();
             let placeholders_str = placeholders.join(", ");
             let delete_sql = format!(
                 "DELETE FROM {} WHERE {} IN ({})",
@@ -431,7 +431,7 @@ impl TicketCache {
         }
 
         if !output_json {
-            println!("Regenerating embeddings for {} tickets...", total);
+            println!("Regenerating embeddings for {total} tickets...");
         }
 
         let mut success_count = 0;
@@ -452,8 +452,7 @@ impl TicketCache {
                     // Update the embedding in the cache
                     if let Err(e) = self.update_ticket_embedding(ticket_id, &embedding).await {
                         eprintln!(
-                            "Warning: failed to update embedding for {}: {}",
-                            ticket_id, e
+                            "Warning: failed to update embedding for {ticket_id}: {e}"
                         );
                         error_count += 1;
                     } else {
@@ -462,8 +461,7 @@ impl TicketCache {
                 }
                 Err(e) => {
                     eprintln!(
-                        "Warning: failed to generate embedding for {}: {}",
-                        ticket_id, e
+                        "Warning: failed to generate embedding for {ticket_id}: {e}"
                     );
                     error_count += 1;
                 }
@@ -485,8 +483,7 @@ impl TicketCache {
 
         if !output_json {
             println!(
-                "Embeddings regenerated successfully ({} succeeded, {} failed).",
-                success_count, error_count
+                "Embeddings regenerated successfully ({success_count} succeeded, {error_count} failed)."
             );
         }
 

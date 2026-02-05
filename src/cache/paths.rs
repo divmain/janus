@@ -22,7 +22,7 @@ pub fn cache_db_path() -> PathBuf {
     // This is best-effort; if it fails, we'll use the standard path
     let _ = migrate_old_cache_files(&janus_root);
 
-    janus_root.join(format!("cache-v{}.db", CACHE_VERSION))
+    janus_root.join(format!("cache-v{CACHE_VERSION}.db"))
 }
 
 /// Migrate old cache files from the feature-flag era to new unified naming.
@@ -37,8 +37,8 @@ pub fn cache_db_path() -> PathBuf {
 /// This function renames the old semantic cache file if it exists and the new
 /// file doesn't, preserving the user's cached data.
 fn migrate_old_cache_files(janus_root: &Path) -> Result<()> {
-    let old_path = janus_root.join(format!("cache-v{}-semantic.db", CACHE_VERSION));
-    let new_path = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
+    let old_path = janus_root.join(format!("cache-v{CACHE_VERSION}-semantic.db"));
+    let new_path = janus_root.join(format!("cache-v{CACHE_VERSION}.db"));
 
     if old_path.exists() && !new_path.exists() {
         // Rename old semantic cache to new unified name
@@ -46,14 +46,14 @@ fn migrate_old_cache_files(janus_root: &Path) -> Result<()> {
     }
 
     // Also handle WAL and SHM files
-    let old_wal = janus_root.join(format!("cache-v{}-semantic.db-wal", CACHE_VERSION));
-    let new_wal = janus_root.join(format!("cache-v{}.db-wal", CACHE_VERSION));
+    let old_wal = janus_root.join(format!("cache-v{CACHE_VERSION}-semantic.db-wal"));
+    let new_wal = janus_root.join(format!("cache-v{CACHE_VERSION}.db-wal"));
     if old_wal.exists() && !new_wal.exists() {
         std::fs::rename(&old_wal, &new_wal)?;
     }
 
-    let old_shm = janus_root.join(format!("cache-v{}-semantic.db-shm", CACHE_VERSION));
-    let new_shm = janus_root.join(format!("cache-v{}.db-shm", CACHE_VERSION));
+    let old_shm = janus_root.join(format!("cache-v{CACHE_VERSION}-semantic.db-shm"));
+    let new_shm = janus_root.join(format!("cache-v{CACHE_VERSION}.db-shm"));
     if old_shm.exists() && !new_shm.exists() {
         std::fs::rename(&old_shm, &new_shm)?;
     }
@@ -165,18 +165,18 @@ mod tests {
         let janus_root = temp.path();
 
         // Create old-style semantic cache file
-        let old_db = janus_root.join(format!("cache-v{}-semantic.db", CACHE_VERSION));
-        let old_wal = janus_root.join(format!("cache-v{}-semantic.db-wal", CACHE_VERSION));
-        let old_shm = janus_root.join(format!("cache-v{}-semantic.db-shm", CACHE_VERSION));
+        let old_db = janus_root.join(format!("cache-v{CACHE_VERSION}-semantic.db"));
+        let old_wal = janus_root.join(format!("cache-v{CACHE_VERSION}-semantic.db-wal"));
+        let old_shm = janus_root.join(format!("cache-v{CACHE_VERSION}-semantic.db-shm"));
 
         fs::write(&old_db, "db content").unwrap();
         fs::write(&old_wal, "wal content").unwrap();
         fs::write(&old_shm, "shm content").unwrap();
 
         // Create a new unified path for comparison
-        let new_db = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
-        let new_wal = janus_root.join(format!("cache-v{}.db-wal", CACHE_VERSION));
-        let new_shm = janus_root.join(format!("cache-v{}.db-shm", CACHE_VERSION));
+        let new_db = janus_root.join(format!("cache-v{CACHE_VERSION}.db"));
+        let new_wal = janus_root.join(format!("cache-v{CACHE_VERSION}.db-wal"));
+        let new_shm = janus_root.join(format!("cache-v{CACHE_VERSION}.db-shm"));
 
         // Ensure new paths don't exist yet
         assert!(!new_db.exists());
@@ -209,11 +209,11 @@ mod tests {
         let janus_root = temp.path();
 
         // Create old-style semantic cache file
-        let old_db = janus_root.join(format!("cache-v{}-semantic.db", CACHE_VERSION));
+        let old_db = janus_root.join(format!("cache-v{CACHE_VERSION}-semantic.db"));
         fs::write(&old_db, "old content").unwrap();
 
         // Create new unified cache file
-        let new_db = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
+        let new_db = janus_root.join(format!("cache-v{CACHE_VERSION}.db"));
         fs::write(&new_db, "new content").unwrap();
 
         // Run migration
@@ -235,7 +235,7 @@ mod tests {
         let janus_root = temp.path();
 
         // Don't create any old files
-        let new_db = janus_root.join(format!("cache-v{}.db", CACHE_VERSION));
+        let new_db = janus_root.join(format!("cache-v{CACHE_VERSION}.db"));
 
         // Run migration - should succeed without doing anything
         migrate_old_cache_files(janus_root).unwrap();

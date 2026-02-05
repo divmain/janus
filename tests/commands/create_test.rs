@@ -111,14 +111,11 @@ fn test_create_with_invalid_prefix_characters_fails() {
         let stderr = janus.run_failure(&["create", "Test ticket", "--prefix", prefix]);
         assert!(
             stderr.contains(expected_error),
-            "Error for prefix '{}' should contain '{}'",
-            prefix,
-            expected_error
+            "Error for prefix '{prefix}' should contain '{expected_error}'"
         );
         assert!(
             stderr.contains(prefix),
-            "Error should mention the invalid prefix '{}'",
-            prefix
+            "Error should mention the invalid prefix '{prefix}'"
         );
     }
 }

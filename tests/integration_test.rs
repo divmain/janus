@@ -16,7 +16,7 @@ fn test_create_default_triaged_false() {
     let output = janus.run_success(&["create", "Test ticket"]);
     let id = output.trim();
 
-    let output = janus.run_success(&["show", &id]);
+    let output = janus.run_success(&["show", id]);
     assert!(
         output.contains("triaged: false"),
         "New tickets should have triaged: false"
@@ -77,7 +77,7 @@ fn test_create_with_spawned_from() {
 
     let child_output = janus.run_success(&["show", &child_id]);
     assert!(
-        child_output.contains(&format!("spawned-from: {}", parent_id)),
+        child_output.contains(&format!("spawned-from: {parent_id}")),
         "Child should have spawned-from field"
     );
     assert!(
@@ -132,7 +132,7 @@ fn test_create_without_spawning_fields() {
     let output = janus.run_success(&["create", "Regular ticket"]);
     let id = output.trim();
 
-    let output = janus.run_success(&["show", &id]);
+    let output = janus.run_success(&["show", id]);
 
     // Spawning fields should not be present
     assert!(
@@ -196,7 +196,7 @@ fn test_create_spawned_with_other_options() {
         .to_string();
 
     let child_output = janus.run_success(&["show", &child_id]);
-    assert!(child_output.contains(&format!("spawned-from: {}", parent_id)));
+    assert!(child_output.contains(&format!("spawned-from: {parent_id}")));
     assert!(child_output.contains("type: bug"));
     assert!(child_output.contains("priority: 0"));
     assert!(child_output.contains("Fix critical issue"));
@@ -324,7 +324,7 @@ fn test_ls_spawned_from_partial_id() {
         .to_string();
 
     // Use partial ID for the filter
-    let partial = parent_id.split('-').last().unwrap();
+    let partial = parent_id.split('-').next_back().unwrap();
     let output = janus.run_success(&["ls", "--spawned-from", partial]);
     assert!(output.contains(&child_id));
 }
@@ -809,8 +809,7 @@ fn test_adopt_with_reserved_prefix_fails() {
     ]);
     assert!(
         stderr.contains("reserved"),
-        "Error should mention the prefix is reserved, got: {}",
-        stderr
+        "Error should mention the prefix is reserved, got: {stderr}"
     );
 }
 
@@ -827,8 +826,7 @@ fn test_adopt_with_invalid_prefix_characters_fails() {
     ]);
     assert!(
         stderr.contains("invalid characters"),
-        "Error should mention invalid characters, got: {}",
-        stderr
+        "Error should mention invalid characters, got: {stderr}"
     );
 }
 
@@ -841,8 +839,7 @@ fn test_push_not_configured() {
     // Should fail due to no default.remote config
     assert!(
         stderr.contains("not configured") || stderr.contains("default.remote"),
-        "Should fail due to missing config: {}",
-        stderr
+        "Should fail due to missing config: {stderr}"
     );
 }
 
@@ -936,7 +933,7 @@ fn test_cache_basic_workflow() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-a1b2.md");
     let content = r#"---
@@ -1014,7 +1011,7 @@ fn test_cache_status_command() {
     assert!(output.contains("Cache status") || output.contains("not available"));
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
@@ -1042,7 +1039,7 @@ fn test_cache_clear_command() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
@@ -1073,7 +1070,7 @@ fn test_cache_rebuild_command() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
@@ -1108,8 +1105,7 @@ fn test_cache_path_command() {
     // After security fix SEC-004, cache path returns relative path for privacy
     assert!(
         !cache_path.is_absolute() || cache_path.starts_with(".janus"),
-        "Cache path should be relative for privacy (SEC-004), got: {:?}",
-        cache_path
+        "Cache path should be relative for privacy (SEC-004), got: {cache_path:?}"
     );
     assert!(
         cache_path.to_string_lossy().contains("janus"),
@@ -1129,7 +1125,7 @@ fn test_cache_corrupted_database() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
@@ -1155,8 +1151,7 @@ priority: 2
 
     assert!(
         cache_path.exists(),
-        "Cache file should exist after ls: {:?}",
-        cache_path
+        "Cache file should exist after ls: {cache_path:?}"
     );
 
     let corrupted_data = b"This is corrupted database data, not SQLite format";
@@ -1171,9 +1166,7 @@ priority: 2
         stderr_str.contains("Warning")
             || stderr_str.contains("corrupted")
             || stdout_str.contains("j-test"),
-        "Should warn about corruption or fall back to file reads. stderr: {}, stdout: {}",
-        stderr_str,
-        stdout_str
+        "Should warn about corruption or fall back to file reads. stderr: {stderr_str}, stdout: {stdout_str}"
     );
 }
 
@@ -1182,7 +1175,7 @@ fn test_cache_rebuild_after_corruption() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
@@ -1220,7 +1213,7 @@ fn test_cache_no_directory_works_without_cache() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
@@ -1244,7 +1237,7 @@ priority: 2
     let cache_dir = cache_path.parent().unwrap();
 
     if cache_dir.exists() {
-        fs::remove_dir_all(&cache_dir).ok();
+        fs::remove_dir_all(cache_dir).ok();
     }
 
     let stdout1 = janus.run(&["ls"]).stdout;
@@ -1257,7 +1250,7 @@ fn test_cache_unavailable_degrades_gracefully() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
-    fs::create_dir_all(&janus_dir.join("items")).unwrap();
+    fs::create_dir_all(janus_dir.join("items")).unwrap();
 
     let ticket_path = janus_dir.join("items").join("j-test.md");
     let content = r#"---
@@ -1379,7 +1372,7 @@ fn test_plan_create_simple() {
 
     let content = janus.read_plan(id);
     assert!(content.contains("# Test Plan"));
-    assert!(content.contains(&format!("id: {}", id)));
+    assert!(content.contains(&format!("id: {id}")));
     assert!(content.contains("uuid:"));
     assert!(content.contains("created:"));
     // Simple plan should have a Tickets section
@@ -1481,7 +1474,7 @@ fn test_plan_show_raw() {
     let output = janus.run_success(&["plan", "show", &id, "--raw"]);
     // Raw output should contain the frontmatter delimiters
     assert!(output.contains("---"));
-    assert!(output.contains(&format!("id: {}", id)));
+    assert!(output.contains(&format!("id: {id}")));
     assert!(output.contains("# Raw Test Plan"));
 }
 
@@ -1537,7 +1530,7 @@ Test plan description.
 1. j-task1
 2. j-task2
 "#;
-    janus.write_plan("plan-test", &content);
+    janus.write_plan("plan-test", content);
 
     let output = janus.run_success(&["plan", "show", "plan-test"]);
     assert!(output.contains("Plan with Tickets"));
@@ -1628,7 +1621,7 @@ Second phase.
 1. j-prog1
 2. j-new1
 "#;
-    janus.write_plan("plan-phased", &plan_content);
+    janus.write_plan("plan-phased", plan_content);
 
     let output = janus.run_success(&["plan", "show", "plan-phased"]);
 
@@ -1663,7 +1656,7 @@ created: 2024-01-01T00:00:00Z
 
 1. j-nonexistent
 "#;
-    janus.write_plan("plan-missing", &content);
+    janus.write_plan("plan-missing", content);
 
     let output = janus.run_success(&["plan", "show", "plan-missing"]);
     assert!(output.contains("[missing]"));
@@ -1717,7 +1710,7 @@ created: 2024-01-01T00:00:00Z
 
 1. j-done2
 "#;
-    janus.write_plan("plan-complete", &complete_plan);
+    janus.write_plan("plan-complete", complete_plan);
 
     // Create a plan with new tickets (no actual tickets, so it's "new")
     let new_id = janus
@@ -1800,7 +1793,7 @@ CREATE TABLE example (id TEXT);
 1. What about this?
 2. And that?
 "#;
-    janus.write_plan("plan-freeform", &content);
+    janus.write_plan("plan-freeform", content);
 
     // Create the referenced ticket
     let ticket_content = r#"---
@@ -2969,7 +2962,7 @@ created: 2024-01-01T00:00:00Z
 1. j-canc1
 2. j-canc2
 "#;
-    janus.write_plan("plan-allcanc", &plan_content);
+    janus.write_plan("plan-allcanc", plan_content);
 
     let output = janus.run_success(&["plan", "status", "plan-allcanc"]);
     assert!(
@@ -3027,7 +3020,7 @@ created: 2024-01-01T00:00:00Z
 1. j-comp1
 2. j-canc3
 "#;
-    janus.write_plan("plan-mixfinish", &plan_content);
+    janus.write_plan("plan-mixfinish", plan_content);
 
     let output = janus.run_success(&["plan", "status", "plan-mixfinish"]);
     // Mixed complete/cancelled should show as complete
@@ -3086,7 +3079,7 @@ created: 2024-01-01T00:00:00Z
 1. j-next1
 2. j-next2
 "#;
-    janus.write_plan("plan-allnext", &plan_content);
+    janus.write_plan("plan-allnext", plan_content);
 
     let output = janus.run_success(&["plan", "status", "plan-allnext"]);
     // All new/next should show as new
@@ -3103,8 +3096,8 @@ fn test_plan_large_many_phases() {
     // Create a plan with many phases (10+)
     let mut phases = Vec::new();
     for i in 1..=10 {
-        phases.push(format!("--phase"));
-        phases.push(format!("Phase {}", i));
+        phases.push("--phase".to_string());
+        phases.push(format!("Phase {i}"));
     }
 
     let mut args: Vec<&str> = vec!["plan", "create", "Large Phased Plan"];
@@ -3121,9 +3114,8 @@ fn test_plan_large_many_phases() {
     // Verify all 10 phases are created
     for i in 1..=10 {
         assert!(
-            content.contains(&format!("Phase {}", i)),
-            "Should contain Phase {}",
-            i
+            content.contains(&format!("Phase {i}")),
+            "Should contain Phase {i}"
         );
     }
 }
@@ -3137,8 +3129,8 @@ fn test_plan_large_many_tickets() {
     for i in 1..=20 {
         let ticket_content = format!(
             r#"---
-id: j-bulk{:02}
-uuid: 550e8400-e29b-41d4-a716-44665544{:04x}
+id: j-bulk{i:02}
+uuid: 550e8400-e29b-41d4-a716-44665544{i:04x}
 status: new
 deps: []
 links: []
@@ -3146,14 +3138,13 @@ created: 2024-01-01T00:00:00Z
 type: task
 priority: 2
 ---
-# Bulk Task {}
+# Bulk Task {i}
 
-Description for task {}.
-"#,
-            i, i, i, i
+Description for task {i}.
+"#
         );
-        janus.write_ticket(&format!("j-bulk{:02}", i), &ticket_content);
-        ticket_ids.push(format!("j-bulk{:02}", i));
+        janus.write_ticket(&format!("j-bulk{i:02}"), &ticket_content);
+        ticket_ids.push(format!("j-bulk{i:02}"));
     }
 
     // Create a simple plan with all tickets
@@ -3176,9 +3167,8 @@ Large plan with 20 tickets.
 
 ## Tickets
 
-{}
-"#,
-        tickets_list
+{tickets_list}
+"#
     );
     janus.write_plan("plan-manytickets", &plan_content);
 
@@ -3210,7 +3200,7 @@ created: 2024-01-01T00:00:00Z
 2. j-missing2
 3. j-missing3
 "#;
-    janus.write_plan("plan-manymissing", &plan_content);
+    janus.write_plan("plan-manymissing", plan_content);
 
     let output = janus.run_success(&["plan", "show", "plan-manymissing"]);
     // Should show all missing tickets
@@ -3242,7 +3232,7 @@ This is the description.
 ## Tickets
 
 "#;
-    janus.write_plan("plan-ac", &plan_content);
+    janus.write_plan("plan-ac", plan_content);
 
     let output = janus.run_success(&["plan", "show", "plan-ac"]);
     assert!(output.contains("Acceptance Criteria"));
@@ -3293,7 +3283,7 @@ No tickets yet.
 ### Tickets
 
 "#;
-    janus.write_plan("plan-emptyph", &plan_content);
+    janus.write_plan("plan-emptyph", plan_content);
 
     let output = janus.run_success(&["plan", "show", "plan-emptyph"]);
     assert!(output.contains("Phase 1: Has Tickets"));
@@ -3349,7 +3339,7 @@ It's inside a code block.
 ## Tickets
 
 "#;
-    janus.write_plan("plan-code", &plan_content);
+    janus.write_plan("plan-code", plan_content);
 
     let output = janus.run_success(&["plan", "show", "plan-code"]);
     // The code block content should be preserved, not parsed as a section
@@ -3600,7 +3590,7 @@ created: 2024-01-01T00:00:00Z
 1. j-inprog1
 2. j-newt
 "#;
-    janus.write_plan("plan-inprog", &plan_content);
+    janus.write_plan("plan-inprog", plan_content);
 
     let output = janus.run_success(&["plan", "status", "plan-inprog"]);
     assert!(
@@ -3665,7 +3655,7 @@ created: 2024-01-01T00:00:00Z
 
 1. j-ph2new
 "#;
-    janus.write_plan("plan-ph12", &plan_content);
+    janus.write_plan("plan-ph12", plan_content);
 
     let output = janus.run_success(&["plan", "status", "plan-ph12"]);
     // Overall plan should be in_progress (some complete, some new)
@@ -4035,8 +4025,7 @@ fn test_plan_show_verbose_phase_on_simple_plan_fails() {
     let error = janus.run_failure(&["plan", "show", &plan_id, "--verbose-phase", "1"]);
     assert!(
         error.contains("--verbose-phase can only be used with phased plans"),
-        "Should error when using --verbose-phase on simple plan: {}",
-        error
+        "Should error when using --verbose-phase on simple plan: {error}"
     );
 }
 
@@ -4327,7 +4316,7 @@ fn test_remote_no_subcommand_non_pty() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let combined = format!("{}{}", stdout, stderr);
+    let combined = format!("{stdout}{stderr}");
     assert!(combined.contains("subcommand") || combined.contains("browse"));
 }
 
@@ -5243,9 +5232,8 @@ created: 2024-01-01T00:00:00Z
 
 ## Tickets
 
-- {}
-"#,
-            ticket_id
+- {ticket_id}
+"#
         ),
     );
 
@@ -5293,10 +5281,9 @@ created: 2024-01-01T00:00:00Z
 
 ## Tickets
 
-- {}
-- {}
-"#,
-            ticket1, ticket2
+- {ticket1}
+- {ticket2}
+"#
         ),
     );
 
@@ -5440,7 +5427,7 @@ fn test_next_limit() {
 
     // Create 5 tickets
     for i in 0..5 {
-        janus.run_success(&["create", &format!("Ticket {}", i)]);
+        janus.run_success(&["create", &format!("Ticket {i}")]);
     }
 
     let output = janus.run_success(&["next", "--limit", "2"]);
@@ -5541,7 +5528,7 @@ fn test_create_with_size() {
 
     assert!(janus.ticket_exists(id), "Ticket file should exist");
 
-    let output = janus.run_success(&["show", &id]);
+    let output = janus.run_success(&["show", id]);
     assert!(
         output.contains("size: medium"),
         "Ticket should have size: medium"
@@ -5556,7 +5543,7 @@ fn test_create_with_size_alias() {
     let output = janus.run_success(&["create", "Test ticket with alias", "--size", "m"]);
     let id = output.trim();
 
-    let output = janus.run_success(&["show", &id]);
+    let output = janus.run_success(&["show", id]);
     assert!(
         output.contains("size: medium"),
         "Ticket should have size: medium when using alias 'm'"
@@ -5580,12 +5567,10 @@ fn test_create_with_all_size_aliases() {
         let output = janus.run_success(&["create", "Test", "--size", alias]);
         let id = output.trim();
 
-        let output = janus.run_success(&["show", &id]);
+        let output = janus.run_success(&["show", id]);
         assert!(
-            output.contains(&format!("size: {}", expected)),
-            "Alias '{}' should result in size: {}",
-            alias,
-            expected
+            output.contains(&format!("size: {expected}")),
+            "Alias '{alias}' should result in size: {expected}"
         );
     }
 }

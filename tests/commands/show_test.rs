@@ -20,7 +20,7 @@ fn test_show_basic() {
 
     assert!(output.contains("# Test ticket"));
     assert!(output.contains("Description"));
-    assert!(output.contains(&format!("id: {}", id)));
+    assert!(output.contains(&format!("id: {id}")));
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn test_show_partial_id() {
         .trim()
         .to_string();
     // Use just the hash part (after the dash)
-    let partial = id.split('-').last().unwrap();
+    let partial = id.split('-').next_back().unwrap();
     let output = janus.run_success(&["show", partial]);
 
     assert!(output.contains("# Test ticket"));
@@ -146,8 +146,7 @@ fn test_show_children_count_displayed() {
     let output = janus.run_success(&["show", &parent_id]);
     assert!(
         output.contains("3 spawned from this ticket"),
-        "Expected '3 spawned from this ticket' in output:\n{}",
-        output
+        "Expected '3 spawned from this ticket' in output:\n{output}"
     );
 }
 
@@ -166,8 +165,7 @@ fn test_show_children_count_not_displayed_when_zero() {
     let output = janus.run_success(&["show", &id]);
     assert!(
         !output.contains("spawned from this ticket"),
-        "Expected no children count for ticket with no spawned children:\n{}",
-        output
+        "Expected no children count for ticket with no spawned children:\n{output}"
     );
 }
 
@@ -189,7 +187,6 @@ fn test_show_children_count_in_json() {
 
     assert_eq!(
         json["children_count"], 2,
-        "Expected children_count to be 2 in JSON output:\n{}",
-        output
+        "Expected children_count to be 2 in JSON output:\n{output}"
     );
 }

@@ -27,7 +27,7 @@ pub const PLAN_FORMAT_SPECIFICATION: &str = include_str!("../../../docs/plan-imp
 ///
 /// Prints the Plan Format Specification document to stdout.
 pub fn cmd_show_import_spec() -> Result<()> {
-    println!("{}", PLAN_FORMAT_SPECIFICATION);
+    println!("{PLAN_FORMAT_SPECIFICATION}");
     Ok(())
 }
 
@@ -85,7 +85,7 @@ fn print_import_summary(plan: &ImportablePlan) {
             plan.acceptance_criteria.len()
         );
         for criterion in &plan.acceptance_criteria {
-            println!("  - {}", criterion);
+            println!("  - {criterion}");
         }
     }
 
@@ -166,7 +166,7 @@ fn create_verification_ticket(
 ) -> Result<String> {
     let mut body = "Verify that all acceptance criteria have been met:\n\n".to_string();
     for criterion in criteria {
-        body.push_str(&format!("- [ ] {}\n", criterion));
+        body.push_str(&format!("- [ ] {criterion}\n"));
     }
 
     let (id, _file_path) = crate::ticket::TicketBuilder::new("Verify Acceptance Criteria")
@@ -206,7 +206,7 @@ pub async fn cmd_plan_import(
         fs::read_to_string(input).map_err(|e| {
             JanusError::Io(std::io::Error::new(
                 e.kind(),
-                format!("Failed to read plan import file at {}: {}", input, e),
+                format!("Failed to read plan import file at {input}: {e}"),
             ))
         })?
     };

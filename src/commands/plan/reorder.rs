@@ -67,9 +67,9 @@ pub async fn cmd_plan_reorder(
         let mut temp_content = String::new();
         for (num, name) in &phases {
             if name.is_empty() {
-                temp_content.push_str(&format!("{}\n", num));
+                temp_content.push_str(&format!("{num}\n"));
             } else {
-                temp_content.push_str(&format!("{}: {}\n", num, name));
+                temp_content.push_str(&format!("{num}: {name}\n"));
             }
         }
 
@@ -153,7 +153,7 @@ pub async fn cmd_plan_reorder(
             .ok_or_else(|| JanusError::PhaseNotFound(phase_identifier.to_string()))?;
 
         if phase_obj.tickets.is_empty() {
-            println!("No tickets to reorder in phase '{}'", phase_identifier);
+            println!("No tickets to reorder in phase '{phase_identifier}'");
             return Ok(());
         }
 

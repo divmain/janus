@@ -129,13 +129,13 @@ impl TicketService {
 
         let (frontmatter, _body_with_title) = split_frontmatter(content)?;
 
-        let mut new_body = format!("# {}", title);
+        let mut new_body = format!("# {title}");
         if !body.is_empty() {
             new_body.push_str("\n\n");
             new_body.push_str(body);
         }
 
-        Ok(format!("---\n{}\n---\n{}", frontmatter, new_body))
+        Ok(format!("---\n{frontmatter}\n---\n{new_body}"))
     }
 
     /// Mark a ticket as triaged
@@ -165,7 +165,7 @@ impl TicketService {
 
         // Add the note with timestamp
         let timestamp = iso_date();
-        content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
+        content.push_str(&format!("\n\n**{timestamp}**\n\n{note}"));
 
         fs::write(&ticket.file_path, content)?;
 

@@ -114,8 +114,7 @@ fn test_query_includes_children_count() {
             if json["id"] == parent_id {
                 assert_eq!(
                     json["children_count"], 2,
-                    "Expected children_count to be 2 for parent ticket:\n{}",
-                    line
+                    "Expected children_count to be 2 for parent ticket:\n{line}"
                 );
             }
         }
@@ -144,8 +143,7 @@ fn test_query_children_count_zero_for_leaf_tickets() {
             if json["id"] == id {
                 assert_eq!(
                     json["children_count"], 0,
-                    "Expected children_count to be 0 for leaf ticket:\n{}",
-                    line
+                    "Expected children_count to be 0 for leaf ticket:\n{line}"
                 );
             }
         }
@@ -187,7 +185,7 @@ fn test_ambiguous_id() {
     let prefix = id1.split('-').next().unwrap();
 
     // If both tickets share the prefix, this should be ambiguous
-    if id2.starts_with(prefix) && id1.split('-').last() != id2.split('-').last() {
+    if id2.starts_with(prefix) && id1.split('-').next_back() != id2.split('-').next_back() {
         let stderr = janus.run_failure(&["show", prefix]);
         assert!(stderr.contains("ambiguous") || stderr.contains("multiple"));
     }

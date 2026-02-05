@@ -222,40 +222,38 @@ mod tests {
         let tickets_dir = dir.join(".janus/items");
         fs::create_dir_all(&tickets_dir).unwrap();
 
-        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let ticket_path = tickets_dir.join(format!("{ticket_id}.md"));
         let content = if body.is_empty() {
             format!(
                 r#"---
-id: {}
+id: {ticket_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
 created: 2024-01-01T00:00:00Z
 type: task
-priority: {}
+priority: {priority}
 ---
-# {}
-"#,
-                ticket_id, priority, title
+# {title}
+"#
             )
         } else {
             format!(
                 r#"---
-id: {}
+id: {ticket_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
 created: 2024-01-01T00:00:00Z
 type: task
-priority: {}
+priority: {priority}
 ---
-# {}
+# {title}
 
-{}
-"#,
-                ticket_id, priority, title, body
+{body}
+"#
             )
         };
         fs::write(&ticket_path, content).unwrap();
@@ -398,8 +396,8 @@ priority: {}
 
         // Create 5 test tickets
         for i in 0..5 {
-            let id = format!("j-t{}", i);
-            create_test_ticket_with_body(&repo_path, &id, &format!("Test Ticket {}", i), 2, "");
+            let id = format!("j-t{i}");
+            create_test_ticket_with_body(&repo_path, &id, &format!("Test Ticket {i}"), 2, "");
         }
 
         let cache = TicketCache::open().await.unwrap();

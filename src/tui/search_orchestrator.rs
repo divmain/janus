@@ -104,7 +104,7 @@ impl SearchState {
                             }
                         }
                         Err(e) => {
-                            eprintln!("Warning: failed to load config: {}. Proceeding with semantic search.", e);
+                            eprintln!("Warning: failed to load config: {e}. Proceeding with semantic search.");
                         }
                     }
 

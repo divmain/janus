@@ -7,7 +7,7 @@ pub fn format_ticket_line(
     options: super::data_formatting::FormatOptions,
 ) -> String {
     let id = ticket.id.as_deref().unwrap_or("???");
-    let id_padded = format!("{:8}", id);
+    let id_padded = format!("{id:8}");
 
     let priority_str = if options.show_priority {
         format!(
@@ -41,8 +41,7 @@ pub fn format_ticket_line(
     };
 
     format!(
-        "{} {}{} - {}{}",
-        colored_id, colored_priority, colored_status, title, suffix
+        "{colored_id} {colored_priority}{colored_status} - {title}{suffix}"
     )
 }
 

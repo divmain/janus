@@ -27,7 +27,7 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
             }
         }
         let json_str = serde_json::to_string(&json_val)
-            .map_err(|e| JanusError::Other(format!("JSON serialization failed: {}", e)))?;
+            .map_err(|e| JanusError::Other(format!("JSON serialization failed: {e}")))?;
         json_lines.push(json_str);
     }
     let output = json_lines.join("\n");
@@ -38,7 +38,7 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
         // Command::args(), which does NOT perform shell interpolation. This
         // prevents shell injection attacks since arguments are passed directly
         // to the process without being interpreted by a shell.
-        let filter_str = format!("select({})", filter_expr);
+        let filter_str = format!("select({filter_expr})");
 
         let mut child = Command::new("jq")
             .args(["-c", &filter_str])
@@ -60,7 +60,7 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
         }
     } else {
         // No filter, output all tickets as JSON lines
-        println!("{}", output);
+        println!("{output}");
     }
 
     Ok(())

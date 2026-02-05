@@ -89,7 +89,7 @@ fn test_graph_with_dependency_dot() {
     janus.run_success(&["dep", "add", &id1, &id2]);
 
     let output = janus.run_success(&["graph"]);
-    assert!(output.contains(&format!("\"{}\" -> \"{}\"", id1, id2)));
+    assert!(output.contains(&format!("\"{id1}\" -> \"{id2}\"")));
     assert!(output.contains("blocks"));
 }
 
@@ -113,7 +113,7 @@ fn test_graph_with_dependency_mermaid() {
     let output = janus.run_success(&["graph", "--format", "mermaid"]);
     let safe_id1 = id1.replace('-', "_");
     let safe_id2 = id2.replace('-', "_");
-    assert!(output.contains(&format!("{} -->|blocks| {}", safe_id1, safe_id2)));
+    assert!(output.contains(&format!("{safe_id1} -->|blocks| {safe_id2}")));
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn test_graph_with_spawning_dot() {
         .to_string();
 
     let output = janus.run_success(&["graph"]);
-    assert!(output.contains(&format!("\"{}\" -> \"{}\"", id1, id2)));
+    assert!(output.contains(&format!("\"{id1}\" -> \"{id2}\"")));
     assert!(output.contains("style=dashed"));
     assert!(output.contains("spawned"));
 }
@@ -153,7 +153,7 @@ fn test_graph_with_spawning_mermaid() {
     let output = janus.run_success(&["graph", "--format", "mermaid"]);
     let safe_id1 = id1.replace('-', "_");
     let safe_id2 = id2.replace('-', "_");
-    assert!(output.contains(&format!("{} -.->|spawned| {}", safe_id1, safe_id2)));
+    assert!(output.contains(&format!("{safe_id1} -.->|spawned| {safe_id2}")));
 }
 
 #[test]

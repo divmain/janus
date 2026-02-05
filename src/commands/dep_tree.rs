@@ -163,7 +163,7 @@ impl<'a> TreeFormatter<'a> {
             self.print_tree(
                 child,
                 depth + 1,
-                &format!("{}{}", prefix, child_prefix),
+                &format!("{prefix}{child_prefix}"),
                 full_mode,
             );
         }

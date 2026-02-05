@@ -62,7 +62,7 @@ impl McpTestClient {
         });
 
         let request_str = serde_json::to_string(&request).unwrap();
-        writeln!(self.stdin, "{}", request_str).expect("Failed to write request");
+        writeln!(self.stdin, "{request_str}").expect("Failed to write request");
         self.stdin.flush().expect("Failed to flush stdin");
 
         // Read response (single line)
@@ -97,7 +97,7 @@ impl McpTestClient {
             "params": {}
         });
         let notification_str = serde_json::to_string(&notification).unwrap();
-        writeln!(self.stdin, "{}", notification_str).expect("Failed to write notification");
+        writeln!(self.stdin, "{notification_str}").expect("Failed to write notification");
         self.stdin.flush().expect("Failed to flush stdin");
     }
 }
@@ -387,7 +387,7 @@ fn test_mcp_read_ticket_by_id() {
     let text = contents[0]["text"].as_str().unwrap();
     assert!(text.contains("# Test ticket content"));
     assert!(text.contains("Description text"));
-    assert!(text.contains(&format!("id: {}", id)));
+    assert!(text.contains(&format!("id: {id}")));
 }
 
 #[test]

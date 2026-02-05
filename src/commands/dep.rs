@@ -26,8 +26,7 @@ fn check_circular_dependency(
         && dep_ticket.deps.contains(&from_id.to_string())
     {
         return Err(JanusError::CircularDependency(format!(
-            "{} -> {} (direct: {} already depends on {})",
-            from_id, to_id, to_id, from_id
+            "{from_id} -> {to_id} (direct: {to_id} already depends on {from_id})"
         )));
     }
 
@@ -71,8 +70,7 @@ fn check_circular_dependency(
         // Format the cycle path for the error message
         let cycle_str = cycle_path.join(" -> ");
         return Err(JanusError::CircularDependency(format!(
-            "{} -> {} would create cycle: {}",
-            from_id, to_id, cycle_str
+            "{from_id} -> {to_id} would create cycle: {cycle_str}"
         )));
     }
 

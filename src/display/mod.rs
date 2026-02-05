@@ -10,7 +10,7 @@ pub use data_formatting::*;
 pub use formatters::*;
 
 pub fn format_status_colored(status: TicketStatus) -> String {
-    format_status_colored_with_format(status, |s| format!("[{}]", s))
+    format_status_colored_with_format(status, |s| format!("[{s}]"))
 }
 
 pub fn format_status_colored_with_format<F>(status: TicketStatus, format_fn: F) -> String

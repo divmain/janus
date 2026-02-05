@@ -179,14 +179,14 @@ fn update_description(ticket: &Ticket, description: Option<&str>) -> Result<()> 
     let new_body = if let Some(pos) = h2_pos {
         let from_h2 = &after_title[pos..];
         if let Some(desc) = description {
-            format!("{}\n\n{}{}", title, desc, from_h2)
+            format!("{title}\n\n{desc}{from_h2}")
         } else {
-            format!("{}{}", title, from_h2)
+            format!("{title}{from_h2}")
         }
     } else {
         // No H2 sections
         if let Some(desc) = description {
-            format!("{}\n\n{}", title, desc)
+            format!("{title}\n\n{desc}")
         } else {
             title.to_string()
         }

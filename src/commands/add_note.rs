@@ -31,7 +31,7 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
     if !new_content.contains("## Notes") {
         new_content.push_str("\n## Notes");
     }
-    new_content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, note));
+    new_content.push_str(&format!("\n\n**{timestamp}**\n\n{note}"));
     ticket.write(&new_content)?;
 
     log_note_added(&ticket.id, &note);

@@ -13,7 +13,7 @@ use crate::types::{plans_dir, tickets_items_dir};
 /// The path is constructed as `<tickets_dir>/<id>.md`.
 /// This function does not verify that the file exists.
 pub fn ticket_path(id: &str) -> PathBuf {
-    tickets_items_dir().join(format!("{}.md", id))
+    tickets_items_dir().join(format!("{id}.md"))
 }
 
 /// Returns the file path for a plan with the given ID.
@@ -21,7 +21,7 @@ pub fn ticket_path(id: &str) -> PathBuf {
 /// The path is constructed as `<plans_dir>/<id>.md`.
 /// This function does not verify that the file exists.
 pub fn plan_path(id: &str) -> PathBuf {
-    plans_dir().join(format!("{}.md", id))
+    plans_dir().join(format!("{id}.md"))
 }
 
 #[cfg(test)]

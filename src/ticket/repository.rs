@@ -121,13 +121,11 @@ async fn repair_cache_entries(
     match action {
         CacheRecoveryAction::ForceRebuild => {
             eprintln!(
-                "Warning: {} validation failures out of {} files exceeds threshold. Triggering cache rebuild...",
-                validation_failures, total_validated
+                "Warning: {validation_failures} validation failures out of {total_validated} files exceeds threshold. Triggering cache rebuild..."
             );
             if let Err(e) = cache.force_rebuild_tickets().await {
                 eprintln!(
-                    "Warning: cache rebuild failed: {}. Continuing with disk data.",
-                    e
+                    "Warning: cache rebuild failed: {e}. Continuing with disk data."
                 );
             }
         }
@@ -183,7 +181,7 @@ impl TicketLoadResult {
             let failure_msgs: Vec<String> = self
                 .failed
                 .iter()
-                .map(|(f, e)| format!("  - {}: {}", f, e))
+                .map(|(f, e)| format!("  - {f}: {e}"))
                 .collect();
             Err(crate::error::JanusError::TicketLoadFailed(failure_msgs))
         } else {
@@ -257,14 +255,14 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
     for id in unchanged {
         if let Some(cached) = cached_map.get(&id) {
             let mut metadata = cached.clone();
-            metadata.file_path = Some(items_dir.join(format!("{}.md", id)));
+            metadata.file_path = Some(items_dir.join(format!("{id}.md")));
             result.add_ticket(metadata);
         }
     }
 
     // Step 5: Read modified/new files from disk
     for id in needs_reread {
-        let file_path = items_dir.join(format!("{}.md", id));
+        let file_path = items_dir.join(format!("{id}.md"));
         match read_ticket_from_disk(&id, &file_path).await {
             Ok(metadata) => {
                 tickets_to_repair.push(metadata.clone());
@@ -308,7 +306,7 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
             let mut result = TicketLoadResult::new();
             result.add_failure(
                 "<directory>",
-                format!("failed to read tickets directory: {}", e),
+                format!("failed to read tickets directory: {e}"),
             );
             return result;
         }
@@ -327,11 +325,11 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
                     result.add_ticket(metadata);
                 }
                 Err(e) => {
-                    result.add_failure(&file, format!("parse error: {}", e));
+                    result.add_failure(&file, format!("parse error: {e}"));
                 }
             },
             Err(e) => {
-                result.add_failure(&file, format!("read error: {}", e));
+                result.add_failure(&file, format!("read error: {e}"));
             }
         }
     }

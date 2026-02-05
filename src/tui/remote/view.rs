@@ -153,8 +153,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     FetchResult::Error(err_type, err_msg) => {
                         last_error_setter.set(Some((err_type, err_msg.clone())));
                         toast_setter.set(Some(Toast::error(format!(
-                            "Failed to fetch remote issues: {}",
-                            err_msg
+                            "Failed to fetch remote issues: {err_msg}"
                         ))));
                     }
                 }
@@ -309,7 +308,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 }
 
                 if applied > 0 {
-                    toast_setter.set(Some(Toast::info(format!("Applied {} change(s)", applied))));
+                    toast_setter.set(Some(Toast::info(format!("Applied {applied} change(s)"))));
                     local_tickets_setter.set(get_all_tickets_from_disk().items);
                     fetch_handler((platform, query));
                 } else if !errors.is_empty() {
@@ -471,15 +470,14 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                                 }
                                 Err(e) => {
                                     error_messages.push(format!(
-                                        "Failed to build sync changes for {}: {}",
-                                        ticket_id, e
+                                        "Failed to build sync changes for {ticket_id}: {e}"
                                     ));
                                 }
                             }
                         }
                         Err(e) => {
                             error_messages
-                                .push(format!("Failed to fetch remote for {}: {}", ticket_id, e));
+                                .push(format!("Failed to fetch remote for {ticket_id}: {e}"));
                         }
                     }
                 }
@@ -569,7 +567,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 }
 
                 if applied > 0 {
-                    toast_setter.set(Some(Toast::info(format!("Applied {} change(s)", applied))));
+                    toast_setter.set(Some(Toast::info(format!("Applied {applied} change(s)"))));
                     local_tickets_setter.set(get_all_tickets_from_disk().items);
                     fetch_handler((platform, query));
                 } else if !errors.is_empty() {
@@ -605,7 +603,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         local_tickets_setter.set(get_all_tickets_from_disk().items);
                     }
                     Err(e) => {
-                        toast_setter.set(Some(Toast::error(format!("Link failed: {}", e))));
+                        toast_setter.set(Some(Toast::error(format!("Link failed: {e}"))));
                     }
                 }
             }
@@ -645,8 +643,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 // Report results
                 if errors.is_empty() {
                     toast_setter.set(Some(Toast::info(format!(
-                        "Unlinked {} ticket(s)",
-                        unlinked
+                        "Unlinked {unlinked} ticket(s)"
                     ))));
                 } else if unlinked > 0 {
                     // Partial success
@@ -657,7 +654,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                     ))));
                     // Log detailed errors
                     for (id, err) in errors {
-                        eprintln!("Failed to unlink {}: {}", id, err);
+                        eprintln!("Failed to unlink {id}: {err}");
                     }
                 } else {
                     // Total failure
@@ -673,7 +670,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         ))));
                         // Log detailed errors
                         for (id, err) in errors {
-                            eprintln!("Failed to unlink {}: {}", id, err);
+                            eprintln!("Failed to unlink {id}: {err}");
                         }
                     }
                 }

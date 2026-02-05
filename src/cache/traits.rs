@@ -80,7 +80,7 @@ impl CacheableItem for TicketMetadata {
     #[allow(clippy::manual_async_fn)]
     fn parse_from_file(id: &str) -> impl std::future::Future<Output = Result<(Self, i64)>> + Send {
         async move {
-            let path = Self::directory().join(format!("{}.md", id));
+            let path = Self::directory().join(format!("{id}.md"));
 
             let content = fs::read_to_string(&path).await.map_err(JanusError::Io)?;
 
@@ -165,8 +165,7 @@ impl CacheableItem for TicketMetadata {
                             Ok(embedding) => Some(embedding_to_blob(&embedding)),
                             Err(e) => {
                                 eprintln!(
-                                    "Warning: failed to generate embedding for ticket: {}",
-                                    e
+                                    "Warning: failed to generate embedding for ticket: {e}"
                                 );
                                 None
                             }
@@ -178,8 +177,7 @@ impl CacheableItem for TicketMetadata {
                 }
                 Err(e) => {
                     eprintln!(
-                        "Warning: failed to load config: {}. Skipping embedding generation.",
-                        e
+                        "Warning: failed to load config: {e}. Skipping embedding generation."
                     );
                     None
                 }
@@ -254,7 +252,7 @@ impl CacheableItem for PlanMetadata {
     #[allow(clippy::manual_async_fn)]
     fn parse_from_file(id: &str) -> impl std::future::Future<Output = Result<(Self, i64)>> + Send {
         async move {
-            let path = Self::directory().join(format!("{}.md", id));
+            let path = Self::directory().join(format!("{id}.md"));
 
             let content = fs::read_to_string(&path).await.map_err(JanusError::Io)?;
 

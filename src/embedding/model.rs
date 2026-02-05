@@ -29,8 +29,7 @@ impl EmbeddingModel {
         // Parse the model name string to get the enum variant
         let model = FastembedModel::from_str(EMBEDDING_MODEL_NAME).map_err(|e| {
             format!(
-                "Invalid embedding model name '{}': {}",
-                EMBEDDING_MODEL_NAME, e
+                "Invalid embedding model name '{EMBEDDING_MODEL_NAME}': {e}"
             )
         })?;
 
@@ -40,8 +39,7 @@ impl EmbeddingModel {
 
         let inner = TextEmbedding::try_new(options).map_err(|e| {
             format!(
-                "Failed to load embedding model '{}': {}. This may be caused by network issues when downloading the model from HuggingFace (~161MB). Please check your internet connection and try again.",
-                EMBEDDING_MODEL_NAME, e
+                "Failed to load embedding model '{EMBEDDING_MODEL_NAME}': {e}. This may be caused by network issues when downloading the model from HuggingFace (~161MB). Please check your internet connection and try again."
             )
         })?;
 
@@ -56,7 +54,7 @@ impl EmbeddingModel {
 
         let embeddings = guard
             .embed(vec![text], None)
-            .map_err(|e| format!("{}", e))?;
+            .map_err(|e| format!("{e}"))?;
 
         embeddings
             .into_iter()
@@ -69,7 +67,7 @@ impl EmbeddingModel {
         let mut guard = self.inner.lock().await;
 
         let texts_vec: Vec<&str> = texts.to_vec();
-        guard.embed(texts_vec, None).map_err(|e| format!("{}", e))
+        guard.embed(texts_vec, None).map_err(|e| format!("{e}"))
     }
 }
 
@@ -80,7 +78,7 @@ fn get_embedding_cache_dir() -> Result<PathBuf, String> {
 
     // Create directory if it doesn't exist
     std::fs::create_dir_all(&cache_dir)
-        .map_err(|e| format!("Failed to create cache directory: {}", e))?;
+        .map_err(|e| format!("Failed to create cache directory: {e}"))?;
 
     Ok(cache_dir)
 }
@@ -100,8 +98,7 @@ pub fn get_embedding_model() -> Result<&'static EmbeddingModel, String> {
         }
         Err(e) => {
             eprintln!(
-                "Warning: failed to load config: {}. Proceeding with semantic search enabled by default.",
-                e
+                "Warning: failed to load config: {e}. Proceeding with semantic search enabled by default."
             );
         }
     }
@@ -124,7 +121,7 @@ pub async fn generate_ticket_embedding(
     body: Option<&str>,
 ) -> Result<Vec<f32>, String> {
     let full_text = match body {
-        Some(b) => format!("{}\n\n{}", title, b),
+        Some(b) => format!("{title}\n\n{b}"),
         None => title.to_string(),
     };
     generate_embedding(&full_text).await
@@ -175,8 +172,7 @@ mod tests {
             Err(e) => {
                 // In CI environments, the model might not be available
                 println!(
-                    "Embedding generation failed (expected in some environments): {}",
-                    e
+                    "Embedding generation failed (expected in some environments): {e}"
                 );
             }
         }

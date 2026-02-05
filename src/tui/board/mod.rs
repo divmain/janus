@@ -96,8 +96,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                     Ok(ticket) => match ticket.update_field("status", &status.to_string()) {
                         Ok(_) => {
                             toast_setter.set(Some(Toast::success(format!(
-                                "Updated {} to {}",
-                                ticket_id, status
+                                "Updated {ticket_id} to {status}"
                             ))));
                             // Sync cache and reload tickets
                             let _ = crate::cache::sync_cache().await;
@@ -107,11 +106,11 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         }
                         Err(e) => {
                             toast_setter
-                                .set(Some(Toast::error(format!("Failed to update: {}", e))));
+                                .set(Some(Toast::error(format!("Failed to update: {e}"))));
                         }
                     },
                     Err(e) => {
-                        toast_setter.set(Some(Toast::error(format!("Ticket not found: {}", e))));
+                        toast_setter.set(Some(Toast::error(format!("Ticket not found: {e}"))));
                     }
                 }
             }
@@ -286,7 +285,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
             element! {
                 ClickableText(
                     content: if is_visible {
-                        format!("[{}]", key)
+                        format!("[{key}]")
                     } else {
                         "[ ]".to_string()
                     },

@@ -498,8 +498,8 @@ mod tests {
         let tickets: Vec<TicketMetadata> = (0..count)
             .map(|i| {
                 make_ticket(
-                    &format!("j-{}", i),
-                    &format!("Task {}", i),
+                    &format!("j-{i}"),
+                    &format!("Task {i}"),
                     TicketStatus::New,
                 )
             })
@@ -1010,8 +1010,8 @@ mod tests {
             tickets: (0..30)
                 .map(|i| {
                     make_ticket(
-                        &format!("j-{}", i),
-                        &format!("Task {}", i),
+                        &format!("j-{i}"),
+                        &format!("Task {i}"),
                         TicketStatus::New,
                     )
                 })
@@ -1033,8 +1033,8 @@ mod tests {
             tickets: (0..30)
                 .map(|i| {
                     make_ticket(
-                        &format!("j-{}", i),
-                        &format!("Task {}", i),
+                        &format!("j-{i}"),
+                        &format!("Task {i}"),
                         TicketStatus::New,
                     )
                 })
@@ -1056,8 +1056,8 @@ mod tests {
             tickets: (0..100)
                 .map(|i| {
                     make_ticket(
-                        &format!("j-{}", i),
-                        &format!("Task {}", i),
+                        &format!("j-{i}"),
+                        &format!("Task {i}"),
                         TicketStatus::New,
                     )
                 })
@@ -1079,8 +1079,8 @@ mod tests {
             tickets: (0..100)
                 .map(|i| {
                     make_ticket(
-                        &format!("j-{}", i),
-                        &format!("Task {}", i),
+                        &format!("j-{i}"),
+                        &format!("Task {i}"),
                         TicketStatus::New,
                     )
                 })
@@ -1101,8 +1101,8 @@ mod tests {
             tickets: (0..50)
                 .map(|i| {
                     make_ticket(
-                        &format!("j-{}", i),
-                        &format!("Task {}", i),
+                        &format!("j-{i}"),
+                        &format!("Task {i}"),
                         TicketStatus::New,
                     )
                 })

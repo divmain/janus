@@ -42,13 +42,12 @@ impl TicketRepository {
                 Ok(tickets) => tickets,
                 Err(e) => {
                     eprintln!(
-                        "Warning: failed to load from cache: {}. Using file reads.",
-                        e
+                        "Warning: failed to load from cache: {e}. Using file reads."
                     );
                     let result = get_all_tickets_from_disk();
                     if result.has_failures() {
                         for (file, error) in &result.failed {
-                            eprintln!("Warning: failed to load {}: {}", file, error);
+                            eprintln!("Warning: failed to load {file}: {error}");
                         }
                     }
                     result.items
@@ -58,7 +57,7 @@ impl TicketRepository {
             let result = get_all_tickets_from_disk();
             if result.has_failures() {
                 for (file, error) in &result.failed {
-                    eprintln!("Warning: failed to load {}: {}", file, error);
+                    eprintln!("Warning: failed to load {file}: {error}");
                 }
             }
             result.items

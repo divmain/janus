@@ -10,5 +10,5 @@ pub async fn cmd_remote_browse(provider: Option<&str>) -> Result<()> {
     ))
     .fullscreen()
     .await
-    .map_err(|e| JanusError::Other(format!("TUI error: {}", e)))
+    .map_err(|e| JanusError::Other(format!("TUI error: {e}")))
 }

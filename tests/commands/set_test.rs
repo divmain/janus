@@ -38,8 +38,7 @@ fn test_set_priority_all_values() {
         assert_eq!(
             json["priority"],
             priority.parse::<u8>().unwrap(),
-            "Priority should be set to {}",
-            priority
+            "Priority should be set to {priority}"
         );
     }
 }
@@ -85,8 +84,7 @@ fn test_set_type_all_values() {
         let json: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(
             json["type"], *ticket_type,
-            "Type should be set to {}",
-            ticket_type
+            "Type should be set to {ticket_type}"
         );
     }
 }

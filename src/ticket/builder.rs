@@ -187,34 +187,34 @@ impl TicketBuilder {
         ];
 
         if let Some(ref uuid_val) = uuid {
-            frontmatter_lines.insert(2, format!("uuid: {}", uuid_val));
+            frontmatter_lines.insert(2, format!("uuid: {uuid_val}"));
         }
 
         if let Some(ref ext) = self.external_ref {
-            frontmatter_lines.push(format!("external-ref: {}", ext));
+            frontmatter_lines.push(format!("external-ref: {ext}"));
         }
         if let Some(ref parent) = self.parent {
-            frontmatter_lines.push(format!("parent: {}", parent));
+            frontmatter_lines.push(format!("parent: {parent}"));
         }
         if let Some(ref remote) = self.remote {
-            frontmatter_lines.push(format!("remote: {}", remote));
+            frontmatter_lines.push(format!("remote: {remote}"));
         }
         if let Some(ref spawned_from) = self.spawned_from {
-            frontmatter_lines.push(format!("spawned-from: {}", spawned_from));
+            frontmatter_lines.push(format!("spawned-from: {spawned_from}"));
         }
         if let Some(ref spawn_context) = self.spawn_context {
-            frontmatter_lines.push(format!("spawn-context: {}", spawn_context));
+            frontmatter_lines.push(format!("spawn-context: {spawn_context}"));
         }
         if let Some(depth) = self.depth {
-            frontmatter_lines.push(format!("depth: {}", depth));
+            frontmatter_lines.push(format!("depth: {depth}"));
         }
         if let Some(triaged) = self.triaged {
-            frontmatter_lines.push(format!("triaged: {}", triaged));
+            frontmatter_lines.push(format!("triaged: {triaged}"));
         } else {
             frontmatter_lines.push("triaged: false".to_string());
         }
         if let Some(size) = self.size {
-            frontmatter_lines.push(format!("size: {}", size));
+            frontmatter_lines.push(format!("size: {size}"));
         }
 
         frontmatter_lines.push("---".to_string());
@@ -224,20 +224,20 @@ impl TicketBuilder {
         let mut sections = vec![format!("# {}", self.title)];
 
         if let Some(ref desc) = self.description {
-            sections.push(format!("\n{}", desc));
+            sections.push(format!("\n{desc}"));
         }
         if let Some(ref design) = self.design {
-            sections.push(format!("\n## Design\n\n{}", design));
+            sections.push(format!("\n## Design\n\n{design}"));
         }
         if let Some(ref acceptance) = self.acceptance {
-            sections.push(format!("\n## Acceptance Criteria\n\n{}", acceptance));
+            sections.push(format!("\n## Acceptance Criteria\n\n{acceptance}"));
         }
 
         let body = sections.join("\n");
-        let content = format!("{}\n{}\n", frontmatter, body);
+        let content = format!("{frontmatter}\n{body}\n");
 
         let items_dir = tickets_items_dir();
-        let file_path = items_dir.join(format!("{}.md", id));
+        let file_path = items_dir.join(format!("{id}.md"));
 
         // Ensure parent directory exists
         crate::utils::ensure_parent_dir(&file_path)?;
@@ -407,7 +407,7 @@ mod tests {
         let (id, path) = result.unwrap();
         let content = fs::read_to_string(&path).unwrap();
 
-        assert!(content.contains(&format!("id: {}", id)));
+        assert!(content.contains(&format!("id: {id}")));
         assert!(content.contains("spawned-from: j-parent"));
         assert!(content.contains("spawn-context: Test context"));
         assert!(content.contains("depth: 1"));

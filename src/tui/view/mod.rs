@@ -109,13 +109,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 match TicketService::cycle_status(&ticket_id).await {
                     Ok(_) => {
                         toast_setter.set(Some(Toast::success(format!(
-                            "Status cycled for {}",
-                            ticket_id
+                            "Status cycled for {ticket_id}"
                         ))));
                         // Sync cache and reload tickets
                         if let Err(e) = crate::cache::sync_cache().await {
                             cache_error_modal_setter
-                                .open(CacheErrorModalData::new(format!("{}", e)));
+                                .open(CacheErrorModalData::new(format!("{e}")));
                             return;
                         }
                         let tickets =
@@ -124,7 +123,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     }
                     Err(e) => {
                         toast_setter
-                            .set(Some(Toast::error(format!("Failed to cycle status: {}", e))));
+                            .set(Some(Toast::error(format!("Failed to cycle status: {e}"))));
                     }
                 }
             }
@@ -144,15 +143,15 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 match TicketService::mark_triaged(&ticket_id, triaged).await {
                     Ok(_) => {
                         let msg = if triaged {
-                            format!("Marked {} as triaged", ticket_id)
+                            format!("Marked {ticket_id} as triaged")
                         } else {
-                            format!("Unmarked {} as triaged", ticket_id)
+                            format!("Unmarked {ticket_id} as triaged")
                         };
                         toast_setter.set(Some(Toast::success(msg)));
                         // Sync cache and reload tickets
                         if let Err(e) = crate::cache::sync_cache().await {
                             cache_error_modal_setter
-                                .open(CacheErrorModalData::new(format!("{}", e)));
+                                .open(CacheErrorModalData::new(format!("{e}")));
                             return;
                         }
                         let tickets =
@@ -161,8 +160,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     }
                     Err(e) => {
                         toast_setter.set(Some(Toast::error(format!(
-                            "Failed to mark as triaged: {}",
-                            e
+                            "Failed to mark as triaged: {e}"
                         ))));
                     }
                 }
@@ -184,11 +182,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     .await
                 {
                     Ok(_) => {
-                        toast_setter.set(Some(Toast::success(format!("Cancelled {}", ticket_id))));
+                        toast_setter.set(Some(Toast::success(format!("Cancelled {ticket_id}"))));
                         // Sync cache and reload tickets
                         if let Err(e) = crate::cache::sync_cache().await {
                             cache_error_modal_setter
-                                .open(CacheErrorModalData::new(format!("{}", e)));
+                                .open(CacheErrorModalData::new(format!("{e}")));
                             return;
                         }
                         let tickets =
@@ -197,8 +195,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     }
                     Err(e) => {
                         toast_setter.set(Some(Toast::error(format!(
-                            "Failed to cancel ticket: {}",
-                            e
+                            "Failed to cancel ticket: {e}"
                         ))));
                     }
                 }
@@ -219,11 +216,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 match TicketService::add_note(&ticket_id, &note).await {
                     Ok(_) => {
                         toast_setter
-                            .set(Some(Toast::success(format!("Added note to {}", ticket_id))));
+                            .set(Some(Toast::success(format!("Added note to {ticket_id}"))));
                         // Sync cache and reload tickets
                         if let Err(e) = crate::cache::sync_cache().await {
                             cache_error_modal_setter
-                                .open(CacheErrorModalData::new(format!("{}", e)));
+                                .open(CacheErrorModalData::new(format!("{e}")));
                             return;
                         }
                         let tickets =
@@ -231,7 +228,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         all_tickets_setter.set(tickets);
                     }
                     Err(e) => {
-                        toast_setter.set(Some(Toast::error(format!("Failed to add note: {}", e))));
+                        toast_setter.set(Some(Toast::error(format!("Failed to add note: {e}"))));
                     }
                 }
             }
@@ -362,7 +359,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         && let Some(error) = search_state.take_semantic_error()
     {
         // Provide user-friendly error message
-        let user_message = format!("Semantic search failed: {}", error);
+        let user_message = format!("Semantic search failed: {error}");
         toast.set(Some(Toast::error(user_message)));
     }
 

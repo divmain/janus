@@ -17,7 +17,7 @@ fn compute_depth(spawned_from: Option<&str>) -> Option<u32> {
     validate_filename(spawned_from_id).ok()?;
 
     // Try to find and read the parent ticket from disk
-    let parent_path = tickets_items_dir().join(format!("{}.md", spawned_from_id));
+    let parent_path = tickets_items_dir().join(format!("{spawned_from_id}.md"));
 
     if let Ok(content) = std::fs::read_to_string(&parent_path)
         && let Ok(parent_meta) = parse_ticket(&content)

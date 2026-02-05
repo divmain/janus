@@ -13,5 +13,5 @@ pub async fn cmd_view() -> Result<()> {
     element!(IssueBrowser)
         .fullscreen()
         .await
-        .map_err(|e| JanusError::Other(format!("TUI error: {}", e)))
+        .map_err(|e| JanusError::Other(format!("TUI error: {e}")))
 }

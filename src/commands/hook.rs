@@ -79,7 +79,7 @@ pub fn cmd_hook_list(output_json: bool) -> Result<()> {
         } else {
             "disabled".red().to_string()
         };
-        println!("Hooks: {}", status);
+        println!("Hooks: {status}");
         println!("Timeout: {}s", config.hooks.timeout);
         println!();
 
@@ -110,7 +110,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
     let client = reqwest::Client::new();
 
     // Fetch the recipe directory contents
-    let recipe_url = format!("{}/{}", GITHUB_API_BASE, recipe);
+    let recipe_url = format!("{GITHUB_API_BASE}/{recipe}");
     let response = client
         .get(&recipe_url)
         .header("User-Agent", "janus-cli")
@@ -159,8 +159,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
         serde_yaml_ng::from_str(content)?
     } else {
         return Err(JanusError::HookFetchFailed(format!(
-            "recipe '{}' is missing config.yaml",
-            recipe
+            "recipe '{recipe}' is missing config.yaml"
         )));
     };
 
@@ -198,7 +197,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
                         return Ok(());
                     }
                     _ => {
-                        println!("  Skipping {}", relative_path);
+                        println!("  Skipping {relative_path}");
                         files_skipped.push(relative_path.clone());
                     }
                 }
@@ -302,7 +301,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
             "skipped_files": files_skipped,
             "config_updated": config_updated,
         }))
-        .with_text(format!("Recipe '{}' installed successfully", recipe))
+        .with_text(format!("Recipe '{recipe}' installed successfully"))
         .print(output_json)?;
     } else {
         println!();
@@ -327,8 +326,7 @@ fn fetch_files_recursive<'a>(
 ) -> RecursiveFetchFuture<'a> {
     Box::pin(async move {
         let url = format!(
-            "https://api.github.com/repos/divmain/janus/contents/{}",
-            path
+            "https://api.github.com/repos/divmain/janus/contents/{path}"
         );
         let response = client
             .get(&url)
@@ -394,8 +392,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
         .get_script(hook_event.as_str())
         .ok_or_else(|| {
             JanusError::Other(format!(
-                "No hook configured for event '{}'. Configure it in .janus/config.yaml",
-                event
+                "No hook configured for event '{event}'. Configure it in .janus/config.yaml"
             ))
         })?;
 
@@ -436,8 +433,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
                 .with_file_path(&plan.file_path);
         } else {
             return Err(JanusError::Other(format!(
-                "Could not find ticket or plan with ID '{}'",
-                item_id
+                "Could not find ticket or plan with ID '{item_id}'"
             )));
         }
     }
@@ -623,14 +619,14 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
                         error
                     );
                 } else {
-                    println!("{}", line);
+                    println!("{line}");
                 }
             } else {
-                println!("{}", line);
+                println!("{line}");
             }
         }
         println!();
-        println!("{} entries shown", count);
+        println!("{count} entries shown");
         if lines.is_some() {
             println!(
                 "Log file: {}",

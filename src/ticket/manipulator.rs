@@ -26,16 +26,16 @@ pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<Strin
     } else {
         serde_yaml_ng::to_string(&Value::String(value.to_string()))
             .map_err(|e| {
-                crate::error::JanusError::InvalidFormat(format!("Failed to serialize value: {}", e))
+                crate::error::JanusError::InvalidFormat(format!("Failed to serialize value: {e}"))
             })?
             .trim()
             .to_string()
     };
 
-    let yaml_line = format!("{}: {}", field, serialized_value);
+    let yaml_line = format!("{field}: {serialized_value}");
 
     for line in frontmatter_lines {
-        if line.starts_with(&format!("{}:", field)) {
+        if line.starts_with(&format!("{field}:")) {
             updated_lines.push(yaml_line.clone());
             field_found = true;
         } else {
@@ -49,7 +49,7 @@ pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<Strin
 
     let updated_frontmatter = updated_lines.join("\n");
 
-    Ok(format!("---\n{}\n---\n{}", updated_frontmatter, body))
+    Ok(format!("---\n{updated_frontmatter}\n---\n{body}"))
 }
 
 /// Remove a field from the YAML frontmatter of a ticket file.
@@ -59,12 +59,12 @@ pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
 
     let updated_frontmatter: Vec<&str> = frontmatter
         .lines()
-        .filter(|line| !line.starts_with(&format!("{}:", field)))
+        .filter(|line| !line.starts_with(&format!("{field}:")))
         .collect();
 
     let updated_frontmatter = updated_frontmatter.join("\n");
 
-    Ok(format!("---\n{}\n---\n{}", updated_frontmatter, body))
+    Ok(format!("---\n{updated_frontmatter}\n---\n{body}"))
 }
 
 /// Extract the body content from a ticket file (everything after the title).
@@ -101,7 +101,7 @@ pub fn extract_field_value(raw_content: &str, field: &str) -> Result<Option<Stri
                 "Warning: Failed to parse YAML as structured data, falling back to line-based parsing"
             );
             for line in frontmatter.lines() {
-                if let Some(rest) = line.strip_prefix(&format!("{}:", field)) {
+                if let Some(rest) = line.strip_prefix(&format!("{field}:")) {
                     return Ok(Some(rest.trim().to_string()));
                 }
             }
@@ -113,7 +113,7 @@ pub fn extract_field_value(raw_content: &str, field: &str) -> Result<Option<Stri
 /// Update the title (H1 heading) in a ticket file.
 pub fn update_title(raw_content: &str, new_title: &str) -> String {
     TITLE_RE
-        .replace(raw_content, format!("# {}", new_title))
+        .replace(raw_content, format!("# {new_title}"))
         .into_owned()
 }
 

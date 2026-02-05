@@ -37,7 +37,7 @@ pub fn cmd_doctor(output_json: bool) -> Result<(bool, Vec<(String, String)>)> {
             })).collect::<Vec<_>>(),
         });
         let _ = CommandOutput::new(json_output.clone())
-            .with_text(format!("{}", json_output))
+            .with_text(format!("{json_output}"))
             .print(true);
     } else {
         println!("\n{}", "Doctor - Ticket Health Check".bold());

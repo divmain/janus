@@ -11,7 +11,7 @@ pub fn format_deps(deps: &[String]) -> String {
     if deps_str.is_empty() {
         " <- []".to_string()
     } else {
-        format!(" <- [{}]", deps_str)
+        format!(" <- [{deps_str}]")
     }
 }
 

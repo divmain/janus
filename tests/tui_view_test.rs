@@ -260,7 +260,7 @@ fn test_view_model_pane_focus_states() {
 fn test_view_model_scroll_state() {
     let state = ViewState {
         tickets: (0..30)
-            .map(|i| mock_ticket(&format!("j-{}", i), TicketStatus::New))
+            .map(|i| mock_ticket(&format!("j-{i}"), TicketStatus::New))
             .collect(),
         selected_index: 15,
         scroll_offset: 10,
@@ -288,7 +288,7 @@ fn test_view_model_scroll_state() {
 fn test_navigation_sequence() {
     let state = ViewState {
         tickets: (0..10)
-            .map(|i| mock_ticket(&format!("j-{}", i), TicketStatus::New))
+            .map(|i| mock_ticket(&format!("j-{i}"), TicketStatus::New))
             .collect(),
         init_result: InitResult::Ok,
         ..Default::default()
@@ -309,7 +309,7 @@ fn test_navigation_sequence() {
 fn test_navigation_with_scroll_adjustment() {
     let state = ViewState {
         tickets: (0..30)
-            .map(|i| mock_ticket(&format!("j-{}", i), TicketStatus::New))
+            .map(|i| mock_ticket(&format!("j-{i}"), TicketStatus::New))
             .collect(),
         init_result: InitResult::Ok,
         ..Default::default()
@@ -351,7 +351,7 @@ fn test_pane_cycle_sequence() {
 fn test_search_flow() {
     let state = ViewState {
         tickets: (0..10)
-            .map(|i| mock_ticket(&format!("j-{}", i), TicketStatus::New))
+            .map(|i| mock_ticket(&format!("j-{i}"), TicketStatus::New))
             .collect(),
         selected_index: 5,
         init_result: InitResult::Ok,
@@ -439,7 +439,7 @@ fn test_vertical_navigation_bounds() {
 fn test_page_navigation() {
     let state = ViewState {
         tickets: (0..50)
-            .map(|i| mock_ticket(&format!("j-{}", i), TicketStatus::New))
+            .map(|i| mock_ticket(&format!("j-{i}"), TicketStatus::New))
             .collect(),
         selected_index: 25,
         init_result: InitResult::Ok,
@@ -709,7 +709,7 @@ fn test_complex_user_session() {
     // Simulate a realistic user session
     let state = ViewState {
         tickets: (0..20)
-            .map(|i| mock_ticket(&format!("j-{}", i), TicketStatus::New))
+            .map(|i| mock_ticket(&format!("j-{i}"), TicketStatus::New))
             .collect(),
         init_result: InitResult::Ok,
         ..Default::default()

@@ -30,7 +30,7 @@ pub fn generate_dot(
             .map(|t| truncate_title(t, 30))
             .unwrap_or_default();
         let label = format!("{}\\n{}", escape_dot(id), escape_dot(&title));
-        lines.push(format!("  \"{}\" [label=\"{}\"];", id, label));
+        lines.push(format!("  \"{id}\" [label=\"{label}\"];"));
     }
 
     if !edges.is_empty() {
@@ -82,7 +82,7 @@ pub fn generate_mermaid(
             .unwrap_or_default();
         let safe_id = id.replace('-', "_");
         let label = format!("{}<br/>{}", escape_mermaid(id), escape_mermaid(&title));
-        lines.push(format!("  {}[\"{}\"]", safe_id, label));
+        lines.push(format!("  {safe_id}[\"{label}\"]"));
     }
 
     if !edges.is_empty() {
@@ -96,10 +96,10 @@ pub fn generate_mermaid(
             let to_safe = edge.to.replace('-', "_");
             match edge.edge_type {
                 EdgeType::Blocks => {
-                    lines.push(format!("  {} -->|blocks| {}", from_safe, to_safe));
+                    lines.push(format!("  {from_safe} -->|blocks| {to_safe}"));
                 }
                 EdgeType::Spawned => {
-                    lines.push(format!("  {} -.->|spawned| {}", from_safe, to_safe));
+                    lines.push(format!("  {from_safe} -.->|spawned| {to_safe}"));
                 }
             }
         }

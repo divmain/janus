@@ -34,7 +34,7 @@ impl GitHubProvider {
         let client = Octocrab::builder()
             .personal_token(token)
             .build()
-            .map_err(|e| JanusError::Api(format!("Failed to create GitHub client: {}", e)))?;
+            .map_err(|e| JanusError::Api(format!("Failed to create GitHub client: {e}")))?;
 
         let (default_owner, default_repo) = if let Some(ref default) = config.default_remote {
             if default.platform == super::Platform::GitHub {
@@ -65,7 +65,7 @@ impl GitHubProvider {
         let client = Octocrab::builder()
             .personal_token(token.to_string())
             .build()
-            .map_err(|e| JanusError::Api(format!("Failed to create GitHub client: {}", e)))?;
+            .map_err(|e| JanusError::Api(format!("Failed to create GitHub client: {e}")))?;
 
         Ok(Self {
             client,
@@ -199,12 +199,12 @@ impl GitHubProvider {
                 {
                     message.push_str("\n\nErrors:");
                     for error in errors {
-                        message.push_str(&format!("\n- {}", error));
+                        message.push_str(&format!("\n- {error}"));
                     }
                 }
 
                 if let Some(doc_url) = &source.documentation_url {
-                    message.push_str(&format!("\n\nDocumentation URL: {}", doc_url));
+                    message.push_str(&format!("\n\nDocumentation URL: {doc_url}"));
                 }
 
                 if let Some((_, _)) = error.as_http_error() {
@@ -214,13 +214,13 @@ impl GitHubProvider {
                 }
             }
             octocrab::Error::Http { source, .. } => {
-                JanusError::Api(format!("HTTP error: {}", source))
+                JanusError::Api(format!("HTTP error: {source}"))
             }
             octocrab::Error::Service { source, .. } => {
-                JanusError::Api(format!("Service error: {}", source))
+                JanusError::Api(format!("Service error: {source}"))
             }
             octocrab::Error::Serde { source, .. } => {
-                JanusError::Api(format!("Serialization error: {}", source))
+                JanusError::Api(format!("Serialization error: {source}"))
             }
             octocrab::Error::Json { source, .. } => JanusError::Api(format!(
                 "JSON error in {}: {}",
@@ -228,13 +228,13 @@ impl GitHubProvider {
                 source.inner()
             )),
             octocrab::Error::JWT { source, .. } => {
-                JanusError::Api(format!("JWT error: {}", source))
+                JanusError::Api(format!("JWT error: {source}"))
             }
             _ => {
                 if let Some((status, _)) = error.as_http_error() {
                     JanusError::Api(format!("GitHub API error ({}): {}", status.as_u16(), error))
                 } else {
-                    JanusError::Api(format!("GitHub API error: {}", error))
+                    JanusError::Api(format!("GitHub API error: {error}"))
                 }
             }
         }
@@ -442,7 +442,7 @@ impl RemoteProvider for GitHubProvider {
             let client = self.client.clone();
             let owner = owner.to_string();
             let repo = repo.to_string();
-            let query_str = format!("repo:{}/{} is:issue {}", owner, repo, text);
+            let query_str = format!("repo:{owner}/{repo} is:issue {text}");
 
             let result = super::execute_with_retry(|| async {
                 client

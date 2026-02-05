@@ -15,7 +15,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
             let tickets = match cache.get_all_tickets().await {
                 Ok(tickets) => tickets,
                 Err(e) => {
-                    eprintln!("Warning: failed to read tickets from cache: {}", e);
+                    eprintln!("Warning: failed to read tickets from cache: {e}");
                     eprintln!("Falling back to empty ticket list for status display.");
                     Vec::new()
                 }
@@ -45,7 +45,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                     Some((with_embedding, total, percentage, model_version_ok))
                 }
                 Err(e) => {
-                    eprintln!("Warning: failed to get embedding coverage: {}", e);
+                    eprintln!("Warning: failed to get embedding coverage: {e}");
                     None
                 }
             };
@@ -53,7 +53,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
             let text = if let Ok(meta) = fs::metadata(&db_path) {
                 let size = meta.len();
                 let modified_text = if let Ok(modified) = meta.modified() {
-                    format!("  Last modified: {:?}", modified)
+                    format!("  Last modified: {modified:?}")
                 } else {
                     String::new()
                 };
@@ -71,22 +71,20 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 if let Some((with_embedding, total, percentage, _model_version_ok)) = embedding_info
                 {
                     text.push_str(&format!(
-                        "\n\nEmbedding Coverage: {}/{} ({}%)\n",
-                        with_embedding, total, percentage
+                        "\n\nEmbedding Coverage: {with_embedding}/{total} ({percentage}%)\n"
                     ));
-                    text.push_str(&format!("Embedding Model: {}\n", EMBEDDING_MODEL_NAME));
+                    text.push_str(&format!("Embedding Model: {EMBEDDING_MODEL_NAME}\n"));
 
                     // Get stored model version from cache
                     let stored_model = cache.get_meta("embedding_model").await.ok().flatten();
 
                     match stored_model {
                         Some(model) if model == EMBEDDING_MODEL_NAME => {
-                            text.push_str(&format!("Model Version: {} ✓", model));
+                            text.push_str(&format!("Model Version: {model} ✓"));
                         }
                         Some(model) => {
                             text.push_str(&format!(
-                                "Model Version: {} ⚠ (current: {})\n",
-                                model, EMBEDDING_MODEL_NAME
+                                "Model Version: {model} ⚠ (current: {EMBEDDING_MODEL_NAME})\n"
                             ));
                             text.push_str("  Run 'janus cache rebuild' to update embeddings");
                         }
@@ -109,17 +107,15 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 if let Some((with_embedding, total, percentage, model_version_ok)) = embedding_info
                 {
                     text.push_str(&format!(
-                        "\n\nEmbedding Coverage: {}/{} ({}%)\n",
-                        with_embedding, total, percentage
+                        "\n\nEmbedding Coverage: {with_embedding}/{total} ({percentage}%)\n"
                     ));
-                    text.push_str(&format!("Embedding Model: {}\n", EMBEDDING_MODEL_NAME));
+                    text.push_str(&format!("Embedding Model: {EMBEDDING_MODEL_NAME}\n"));
 
                     if model_version_ok {
                         text.push_str("Model Version: ✓");
                     } else {
                         text.push_str(&format!(
-                            "Model Version: ⚠ (expected: {})\n",
-                            EMBEDDING_MODEL_NAME
+                            "Model Version: ⚠ (expected: {EMBEDDING_MODEL_NAME})\n"
                         ));
                         text.push_str("  Run 'janus cache rebuild' to update embeddings");
                     }
@@ -168,8 +164,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
                 )
             } else {
                 format!(
-                    "Cache not available: {}\nRun 'janus cache rebuild' to create a cache.",
-                    e
+                    "Cache not available: {e}\nRun 'janus cache rebuild' to create a cache."
                 )
             };
 
@@ -268,7 +263,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 return Err(e.into());
             }
             if !output_json {
-                println!("Warning: failed to delete existing cache: {}", e);
+                println!("Warning: failed to delete existing cache: {e}");
                 println!("Continuing with rebuild...");
             }
         } else if !output_json {
@@ -325,8 +320,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
                     CommandOutput::new(output)
                         .with_text(format!(
-                            "Cache rebuilt successfully:\n  Tickets cached: {}\n  Sync time: {:?}\n  Total time: {:?}",
-                            ticket_count, sync_duration, total_duration
+                            "Cache rebuilt successfully:\n  Tickets cached: {ticket_count}\n  Sync time: {sync_duration:?}\n  Total time: {total_duration:?}"
                         ))
                         .print(output_json)?;
 
@@ -347,7 +341,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 }
                 Err(e) => {
                     if !output_json {
-                        println!("Error: cache sync failed during rebuild: {}", e);
+                        println!("Error: cache sync failed during rebuild: {e}");
 
                         if is_permission_error(&e) {
                             println!(
@@ -366,7 +360,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
         }
         Err(e) => {
             if !output_json {
-                println!("Error: failed to initialize cache during rebuild: {}", e);
+                println!("Error: failed to initialize cache during rebuild: {e}");
 
                 if is_permission_error(&e) {
                     println!("\nPermission denied when accessing .janus directory.");

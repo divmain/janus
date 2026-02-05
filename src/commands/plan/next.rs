@@ -210,7 +210,7 @@ mod tests {
         TicketMetadata {
             id: Some(id.to_string()),
             status: Some(status),
-            title: Some(format!("Title for {}", id)),
+            title: Some(format!("Title for {id}")),
             ..Default::default()
         }
     }

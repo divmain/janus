@@ -18,8 +18,7 @@ impl std::str::FromStr for GraphFormat {
             "dot" => Ok(GraphFormat::Dot),
             "mermaid" => Ok(GraphFormat::Mermaid),
             _ => Err(JanusError::Other(format!(
-                "Invalid graph format '{}'. Must be 'dot' or 'mermaid'",
-                s
+                "Invalid graph format '{s}'. Must be 'dot' or 'mermaid'"
             ))),
         }
     }

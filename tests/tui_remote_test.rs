@@ -48,10 +48,10 @@ fn state_with_data() -> RemoteState {
 
 fn state_with_many_items(local_count: usize, remote_count: usize) -> RemoteState {
     let local_tickets: Vec<_> = (0..local_count)
-        .map(|i| mock_ticket(&format!("j-{}", i), TicketStatus::New))
+        .map(|i| mock_ticket(&format!("j-{i}"), TicketStatus::New))
         .collect();
     let remote_issues: Vec<_> = (0..remote_count)
-        .map(|i| mock_remote_issue(&format!("GH-{}", i), RemoteStatus::Open))
+        .map(|i| mock_remote_issue(&format!("GH-{i}"), RemoteStatus::Open))
         .collect();
     RemoteState {
         local_tickets,

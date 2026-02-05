@@ -376,7 +376,7 @@ mod tests {
         TicketMetadata {
             id: Some(id.to_string()),
             uuid: None,
-            title: Some(format!("Ticket {}", id)),
+            title: Some(format!("Ticket {id}")),
             status: Some(status),
             deps: deps.iter().map(|s| s.to_string()).collect(),
             links: Vec::new(),
@@ -638,9 +638,9 @@ mod tests {
         let mut map = HashMap::new();
         for i in 0..10 {
             map.insert(
-                format!("j-{}", i),
+                format!("j-{i}"),
                 create_test_ticket(
-                    &format!("j-{}", i),
+                    &format!("j-{i}"),
                     TicketStatus::New,
                     2,
                     vec![],

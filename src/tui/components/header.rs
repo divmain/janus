@@ -39,13 +39,13 @@ pub fn Header<'a>(props: &mut HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
     // Build title
     let title = if let (Some(title), Some(provider)) = (props.title, props.provider.as_ref()) {
         // Remote screen: "janus remote [Provider]"
-        format!("{} [{}]", title, provider)
+        format!("{title} [{provider}]")
     } else if let Some(title) = props.title {
         // Custom title
         title.to_string()
     } else if let Some(provider) = props.provider.as_ref() {
         // Just provider
-        format!("Janus [{}]", provider)
+        format!("Janus [{provider}]")
     } else {
         // Default
         "Janus".to_string()
@@ -53,14 +53,14 @@ pub fn Header<'a>(props: &mut HeaderProps<'a>) -> impl Into<AnyElement<'a>> {
 
     // Build prefix + title
     let title_display = if let Some(prefix) = props.prefix {
-        format!("{} {}", prefix, title)
+        format!("{prefix} {title}")
     } else {
         title
     };
 
     // Build the left side: title + optional subtitle
     let left_text = match props.subtitle {
-        Some(sub) => format!("{} - {}", title_display, sub),
+        Some(sub) => format!("{title_display} - {sub}"),
         None => title_display,
     };
 

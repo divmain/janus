@@ -194,8 +194,7 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
         return Err(JanusError::InvalidPrefix(
             prefix.to_string(),
             format!(
-                "Prefix '{}' is reserved and cannot be used for tickets",
-                prefix
+                "Prefix '{prefix}' is reserved and cannot be used for tickets"
             ),
         ));
     }
@@ -209,8 +208,7 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
         JanusError::ValidationInvalidCharacters(_, value) => JanusError::InvalidPrefix(
             prefix.to_string(),
             format!(
-                "Prefix '{}' contains invalid characters. Use only letters, numbers, hyphens, and underscores",
-                value
+                "Prefix '{value}' contains invalid characters. Use only letters, numbers, hyphens, and underscores"
             ),
         ),
         other => other,
@@ -304,16 +302,14 @@ pub fn validate_filename(name: &str) -> Result<()> {
         // Unix invalid characters (null and /)
         if trimmed.contains('\0') || trimmed.contains('/') {
             return Err(JanusError::InvalidFormat(format!(
-                "Filename '{}' contains invalid characters",
-                trimmed
+                "Filename '{trimmed}' contains invalid characters"
             )));
         }
 
         // Unix filename length limit (usually 255 bytes)
         if trimmed.len() > 255 {
             return Err(JanusError::InvalidFormat(format!(
-                "Filename '{}' exceeds maximum length (255 characters)",
-                trimmed
+                "Filename '{trimmed}' exceeds maximum length (255 characters)"
             )));
         }
     }
@@ -330,8 +326,8 @@ pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
     for length in 4..=8 {
         for _ in 0..RETRIES_PER_LENGTH {
             let hash = generate_hash(length);
-            let candidate = format!("{}-{}", prefix, hash);
-            let filename = format!("{}.md", candidate);
+            let candidate = format!("{prefix}-{hash}");
+            let filename = format!("{candidate}.md");
 
             // Validate the ID is file-safe before checking for existence
             if validate_filename(&candidate).is_ok() && !tickets_dir.join(&filename).exists() {
@@ -341,8 +337,7 @@ pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
     }
 
     panic!(
-        "Failed to generate unique ID after trying hash lengths 4-8 with {} retries each",
-        RETRIES_PER_LENGTH
+        "Failed to generate unique ID after trying hash lengths 4-8 with {RETRIES_PER_LENGTH} retries each"
     );
 }
 
@@ -389,7 +384,7 @@ pub fn truncate_string(s: &str, max_len: usize) -> String {
         s.chars().take(max_len).collect()
     } else {
         let truncated: String = s.chars().take(max_len.saturating_sub(3)).collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }
 
@@ -505,11 +500,11 @@ fn add_ellipsis_if_truncated(mut lines: Vec<String>, truncated: bool, width: usi
 
         if last_len + 3 <= width {
             // Room for "..."
-            lines[last_idx] = format!("{}...", last_line);
+            lines[last_idx] = format!("{last_line}...");
         } else if last_len >= 3 {
             // Need to truncate the last line to fit "..."
             let truncated: String = last_line.chars().take(width.saturating_sub(3)).collect();
-            lines[last_idx] = format!("{}...", truncated);
+            lines[last_idx] = format!("{truncated}...");
         }
     }
     lines
@@ -539,7 +534,7 @@ pub fn open_in_editor(path: &Path) -> io::Result<()> {
 
     let status = Command::new("sh")
         .arg("-c")
-        .arg(format!("{} \"$1\"", editor))
+        .arg(format!("{editor} \"$1\""))
         .arg("--")
         .arg(path)
         .status()?;
@@ -713,12 +708,11 @@ mod tests {
 
         for prefix in invalid_prefixes {
             let result = generate_id_with_custom_prefix(Some(prefix));
-            assert!(result.is_err(), "Prefix '{}' should be rejected", prefix);
+            assert!(result.is_err(), "Prefix '{prefix}' should be rejected");
             let err = result.unwrap_err();
             assert!(
                 err.to_string().contains("invalid characters"),
-                "Error for '{}' should mention invalid characters",
-                prefix
+                "Error for '{prefix}' should mention invalid characters"
             );
         }
     }
@@ -799,8 +793,7 @@ mod tests {
         for name in valid_names {
             assert!(
                 validate_filename(name).is_ok(),
-                "Filename '{}' should be valid",
-                name
+                "Filename '{name}' should be valid"
             );
         }
     }
@@ -826,8 +819,7 @@ mod tests {
             let result = validate_filename(name);
             assert!(
                 result.is_err(),
-                "Filename '{}' should be rejected due to path traversal",
-                name
+                "Filename '{name}' should be rejected due to path traversal"
             );
             assert!(result.unwrap_err().to_string().contains("path traversal"));
         }
@@ -915,8 +907,7 @@ mod tests {
             let result = validate_filename(name);
             assert!(
                 result.is_err(),
-                "Filename '{}' should be rejected on Unix",
-                name
+                "Filename '{name}' should be rejected on Unix"
             );
         }
     }
@@ -935,16 +926,13 @@ mod tests {
             let id = generate_unique_id_with_prefix(prefix);
             assert!(
                 validate_filename(&id).is_ok(),
-                "Generated ID '{}' should be file-safe",
-                id
+                "Generated ID '{id}' should be file-safe"
             );
             assert!(
                 id.starts_with(prefix),
-                "ID '{}' should start with prefix '{}'",
-                id,
-                prefix
+                "ID '{id}' should start with prefix '{prefix}'"
             );
-            assert!(id.contains('-'), "ID '{}' should contain a hyphen", id);
+            assert!(id.contains('-'), "ID '{id}' should contain a hyphen");
         }
     }
 

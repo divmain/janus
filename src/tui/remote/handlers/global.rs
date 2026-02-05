@@ -112,7 +112,7 @@ fn handle_switch_provider(ctx: &mut HandlerContext<'_>) {
     ctx.handlers.fetch_handler.clone()((new_provider, current_query));
     ctx.modals
         .toast
-        .set(Some(Toast::info(format!("Switched to {}", new_provider))));
+        .set(Some(Toast::info(format!("Switched to {new_provider}"))));
 }
 
 fn handle_refresh(ctx: &mut HandlerContext<'_>) {

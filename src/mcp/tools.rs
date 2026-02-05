@@ -294,13 +294,13 @@ impl JanusTools {
 
         if let Some(ref t) = request.ticket_type {
             // Validate ticket type
-            TicketType::from_str(t).map_err(|_| format!("Invalid ticket type: {}", t))?;
+            TicketType::from_str(t).map_err(|_| format!("Invalid ticket type: {t}"))?;
             builder = builder.ticket_type(t);
         }
 
         if let Some(p) = request.priority {
             if p > 4 {
-                return Err(format!("Priority must be 0-4, got {}", p));
+                return Err(format!("Priority must be 0-4, got {p}"));
             }
             builder = builder.priority(p.to_string());
         }
@@ -309,8 +309,7 @@ impl JanusTools {
         let size = if let Some(ref s) = request.size {
             Some(TicketSize::from_str(s).map_err(|_| {
                 format!(
-                    "Invalid size: {}. Valid values: xsmall/xs, small/s, medium/m, large/l, xlarge/xl",
-                    s
+                    "Invalid size: {s}. Valid values: xsmall/xs, small/s, medium/m, large/l, xlarge/xl"
                 )
             })?)
         } else {
@@ -355,7 +354,7 @@ impl JanusTools {
         // Find the parent ticket to get its depth
         let parent = Ticket::find(&request.parent_id)
             .await
-            .map_err(|e| format!("Parent ticket not found: {}", e))?;
+            .map_err(|e| format!("Parent ticket not found: {e}"))?;
         let parent_metadata = parent.read().map_err(|e| e.to_string())?;
 
         // Calculate new depth
@@ -406,7 +405,7 @@ impl JanusTools {
     ) -> Result<String, String> {
         let ticket = Ticket::find(&request.id)
             .await
-            .map_err(|e| format!("Ticket not found: {}", e))?;
+            .map_err(|e| format!("Ticket not found: {e}"))?;
         let metadata = ticket.read().map_err(|e| e.to_string())?;
 
         // Validate and parse status
@@ -467,7 +466,7 @@ impl JanusTools {
 
         let ticket = Ticket::find(&request.id)
             .await
-            .map_err(|e| format!("Ticket not found: {}", e))?;
+            .map_err(|e| format!("Ticket not found: {e}"))?;
 
         let mut content = fs::read_to_string(&ticket.file_path).map_err(|e| e.to_string())?;
 
@@ -513,13 +512,13 @@ impl JanusTools {
     ) -> Result<String, String> {
         let (tickets, ticket_map) = get_all_tickets_with_map()
             .await
-            .map_err(|e| format!("failed to load tickets: {}", e))?;
+            .map_err(|e| format!("failed to load tickets: {e}"))?;
 
         // Resolve spawned_from partial ID if provided
         let resolved_spawned_from = if let Some(ref partial_id) = request.spawned_from {
             let ticket = Ticket::find(partial_id)
                 .await
-                .map_err(|e| format!("spawned_from ticket not found: {}", e))?;
+                .map_err(|e| format!("spawned_from ticket not found: {e}"))?;
             Some(ticket.id)
         } else {
             None
@@ -666,12 +665,12 @@ impl JanusTools {
     ) -> Result<String, String> {
         let ticket = Ticket::find(&request.id)
             .await
-            .map_err(|e| format!("Ticket not found: {}", e))?;
+            .map_err(|e| format!("Ticket not found: {e}"))?;
         let content = ticket.read_content().map_err(|e| e.to_string())?;
         let metadata = ticket.read().map_err(|e| e.to_string())?;
         let ticket_map = build_ticket_map()
             .await
-            .map_err(|e| format!("failed to load tickets: {}", e))?;
+            .map_err(|e| format!("failed to load tickets: {e}"))?;
 
         // Find blockers and blocking tickets
         let mut blockers: Vec<&TicketMetadata> = Vec::new();
@@ -719,15 +718,15 @@ impl JanusTools {
     ) -> Result<String, String> {
         let ticket = Ticket::find(&request.ticket_id)
             .await
-            .map_err(|e| format!("Ticket not found: {}", e))?;
+            .map_err(|e| format!("Ticket not found: {e}"))?;
         let dep_ticket = Ticket::find(&request.depends_on_id)
             .await
-            .map_err(|e| format!("Dependency ticket not found: {}", e))?;
+            .map_err(|e| format!("Dependency ticket not found: {e}"))?;
 
         // Check for circular dependencies
         let ticket_map = build_ticket_map()
             .await
-            .map_err(|e| format!("failed to load tickets: {}", e))?;
+            .map_err(|e| format!("failed to load tickets: {e}"))?;
         check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)?;
 
         let added = ticket
@@ -771,7 +770,7 @@ impl JanusTools {
     ) -> Result<String, String> {
         let ticket = Ticket::find(&request.ticket_id)
             .await
-            .map_err(|e| format!("Ticket not found: {}", e))?;
+            .map_err(|e| format!("Ticket not found: {e}"))?;
 
         let removed = ticket
             .remove_from_array_field("deps", &request.depends_on_id)
@@ -813,11 +812,11 @@ impl JanusTools {
         // Validate ticket exists
         let ticket = Ticket::find(&request.ticket_id)
             .await
-            .map_err(|e| format!("Ticket not found: {}", e))?;
+            .map_err(|e| format!("Ticket not found: {e}"))?;
 
         let plan = Plan::find(&request.plan_id)
             .await
-            .map_err(|e| format!("Plan not found: {}", e))?;
+            .map_err(|e| format!("Plan not found: {e}"))?;
         let mut metadata = plan.read().map_err(|e| e.to_string())?;
 
         // Check if ticket is already in plan
@@ -837,7 +836,7 @@ impl JanusTools {
 
             let phase_obj = metadata
                 .find_phase_mut(phase_identifier)
-                .ok_or_else(|| format!("Phase '{}' not found", phase_identifier))?;
+                .ok_or_else(|| format!("Phase '{phase_identifier}' not found"))?;
 
             added_to_phase = Some(phase_obj.name.clone());
             phase_obj.add_ticket(&ticket.id);
@@ -893,11 +892,11 @@ impl JanusTools {
     ) -> Result<String, String> {
         let plan = Plan::find(&request.plan_id)
             .await
-            .map_err(|e| format!("Plan not found: {}", e))?;
+            .map_err(|e| format!("Plan not found: {e}"))?;
         let metadata = plan.read().map_err(|e| e.to_string())?;
         let ticket_map = build_ticket_map()
             .await
-            .map_err(|e| format!("failed to load tickets: {}", e))?;
+            .map_err(|e| format!("failed to load tickets: {e}"))?;
 
         let plan_status = compute_plan_status(&metadata, &ticket_map);
 
@@ -920,12 +919,12 @@ impl JanusTools {
     ) -> Result<String, String> {
         let parent = Ticket::find(&request.ticket_id)
             .await
-            .map_err(|e| format!("Ticket not found: {}", e))?;
+            .map_err(|e| format!("Ticket not found: {e}"))?;
         let parent_metadata = parent.read().map_err(|e| e.to_string())?;
 
         let (tickets, _) = get_all_tickets_with_map()
             .await
-            .map_err(|e| format!("failed to load tickets: {}", e))?;
+            .map_err(|e| format!("failed to load tickets: {e}"))?;
 
         let children: Vec<&TicketMetadata> = tickets
             .iter()
@@ -953,7 +952,7 @@ impl JanusTools {
 
         let ticket_map = build_ticket_map()
             .await
-            .map_err(|e| format!("failed to load tickets: {}", e))?;
+            .map_err(|e| format!("failed to load tickets: {e}"))?;
 
         if ticket_map.is_empty() {
             return Ok("No tickets found in the repository.".to_string());
@@ -1004,8 +1003,7 @@ impl JanusTools {
             }
             Err(e) => {
                 eprintln!(
-                    "Warning: failed to load config: {}. Proceeding with semantic search.",
-                    e
+                    "Warning: failed to load config: {e}. Proceeding with semantic search."
                 );
             }
         }
@@ -1013,13 +1011,13 @@ impl JanusTools {
         // Get cache
         let cache = get_ticket_cache()
             .await
-            .map_err(|e| format!("Failed to access ticket cache: {}. Ensure the cache is initialized with 'janus cache'.", e))?;
+            .map_err(|e| format!("Failed to access ticket cache: {e}. Ensure the cache is initialized with 'janus cache'."))?;
 
         // Check if embeddings available
         let (with_embedding, total) = cache
             .embedding_coverage()
             .await
-            .map_err(|e| format!("Failed to check embedding coverage: {}", e))?;
+            .map_err(|e| format!("Failed to check embedding coverage: {e}"))?;
 
         if total == 0 {
             return Err("No tickets found in the cache.".to_string());
@@ -1040,7 +1038,7 @@ impl JanusTools {
         let results = cache
             .semantic_search(&request.query, limit)
             .await
-            .map_err(|e| format!("Search failed: {}", e))?;
+            .map_err(|e| format!("Search failed: {e}"))?;
 
         // Filter by threshold
         let results = results
@@ -1095,8 +1093,7 @@ impl JanusTools {
         if with_embedding < total {
             let percentage = (with_embedding * 100) / total;
             output.push_str(&format!(
-                "\n\n*Note: Only {}/{} tickets have embeddings ({}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*",
-                with_embedding, total, percentage
+                "\n\n*Note: Only {with_embedding}/{total} tickets have embeddings ({percentage}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*"
             ));
         }
 
@@ -1149,7 +1146,7 @@ fn write_completion_summary(ticket: &Ticket, summary: &str) -> crate::error::Res
     } else {
         // Add new section at end
         let trimmed = content.trim_end();
-        format!("{}\n\n## Completion Summary\n\n{}\n", trimmed, summary)
+        format!("{trimmed}\n\n## Completion Summary\n\n{summary}\n")
     };
 
     ticket.write(&new_content)
@@ -1168,28 +1165,28 @@ fn format_ticket_as_markdown(
     // Title with ID
     let id = metadata.id.as_deref().unwrap_or("unknown");
     let title = metadata.title.as_deref().unwrap_or("Untitled");
-    output.push_str(&format!("# {}: {}\n\n", id, title));
+    output.push_str(&format!("# {id}: {title}\n\n"));
 
     // Metadata table
     output.push_str("| Field | Value |\n");
     output.push_str("|-------|-------|\n");
 
     if let Some(status) = metadata.status {
-        output.push_str(&format!("| Status | {} |\n", status));
+        output.push_str(&format!("| Status | {status} |\n"));
     }
     if let Some(ticket_type) = metadata.ticket_type {
-        output.push_str(&format!("| Type | {} |\n", ticket_type));
+        output.push_str(&format!("| Type | {ticket_type} |\n"));
     }
     if let Some(priority) = metadata.priority {
         output.push_str(&format!("| Priority | P{} |\n", priority.as_num()));
     }
     if let Some(size) = metadata.size {
-        output.push_str(&format!("| Size | {} |\n", size));
+        output.push_str(&format!("| Size | {size} |\n"));
     }
     if let Some(ref created) = metadata.created {
         // Extract just the date portion (YYYY-MM-DD) from the ISO timestamp
         let date = created.split('T').next().unwrap_or(created);
-        output.push_str(&format!("| Created | {} |\n", date));
+        output.push_str(&format!("| Created | {date} |\n"));
     }
     if !metadata.deps.is_empty() {
         output.push_str(&format!(
@@ -1201,22 +1198,22 @@ fn format_ticket_as_markdown(
         output.push_str(&format!("| Links | {} |\n", metadata.links.join(", ")));
     }
     if let Some(ref parent) = metadata.parent {
-        output.push_str(&format!("| Parent | {} |\n", parent));
+        output.push_str(&format!("| Parent | {parent} |\n"));
     }
     if let Some(ref spawned_from) = metadata.spawned_from {
-        output.push_str(&format!("| Spawned From | {} |\n", spawned_from));
+        output.push_str(&format!("| Spawned From | {spawned_from} |\n"));
     }
     if let Some(ref spawn_context) = metadata.spawn_context {
-        output.push_str(&format!("| Spawn Context | {} |\n", spawn_context));
+        output.push_str(&format!("| Spawn Context | {spawn_context} |\n"));
     }
     if let Some(depth) = metadata.depth {
-        output.push_str(&format!("| Depth | {} |\n", depth));
+        output.push_str(&format!("| Depth | {depth} |\n"));
     }
     if let Some(ref external_ref) = metadata.external_ref {
-        output.push_str(&format!("| External Ref | {} |\n", external_ref));
+        output.push_str(&format!("| External Ref | {external_ref} |\n"));
     }
     if let Some(ref remote) = metadata.remote {
-        output.push_str(&format!("| Remote | {} |\n", remote));
+        output.push_str(&format!("| Remote | {remote} |\n"));
     }
 
     // Description section (the ticket body content)
@@ -1242,8 +1239,7 @@ fn format_ticket_as_markdown(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "new".to_string());
             output.push_str(&format!(
-                "- **{}**: {} [{}]\n",
-                blocker_id, blocker_title, blocker_status
+                "- **{blocker_id}**: {blocker_title} [{blocker_status}]\n"
             ));
         }
     }
@@ -1259,8 +1255,7 @@ fn format_ticket_as_markdown(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "new".to_string());
             output.push_str(&format!(
-                "- **{}**: {} [{}]\n",
-                blocked_id, blocked_title, blocked_status
+                "- **{blocked_id}**: {blocked_title} [{blocked_status}]\n"
             ));
         }
     }
@@ -1276,8 +1271,7 @@ fn format_ticket_as_markdown(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "new".to_string());
             output.push_str(&format!(
-                "- **{}**: {} [{}]\n",
-                child_id, child_title, child_status
+                "- **{child_id}**: {child_title} [{child_status}]\n"
             ));
         }
     }
@@ -1296,19 +1290,19 @@ fn build_filter_summary(request: &ListTicketsRequest) -> String {
         filters.push("blocked tickets".to_string());
     }
     if let Some(ref status) = request.status {
-        filters.push(format!("status={}", status));
+        filters.push(format!("status={status}"));
     }
     if let Some(ref ticket_type) = request.ticket_type {
-        filters.push(format!("type={}", ticket_type));
+        filters.push(format!("type={ticket_type}"));
     }
     if let Some(ref spawned_from) = request.spawned_from {
-        filters.push(format!("spawned_from={}", spawned_from));
+        filters.push(format!("spawned_from={spawned_from}"));
     }
     if let Some(depth) = request.depth {
-        filters.push(format!("depth={}", depth));
+        filters.push(format!("depth={depth}"));
     }
     if let Some(ref size) = request.size {
-        filters.push(format!("size={}", size));
+        filters.push(format!("size={size}"));
     }
 
     if filters.is_empty() {
@@ -1362,8 +1356,7 @@ fn format_ticket_list_as_markdown(tickets: &[&TicketMetadata], filter_summary: &
             .unwrap_or_else(|| "-".to_string());
 
         output.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} |\n",
-            id, title, status, ticket_type, priority, size
+            "| {id} | {title} | {status} | {ticket_type} | {priority} | {size} |\n"
         ));
     }
 
@@ -1386,8 +1379,7 @@ fn check_circular_dependency(
         && dep_ticket.deps.contains(&from_id.to_string())
     {
         return Err(format!(
-            "Circular dependency: {} already depends on {}",
-            to_id, from_id
+            "Circular dependency: {to_id} already depends on {from_id}"
         ));
     }
 
@@ -1419,8 +1411,7 @@ fn check_circular_dependency(
     let mut visited = HashSet::new();
     if has_path_to(to_id, from_id, ticket_map, &mut visited) {
         return Err(format!(
-            "Circular dependency: adding {} -> {} would create a cycle",
-            from_id, to_id
+            "Circular dependency: adding {from_id} -> {to_id} would create a cycle"
         ));
     }
 
@@ -1438,7 +1429,7 @@ fn format_plan_status_as_markdown(
 
     // Title and ID
     let title = metadata.title.as_deref().unwrap_or("Untitled");
-    output.push_str(&format!("# Plan: {} - {}\n\n", plan_id, title));
+    output.push_str(&format!("# Plan: {plan_id} - {title}\n\n"));
 
     // Overall status and progress
     output.push_str(&format!("**Status:** {}  \n", plan_status.status));
@@ -1462,8 +1453,7 @@ fn format_plan_status_as_markdown(
             for ticket_id in &phase.tickets {
                 let (checkbox, title, status_suffix) = format_ticket_line(ticket_id, ticket_map);
                 output.push_str(&format!(
-                    "- [{}] {}: {}{}",
-                    checkbox, ticket_id, title, status_suffix
+                    "- [{checkbox}] {ticket_id}: {title}{status_suffix}"
                 ));
             }
         }
@@ -1475,8 +1465,7 @@ fn format_plan_status_as_markdown(
             for ticket_id in tickets {
                 let (checkbox, title, status_suffix) = format_ticket_line(ticket_id, ticket_map);
                 output.push_str(&format!(
-                    "- [{}] {}: {}{}",
-                    checkbox, ticket_id, title, status_suffix
+                    "- [{checkbox}] {ticket_id}: {title}{status_suffix}"
                 ));
             }
         }
@@ -1495,8 +1484,7 @@ fn format_children_as_markdown(
 
     // Header with parent info
     output.push_str(&format!(
-        "# Children of {}: {}\n\n",
-        parent_id, parent_title
+        "# Children of {parent_id}: {parent_title}\n\n"
     ));
 
     // Handle empty results
@@ -1526,8 +1514,7 @@ fn format_children_as_markdown(
             .unwrap_or_else(|| "1".to_string());
 
         output.push_str(&format!(
-            "| {} | {} | {} | {} |\n",
-            id, title, status, depth
+            "| {id} | {title} | {status} | {depth} |\n"
         ));
     }
 
@@ -1542,7 +1529,7 @@ fn format_children_as_markdown(
         for child in children_with_context {
             let id = child.id.as_deref().unwrap_or("unknown");
             let context = child.spawn_context.as_deref().unwrap_or("");
-            output.push_str(&format!("- **{}**: \"{}\"\n", id, context));
+            output.push_str(&format!("- **{id}**: \"{context}\"\n"));
         }
     }
 
@@ -1590,12 +1577,12 @@ fn format_next_work_as_markdown(
         let ticket_id = &item.ticket_id;
         let priority = item.metadata.priority_num();
         let title = item.metadata.title.as_deref().unwrap_or("Untitled");
-        let priority_badge = format!("[P{}]", priority);
+        let priority_badge = format!("[P{priority}]");
 
         // Format the main line with context
         let context = match &item.reason {
             InclusionReason::Blocking(target_id) => {
-                format!(" *(blocks {})*", target_id)
+                format!(" *(blocks {target_id})*")
             }
             InclusionReason::TargetBlocked => " *(currently blocked)*".to_string(),
             InclusionReason::Ready => String::new(),
@@ -1615,7 +1602,7 @@ fn format_next_work_as_markdown(
             InclusionReason::Ready | InclusionReason::Blocking(_) => "ready",
             InclusionReason::TargetBlocked => "blocked",
         };
-        output.push_str(&format!("   - Status: {}\n", status));
+        output.push_str(&format!("   - Status: {status}\n"));
 
         // Additional context for blocked tickets
         if matches!(item.reason, InclusionReason::TargetBlocked) {
@@ -1640,8 +1627,7 @@ fn format_next_work_as_markdown(
         // Context about what this ticket blocks
         if let Some(blocks) = &item.blocks {
             output.push_str(&format!(
-                "   - This ticket must be completed before {} can be worked on\n",
-                blocks
+                "   - This ticket must be completed before {blocks} can be worked on\n"
             ));
         }
 

@@ -1048,7 +1048,7 @@ mod tests {
             priority: None,
             assignee: None,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
-            url: format!("https://example.com/issues/{}", id),
+            url: format!("https://example.com/issues/{id}"),
             labels: vec![],
             team: None,
             project: None,
@@ -1136,8 +1136,8 @@ mod tests {
         state.local_tickets = (0..20)
             .map(|i| {
                 make_ticket(
-                    &format!("j-{}", i),
-                    &format!("Task {}", i),
+                    &format!("j-{i}"),
+                    &format!("Task {i}"),
                     TicketStatus::New,
                 )
             })
@@ -1152,8 +1152,8 @@ mod tests {
         state.local_tickets = (0..20)
             .map(|i| {
                 make_ticket(
-                    &format!("j-{}", i),
-                    &format!("Task {}", i),
+                    &format!("j-{i}"),
+                    &format!("Task {i}"),
                     TicketStatus::New,
                 )
             })

@@ -98,7 +98,7 @@ impl TicketCache {
         let mut rows = conn
             .query(
                 "SELECT ticket_id FROM tickets WHERE ticket_id LIKE ?1",
-                [format!("{}%", partial)],
+                [format!("{partial}%")],
             )
             .await?;
 
@@ -202,7 +202,7 @@ impl TicketCache {
         let mut rows = conn
             .query(
                 "SELECT plan_id FROM plans WHERE plan_id LIKE ?1",
-                [format!("{}%", partial)],
+                [format!("{partial}%")],
             )
             .await?;
 
@@ -279,7 +279,7 @@ impl TicketCache {
         }
 
         let escaped_query = escape_like_pattern(text_query);
-        let like_pattern = format!("%{}%", escaped_query);
+        let like_pattern = format!("%{escaped_query}%");
 
         // Build query based on what filters are active
         let results = if text_query.is_empty() {
@@ -364,15 +364,14 @@ impl TicketCache {
         let conn = self.create_connection().await?;
 
         // Build IN clause with placeholders
-        let placeholders: Vec<String> = (1..=sizes.len()).map(|i| format!("?{}", i)).collect();
+        let placeholders: Vec<String> = (1..=sizes.len()).map(|i| format!("?{i}")).collect();
         let in_clause = placeholders.join(", ");
 
         let query = format!(
             "SELECT ticket_id, uuid, status, title, priority, ticket_type,
              deps, links, parent, created, external_ref, remote, completion_summary,
              spawned_from, spawn_context, depth, file_path, triaged, body, size
-             FROM tickets WHERE size IN ({})",
-            in_clause
+             FROM tickets WHERE size IN ({in_clause})"
         );
 
         // Convert sizes to strings for the query
@@ -632,15 +631,13 @@ impl TicketCache {
             Some(s) if matches!(s.as_str(), "simple" | "phased" | "empty") => s,
             Some(s) => {
                 eprintln!(
-                    "Warning: Invalid structure_type '{}' for plan '{:?}'. Defaulting to 'empty'.",
-                    s, id
+                    "Warning: Invalid structure_type '{s}' for plan '{id:?}'. Defaulting to 'empty'."
                 );
                 "empty".to_string()
             }
             None => {
                 eprintln!(
-                    "Warning: Missing structure_type for plan '{:?}'. Defaulting to 'empty'.",
-                    id
+                    "Warning: Missing structure_type for plan '{id:?}'. Defaulting to 'empty'."
                 );
                 "empty".to_string()
             }

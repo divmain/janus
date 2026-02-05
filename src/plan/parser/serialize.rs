@@ -34,19 +34,19 @@ pub fn serialize_plan(metadata: &PlanMetadata) -> String {
     // 1. Generate YAML frontmatter
     output.push_str("---\n");
     if let Some(ref id) = metadata.id {
-        output.push_str(&format!("id: {}\n", id));
+        output.push_str(&format!("id: {id}\n"));
     }
     if let Some(ref uuid) = metadata.uuid {
-        output.push_str(&format!("uuid: {}\n", uuid));
+        output.push_str(&format!("uuid: {uuid}\n"));
     }
     if let Some(ref created) = metadata.created {
-        output.push_str(&format!("created: {}\n", created));
+        output.push_str(&format!("created: {created}\n"));
     }
     output.push_str("---\n");
 
     // 2. Generate H1 title
     if let Some(ref title) = metadata.title {
-        output.push_str(&format!("# {}\n", title));
+        output.push_str(&format!("# {title}\n"));
     }
 
     // 3. Generate description (preamble)
@@ -60,7 +60,7 @@ pub fn serialize_plan(metadata: &PlanMetadata) -> String {
     if !metadata.acceptance_criteria.is_empty() {
         output.push_str("\n## Acceptance Criteria\n\n");
         for criterion in &metadata.acceptance_criteria {
-            output.push_str(&format!("- {}\n", criterion));
+            output.push_str(&format!("- {criterion}\n"));
         }
     }
 
@@ -121,7 +121,7 @@ fn serialize_phase(phase: &Phase) -> String {
     if !phase.success_criteria.is_empty() {
         output.push_str("\n### Success Criteria\n\n");
         for criterion in &phase.success_criteria {
-            output.push_str(&format!("- {}\n", criterion));
+            output.push_str(&format!("- {criterion}\n"));
         }
     }
 

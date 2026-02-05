@@ -71,7 +71,7 @@ fn handle_adopt(ctx: &mut HandlerContext<'_>) {
         Err(e) => {
             ctx.modals
                 .toast
-                .set(Some(Toast::error(format!("Adopt failed: {}", e))));
+                .set(Some(Toast::error(format!("Adopt failed: {e}"))));
         }
     }
 }

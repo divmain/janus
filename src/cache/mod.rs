@@ -50,8 +50,7 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                 Ok(cache) => {
                     if let Err(e) = cache.sync().await {
                         eprintln!(
-                            "Warning: cache sync failed: {}. Falling back to file reads.",
-                            e
+                            "Warning: cache sync failed: {e}. Falling back to file reads."
                         );
 
                         if is_corruption_error(&e) {
@@ -84,8 +83,7 @@ pub async fn get_or_init_cache() -> Option<&'static TicketCache> {
                         eprintln!("Tip: Run 'janus cache clear' or 'janus cache rebuild' to fix this.");
                     } else {
                         eprintln!(
-                            "Warning: failed to open cache: {}. Falling back to file reads.",
-                            e
+                            "Warning: failed to open cache: {e}. Falling back to file reads."
                         );
                     }
 
@@ -154,40 +152,38 @@ mod tests {
         let tickets_dir = dir.join(".janus/items");
         fs::create_dir_all(&tickets_dir).unwrap();
 
-        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let ticket_path = tickets_dir.join(format!("{ticket_id}.md"));
         let content = if body.is_empty() {
             format!(
                 r#"---
-id: {}
+id: {ticket_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
 created: 2024-01-01T00:00:00Z
 type: task
-priority: {}
+priority: {priority}
 ---
-# {}
-"#,
-                ticket_id, priority, title
+# {title}
+"#
             )
         } else {
             format!(
                 r#"---
-id: {}
+id: {ticket_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
 created: 2024-01-01T00:00:00Z
 type: task
-priority: {}
+priority: {priority}
 ---
-# {}
+# {title}
 
-{}
-"#,
-                ticket_id, priority, title, body
+{body}
+"#
             )
         };
         fs::write(&ticket_path, content).unwrap();
@@ -203,15 +199,15 @@ priority: {}
         let plans_dir = dir.join(".janus/plans");
         fs::create_dir_all(&plans_dir).unwrap();
 
-        let plan_path = plans_dir.join(format!("{}.md", plan_id));
+        let plan_path = plans_dir.join(format!("{plan_id}.md"));
         let content = if is_phased {
             format!(
                 r#"---
-id: {}
+id: {plan_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 created: 2024-01-01T00:00:00Z
 ---
-# {}
+# {title}
 
 Description of the plan.
 
@@ -227,17 +223,16 @@ Description of the plan.
 ### Tickets
 
 1. j-e5f6
-"#,
-                plan_id, title
+"#
             )
         } else {
             format!(
                 r#"---
-id: {}
+id: {plan_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 created: 2024-01-01T00:00:00Z
 ---
-# {}
+# {title}
 
 Description of the plan.
 
@@ -246,8 +241,7 @@ Description of the plan.
 1. j-a1b2
 2. j-c3d4
 3. j-e5f6
-"#,
-                plan_id, title
+"#
             )
         };
         fs::write(&plan_path, content).unwrap();
@@ -1490,8 +1484,7 @@ remote: github
         let err = result.unwrap_err();
         assert!(
             err.to_string().contains("cache sync failed"),
-            "Expected error message to contain 'cache sync failed', got: {}",
-            err.to_string()
+            "Expected error message to contain 'cache sync failed', got: {err}"
         );
 
         let db_path = cache.cache_db_path();
@@ -1562,8 +1555,7 @@ This is a valid ticket.
         let err = result.unwrap_err();
         assert!(
             err.to_string().contains("cache sync failed"),
-            "Expected error message to contain 'cache sync failed', got: {}",
-            err.to_string()
+            "Expected error message to contain 'cache sync failed', got: {err}"
         );
         // Cache entry should remain unchanged since sync failed
         let mut rows = cache
@@ -1597,10 +1589,10 @@ This is a valid ticket.
         let tickets_dir = dir.join(".janus/items");
         fs::create_dir_all(&tickets_dir).unwrap();
 
-        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let ticket_path = tickets_dir.join(format!("{ticket_id}.md"));
         let content = format!(
             r#"---
-id: {}
+id: {ticket_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
@@ -1608,11 +1600,10 @@ links: []
 created: 2024-01-01T00:00:00Z
 type: task
 priority: 2
-spawned-from: {}
+spawned-from: {spawned_from}
 ---
-# {}
-"#,
-            ticket_id, spawned_from, title
+# {title}
+"#
         );
         fs::write(&ticket_path, content).unwrap();
         ticket_path
@@ -2151,10 +2142,10 @@ triaged: true
         let tickets_dir = dir.join(".janus/items");
         fs::create_dir_all(&tickets_dir).unwrap();
 
-        let ticket_path = tickets_dir.join(format!("{}.md", ticket_id));
+        let ticket_path = tickets_dir.join(format!("{ticket_id}.md"));
         let content = format!(
             r#"---
-id: {}
+id: {ticket_id}
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
@@ -2162,11 +2153,10 @@ links: []
 created: 2024-01-01T00:00:00Z
 type: task
 priority: 2
-size: {}
+size: {size}
 ---
-# {}
-"#,
-            ticket_id, size, title
+# {title}
+"#
         );
         fs::write(&ticket_path, content).unwrap();
         ticket_path

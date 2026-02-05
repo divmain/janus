@@ -83,7 +83,7 @@ pub fn extract_title_range(content: &str) -> Option<Range<usize>> {
     let title_captures = title_re.captures(&body_with_title)?;
     let title_text = title_captures.get(1)?.as_str();
 
-    let title_with_hash = format!("# {}", title_text);
+    let title_with_hash = format!("# {title_text}");
     let start = content.find(&title_with_hash)?;
     let end = start + title_with_hash.len();
 

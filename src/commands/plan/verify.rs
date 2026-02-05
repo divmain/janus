@@ -36,7 +36,7 @@ pub fn cmd_plan_verify(output_json: bool) -> Result<(bool, Vec<(String, String)>
             })).collect::<Vec<_>>(),
         });
         let _ = CommandOutput::new(json_output.clone())
-            .with_text(format!("{}", json_output))
+            .with_text(format!("{json_output}"))
             .print(true);
     } else {
         println!("\n{}", "Plan Verification".bold());

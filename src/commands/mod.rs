@@ -106,7 +106,7 @@ impl CommandOutput {
         if output_json {
             print_json(&self.json)?;
         } else if let Some(text) = self.text {
-            println!("{}", text);
+            println!("{text}");
         } else {
             // Fallback: pretty-print JSON for text output
             println!("{}", serde_json::to_string_pretty(&self.json)?);

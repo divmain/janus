@@ -23,7 +23,7 @@ pub struct PhasesOnlyFormatter;
 impl RawFormatter {
     pub fn format(plan: &Plan) -> Result<()> {
         let content = plan.read_content()?;
-        println!("{}", content);
+        println!("{content}");
         Ok(())
     }
 }
@@ -47,19 +47,19 @@ impl FullFormatter {
 
     fn print_header(metadata: &PlanMetadata, status: &PlanStatus) {
         if let Some(ref title) = metadata.title {
-            println!("{}", format!("# {}", title).bold());
+            println!("{}", format!("# {title}").bold());
         }
 
         let status_badge = format_status_colored(status.status);
         let progress = status.progress_string();
         println!();
-        println!("{} Progress: {} tickets", status_badge, progress);
+        println!("{status_badge} Progress: {progress} tickets");
     }
 
     fn print_description(metadata: &PlanMetadata) {
         if let Some(ref description) = metadata.description {
             println!();
-            println!("{}", description);
+            println!("{description}");
         }
     }
 
@@ -69,7 +69,7 @@ impl FullFormatter {
             println!("{}", "## Acceptance Criteria".bold());
             println!();
             for criterion in &metadata.acceptance_criteria {
-                println!("- [ ] {}", criterion);
+                println!("- [ ] {criterion}");
             }
         }
     }
@@ -131,7 +131,7 @@ impl FullFormatter {
 
         if let Some(ref desc) = phase.description {
             println!();
-            println!("{}", desc);
+            println!("{desc}");
         }
 
         if !phase.success_criteria.is_empty() {
@@ -139,7 +139,7 @@ impl FullFormatter {
             println!("{}", "### Success Criteria".bold());
             println!();
             for criterion in &phase.success_criteria {
-                println!("- {}", criterion);
+                println!("- {criterion}");
             }
         }
 

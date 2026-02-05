@@ -192,8 +192,8 @@ impl fmt::Display for RemoteRef {
                 owner,
                 repo,
                 issue_number,
-            } => write!(f, "github:{}/{}/{}", owner, repo, issue_number),
-            RemoteRef::Linear { org, issue_id } => write!(f, "linear:{}/{}", org, issue_id),
+            } => write!(f, "github:{owner}/{repo}/{issue_number}"),
+            RemoteRef::Linear { org, issue_id } => write!(f, "linear:{org}/{issue_id}"),
         }
     }
 }
@@ -295,7 +295,7 @@ impl fmt::Display for RemoteStatus {
         match self {
             RemoteStatus::Open => write!(f, "open"),
             RemoteStatus::Closed => write!(f, "closed"),
-            RemoteStatus::Custom(s) => write!(f, "{}", s),
+            RemoteStatus::Custom(s) => write!(f, "{s}"),
         }
     }
 }

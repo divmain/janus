@@ -536,7 +536,7 @@ impl LinearProvider {
                         .get("Retry-After")
                         .and_then(|v| v.to_str().ok())
                         .and_then(|s| s.parse::<u64>().ok()),
-                    message: format!("HTTP {}", status),
+                    message: format!("HTTP {status}"),
                 });
             }
 
@@ -895,13 +895,13 @@ mod tests {
     #[test]
     fn test_redacted_header_display() {
         let header = RedactedHeader::new("secret-api-key-12345");
-        assert_eq!(format!("{}", header), "[REDACTED]");
+        assert_eq!(format!("{header}"), "[REDACTED]");
     }
 
     #[test]
     fn test_redacted_header_debug() {
         let header = RedactedHeader::new("secret-api-key-12345");
-        let debug_str = format!("{:?}", header);
+        let debug_str = format!("{header:?}");
         assert!(debug_str.contains("[REDACTED]"));
         assert!(!debug_str.contains("secret-api-key"));
     }

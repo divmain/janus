@@ -223,8 +223,8 @@ pub async fn cmd_mcp() -> Result<()> {
 
 /// Print the MCP protocol version.
 pub fn cmd_mcp_version() -> Result<()> {
-    println!("MCP Protocol Version: {}", MCP_PROTOCOL_VERSION);
-    println!("Janus MCP Server: {} v{}", SERVER_NAME, SERVER_VERSION);
+    println!("MCP Protocol Version: {MCP_PROTOCOL_VERSION}");
+    println!("Janus MCP Server: {SERVER_NAME} v{SERVER_VERSION}");
     Ok(())
 }
 
@@ -254,6 +254,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::const_is_empty)]
     fn test_mcp_version_constants() {
         assert_eq!(MCP_PROTOCOL_VERSION, "2024-11-05");
         assert_eq!(SERVER_NAME, "janus");

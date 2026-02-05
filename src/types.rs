@@ -502,8 +502,7 @@ pub fn validate_field_name(field: &str, operation: &str) -> crate::error::Result
 
     if parsed.is_immutable() {
         return Err(JanusError::Other(format!(
-            "cannot {} immutable field '{}'",
-            operation, parsed
+            "cannot {operation} immutable field '{parsed}'"
         )));
     }
 
@@ -942,15 +941,13 @@ status: new
             if !field.is_immutable() {
                 assert!(
                     validate_field_name(field.as_str(), "update").is_ok(),
-                    "Valid mutable field '{}' should be accepted",
-                    field
+                    "Valid mutable field '{field}' should be accepted"
                 );
             } else {
                 let result = validate_field_name(field.as_str(), "update");
                 assert!(
                     result.is_err(),
-                    "Immutable field '{}' should be rejected for update",
-                    field
+                    "Immutable field '{field}' should be rejected for update"
                 );
             }
         }

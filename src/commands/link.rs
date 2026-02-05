@@ -58,8 +58,7 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
     // Warn about asymmetric links (where only one direction existed before we added)
     for (from, to) in asymmetric_warnings {
         eprintln!(
-            "Warning: Link from {} -> {} already existed but not vice versa. Link state is asymmetric.",
-            from, to
+            "Warning: Link from {from} -> {to} already existed but not vice versa. Link state is asymmetric."
         );
     }
 
@@ -75,8 +74,7 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
         "All links already exist".to_string()
     } else {
         format!(
-            "Added {} link(s) between {} tickets",
-            added_count, num_tickets
+            "Added {added_count} link(s) between {num_tickets} tickets"
         )
     };
 

@@ -240,7 +240,7 @@ mod tests {
             Err(JanusError::InvalidHookEvent(event)) => {
                 assert_eq!(event, "not_a_valid_event");
             }
-            other => panic!("Expected InvalidHookEvent, got: {:?}", other),
+            other => panic!("Expected InvalidHookEvent, got: {other:?}"),
         }
     }
 
@@ -286,8 +286,7 @@ mod tests {
             let result = invalid.parse::<HookEvent>();
             assert!(
                 matches!(result, Err(JanusError::InvalidHookEvent(_))),
-                "Expected InvalidHookEvent for '{}'",
-                invalid
+                "Expected InvalidHookEvent for '{invalid}'"
             );
         }
     }

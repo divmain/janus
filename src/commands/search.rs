@@ -73,8 +73,7 @@ pub async fn cmd_search(
     if with_embedding < total {
         let percentage = (with_embedding * 100) / total;
         eprintln!(
-            "Warning: Only {}/{} tickets have embeddings ({}%). Search results may be incomplete.",
-            with_embedding, total, percentage
+            "Warning: Only {with_embedding}/{total} tickets have embeddings ({percentage}%). Search results may be incomplete."
         );
         eprintln!("Run 'janus cache rebuild' to generate embeddings for all tickets.");
     }
@@ -118,7 +117,7 @@ pub async fn cmd_search(
         print_json(&json!(json_results))?;
     } else {
         // Output as formatted table
-        println!("Search results for: \"{}\"\n", query);
+        println!("Search results for: \"{query}\"\n");
 
         if results.is_empty() {
             println!("No matching tickets found.");
@@ -144,7 +143,7 @@ pub async fn cmd_search(
 
             let mut table = Table::new(rows);
             table.with(Style::rounded());
-            println!("{}", table);
+            println!("{table}");
         }
 
         println!("\n{} result(s)", results.len());

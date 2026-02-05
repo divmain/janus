@@ -30,10 +30,10 @@ static BENCH_MUTEX: Mutex<()> = Mutex::new(());
 
 fn create_test_tickets(dir: &Path, count: usize) {
     for i in 0..count {
-        let ticket_id = format!("j-{:04x}", i);
+        let ticket_id = format!("j-{i:04x}");
         let content = format!(
             "---
-id: {}
+id: {ticket_id}
 status: new
 type: task
 priority: 2
@@ -41,20 +41,19 @@ created: 2024-01-01T00:00:00Z
 deps: []
 links: []
 ---
-# Ticket {}
-",
-            ticket_id, i
+# Ticket {i}
+"
         );
-        let ticket_path = dir.join(format!("{}.md", ticket_id));
+        let ticket_path = dir.join(format!("{ticket_id}.md"));
         fs::write(ticket_path, content).unwrap();
     }
 }
 
 fn modify_ticket(dir: &Path, ticket_id: &str) {
-    let ticket_path = dir.join(format!("{}.md", ticket_id));
+    let ticket_path = dir.join(format!("{ticket_id}.md"));
     let content = format!(
         "---
-id: {}
+id: {ticket_id}
 status: in_progress
 type: task
 priority: 1
@@ -63,8 +62,7 @@ deps: []
 links: []
 ---
 # Modified Ticket
-",
-        ticket_id
+"
     );
     fs::write(ticket_path, content).unwrap();
 }
@@ -83,7 +81,7 @@ fn bench_warm_cache_sync_no_changes(c: &mut Criterion) {
     for size in [100, 1000, 5000].iter() {
         // Setup: Create temp dir, tickets, and warm the cache
         let temp = TempDir::new().unwrap();
-        let repo_path = temp.path().join(format!("bench_warm_{}", size));
+        let repo_path = temp.path().join(format!("bench_warm_{size}"));
         fs::create_dir_all(&repo_path).unwrap();
         let items_dir = repo_path.join(".janus").join("items");
         fs::create_dir_all(&items_dir).unwrap();
@@ -97,7 +95,7 @@ fn bench_warm_cache_sync_no_changes(c: &mut Criterion) {
 
         // Warm the cache (do the initial sync)
         rt.block_on(async {
-            let mut cache = TicketCache::open().await.unwrap();
+            let cache = TicketCache::open().await.unwrap();
             cache.sync().await.unwrap();
         });
 
@@ -105,7 +103,7 @@ fn bench_warm_cache_sync_no_changes(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, _| {
             b.iter(|| {
                 rt.block_on(async {
-                    let mut cache = TicketCache::open().await.unwrap();
+                    let cache = TicketCache::open().await.unwrap();
                     black_box(cache.sync().await.unwrap())
                 })
             });
@@ -128,7 +126,7 @@ fn bench_incremental_sync(c: &mut Criterion) {
     for size in [100, 1000, 5000].iter() {
         // Setup
         let temp = TempDir::new().unwrap();
-        let repo_path = temp.path().join(format!("bench_incr_{}", size));
+        let repo_path = temp.path().join(format!("bench_incr_{size}"));
         fs::create_dir_all(&repo_path).unwrap();
         let items_dir = repo_path.join(".janus").join("items");
         fs::create_dir_all(&items_dir).unwrap();
@@ -141,7 +139,7 @@ fn bench_incremental_sync(c: &mut Criterion) {
 
         // Initial sync
         rt.block_on(async {
-            let mut cache = TicketCache::open().await.unwrap();
+            let cache = TicketCache::open().await.unwrap();
             cache.sync().await.unwrap();
         });
 
@@ -151,11 +149,11 @@ fn bench_incremental_sync(c: &mut Criterion) {
             b.iter(|| {
                 // Modify 5 tickets
                 for i in 0..5 {
-                    modify_ticket(&items_dir_clone, &format!("j-{:04x}", i));
+                    modify_ticket(&items_dir_clone, &format!("j-{i:04x}"));
                 }
 
                 rt.block_on(async {
-                    let mut cache = TicketCache::open().await.unwrap();
+                    let cache = TicketCache::open().await.unwrap();
                     black_box(cache.sync().await.unwrap())
                 })
             });
@@ -180,7 +178,7 @@ fn bench_cold_cache_sync(c: &mut Criterion) {
     for size in [100, 500, 1000].iter() {
         // Setup: Create tickets but DON'T warm the cache
         let temp = TempDir::new().unwrap();
-        let repo_path = temp.path().join(format!("bench_cold_{}", size));
+        let repo_path = temp.path().join(format!("bench_cold_{size}"));
         fs::create_dir_all(&repo_path).unwrap();
         let items_dir = repo_path.join(".janus").join("items");
         fs::create_dir_all(&items_dir).unwrap();
@@ -204,7 +202,7 @@ fn bench_cold_cache_sync(c: &mut Criterion) {
                 let _ = fs::remove_file(&cache_db_path);
 
                 rt.block_on(async {
-                    let mut cache = TicketCache::open().await.unwrap();
+                    let cache = TicketCache::open().await.unwrap();
                     black_box(cache.sync().await.unwrap())
                 })
             });
@@ -224,7 +222,7 @@ fn bench_get_all_tickets(c: &mut Criterion) {
 
     for size in [100, 1000, 5000].iter() {
         let temp = TempDir::new().unwrap();
-        let repo_path = temp.path().join(format!("bench_get_all_{}", size));
+        let repo_path = temp.path().join(format!("bench_get_all_{size}"));
         fs::create_dir_all(&repo_path).unwrap();
         let items_dir = repo_path.join(".janus").join("items");
         fs::create_dir_all(&items_dir).unwrap();
@@ -237,7 +235,7 @@ fn bench_get_all_tickets(c: &mut Criterion) {
 
         // Warm the cache
         rt.block_on(async {
-            let mut cache = TicketCache::open().await.unwrap();
+            let cache = TicketCache::open().await.unwrap();
             cache.sync().await.unwrap();
         });
 
@@ -265,7 +263,7 @@ fn bench_get_ticket(c: &mut Criterion) {
 
     for size in [100, 1000, 5000].iter() {
         let temp = TempDir::new().unwrap();
-        let repo_path = temp.path().join(format!("bench_get_{}", size));
+        let repo_path = temp.path().join(format!("bench_get_{size}"));
         fs::create_dir_all(&repo_path).unwrap();
         let items_dir = repo_path.join(".janus").join("items");
         fs::create_dir_all(&items_dir).unwrap();
@@ -278,7 +276,7 @@ fn bench_get_ticket(c: &mut Criterion) {
 
         // Warm the cache
         rt.block_on(async {
-            let mut cache = TicketCache::open().await.unwrap();
+            let cache = TicketCache::open().await.unwrap();
             cache.sync().await.unwrap();
         });
 
@@ -306,7 +304,7 @@ fn bench_find_by_partial_id(c: &mut Criterion) {
 
     for size in [100, 1000, 5000].iter() {
         let temp = TempDir::new().unwrap();
-        let repo_path = temp.path().join(format!("bench_find_{}", size));
+        let repo_path = temp.path().join(format!("bench_find_{size}"));
         fs::create_dir_all(&repo_path).unwrap();
         let items_dir = repo_path.join(".janus").join("items");
         fs::create_dir_all(&items_dir).unwrap();
@@ -319,7 +317,7 @@ fn bench_find_by_partial_id(c: &mut Criterion) {
 
         // Warm the cache
         rt.block_on(async {
-            let mut cache = TicketCache::open().await.unwrap();
+            let cache = TicketCache::open().await.unwrap();
             cache.sync().await.unwrap();
         });
 
@@ -347,7 +345,7 @@ fn bench_build_ticket_map(c: &mut Criterion) {
 
     for size in [100, 1000, 5000].iter() {
         let temp = TempDir::new().unwrap();
-        let repo_path = temp.path().join(format!("bench_map_{}", size));
+        let repo_path = temp.path().join(format!("bench_map_{size}"));
         fs::create_dir_all(&repo_path).unwrap();
         let items_dir = repo_path.join(".janus").join("items");
         fs::create_dir_all(&items_dir).unwrap();
@@ -360,7 +358,7 @@ fn bench_build_ticket_map(c: &mut Criterion) {
 
         // Warm the cache
         rt.block_on(async {
-            let mut cache = TicketCache::open().await.unwrap();
+            let cache = TicketCache::open().await.unwrap();
             cache.sync().await.unwrap();
         });
 

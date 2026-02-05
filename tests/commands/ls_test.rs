@@ -170,7 +170,7 @@ fn test_ls_closed_with_limit() {
     // Create and close 5 tickets
     for i in 0..5 {
         let id = janus
-            .run_success(&["create", &format!("Ticket {}", i)])
+            .run_success(&["create", &format!("Ticket {i}")])
             .trim()
             .to_string();
         janus.run_success(&["close", &id, "--no-summary"]);
@@ -256,8 +256,7 @@ fn test_removed_ls_commands_fail() {
         let output = janus.run(&[cmd]);
         assert!(
             !output.status.success(),
-            "{} command should fail but succeeded",
-            cmd
+            "{cmd} command should fail but succeeded"
         );
     }
 }
@@ -269,7 +268,7 @@ fn test_ls_limit_without_closed() {
 
     // Create more tickets than the limit
     for i in 0..10 {
-        janus.run_success(&["create", &format!("Ticket {}", i)]);
+        janus.run_success(&["create", &format!("Ticket {i}")]);
     }
 
     // Test that --limit now works universally
@@ -288,7 +287,7 @@ fn test_ls_unlimited_without_limit_flag() {
 
     // Create 5 tickets
     for i in 0..5 {
-        janus.run_success(&["create", &format!("Ticket {}", i)]);
+        janus.run_success(&["create", &format!("Ticket {i}")]);
     }
 
     // Without --limit, should show all tickets
@@ -307,7 +306,7 @@ fn test_ls_limit_with_ready_flag() {
 
     // Create multiple ready tickets
     for i in 0..10 {
-        janus.run_success(&["create", &format!("Ticket {}", i)]);
+        janus.run_success(&["create", &format!("Ticket {i}")]);
     }
 
     let output = janus.run_success(&["ls", "--ready", "--limit", "3"]);
@@ -327,7 +326,7 @@ fn test_ls_limit_with_blocked_flag() {
     let dep = janus.run_success(&["create", "Dep"]).trim().to_string();
     for i in 0..5 {
         let blocked = janus
-            .run_success(&["create", &format!("Blocked {}", i)])
+            .run_success(&["create", &format!("Blocked {i}")])
             .trim()
             .to_string();
         janus.run_success(&["dep", "add", &blocked, &dep]);
@@ -349,7 +348,7 @@ fn test_ls_closed_default_limit() {
     // Create and close 30 tickets
     for i in 0..30 {
         let id = janus
-            .run_success(&["create", &format!("Ticket {}", i)])
+            .run_success(&["create", &format!("Ticket {i}")])
             .trim()
             .to_string();
         janus.run_success(&["close", &id, "--no-summary"]);
@@ -372,7 +371,7 @@ fn test_ls_closed_custom_limit() {
     // Create and close 30 tickets
     for i in 0..30 {
         let id = janus
-            .run_success(&["create", &format!("Ticket {}", i)])
+            .run_success(&["create", &format!("Ticket {i}")])
             .trim()
             .to_string();
         janus.run_success(&["close", &id, "--no-summary"]);

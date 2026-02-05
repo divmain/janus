@@ -52,10 +52,10 @@ pub fn resolve_ticket_or_warn<'a>(
     let ticket = ticket_map.get(ticket_id);
     if ticket.is_none() {
         let context_str = match context {
-            Some(ctx) => format!(" {}", ctx),
+            Some(ctx) => format!(" {ctx}"),
             None => String::new(),
         };
-        eprintln!("Warning: ticket '{}' not found{}", ticket_id, context_str);
+        eprintln!("Warning: ticket '{ticket_id}' not found{context_str}");
     }
     ticket
 }
@@ -91,7 +91,7 @@ pub fn compute_plan_status(
     let mut statuses: Vec<TicketStatus> = Vec::new();
     for id in all_ticket_ids.iter() {
         if let Some(ticket) =
-            resolve_ticket_or_warn(id, ticket_map, Some(&format!("in plan '{}'", plan_id)))
+            resolve_ticket_or_warn(id, ticket_map, Some(&format!("in plan '{plan_id}'")))
             && let Some(status) = ticket.status
         {
             statuses.push(status);

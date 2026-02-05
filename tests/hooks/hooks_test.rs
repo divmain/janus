@@ -34,8 +34,7 @@ hooks:
     let stderr = janus.run_failure(&["create", "Test ticket"]);
     assert!(
         stderr.contains("pre-hook") || stderr.contains("failed"),
-        "Error message should mention pre-hook failure: {}",
-        stderr
+        "Error message should mention pre-hook failure: {stderr}"
     );
 }
 
@@ -89,13 +88,11 @@ hooks:
     };
     assert!(
         marker_content.contains("ITEM_TYPE=ticket"),
-        "Hook should receive ticket item type. Got: {}",
-        marker_content
+        "Hook should receive ticket item type. Got: {marker_content}"
     );
     assert!(
         marker_content.contains("EVENT=post_write"),
-        "Hook should receive post_write event. Got: {}",
-        marker_content
+        "Hook should receive post_write event. Got: {marker_content}"
     );
 }
 
@@ -169,8 +166,7 @@ hooks:
     let stderr = janus.run_failure(&["plan", "create", "Test plan"]);
     assert!(
         stderr.contains("pre-hook") || stderr.contains("failed"),
-        "Error message should mention pre-hook failure: {}",
-        stderr
+        "Error message should mention pre-hook failure: {stderr}"
     );
 }
 
@@ -254,8 +250,7 @@ hooks:
     let stderr = janus.run_failure(&["plan", "delete", &plan_id, "--force"]);
     assert!(
         stderr.contains("pre-hook") || stderr.contains("failed"),
-        "Error message should mention pre-hook failure: {}",
-        stderr
+        "Error message should mention pre-hook failure: {stderr}"
     );
 
     // Plan should still exist
@@ -312,7 +307,7 @@ hooks:
         "Hook should receive plan_deleted event"
     );
     assert!(
-        marker_content.contains(&format!("ITEM_ID={}", plan_id)),
+        marker_content.contains(&format!("ITEM_ID={plan_id}")),
         "Hook should receive the plan ID"
     );
 }
@@ -591,7 +586,7 @@ hooks:
     fs::write(&config_path, config_content).unwrap();
 
     let result = cmd_hook_run("post_write", None).await;
-    assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
+    assert!(result.is_ok(), "Expected Ok, got: {result:?}");
 }
 
 #[tokio::test]
@@ -607,7 +602,7 @@ async fn test_invalid_hook_event_error_message() {
         Err(JanusError::InvalidHookEvent(event)) => {
             assert_eq!(event, "not_a_real_event");
         }
-        other => panic!("Expected InvalidHookEvent, got: {:?}", other),
+        other => panic!("Expected InvalidHookEvent, got: {other:?}"),
     }
 }
 
@@ -655,8 +650,7 @@ hooks:
     let stderr = janus.run_failure(&["create", "Test ticket"]);
     assert!(
         stderr.contains("security violation") || stderr.contains("outside hooks directory"),
-        "Error should mention security violation: {}",
-        stderr
+        "Error should mention security violation: {stderr}"
     );
     // Ensure the malicious script was NOT executed
     assert!(!stderr.contains("MALICIOUS CODE EXECUTED"));
@@ -716,8 +710,7 @@ hooks:
     let stderr = janus.run_failure(&["hook", "run", "pre_write", "--id", ticket_id]);
     assert!(
         stderr.contains("security violation") || stderr.contains("outside hooks directory"),
-        "Error should mention security violation: {}",
-        stderr
+        "Error should mention security violation: {stderr}"
     );
     // Ensure the malicious script was NOT executed
     assert!(!stderr.contains("MALICIOUS CODE EXECUTED"));

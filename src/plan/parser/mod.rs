@@ -100,7 +100,7 @@ pub fn parse_plan_content(content: &str) -> Result<PlanMetadata> {
 /// Parse YAML frontmatter into PlanMetadata fields
 fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
     let frontmatter: PlanFrontmatter = serde_yaml_ng::from_str(yaml)
-        .map_err(|e| JanusError::InvalidFormat(format!("YAML parsing error: {}", e)))?;
+        .map_err(|e| JanusError::InvalidFormat(format!("YAML parsing error: {e}")))?;
 
     let metadata = PlanMetadata {
         id: Some(frontmatter.id),

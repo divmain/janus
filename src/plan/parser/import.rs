@@ -557,9 +557,9 @@ fn extract_phase_description<'a>(nodes: &[&'a AstNode<'a>], options: &Options) -
 /// Create a fallback task when a phase has no H4 tasks.
 fn create_fallback_task(number: &str, name: &str, description: &Option<String>) -> ImportableTask {
     let title = if name.is_empty() {
-        format!("Implement Phase {}", number)
+        format!("Implement Phase {number}")
     } else {
-        format!("Implement Phase {}: {}", number, name)
+        format!("Implement Phase {number}: {name}")
     };
 
     ImportableTask {

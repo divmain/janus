@@ -36,7 +36,7 @@ pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result
         "action": "deleted",
         "success": true,
     }))
-    .with_text(format!("Deleted plan {}", plan_id))
+    .with_text(format!("Deleted plan {plan_id}"))
     .print(output_json)
 }
 

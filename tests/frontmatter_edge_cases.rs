@@ -111,7 +111,7 @@ fn test_very_large_frontmatter() {
     // Create a large frontmatter with many fields
     let mut frontmatter_lines = vec!["---".to_string()];
     for i in 0..1000 {
-        frontmatter_lines.push(format!("field_{}: value_{}", i, i));
+        frontmatter_lines.push(format!("field_{i}: value_{i}"));
     }
     frontmatter_lines.push("---".to_string());
     frontmatter_lines.push("# Title".to_string());
