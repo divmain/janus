@@ -12,15 +12,8 @@ Automatically adds labels to tickets based on content patterns. When a ticket is
 
 ## Installation
 
-Copy the recipe files to your Janus repository:
-
 ```bash
-# Copy the hook script
-cp files/hooks/auto-label.sh .janus/hooks/post_write/
-chmod +x .janus/hooks/post_write/auto-label.sh
-
-# Copy the rules file to your repo root (alongside .janus/)
-cp files/label-rules.yaml ./label-rules.yaml
+janus hook install auto-label
 ```
 
 ## Configuration

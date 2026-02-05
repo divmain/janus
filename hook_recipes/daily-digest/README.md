@@ -12,11 +12,7 @@ This recipe:
 ## Installation
 
 ```bash
-# Copy hooks to your .janus directory
-cp -r files/hooks/* /path/to/repo/.janus/hooks/
-
-# Copy config or merge with existing
-cp config.yaml /path/to/repo/.janus/hooks.yaml
+janus hook install daily-digest
 ```
 
 ## Usage

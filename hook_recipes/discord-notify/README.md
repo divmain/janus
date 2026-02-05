@@ -32,23 +32,8 @@ Or set it in your CI/CD environment variables.
 
 ### 3. Install the Recipe
 
-Copy the hook script to your Janus hooks directory:
-
 ```bash
-cp files/hooks/discord-notify.sh .janus/hooks/
-chmod +x .janus/hooks/discord-notify.sh
-```
-
-Register the hooks in your `.janus/config.yaml`:
-
-```yaml
-hooks:
-  ticket_created:
-    - hooks/discord-notify.sh
-  ticket_updated:
-    - hooks/discord-notify.sh
-  plan_created:
-    - hooks/discord-notify.sh
+janus hook install discord-notify
 ```
 
 ## Example Messages

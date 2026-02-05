@@ -12,7 +12,7 @@ This recipe monitors status changes on tickets and tracks the wall-clock time sp
 ## Installation
 
 ```bash
-janus hooks install time-tracking
+janus hook install time-tracking
 ```
 
 ## How Time Is Calculated

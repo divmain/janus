@@ -19,21 +19,8 @@ Tracking is cleared when a ticket reaches `complete` or `cancelled` status.
 
 ## Installation
 
-Copy the hooks to your Janus hooks directory:
-
 ```bash
-cp files/hooks/track-blocked.sh .janus/hooks/
-cp files/hooks/check-blocked.sh .janus/hooks/
-chmod +x .janus/hooks/track-blocked.sh
-chmod +x .janus/hooks/check-blocked.sh
-```
-
-Update your `.janus/config.yaml`:
-
-```yaml
-hooks:
-  scripts:
-    ticket_updated: track-blocked.sh
+janus hook install blocked-alert
 ```
 
 ## Usage
