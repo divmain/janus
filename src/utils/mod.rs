@@ -93,11 +93,15 @@ pub fn ensure_dir() -> io::Result<()> {
 /// * `Ok(String)` - The extracted ID
 /// * `Err(JanusError::InvalidFormat)` - If the path has no valid file stem
 pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<String> {
-    file_path
+    let id = file_path
         .file_stem()
         .and_then(|s| {
             let id = s.to_string_lossy().into_owned();
-            if id.is_empty() { None } else { Some(id) }
+            if id.is_empty() {
+                None
+            } else {
+                Some(id)
+            }
         })
         .ok_or_else(|| {
             JanusError::InvalidFormat(format!(
@@ -105,7 +109,12 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
                 entity_type,
                 format_relative_path(file_path)
             ))
-        })
+        })?;
+
+    // Validate the extracted ID
+    validate_identifier(&id, entity_type)?;
+
+    Ok(id)
 }
 
 /// Validate an identifier string (alphanumeric, hyphens, and underscores only)
@@ -879,12 +888,10 @@ mod tests {
                 "Filename '{}' should be rejected as reserved",
                 name
             );
-            assert!(
-                result
-                    .unwrap_err()
-                    .to_string()
-                    .contains("reserved device name")
-            );
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("reserved device name"));
         }
     }
 
