@@ -9,6 +9,43 @@ use crate::types::TicketMetadata;
 
 use super::types::RelationshipFilter;
 
+/// Pre-computed reverse edges for efficient graph traversal
+struct ReverseEdges {
+    /// Tickets that depend on each ticket (reverse of deps)
+    reverse_deps: HashMap<String, Vec<String>>,
+    /// Tickets spawned from each parent ticket (reverse of spawned_from)
+    reverse_spawned: HashMap<String, Vec<String>>,
+}
+
+impl ReverseEdges {
+    fn build(ticket_map: &HashMap<String, TicketMetadata>) -> Self {
+        let mut reverse_deps: HashMap<String, Vec<String>> = HashMap::new();
+        let mut reverse_spawned: HashMap<String, Vec<String>> = HashMap::new();
+
+        for (id, ticket) in ticket_map {
+            // Build reverse_deps: for each dep, add this ticket to its reverse list
+            for dep in &ticket.deps {
+                reverse_deps.entry(dep.clone()).or_default().push(id.clone());
+            }
+
+            // Build reverse_spawned: for each parent, add this ticket to its children list
+            if let Some(parent) = &ticket.spawned_from {
+                reverse_spawned.entry(parent.clone()).or_default().push(id.clone());
+            }
+        }
+
+        Self { reverse_deps, reverse_spawned }
+    }
+
+    fn get_dependents(&self, ticket_id: &str) -> &[String] {
+        self.reverse_deps.get(ticket_id).map_or(&[], |v| v.as_slice())
+    }
+
+    fn get_children(&self, ticket_id: &str) -> &[String] {
+        self.reverse_spawned.get(ticket_id).map_or(&[], |v| v.as_slice())
+    }
+}
+
 /// Get all tickets reachable from a root ticket via relationships
 pub fn get_reachable_tickets(
     root_id: &str,
@@ -16,6 +53,8 @@ pub fn get_reachable_tickets(
     filter: RelationshipFilter,
 ) -> Result<HashSet<String>> {
     let root = resolve_id_from_map(root_id, ticket_map)?;
+
+    let reverse_edges = ReverseEdges::build(ticket_map);
 
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
@@ -44,19 +83,20 @@ pub fn get_reachable_tickets(
             }
         }
 
-        for (id, other_ticket) in ticket_map {
-            if visited.contains(id) {
-                continue;
+        // O(1) lookups for reverse relationships instead of O(n) scan
+        if filter != RelationshipFilter::Spawn {
+            for dependent in reverse_edges.get_dependents(&current) {
+                if !visited.contains(dependent) {
+                    queue.push_back(dependent.clone());
+                }
             }
+        }
 
-            if filter != RelationshipFilter::Spawn && other_ticket.deps.contains(&current) {
-                queue.push_back(id.clone());
-            }
-
-            if filter != RelationshipFilter::Deps
-                && other_ticket.spawned_from.as_ref() == Some(&current)
-            {
-                queue.push_back(id.clone());
+        if filter != RelationshipFilter::Deps {
+            for child in reverse_edges.get_children(&current) {
+                if !visited.contains(child) {
+                    queue.push_back(child.clone());
+                }
             }
         }
     }
