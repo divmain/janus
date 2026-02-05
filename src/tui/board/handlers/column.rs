@@ -2,20 +2,11 @@
 
 use iocraft::prelude::{KeyCode, State};
 
-use crate::types::TicketStatus;
+use crate::tui::board::model::COLUMNS;
 
-use super::HandleResult;
 use super::actions::get_ticket_at;
 use super::context::BoardHandlerContext;
-
-/// The 5 kanban columns in order
-const COLUMNS: [TicketStatus; 5] = [
-    TicketStatus::New,
-    TicketStatus::Next,
-    TicketStatus::InProgress,
-    TicketStatus::Complete,
-    TicketStatus::Cancelled,
-];
+use super::HandleResult;
 
 /// Handle column toggle keys (1-5)
 pub fn handle_toggle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult {

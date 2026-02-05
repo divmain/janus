@@ -24,21 +24,7 @@ use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
 use handlers::{BoardAsyncHandlers, BoardHandlerContext};
-
-/// The 5 kanban columns in order
-const COLUMNS: [TicketStatus; 5] = [
-    TicketStatus::New,
-    TicketStatus::Next,
-    TicketStatus::InProgress,
-    TicketStatus::Complete,
-    TicketStatus::Cancelled,
-];
-
-/// Column display names
-const COLUMN_NAMES: [&str; 5] = ["NEW", "NEXT", "IN PROGRESS", "COMPLETE", "CANCELLED"];
-
-/// Column toggle keys for header display
-const COLUMN_KEYS: [char; 5] = ['N', 'X', 'I', 'C', '_'];
+use model::{COLUMNS, COLUMN_NAMES, COLUMN_KEYS};
 
 /// Props for the KanbanBoard component
 #[derive(Default, Props)]

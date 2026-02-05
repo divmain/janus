@@ -2,9 +2,11 @@
 
 use iocraft::prelude::KeyCode;
 
-use super::HandleResult;
-use super::context::BoardHandlerContext;
+use crate::tui::board::model::COLUMNS;
 use crate::tui::search::filter_tickets;
+
+use super::context::BoardHandlerContext;
+use super::HandleResult;
 
 /// Handle navigation keys
 pub fn handle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -188,16 +190,6 @@ fn adjust_row_for_column(ctx: &mut BoardHandlerContext<'_>, column: usize) {
 
 /// Get the number of tickets in a column
 fn get_column_count(ctx: &BoardHandlerContext<'_>, column: usize) -> usize {
-    use crate::types::TicketStatus;
-
-    const COLUMNS: [TicketStatus; 5] = [
-        TicketStatus::New,
-        TicketStatus::Next,
-        TicketStatus::InProgress,
-        TicketStatus::Complete,
-        TicketStatus::Cancelled,
-    ];
-
     if column >= COLUMNS.len() {
         return 0;
     }

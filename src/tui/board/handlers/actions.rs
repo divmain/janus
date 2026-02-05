@@ -5,21 +5,13 @@ use std::fs;
 use clipboard_rs::Clipboard;
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
+use crate::tui::board::model::COLUMNS;
 use crate::tui::edit::extract_body_for_edit;
 use crate::tui::search::filter_tickets;
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::TicketMetadata;
 
-use super::HandleResult;
 use super::context::BoardHandlerContext;
-
-/// The 5 kanban columns in order
-const COLUMNS: [TicketStatus; 5] = [
-    TicketStatus::New,
-    TicketStatus::Next,
-    TicketStatus::InProgress,
-    TicketStatus::Complete,
-    TicketStatus::Cancelled,
-];
+use super::HandleResult;
 
 /// Handle action keys
 pub fn handle(
