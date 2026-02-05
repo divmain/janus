@@ -148,6 +148,26 @@ async fn repair_cache_entries(
     Ok(())
 }
 
+/// Macro to attempt a cache operation and fall back to file reads on failure
+///
+/// This eliminates the DRY violation of the cache check → operation → warning → fallback pattern.
+#[macro_export]
+macro_rules! with_cache_fallback {
+    // Pattern: cache variable, cache method call, fallback expression
+    ($cache:ident, $cache_method:ident($($cache_args:expr),*), $fallback:expr) => {{
+        if let Some(cache) = $cache {
+            if let Ok(result) = cache.$cache_method($($cache_args),*).await {
+                Ok(result)
+            } else {
+                eprintln!("Warning: cache read failed, falling back to file reads");
+                $fallback
+            }
+        } else {
+            $fallback
+        }
+    }};
+}
+
 /// Result of loading tickets from disk, including both successes and failures
 pub type TicketLoadResult = LoadResult<TicketMetadata>;
 
@@ -260,7 +280,7 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
     // Step 6: Repair cache if needed
     let total_validated = disk_files.len();
     repair_cache_entries(
-        &cache,
+        cache,
         &tickets_to_repair,
         validation_failures,
         total_validated,
@@ -322,21 +342,20 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
 /// Build a HashMap by ID from all tickets
 pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError>
 {
-    if let Some(cache) = cache::get_or_init_cache().await {
-        if let Ok(map) = cache.build_ticket_map().await {
-            return Ok(map);
-        }
-        eprintln!("Warning: cache read failed, falling back to file reads");
-    }
-
-    // Fallback: get all tickets and build map
-    let result = get_all_tickets().await?;
-    let map: HashMap<_, _> = result
-        .items
-        .into_iter()
-        .filter_map(|m| m.id.clone().map(|id| (id, m)))
-        .collect();
-    Ok(map)
+    let cache = cache::get_or_init_cache().await;
+    with_cache_fallback!(
+        cache,
+        build_ticket_map(),
+        async {
+            let result = get_all_tickets().await?;
+            let map: HashMap<_, _> = result
+                .items
+                .into_iter()
+                .filter_map(|m| m.id.clone().map(|id| (id, m)))
+                .collect();
+            Ok(map)
+        }.await
+    )
 }
 
 /// Get all tickets and the map together (efficient single call)
@@ -361,20 +380,19 @@ pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
 /// This function uses the cache when available, falling back to
 /// scanning all tickets and counting matches.
 pub async fn get_children_count(ticket_id: &str) -> Result<usize, crate::error::JanusError> {
-    if let Some(cache) = cache::get_or_init_cache().await {
-        if let Ok(count) = cache.get_children_count(ticket_id).await {
-            return Ok(count);
-        }
-        eprintln!("Warning: cache read failed, falling back to file reads");
-    }
-
-    // Fallback: scan all tickets and count matches
-    let result = get_all_tickets().await?;
-    Ok(result
-        .items
-        .iter()
-        .filter(|t| t.spawned_from.as_ref() == Some(&ticket_id.to_string()))
-        .count())
+    let cache = cache::get_or_init_cache().await;
+    with_cache_fallback!(
+        cache,
+        get_children_count(ticket_id),
+        async {
+            let result = get_all_tickets().await?;
+            Ok(result
+                .items
+                .iter()
+                .filter(|t| t.spawned_from.as_ref() == Some(&ticket_id.to_string()))
+                .count())
+        }.await
+    )
 }
 
 /// Get the count of children for all tickets that have spawned children.
@@ -382,20 +400,19 @@ pub async fn get_children_count(ticket_id: &str) -> Result<usize, crate::error::
 /// This performs a single GROUP BY query instead of N individual queries.
 /// Returns a HashMap mapping parent ticket IDs to their children count.
 pub async fn get_all_children_counts() -> Result<HashMap<String, usize>, crate::error::JanusError> {
-    if let Some(cache) = cache::get_or_init_cache().await {
-        if let Ok(counts) = cache.get_all_children_counts().await {
-            return Ok(counts);
-        }
-        eprintln!("Warning: cache read failed, falling back to file reads");
-    }
-
-    // Fallback: scan all tickets and build counts map
-    let result = get_all_tickets().await?;
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for ticket in &result.items {
-        if let Some(parent_id) = &ticket.spawned_from {
-            *counts.entry(parent_id.clone()).or_insert(0) += 1;
-        }
-    }
-    Ok(counts)
+    let cache = cache::get_or_init_cache().await;
+    with_cache_fallback!(
+        cache,
+        get_all_children_counts(),
+        async {
+            let result = get_all_tickets().await?;
+            let mut counts: HashMap<String, usize> = HashMap::new();
+            for ticket in &result.items {
+                if let Some(parent_id) = &ticket.spawned_from {
+                    *counts.entry(parent_id.clone()).or_insert(0) += 1;
+                }
+            }
+            Ok(counts)
+        }.await
+    )
 }
