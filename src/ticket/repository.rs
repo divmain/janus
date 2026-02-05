@@ -12,6 +12,140 @@ use std::fs;
 use std::path::Path;
 use tokio::fs as tokio_fs;
 
+/// Action to take when cache validation failures are detected
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CacheRecoveryAction {
+    /// No action needed - validation was successful
+    NoAction,
+    /// Repair individual cache entries
+    RepairIndividual,
+    /// Force a full cache rebuild
+    ForceRebuild,
+}
+
+/// Scan the tickets directory to get current file mtimes.
+///
+/// Returns a HashMap mapping ticket IDs to their modification times.
+fn scan_disk_files(items_dir: &Path) -> crate::error::Result<HashMap<String, i64>> {
+    cache::TicketCache::scan_directory_static(items_dir)
+        .map_err(|e| crate::error::JanusError::CacheAccessFailed(items_dir.to_path_buf(), e.to_string()))
+}
+
+/// Read and parse a single ticket from disk.
+///
+/// Reads the file content and parses it into TicketMetadata.
+/// The ticket ID is set from the provided ID if not already present in the metadata.
+async fn read_ticket_from_disk(
+    id: &str,
+    file_path: &Path,
+) -> crate::error::Result<TicketMetadata> {
+    let content = tokio_fs::read_to_string(file_path).await
+        .map_err(|e| crate::error::JanusError::StorageError {
+            operation: "read",
+            item_type: "ticket",
+            path: file_path.to_path_buf(),
+            source: e,
+        })?;
+
+    let mut metadata = content::parse(&content)
+        .map_err(|e| crate::error::JanusError::InvalidFormat(e.to_string()))?;
+
+    if metadata.id.is_none() {
+        metadata.id = Some(id.to_string());
+    }
+    metadata.file_path = Some(file_path.to_path_buf());
+
+    Ok(metadata)
+}
+
+/// Compare disk mtimes with cached mtimes to determine which files need re-reading.
+///
+/// Returns a tuple of (needs_reread, unchanged) where:
+/// - needs_reread: IDs that have been modified or are not in cache
+/// - unchanged: IDs that are unchanged and can use cached data
+fn compute_cache_diff(
+    disk_files: &HashMap<String, i64>,
+    cached_mtimes: &HashMap<String, i64>,
+) -> (Vec<String>, Vec<String>) {
+    let mut needs_reread = Vec::new();
+    let mut unchanged = Vec::new();
+
+    for (id, disk_mtime) in disk_files {
+        match cached_mtimes.get(id) {
+            Some(&cached_mtime) if disk_mtime == &cached_mtime => {
+                unchanged.push(id.clone());
+            }
+            _ => {
+                needs_reread.push(id.clone());
+            }
+        }
+    }
+
+    (needs_reread, unchanged)
+}
+
+/// Handle cache validation failures and determine recovery action.
+///
+/// If failure rate exceeds 10%, returns ForceRebuild.
+/// Otherwise, if there are tickets to repair, returns RepairIndividual.
+fn handle_validation_failures(
+    failures: usize,
+    total: usize,
+    tickets_to_repair: &[TicketMetadata],
+) -> CacheRecoveryAction {
+    if total == 0 {
+        return CacheRecoveryAction::NoAction;
+    }
+
+    let failure_rate = (failures as f64 / total as f64) * 100.0;
+
+    if failure_rate > 10.0 {
+        CacheRecoveryAction::ForceRebuild
+    } else if !tickets_to_repair.is_empty() {
+        CacheRecoveryAction::RepairIndividual
+    } else {
+        CacheRecoveryAction::NoAction
+    }
+}
+
+/// Repair cache entries based on validation results.
+///
+/// Either repairs individual cache entries or triggers full rebuild based on failure rate.
+async fn repair_cache_entries(
+    cache: &cache::TicketCache,
+    tickets: &[TicketMetadata],
+    validation_failures: usize,
+    total_validated: usize,
+) -> crate::error::Result<()> {
+    let action = handle_validation_failures(validation_failures, total_validated, tickets);
+
+    match action {
+        CacheRecoveryAction::ForceRebuild => {
+            eprintln!(
+                "Warning: {} validation failures out of {} files exceeds threshold. Triggering cache rebuild...",
+                validation_failures, total_validated
+            );
+            if let Err(e) = cache.force_rebuild_tickets().await {
+                eprintln!("Warning: cache rebuild failed: {}. Continuing with disk data.", e);
+            }
+        }
+        CacheRecoveryAction::RepairIndividual => {
+            for ticket in tickets {
+                if let Err(e) = cache.update_ticket(ticket).await {
+                    eprintln!(
+                        "Warning: failed to repair cache entry for ticket '{}': {}.",
+                        ticket.id.as_deref().unwrap_or("unknown"),
+                        e
+                    );
+                }
+            }
+        }
+        CacheRecoveryAction::NoAction => {}
+    }
+
+    Ok(())
+}
+
 /// Result of loading tickets from disk, including both successes and failures
 pub type TicketLoadResult = LoadResult<TicketMetadata>;
 
@@ -60,136 +194,77 @@ pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
 /// 1. Repair individual cache entries for successfully validated tickets
 /// 2. Trigger a full cache rebuild if the validation failure rate exceeds 10%
 pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusError> {
-    if let Some(cache) = cache::get_or_init_cache().await {
-        if let Ok(cached_tickets) = cache.get_all_tickets().await {
-            let mut result = TicketLoadResult::new();
-            let items_dir = crate::types::tickets_items_dir();
+    let cache = match cache::get_or_init_cache().await {
+        Some(c) => c,
+        None => return Ok(get_all_tickets_from_disk()),
+    };
 
-            // Scan directory to get current file mtimes
-            let disk_files = match cache::TicketCache::scan_directory_static(&items_dir) {
-                Ok(files) => files,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to scan tickets directory: {}. Falling back to file reads.",
-                        e
-                    );
-                    return Ok(get_all_tickets_from_disk());
-                }
-            };
+    let cached_tickets = match cache.get_all_tickets().await {
+        Ok(t) => t,
+        Err(_) => return Ok(get_all_tickets_from_disk()),
+    };
 
-            // Get cached mtimes for comparison
-            let cached_mtimes = match cache.get_cached_mtimes().await {
-                Ok(mtimes) => mtimes,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to get cached mtimes: {}. Falling back to file reads.",
-                        e
-                    );
-                    return Ok(get_all_tickets_from_disk());
-                }
-            };
+    let items_dir = crate::types::tickets_items_dir();
 
-            // Build a map of cached tickets by ID for quick lookup
-            let cached_map: std::collections::HashMap<_, _> = cached_tickets
-                .into_iter()
-                .filter_map(|t| t.id.clone().map(|id| (id, t)))
-                .collect();
+    // Step 1: Scan disk to get current file mtimes
+    let disk_files = match scan_disk_files(&items_dir) {
+        Ok(files) => files,
+        Err(_) => return Ok(get_all_tickets_from_disk()),
+    };
 
-            // Track tickets that need cache repair and validation failures
-            let mut tickets_to_repair: Vec<TicketMetadata> = Vec::new();
-            let mut validation_failures = 0_usize;
-            let total_validated = disk_files.len();
+    // Step 2: Get cached mtimes for comparison
+    let cached_mtimes = match cache.get_cached_mtimes().await {
+        Ok(m) => m,
+        Err(_) => return Ok(get_all_tickets_from_disk()),
+    };
 
-            // Process each file on disk
-            for (id, disk_mtime) in disk_files {
-                let file_path = items_dir.join(format!("{}.md", id));
+    // Step 3: Compute diff to find files needing re-read
+    let (needs_reread, unchanged) = compute_cache_diff(&disk_files, &cached_mtimes);
 
-                // Check if file needs re-reading (not in cache or mtime differs)
-                let needs_reread = match cached_mtimes.get(&id) {
-                    Some(&cached_mtime) => disk_mtime != cached_mtime,
-                    None => true, // Not in cache, must read
-                };
+    // Build cached ticket map for quick lookup
+    let cached_map: HashMap<_, _> = cached_tickets
+        .into_iter()
+        .filter_map(|t| t.id.clone().map(|id| (id, t)))
+        .collect();
 
-                if needs_reread {
-                    // File modified or not cached - read from disk
-                    match tokio_fs::read_to_string(&file_path).await {
-                        Ok(content) => match content::parse(&content) {
-                            Ok(mut metadata) => {
-                                if metadata.id.is_none() {
-                                    metadata.id = Some(id.clone());
-                                }
-                                metadata.file_path = Some(file_path);
-                                // Queue for cache repair
-                                tickets_to_repair.push(metadata.clone());
-                                result.add_ticket(metadata);
-                            }
-                            Err(e) => {
-                                validation_failures += 1;
-                                result.add_failure(
-                                    file_path.to_string_lossy().into_owned(),
-                                    e.to_string(),
-                                );
-                            }
-                        },
-                        Err(e) => {
-                            validation_failures += 1;
-                            result.add_failure(
-                                file_path.to_string_lossy().into_owned(),
-                                e.to_string(),
-                            );
-                        }
-                    }
-                } else if let Some(cached_ticket) = cached_map.get(&id) {
-                    // File unchanged - use cached data, just update file_path
-                    let mut metadata = cached_ticket.clone();
-                    metadata.file_path = Some(file_path);
-                    result.add_ticket(metadata);
-                }
-            }
+    let mut result = TicketLoadResult::new();
+    let mut tickets_to_repair: Vec<TicketMetadata> = Vec::new();
+    let mut validation_failures = 0_usize;
 
-            // Calculate validation failure rate
-            let failure_rate = if total_validated > 0 {
-                (validation_failures as f64 / total_validated as f64) * 100.0
-            } else {
-                0.0
-            };
-
-            // Decide on cache recovery strategy based on failure rate
-            if failure_rate > 10.0 {
-                // High failure rate - trigger full cache rebuild
-                eprintln!(
-                    "Warning: {} validation failures out of {} files ({:.1}%) exceeds threshold. Triggering cache rebuild...",
-                    validation_failures, total_validated, failure_rate
-                );
-                if let Err(e) = cache.force_rebuild_tickets().await {
-                    eprintln!(
-                        "Warning: cache rebuild failed: {}. Continuing with disk data.",
-                        e
-                    );
-                }
-            } else if !tickets_to_repair.is_empty() {
-                // Low failure rate - repair individual cache entries
-                for ticket in &tickets_to_repair {
-                    if let Err(e) = cache.update_ticket(ticket).await {
-                        eprintln!(
-                            "Warning: failed to repair cache entry for ticket '{}': {}.",
-                            ticket.id.as_deref().unwrap_or("unknown"),
-                            e
-                        );
-                    }
-                }
-            }
-
-            if result.success_count() == 0 && result.failure_count() > 0 {
-                eprintln!("Warning: cache read had failures, falling back to file reads");
-                return Ok(get_all_tickets_from_disk());
-            }
-            return Ok(result);
+    // Step 4: Process unchanged files from cache
+    for id in unchanged {
+        if let Some(cached) = cached_map.get(&id) {
+            let mut metadata = cached.clone();
+            metadata.file_path = Some(items_dir.join(format!("{}.md", id)));
+            result.add_ticket(metadata);
         }
-        eprintln!("Warning: cache read failed, falling back to file reads");
     }
 
-    Ok(get_all_tickets_from_disk())
+    // Step 5: Read modified/new files from disk
+    for id in needs_reread {
+        let file_path = items_dir.join(format!("{}.md", id));
+        match read_ticket_from_disk(&id, &file_path).await {
+            Ok(metadata) => {
+                tickets_to_repair.push(metadata.clone());
+                result.add_ticket(metadata);
+            }
+            Err(e) => {
+                validation_failures += 1;
+                result.add_failure(file_path.to_string_lossy().into_owned(), e.to_string());
+            }
+        }
+    }
+
+    // Step 6: Repair cache if needed
+    let total_validated = disk_files.len();
+    repair_cache_entries(&cache, &tickets_to_repair, validation_failures, total_validated).await?;
+
+    // Fallback to disk if all cache reads failed
+    if result.success_count() == 0 && result.failure_count() > 0 {
+        return Ok(get_all_tickets_from_disk());
+    }
+
+    Ok(result)
 }
 
 /// Get all tickets from disk (fallback when cache is unavailable)
