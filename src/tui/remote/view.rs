@@ -9,6 +9,20 @@
 
 use std::collections::HashSet;
 
+/// Macro to reduce boilerplate in async handlers by consolidating State cloning.
+/// 
+/// This macro simplifies the repetitive pattern where each async handler needs
+/// to clone State values twice (outside closure and inside closure for async block).
+/// 
+/// Usage:
+///   clone_states!(var1, var2, var3);  
+///   // expands to: let var1 = var1.clone(); let var2 = var2.clone(); ...
+macro_rules! clone_states {
+    ($($var:ident),+ $(,)?) => {
+        $(let $var = $var.clone();)+
+    };
+}
+
 use futures::stream::{self, StreamExt};
 use iocraft::prelude::*;
 
@@ -133,31 +147,26 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async fetch handler for refreshing remote issues
     let fetch_handler: Handler<(Platform, RemoteQuery)> = hooks.use_async_handler({
-        let remote_issues_setter = remote_issues.clone();
-        let remote_loading_setter = remote_loading.clone();
-        let toast_setter = toast.clone();
-        let last_error_setter = last_error.clone();
-
+        clone_states!(remote_issues, remote_loading, toast, last_error);
         move |(platform, query): (Platform, RemoteQuery)| {
-            let mut remote_issues_setter = remote_issues_setter.clone();
-            let mut remote_loading_setter = remote_loading_setter.clone();
-            let mut toast_setter = toast_setter.clone();
-            let mut last_error_setter = last_error_setter.clone();
-
+            let mut remote_issues = remote_issues.clone();
+            let mut remote_loading = remote_loading.clone();
+            let mut toast = toast.clone();
+            let mut last_error = last_error.clone();
             async move {
                 let result = fetch_remote_issues_with_query(platform, query).await;
                 match result {
                     FetchResult::Success(issues) => {
-                        remote_issues_setter.set(issues);
+                        remote_issues.set(issues);
                     }
                     FetchResult::Error(err_type, err_msg) => {
-                        last_error_setter.set(Some((err_type, err_msg.clone())));
-                        toast_setter.set(Some(Toast::error(format!(
+                        last_error.set(Some((err_type, err_msg.clone())));
+                        toast.set(Some(Toast::error(format!(
                             "Failed to fetch remote issues: {err_msg}"
                         ))));
                     }
                 }
-                remote_loading_setter.set(false);
+                remote_loading.set(false);
             }
         }
     });
@@ -178,18 +187,13 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async push handler for pushing local tickets to remote
     let push_handler: Handler<(Vec<String>, Platform, RemoteQuery)> = hooks.use_async_handler({
-        let local_tickets_setter = local_tickets.clone();
-        let fetch_handler = fetch_handler.clone();
-        let toast_setter = toast.clone();
-        let last_error_setter = last_error.clone();
-        let local_selected_ids_setter = local_selected_ids.clone();
-
+        clone_states!(local_tickets, fetch_handler, toast, last_error, local_selected_ids);
         move |(ticket_ids, platform, query): (Vec<String>, Platform, RemoteQuery)| {
-            let mut local_tickets_setter = local_tickets_setter.clone();
+            let mut local_tickets = local_tickets.clone();
             let fetch_handler = fetch_handler.clone();
-            let mut toast_setter = toast_setter.clone();
-            let mut last_error_setter = last_error_setter.clone();
-            let mut local_selected_ids_setter = local_selected_ids_setter.clone();
+            let mut toast = toast.clone();
+            let mut last_error = last_error.clone();
+            let mut local_selected_ids = local_selected_ids.clone();
 
             async move {
                 let (successes, errors) =
@@ -200,11 +204,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         .iter()
                         .map(|e| format!("{}: {}", e.ticket_id(), e.error_message()))
                         .collect();
-                    last_error_setter.set(Some(("Push Errors".to_string(), error_msgs.join("\n"))));
+                    last_error.set(Some(("Push Errors".to_string(), error_msgs.join("\n"))));
                 }
 
                 if successes.is_empty() && !errors.is_empty() {
-                    toast_setter.set(Some(Toast::error(format!(
+                    toast.set(Some(Toast::error(format!(
                         "Push failed for {}: {}",
                         errors[0].ticket_id(),
                         errors[0].error_message()
@@ -221,12 +225,12 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                             successes.iter().map(|s| s.ticket_id.as_str()).collect();
                         format!("Pushed {} tickets: {}", successes.len(), ids.join(", "))
                     };
-                    toast_setter.set(Some(Toast::info(msg)));
+                    toast.set(Some(Toast::info(msg)));
                 } else {
                     // Mixed results - show what succeeded and what failed
                     let success_ids: Vec<&str> =
                         successes.iter().map(|s| s.ticket_id.as_str()).collect();
-                    toast_setter.set(Some(Toast::warning(format!(
+                    toast.set(Some(Toast::warning(format!(
                         "Pushed {}, failed: {}",
                         success_ids.join(", "),
                         errors
@@ -238,10 +242,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 }
 
                 // Refresh local tickets to show updated remote links
-                local_tickets_setter.set(get_all_tickets_from_disk().items);
+                local_tickets.set(get_all_tickets_from_disk().items);
 
                 // Clear selection
-                local_selected_ids_setter.set(HashSet::new());
+                local_selected_ids.set(HashSet::new());
 
                 // Refresh remote issues to show new issues
                 fetch_handler((platform, query));
@@ -258,20 +262,16 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         Platform,
         RemoteQuery,
     )> = hooks.use_async_handler({
-        let local_tickets_setter = local_tickets.clone();
-        let fetch_handler = fetch_handler.clone();
-        let toast_setter = toast.clone();
-        let last_error_setter = last_error.clone();
-
+        clone_states!(local_tickets, fetch_handler, toast, last_error);
         move |(state, platform, query): (
             super::sync_preview::SyncPreviewState,
             Platform,
             RemoteQuery,
         )| {
-            let mut local_tickets_setter = local_tickets_setter.clone();
+            let mut local_tickets = local_tickets.clone();
             let fetch_handler = fetch_handler.clone();
-            let mut toast_setter = toast_setter.clone();
-            let mut last_error_setter = last_error_setter.clone();
+            let mut toast = toast.clone();
+            let mut last_error = last_error.clone();
 
             async move {
                 let accepted = state.accepted_changes();
@@ -304,15 +304,15 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 }
 
                 if !errors.is_empty() {
-                    last_error_setter.set(Some(("SyncApplyError".to_string(), errors.join("\n"))));
+                    last_error.set(Some(("SyncApplyError".to_string(), errors.join("\n"))));
                 }
 
                 if applied > 0 {
-                    toast_setter.set(Some(Toast::info(format!("Applied {applied} change(s)"))));
-                    local_tickets_setter.set(get_all_tickets_from_disk().items);
+                    toast.set(Some(Toast::info(format!("Applied {applied} change(s)"))));
+                    local_tickets.set(get_all_tickets_from_disk().items);
                     fetch_handler((platform, query));
                 } else if !errors.is_empty() {
-                    toast_setter.set(Some(Toast::error("Failed to apply changes")));
+                    toast.set(Some(Toast::error("Failed to apply changes")));
                 }
             }
         }
@@ -323,26 +323,23 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Accept current change
     let sync_accept_handler: Handler<()> = hooks.use_async_handler({
-        let sync_preview_setter = sync_preview.clone();
-        let sync_apply_handler = sync_apply_handler.clone();
-        let provider = provider.clone();
-        let active_filters = active_filters.clone();
+        clone_states!(sync_preview, sync_apply_handler, provider, active_filters);
         move |()| {
-            let mut sync_preview_setter = sync_preview_setter.clone();
+            let mut sync_preview = sync_preview.clone();
             let sync_apply_handler = sync_apply_handler.clone();
             let provider = provider.clone();
             let active_filters = active_filters.clone();
             async move {
-                let preview = sync_preview_setter.read().clone();
+                let preview = sync_preview.read().clone();
                 if let Some(mut p) = preview {
                     if !p.accept_current() {
                         // No more changes, apply all accepted
                         let current_platform = provider.get();
                         let current_query = active_filters.read().clone();
                         sync_apply_handler((p, current_platform, current_query));
-                        sync_preview_setter.set(None);
+                        sync_preview.set(None);
                     } else {
-                        sync_preview_setter.set(Some(p));
+                        sync_preview.set(Some(p));
                     }
                 }
             }
@@ -351,26 +348,23 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Skip current change
     let sync_skip_handler: Handler<()> = hooks.use_async_handler({
-        let sync_preview_setter = sync_preview.clone();
-        let sync_apply_handler = sync_apply_handler.clone();
-        let provider = provider.clone();
-        let active_filters = active_filters.clone();
+        clone_states!(sync_preview, sync_apply_handler, provider, active_filters);
         move |()| {
-            let mut sync_preview_setter = sync_preview_setter.clone();
+            let mut sync_preview = sync_preview.clone();
             let sync_apply_handler = sync_apply_handler.clone();
             let provider = provider.clone();
             let active_filters = active_filters.clone();
             async move {
-                let preview = sync_preview_setter.read().clone();
+                let preview = sync_preview.read().clone();
                 if let Some(mut p) = preview {
                     if !p.skip_current() {
                         // No more changes, apply all accepted
                         let current_platform = provider.get();
                         let current_query = active_filters.read().clone();
                         sync_apply_handler((p, current_platform, current_query));
-                        sync_preview_setter.set(None);
+                        sync_preview.set(None);
                     } else {
-                        sync_preview_setter.set(Some(p));
+                        sync_preview.set(Some(p));
                     }
                 }
             }
@@ -379,23 +373,20 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Accept all changes
     let sync_accept_all_handler: Handler<()> = hooks.use_async_handler({
-        let sync_preview_setter = sync_preview.clone();
-        let sync_apply_handler = sync_apply_handler.clone();
-        let provider = provider.clone();
-        let active_filters = active_filters.clone();
+        clone_states!(sync_preview, sync_apply_handler, provider, active_filters);
         move |()| {
-            let mut sync_preview_setter = sync_preview_setter.clone();
+            let mut sync_preview = sync_preview.clone();
             let sync_apply_handler = sync_apply_handler.clone();
             let provider = provider.clone();
             let active_filters = active_filters.clone();
             async move {
-                let preview = sync_preview_setter.read().clone();
+                let preview = sync_preview.read().clone();
                 if let Some(mut p) = preview {
                     p.accept_all();
                     let current_platform = provider.get();
                     let current_query = active_filters.read().clone();
                     sync_apply_handler((p, current_platform, current_query));
-                    sync_preview_setter.set(None);
+                    sync_preview.set(None);
                 }
             }
         }
@@ -403,32 +394,32 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Cancel sync
     let sync_cancel_handler: Handler<()> = hooks.use_async_handler({
-        let sync_preview_setter = sync_preview.clone();
-        let toast_setter = toast.clone();
+        clone_states!(sync_preview, toast);
         move |()| {
-            let mut sync_preview_setter = sync_preview_setter.clone();
-            let mut toast_setter = toast_setter.clone();
+            let mut sync_preview = sync_preview.clone();
+            let mut toast = toast.clone();
             async move {
-                sync_preview_setter.set(None);
-                toast_setter.set(Some(Toast::info("Sync cancelled")));
+                sync_preview.set(None);
+                toast.set(Some(Toast::info("Sync cancelled")));
             }
         }
     });
 
     // Async sync handler for fetching remote data and building changes
     let sync_fetch_handler: Handler<(Vec<String>, Platform)> = hooks.use_async_handler({
-        let sync_preview_setter = sync_preview.clone();
-        let toast_setter = toast.clone();
-        let last_error_setter = last_error.clone();
-        let sync_accept_handler = sync_accept_handler.clone();
-        let sync_skip_handler = sync_skip_handler.clone();
-        let sync_accept_all_handler = sync_accept_all_handler.clone();
-        let sync_cancel_handler = sync_cancel_handler.clone();
-
+        clone_states!(
+            sync_preview,
+            toast,
+            last_error,
+            sync_accept_handler,
+            sync_skip_handler,
+            sync_accept_all_handler,
+            sync_cancel_handler
+        );
         move |(ticket_ids, platform): (Vec<String>, Platform)| {
-            let mut sync_preview_setter = sync_preview_setter.clone();
-            let mut toast_setter = toast_setter.clone();
-            let mut last_error_setter = last_error_setter.clone();
+            let mut sync_preview = sync_preview.clone();
+            let mut toast = toast.clone();
+            let mut last_error = last_error.clone();
             let sync_accept_handler = sync_accept_handler.clone();
             let sync_skip_handler = sync_skip_handler.clone();
             let sync_accept_all_handler = sync_accept_all_handler.clone();
@@ -483,20 +474,19 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 }
 
                 if !error_messages.is_empty() {
-                    last_error_setter
-                        .set(Some(("SyncError".to_string(), error_messages.join("\n"))));
+                    last_error.set(Some(("SyncError".to_string(), error_messages.join("\n"))));
                 }
 
                 if all_changes.is_empty() {
-                    toast_setter.set(Some(Toast::info(
+                    toast.set(Some(Toast::info(
                         "No differences found between local and remote",
                     )));
                 } else {
-                    toast_setter.set(Some(Toast::info(format!(
+                    toast.set(Some(Toast::info(format!(
                         "Found {} change(s) to review",
                         all_changes.len()
                     ))));
-                    sync_preview_setter.set(Some(super::sync_preview::SyncPreviewState::new(
+                    sync_preview.set(Some(super::sync_preview::SyncPreviewState::new(
                         all_changes,
                         None,
                         None,
@@ -517,20 +507,16 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         Platform,
         RemoteQuery,
     )> = hooks.use_async_handler({
-        let local_tickets_setter = local_tickets.clone();
-        let fetch_handler = fetch_handler.clone();
-        let toast_setter = toast.clone();
-        let last_error_setter = last_error.clone();
-
+        clone_states!(local_tickets, fetch_handler, toast, last_error);
         move |(state, platform, query): (
             super::sync_preview::SyncPreviewState,
             Platform,
             RemoteQuery,
         )| {
-            let mut local_tickets_setter = local_tickets_setter.clone();
+            let mut local_tickets = local_tickets.clone();
             let fetch_handler = fetch_handler.clone();
-            let mut toast_setter = toast_setter.clone();
-            let mut last_error_setter = last_error_setter.clone();
+            let mut toast = toast.clone();
+            let mut last_error = last_error.clone();
 
             async move {
                 let accepted = state.accepted_changes();
@@ -563,15 +549,15 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 }
 
                 if !errors.is_empty() {
-                    last_error_setter.set(Some(("SyncApplyError".to_string(), errors.join("\n"))));
+                    last_error.set(Some(("SyncApplyError".to_string(), errors.join("\n"))));
                 }
 
                 if applied > 0 {
-                    toast_setter.set(Some(Toast::info(format!("Applied {applied} change(s)"))));
-                    local_tickets_setter.set(get_all_tickets_from_disk().items);
+                    toast.set(Some(Toast::info(format!("Applied {applied} change(s)"))));
+                    local_tickets.set(get_all_tickets_from_disk().items);
                     fetch_handler((platform, query));
                 } else if !errors.is_empty() {
-                    toast_setter.set(Some(Toast::error("Failed to apply changes")));
+                    toast.set(Some(Toast::error("Failed to apply changes")));
                 }
             }
         }
@@ -581,12 +567,10 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async link handler for linking a local ticket to a remote issue
     let link_handler: Handler<super::link_mode::LinkSource> = hooks.use_async_handler({
-        let local_tickets_setter = local_tickets.clone();
-        let toast_setter = toast.clone();
-
+        clone_states!(local_tickets, toast);
         move |source: super::link_mode::LinkSource| {
-            let mut local_tickets_setter = local_tickets_setter.clone();
-            let mut toast_setter = toast_setter.clone();
+            let mut local_tickets = local_tickets.clone();
+            let mut toast = toast.clone();
 
             async move {
                 match super::operations::link_ticket_to_issue(
@@ -596,14 +580,14 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 .await
                 {
                     Ok(()) => {
-                        toast_setter.set(Some(Toast::info(format!(
+                        toast.set(Some(Toast::info(format!(
                             "Linked {} to {}",
                             source.ticket_id, source.remote_issue.id
                         ))));
-                        local_tickets_setter.set(get_all_tickets_from_disk().items);
+                        local_tickets.set(get_all_tickets_from_disk().items);
                     }
                     Err(e) => {
-                        toast_setter.set(Some(Toast::error(format!("Link failed: {e}"))));
+                        toast.set(Some(Toast::error(format!("Link failed: {e}"))));
                     }
                 }
             }
@@ -614,14 +598,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async unlink handler for unlinking local tickets from remote issues
     let unlink_handler: Handler<Vec<String>> = hooks.use_async_handler({
-        let local_tickets_setter = local_tickets.clone();
-        let local_selected_ids_setter = local_selected_ids.clone();
-        let toast_setter = toast.clone();
-
+        clone_states!(local_tickets, local_selected_ids, toast);
         move |ticket_ids: Vec<String>| {
-            let mut local_tickets_setter = local_tickets_setter.clone();
-            let mut local_selected_ids_setter = local_selected_ids_setter.clone();
-            let mut toast_setter = toast_setter.clone();
+            let mut local_tickets = local_tickets.clone();
+            let mut local_selected_ids = local_selected_ids.clone();
+            let mut toast = toast.clone();
 
             async move {
                 let mut unlinked = 0;
@@ -636,18 +617,18 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
                 // Always refresh and clear selection if any operations succeeded
                 if unlinked > 0 {
-                    local_tickets_setter.set(get_all_tickets_from_disk().items);
-                    local_selected_ids_setter.set(HashSet::new());
+                    local_tickets.set(get_all_tickets_from_disk().items);
+                    local_selected_ids.set(HashSet::new());
                 }
 
                 // Report results
                 if errors.is_empty() {
-                    toast_setter.set(Some(Toast::info(format!(
+                    toast.set(Some(Toast::info(format!(
                         "Unlinked {unlinked} ticket(s)"
                     ))));
                 } else if unlinked > 0 {
                     // Partial success
-                    toast_setter.set(Some(Toast::warning(format!(
+                    toast.set(Some(Toast::warning(format!(
                         "Unlinked {}, failed {} (see logs)",
                         unlinked,
                         errors.len()
@@ -659,12 +640,12 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 } else {
                     // Total failure
                     if errors.len() == 1 {
-                        toast_setter.set(Some(Toast::error(format!(
+                        toast.set(Some(Toast::error(format!(
                             "Failed to unlink: {}",
                             errors[0].1
                         ))));
                     } else {
-                        toast_setter.set(Some(Toast::error(format!(
+                        toast.set(Some(Toast::error(format!(
                             "Failed to unlink {} ticket(s) (see logs)",
                             errors.len()
                         ))));
@@ -802,41 +783,41 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Filter modal click handlers
     let filter_status_click_handler = hooks.use_async_handler({
-        let filter_state_setter = filter_state;
+        clone_states!(filter_state);
         move |()| {
-            let mut filter_state_setter = filter_state_setter;
+            let mut filter_state = filter_state;
             async move {
-                let state = filter_state_setter.read().clone();
+                let state = filter_state.read().clone();
                 if let Some(mut s) = state {
                     s.focused_field = 0;
                     s.toggle_status();
-                    filter_state_setter.set(Some(s));
+                    filter_state.set(Some(s));
                 }
             }
         }
     });
     let filter_assignee_click_handler = hooks.use_async_handler({
-        let filter_state_setter = filter_state;
+        clone_states!(filter_state);
         move |()| {
-            let mut filter_state_setter = filter_state_setter;
+            let mut filter_state = filter_state;
             async move {
-                let state = filter_state_setter.read().clone();
+                let state = filter_state.read().clone();
                 if let Some(mut s) = state {
                     s.focused_field = 1;
-                    filter_state_setter.set(Some(s));
+                    filter_state.set(Some(s));
                 }
             }
         }
     });
     let filter_labels_click_handler = hooks.use_async_handler({
-        let filter_state_setter = filter_state;
+        clone_states!(filter_state);
         move |()| {
-            let mut filter_state_setter = filter_state_setter;
+            let mut filter_state = filter_state;
             async move {
-                let state = filter_state_setter.read().clone();
+                let state = filter_state.read().clone();
                 if let Some(mut s) = state {
                     s.focused_field = 2;
-                    filter_state_setter.set(Some(s));
+                    filter_state.set(Some(s));
                 }
             }
         }
@@ -844,22 +825,22 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Help modal scroll handlers
     let help_scroll_up_handler = hooks.use_async_handler({
-        let scroll_setter = help_modal_scroll;
+        clone_states!(help_modal_scroll);
         move |()| {
-            let mut scroll_setter = scroll_setter;
+            let mut help_modal_scroll = help_modal_scroll;
             async move {
                 // Scroll up: decrease offset by 3 lines
-                scroll_setter.set(scroll_setter.get().saturating_sub(3));
+                help_modal_scroll.set(help_modal_scroll.get().saturating_sub(3));
             }
         }
     });
     let help_scroll_down_handler = hooks.use_async_handler({
-        let scroll_setter = help_modal_scroll;
+        clone_states!(help_modal_scroll);
         move |()| {
-            let mut scroll_setter = scroll_setter;
+            let mut help_modal_scroll = help_modal_scroll;
             async move {
                 // Scroll down: increase offset by 3 lines
-                scroll_setter.set(scroll_setter.get() + 3);
+                help_modal_scroll.set(help_modal_scroll.get() + 3);
             }
         }
     });
