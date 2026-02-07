@@ -4,7 +4,5 @@
 //! and performing semantic search over ticket content.
 
 pub mod model;
-pub mod search;
 
 pub use model::*;
-pub use search::*;

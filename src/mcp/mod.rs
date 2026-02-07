@@ -183,6 +183,10 @@ pub async fn cmd_mcp() -> Result<()> {
     // Log startup to stderr (stdout is the transport)
     eprintln!("Starting Janus MCP server...");
 
+    // Initialize store and start filesystem watcher for live updates
+    let store = crate::store::get_or_init_store().await?;
+    let _ = crate::store::start_watching(store).await;
+
     let server = JanusTools::new();
 
     // Create STDIO transport and serve

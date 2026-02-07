@@ -98,8 +98,8 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                             toast_setter.set(Some(Toast::success(format!(
                                 "Updated {ticket_id} to {status}"
                             ))));
-                            // Sync cache and reload tickets
-                            let _ = crate::cache::sync_cache().await;
+                            // Refresh the mutated ticket in the store, then reload
+                            crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
                             let tickets =
                                 crate::tui::repository::TicketRepository::load_tickets().await;
                             all_tickets_setter.set(tickets);
@@ -123,6 +123,30 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         load_started.set(true);
         load_handler.clone()(());
     }
+
+    // Subscribe to store watcher events for live external updates.
+    // The watcher updates the in-memory store when external processes modify ticket files.
+    // This future polls the broadcast channel and sets needs_reload to refresh the UI.
+    hooks.use_future({
+        let mut needs_reload = needs_reload;
+        async move {
+            if let Some(mut rx) = crate::store::subscribe_to_changes() {
+                loop {
+                    match rx.recv().await {
+                        Ok(_event) => {
+                            needs_reload.set(true);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            needs_reload.set(true);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
 
     // Column visibility state (all visible by default)
     let mut visible_columns = hooks.use_state(|| [true; 5]);

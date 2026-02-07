@@ -373,8 +373,8 @@ impl Entity for Ticket {
 
 /// Resolve a partial ID to a full ID using an in-memory HashMap
 ///
-/// This function works on an in-memory HashMap (useful for cached data),
-/// while `find_by_partial_id()` in finder.rs works on the filesystem/cache.
+/// This function works on an in-memory HashMap (useful for pre-loaded data),
+/// while `find_by_partial_id()` in finder.rs works on the filesystem/store.
 ///
 /// # Arguments
 ///

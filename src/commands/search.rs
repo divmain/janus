@@ -3,11 +3,11 @@
 //! This command performs semantic search over tickets using vector embeddings
 //! to find tickets semantically similar to the query text.
 
-use crate::cache::get_or_init_cache;
 use crate::commands::print_json;
-use crate::embedding::search::SearchResult;
 use crate::error::{JanusError, Result};
 use crate::remote::config::Config;
+use crate::store::get_or_init_store;
+use crate::store::search::SearchResult;
 use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
@@ -53,12 +53,10 @@ pub async fn cmd_search(
         ));
     }
 
-    let cache = get_or_init_cache()
-        .await
-        .ok_or_else(|| JanusError::CacheNotAvailable)?;
+    let store = get_or_init_store().await?;
 
     // Check embedding coverage
-    let (with_embedding, total) = cache.embedding_coverage().await?;
+    let (with_embedding, total) = store.embedding_coverage();
 
     if total == 0 {
         return Err(JanusError::EmbeddingsNotAvailable);
@@ -66,7 +64,7 @@ pub async fn cmd_search(
 
     if with_embedding == 0 {
         return Err(JanusError::Other(
-            "No ticket embeddings available. Run 'janus cache rebuild' with semantic-search feature enabled.".to_string()
+            "No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings.".to_string()
         ));
     }
 
@@ -78,15 +76,11 @@ pub async fn cmd_search(
         eprintln!("Run 'janus cache rebuild' to generate embeddings for all tickets.");
     }
 
-    // Check for model version mismatch
-    let needs_reembed = cache.needs_reembedding().await.unwrap_or(false);
-    if needs_reembed {
-        eprintln!("Warning: Embedding model version mismatch detected.");
-        eprintln!("Run 'janus cache rebuild' to update embeddings to the current model.");
-    }
-
-    // Perform search
-    let results = cache.semantic_search(query, limit).await?;
+    // Generate query embedding and perform search
+    let query_embedding = crate::embedding::model::generate_embedding(query)
+        .await
+        .map_err(JanusError::EmbeddingModel)?;
+    let results = store.semantic_search(&query_embedding, limit);
 
     // Filter by threshold if specified
     let results: Vec<SearchResult> = if let Some(t) = threshold {

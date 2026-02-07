@@ -15,7 +15,9 @@ Janus is a plain-text issue tracking CLI tool written in Rust. It stores tickets
 - **Date/Time**: jiff 0.2
 - **Error Handling**: thiserror 2
 - **Terminal Colors**: owo-colors 4
-- **Database**: Turso (pure Rust SQLite for caching)
+- **In-memory Store**: DashMap (concurrent hash maps for ticket/plan data)
+- **Filesystem Watching**: notify 8 (cross-platform fs event watcher)
+- **Hashing**: blake3 (content-addressable embedding keys)
 
 ## Build Commands
 
@@ -93,8 +95,12 @@ src/
 │   ├── mod.rs           # Plan operations (find, read, write, status computation)
 │   ├── parser.rs        # Plan file parsing and serialization
 │   └── types.rs         # Plan data structures (PlanMetadata, Phase, etc.)
-├── cache/               # Cache module
-│   └── mod.rs           # Core caching logic with Turso async API
+├── store/               # In-memory store module
+│   ├── mod.rs           # TicketStore struct, singleton, init
+│   ├── queries.rs       # Query operations (search, filter, lookup)
+│   ├── embeddings.rs    # Content-addressable embedding storage
+│   ├── search.rs        # Brute-force cosine similarity search
+│   └── watcher.rs       # Filesystem watcher (notify-based)
 └── commands/
     ├── mod.rs           # Command module exports and shared formatting
     ├── add_note.rs      # Add timestamped notes
@@ -199,40 +205,42 @@ mod tests {
 }
 ```
 
-## Caching Architecture
+## In-Memory Store Architecture
 
-Janus uses a SQLite-based caching layer (via Turso) that acts as a read replica of the `.janus/items/` directory. Key points:
+Janus uses an in-memory store backed by `DashMap` concurrent hash maps. There is no external database. Key points:
 
-- **Cache Location**: `.janus/cache-v{VERSION}.db` (local to each repo)
-  - VERSION is the schema version number
-- **Auto-sync**: Cache is validated and updated on every `janus` command invocation
-- **Graceful degradation**: Falls back to file reads if cache is unavailable
-- **Performance**: ~100x faster for common operations after cache warm
-- **Source of truth**: Markdown files remain authoritative; cache is always derived from them
-- **WAL Mode**: Uses SQLite WAL mode for concurrent read/write access
+- **Store Location**: In-process memory (no database files)
+- **Initialization**: On process start, all tickets and plans are read from `.janus/items/` and `.janus/plans/` into `DashMap` structures
+- **Singleton**: The store is a global `OnceCell<TicketStore>` initialized once per process via `get_or_init_store()`
+- **Concurrency**: `DashMap` provides lock-free concurrent reads and fine-grained locking for writes
+- **Filesystem Watcher**: For long-running processes (TUI, MCP server), a `notify`-based watcher monitors `.janus/` recursively, debounces events (150ms), and updates the store automatically
+- **Source of truth**: Markdown files remain authoritative; the store is always derived from them
+- **Embeddings**: Stored as `.bin` files in `.janus/embeddings/`, keyed by `blake3(file_path + ":" + mtime_ns)` for content-addressable cache invalidation
 
 ### Cache Commands
 
 ```bash
-janus cache          # Show cache status
-janus cache clear    # Clear (delete) cache for current repo
-janus cache rebuild  # Force full cache rebuild
-janus cache path     # Print path to cache DB file
+janus cache status   # Show embedding coverage, model name, dir size
+janus cache prune    # Delete orphaned embedding files
+janus cache rebuild  # Regenerate all embeddings
 ```
 
-### Cache Implementation
+### Store Implementation
 
-The cache is implemented in:
-- `src/cache/mod.rs` - Core caching logic with Turso async API
-- `src/commands/cache.rs` - CLI command handlers
+The store is implemented in:
+- `src/store/mod.rs` - `TicketStore` struct, singleton, initialization from disk
+- `src/store/queries.rs` - Query operations (search, filter, lookup, ticket map)
+- `src/store/embeddings.rs` - Content-addressable embedding storage (save/load/prune `.bin` files)
+- `src/store/search.rs` - Brute-force cosine similarity semantic search
+- `src/store/watcher.rs` - Filesystem watcher with debounced event processing
+- `src/commands/cache.rs` - CLI command handlers for cache status/prune/rebuild
 
-The cache:
-1. Scans `.janus/items/` directory for mtime changes
-2. Computes diff (added/modified/deleted tickets)
-3. Updates only changed tickets in a single transaction
-4. Returns data from cache for fast lookups
-
-All cache operations are async and use `tokio` runtime.
+The store:
+1. Reads all `.md` files from `.janus/items/` and `.janus/plans/` at startup
+2. Parses YAML frontmatter + markdown body into `TicketMetadata` / `PlanMetadata`
+3. Populates `DashMap<String, TicketMetadata>` and `DashMap<String, PlanMetadata>`
+4. Loads pre-computed embeddings from `.janus/embeddings/` for semantic search
+5. Optionally starts a filesystem watcher for live updates
 
 ## Domain Concepts
 

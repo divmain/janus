@@ -1,42 +1,5 @@
 use thiserror::Error;
 
-/// Check if an error indicates database corruption.
-///
-/// This uses typed error matching on the turso::Error enum to detect corruption
-/// errors reliably without depending on error message strings. It inspects both
-/// direct turso errors and wrapped errors within JanusError::CacheDatabase.
-pub fn is_corruption_error(error: &JanusError) -> bool {
-    match error {
-        JanusError::CacheDatabase(turso_err) => {
-            matches!(
-                turso_err,
-                turso::Error::Corrupt(_) | turso::Error::NotAdb(_)
-            )
-        }
-        JanusError::CacheCorrupted(_) => true,
-        _ => false,
-    }
-}
-
-/// Check if an error indicates a permission/access denied error.
-///
-/// This uses typed error matching on the turso::Error enum to detect permission
-/// errors reliably without depending on error message strings. It inspects both
-/// direct turso errors and wrapped errors within JanusError::CacheDatabase.
-pub fn is_permission_error(error: &JanusError) -> bool {
-    match error {
-        JanusError::CacheDatabase(turso_err) => {
-            matches!(turso_err, turso::Error::IoError(kind) if *kind == std::io::ErrorKind::PermissionDenied)
-        }
-        JanusError::CacheAccessDenied(_) => true,
-        JanusError::Io(io_err) => io_err.kind() == std::io::ErrorKind::PermissionDenied,
-        JanusError::StorageError { source, .. } => {
-            source.kind() == std::io::ErrorKind::PermissionDenied
-        }
-        _ => false,
-    }
-}
-
 /// Generic helper to format error messages with a prefix, a key, and a list of items
 fn format_error_with_list(prefix: &str, key: &str, label: &str, items: &[String]) -> String {
     format!("{prefix} '{key}': {label} {}", items.join(", "))
@@ -238,31 +201,6 @@ pub enum JanusError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    // Cache errors
-    #[error("cache database corrupted: {0}")]
-    CacheCorrupted(String),
-
-    #[error("cache database version mismatch: expected {expected}, found {found}")]
-    CacheVersionMismatch { expected: String, found: String },
-
-    #[error("cannot access cache directory: {0}")]
-    CacheAccessDenied(std::path::PathBuf),
-
-    #[error("cache access failed at {0}: {1}")]
-    CacheAccessFailed(std::path::PathBuf, String),
-
-    #[error("cache database error: {0}")]
-    CacheDatabase(#[from] turso::Error),
-
-    #[error("cache serde JSON error: {0}")]
-    CacheSerdeJson(serde_json::Error),
-
-    #[error("cache operation failed: {0}")]
-    CacheOther(String),
-
-    #[error("ticket cache is not available")]
-    CacheNotAvailable,
-
     // Plan import errors
     #[error("{}", format_import_failed(.message, .issues))]
     ImportFailed {
@@ -281,9 +219,6 @@ pub enum JanusError {
 
     #[error("failed to load {} ticket file(s):\n{}", .0.len(), .0.join("\n"))]
     TicketLoadFailed(Vec<String>),
-
-    #[error("cache sync failed: {} parse failure(s)\n{}", .0.len(), .0.join("\n"))]
-    CacheSyncParseFailed(Vec<String>),
 
     #[error("--verbose-phase can only be used with phased plans")]
     VerbosePhaseRequiresPhasedPlan,
@@ -408,12 +343,6 @@ pub enum JanusError {
     #[error("{0}")]
     Other(String),
 
-    #[error("cache data integrity error: {0}")]
-    CacheDataIntegrity(String),
-
-    #[error("failed to extract column {column} from database row: {error}")]
-    CacheColumnExtraction { column: usize, error: String },
-
     #[error("embedding model error: {0}")]
     EmbeddingModel(String),
 
@@ -427,73 +356,6 @@ pub type Result<T> = std::result::Result<T, JanusError>;
 mod tests {
     use super::*;
     use std::path::PathBuf;
-
-    #[test]
-    fn test_is_corruption_error() {
-        use std::io::ErrorKind;
-
-        // Should match CacheDatabase with corruption error variants
-        assert!(is_corruption_error(&JanusError::CacheDatabase(
-            turso::Error::Corrupt("database corrupted".to_string())
-        )));
-        assert!(is_corruption_error(&JanusError::CacheDatabase(
-            turso::Error::NotAdb("not a database".to_string())
-        )));
-
-        // Should match CacheCorrupted variant
-        assert!(is_corruption_error(&JanusError::CacheCorrupted(
-            "corrupted".to_string()
-        )));
-
-        // Should not match unrelated errors
-        assert!(!is_corruption_error(&JanusError::CacheDatabase(
-            turso::Error::Busy("database is locked".to_string())
-        )));
-        assert!(!is_corruption_error(&JanusError::CacheDatabase(
-            turso::Error::IoError(ErrorKind::NotFound)
-        )));
-        assert!(!is_corruption_error(&JanusError::TicketNotFound(
-            "test".to_string()
-        )));
-    }
-
-    #[test]
-    fn test_is_permission_error() {
-        use std::io::ErrorKind;
-
-        // Should match CacheDatabase with permission denied errors
-        assert!(is_permission_error(&JanusError::CacheDatabase(
-            turso::Error::IoError(ErrorKind::PermissionDenied)
-        )));
-
-        // Should match CacheAccessDenied variant
-        assert!(is_permission_error(&JanusError::CacheAccessDenied(
-            PathBuf::from("/test")
-        )));
-
-        // Should match IO error with PermissionDenied
-        assert!(is_permission_error(&JanusError::Io(std::io::Error::new(
-            ErrorKind::PermissionDenied,
-            "denied"
-        ))));
-
-        // Should not match other IO errors
-        assert!(!is_permission_error(&JanusError::CacheDatabase(
-            turso::Error::IoError(ErrorKind::NotFound)
-        )));
-        assert!(!is_permission_error(&JanusError::Io(std::io::Error::new(
-            ErrorKind::NotFound,
-            "not found"
-        ))));
-
-        // Should not match non-IO errors
-        assert!(!is_permission_error(&JanusError::CacheDatabase(
-            turso::Error::Corrupt("corrupted".to_string())
-        )));
-        assert!(!is_permission_error(&JanusError::TicketNotFound(
-            "test".to_string()
-        )));
-    }
 
     #[test]
     fn test_pre_hook_failed_error_message() {

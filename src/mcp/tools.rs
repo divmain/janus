@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::str::FromStr;
 
-use crate::cache::get_ticket_cache;
+use crate::store::get_or_init_store;
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::plan::parser::serialize_plan;
@@ -893,6 +893,9 @@ impl JanusTools {
 
         let (id, _file_path) = builder.build().map_err(|e| e.to_string())?;
 
+        // Refresh the in-memory store immediately
+        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&id).await;
+
         // Log the event with MCP actor
         let ticket_type = request.ticket_type.as_deref().unwrap_or("task");
         let priority = request.priority.unwrap_or(2);
@@ -944,6 +947,10 @@ impl JanusTools {
             .run_hooks(true)
             .build()
             .map_err(|e| e.to_string())?;
+
+        // Refresh the in-memory store immediately (child and parent)
+        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&id).await;
+        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&parent.id).await;
 
         // Log with MCP actor
         log_event(
@@ -1006,6 +1013,9 @@ impl JanusTools {
             write_completion_summary(&ticket, summary).map_err(|e| e.to_string())?;
         }
 
+        // Refresh the in-memory store immediately
+        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
+
         // Log with MCP actor
         log_event(
             Event::new(
@@ -1057,6 +1067,9 @@ impl JanusTools {
         content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, request.note));
 
         fs::write(&ticket.file_path, &content).map_err(|e| e.to_string())?;
+
+        // Refresh the in-memory store immediately
+        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
 
         // Log with MCP actor
         log_event(
@@ -1314,6 +1327,9 @@ impl JanusTools {
             .map_err(|e| e.to_string())?;
 
         if added {
+            // Refresh the in-memory store immediately
+            crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
+
             // Log with MCP actor
             log_event(
                 Event::new(
@@ -1363,6 +1379,9 @@ impl JanusTools {
                 request.depends_on_id
             ));
         }
+
+        // Refresh the in-memory store immediately
+        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
 
         // Log with MCP actor
         log_event(
@@ -1438,6 +1457,9 @@ impl JanusTools {
         // Write updated plan
         let content = serialize_plan(&metadata);
         plan.write(&content).map_err(|e| e.to_string())?;
+
+        // Refresh the in-memory store immediately
+        crate::tui::repository::TicketRepository::refresh_plan_in_store(&plan.id).await;
 
         // Log with MCP actor
         log_event(
@@ -1594,37 +1616,31 @@ impl JanusTools {
             }
         }
 
-        // Get cache
-        let cache = get_ticket_cache()
+        // Get store
+        let store = get_or_init_store()
             .await
-            .map_err(|e| format!("Failed to access ticket cache: {e}. Ensure the cache is initialized with 'janus cache'."))?;
+            .map_err(|e| format!("Failed to initialize store: {e}"))?;
 
         // Check if embeddings available
-        let (with_embedding, total) = cache
-            .embedding_coverage()
-            .await
-            .map_err(|e| format!("Failed to check embedding coverage: {e}"))?;
+        let (with_embedding, total) = store.embedding_coverage();
 
         if total == 0 {
-            return Err("No tickets found in the cache.".to_string());
+            return Err("No tickets found.".to_string());
         }
 
         if with_embedding == 0 {
             return Err("No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings for all tickets.".to_string());
         }
 
-        // Check for model version mismatch
-        let needs_reembed = cache.needs_reembedding().await.unwrap_or(false);
-
         // Set defaults
         let limit = request.limit.unwrap_or(10);
         let threshold = request.threshold.unwrap_or(0.0);
 
-        // Perform search
-        let results = cache
-            .semantic_search(&request.query, limit)
+        // Generate query embedding and perform search
+        let query_embedding = crate::embedding::model::generate_embedding(&request.query)
             .await
-            .map_err(|e| format!("Search failed: {e}"))?;
+            .map_err(|e| format!("Failed to generate query embedding: {e}"))?;
+        let results = store.semantic_search(&query_embedding, limit);
 
         // Filter by threshold
         let results = results
@@ -1681,10 +1697,6 @@ impl JanusTools {
             output.push_str(&format!(
                 "\n\n*Note: Only {with_embedding}/{total} tickets have embeddings ({percentage}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*"
             ));
-        }
-
-        if needs_reembed {
-            output.push_str("\n\n*Warning: Embedding model version mismatch detected. Run 'janus cache rebuild' to update embeddings to the current model.*");
         }
 
         Ok(output)

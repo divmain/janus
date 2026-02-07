@@ -1,7 +1,6 @@
 #[macro_use]
 pub mod macros;
 
-pub mod cache;
 pub mod cli;
 pub mod commands;
 pub mod display;
@@ -26,6 +25,7 @@ pub mod types;
 pub mod utils;
 
 pub mod embedding;
+pub mod store;
 
 pub use entity::Entity;
 pub use error::{JanusError, Result};

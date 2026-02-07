@@ -1,7 +1,6 @@
-//! Ticket repository for loading tickets from cache or disk
+//! Ticket repository for loading tickets from the in-memory store
 
-use crate::cache;
-use crate::ticket::get_all_tickets_from_disk;
+use crate::store::get_or_init_store;
 use crate::types::{TicketMetadata, janus_root};
 
 /// Result of initializing the ticket repository
@@ -31,36 +30,46 @@ pub struct TicketRepository {
 }
 
 impl TicketRepository {
-    /// Load all tickets from cache or disk (async)
+    /// Load all tickets from the in-memory store (async)
     pub async fn load_tickets() -> Vec<TicketMetadata> {
         if !janus_dir_exists() {
             return vec![];
         }
 
-        if let Some(cache) = cache::get_or_init_cache().await {
-            match cache.get_all_tickets().await {
-                Ok(tickets) => tickets,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to load from cache: {e}. Using file reads."
-                    );
-                    let result = get_all_tickets_from_disk();
-                    if result.has_failures() {
-                        for (file, error) in &result.failed {
-                            eprintln!("Warning: failed to load {file}: {error}");
-                        }
-                    }
-                    result.items
+        match get_or_init_store().await {
+            Ok(store) => store.get_all_tickets(),
+            Err(_) => vec![],
+        }
+    }
+
+    /// Re-read a specific ticket from disk and upsert it into the store.
+    ///
+    /// This should be called after a TUI mutation writes changes to disk,
+    /// so the in-memory store is immediately consistent before `load_tickets()`
+    /// is called. The filesystem watcher provides eventual consistency for
+    /// external changes, but direct mutations need immediate store updates.
+    pub async fn refresh_ticket_in_store(ticket_id: &str) {
+        if let Ok(ticket) = crate::ticket::Ticket::find(ticket_id).await {
+            if let Ok(metadata) = ticket.read() {
+                if let Ok(store) = get_or_init_store().await {
+                    store.upsert_ticket(metadata);
                 }
             }
-        } else {
-            let result = get_all_tickets_from_disk();
-            if result.has_failures() {
-                for (file, error) in &result.failed {
-                    eprintln!("Warning: failed to load {file}: {error}");
+        }
+    }
+
+    /// Re-read a specific plan from disk and upsert it into the store.
+    ///
+    /// This is the plan equivalent of `refresh_ticket_in_store`. It should be
+    /// called after a mutation writes plan changes to disk, so the in-memory
+    /// store is immediately consistent.
+    pub async fn refresh_plan_in_store(plan_id: &str) {
+        if let Ok(plan) = crate::plan::Plan::find(plan_id).await {
+            if let Ok(metadata) = plan.read() {
+                if let Ok(store) = get_or_init_store().await {
+                    store.upsert_plan(metadata);
                 }
             }
-            result.items
         }
     }
 

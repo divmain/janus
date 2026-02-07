@@ -179,15 +179,15 @@ impl NoteModalData {
     }
 }
 
-/// Data for the cache error modal
+/// Data for the store error modal
 #[derive(Default, Clone)]
-pub struct CacheErrorModalData {
+pub struct StoreErrorModalData {
     /// The error message to display
     pub error_message: String,
 }
 
-impl CacheErrorModalData {
-    /// Create new cache error modal data
+impl StoreErrorModalData {
+    /// Create new store error modal data
     pub fn new(error_message: impl Into<String>) -> Self {
         Self {
             error_message: error_message.into(),

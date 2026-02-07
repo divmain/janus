@@ -8,8 +8,8 @@ use janus::cli::{
 use janus::cli::{Cli, Commands};
 use janus::commands::cmd_search;
 use janus::commands::{
-    cmd_add_note, cmd_adopt, cmd_board, cmd_cache_clear, cmd_cache_path, cmd_cache_rebuild,
-    cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create,
+    cmd_add_note, cmd_adopt, cmd_board, cmd_cache_prune, cmd_cache_rebuild, cmd_cache_status,
+    cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create,
     cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_doctor, cmd_edit, cmd_graph, cmd_hook_disable,
     cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add,
     cmd_link_remove, cmd_ls, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
@@ -175,9 +175,8 @@ async fn main() -> ExitCode {
 
         Commands::Cache { action } => match action {
             CacheAction::Status { json } => cmd_cache_status(json).await,
-            CacheAction::Clear { json } => cmd_cache_clear(json).await,
+            CacheAction::Prune { json } => cmd_cache_prune(json).await,
             CacheAction::Rebuild { json } => cmd_cache_rebuild(json).await,
-            CacheAction::Path { json } => cmd_cache_path(json).await,
         },
 
         Commands::Hook { action } => match action {

@@ -158,26 +158,26 @@ pub fn CancelConfirmModal<'a>(
 }
 
 // =============================================================================
-// Cache Error Modal
+// Store Error Modal
 // =============================================================================
 
-/// Props for the CacheErrorModal component
+/// Props for the StoreErrorModal component
 #[derive(Default, Props)]
-pub struct CacheErrorModalProps {
+pub struct StoreErrorModalProps {
     /// The error message to display
     pub error_message: String,
     /// Handler invoked when modal is closed via X button
     pub on_close: Option<Handler<()>>,
 }
 
-/// Modal dialog for displaying cache sync errors
+/// Modal dialog for displaying store sync errors
 ///
-/// Displays a critical error message when cache synchronization fails.
+/// Displays a critical error message when store synchronization fails.
 /// The application will exit after this modal is closed.
 /// - Press any key to close and exit
 #[component]
-pub fn CacheErrorModal<'a>(
-    props: &CacheErrorModalProps,
+pub fn StoreErrorModal<'a>(
+    props: &StoreErrorModalProps,
     _hooks: Hooks,
 ) -> impl Into<AnyElement<'a>> {
     let theme = theme();

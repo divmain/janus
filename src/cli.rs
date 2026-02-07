@@ -485,26 +485,20 @@ pub enum ConfigAction {
 
 #[derive(Subcommand)]
 pub enum CacheAction {
-    /// Show cache status
+    /// Show embedding coverage, model name, and embeddings directory size
     Status {
         /// Output as JSON
         #[arg(long)]
         json: bool,
     },
-    /// Clear cache for current repo
-    Clear {
+    /// Delete orphaned embedding files that no longer correspond to current tickets
+    Prune {
         /// Output as JSON
         #[arg(long)]
         json: bool,
     },
-    /// Force full cache rebuild
+    /// Regenerate all embeddings (deletes existing embeddings and re-embeds all tickets)
     Rebuild {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Print path to cache database
-    Path {
         /// Output as JSON
         #[arg(long)]
         json: bool,

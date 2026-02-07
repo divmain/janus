@@ -26,7 +26,7 @@ mod view;
 
 pub use add_note::cmd_add_note;
 pub use board::cmd_board;
-pub use cache::{cmd_cache_clear, cmd_cache_path, cmd_cache_rebuild, cmd_cache_status};
+pub use cache::{cmd_cache_prune, cmd_cache_rebuild, cmd_cache_status};
 pub use config::{cmd_config_get, cmd_config_set, cmd_config_show};
 pub use create::cmd_create;
 pub use dep::{cmd_dep_add, cmd_dep_remove, cmd_dep_tree};

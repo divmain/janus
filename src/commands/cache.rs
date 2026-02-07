@@ -2,378 +2,284 @@ use serde_json::json;
 use std::fs;
 
 use super::CommandOutput;
-use crate::cache::TicketCache;
-use crate::error::{Result, is_corruption_error, is_permission_error};
+use crate::error::Result;
 use crate::events::log_cache_rebuilt;
+use crate::store::get_or_init_store;
 
 use crate::embedding::model::EMBEDDING_MODEL_NAME;
 
-/// Format the embedding status text for display.
-fn format_embedding_status(
-    with_embedding: usize,
-    total: usize,
-    percentage: u32,
-    model_version_ok: bool,
-) -> String {
-    let mut text = format!(
-        "\n\nEmbedding Coverage: {with_embedding}/{total} ({percentage}%)\n"
-    );
-    text.push_str(&format!("Embedding Model: {EMBEDDING_MODEL_NAME}\n"));
-
-    if model_version_ok {
-        text.push_str("Model Version: ✓");
-    } else {
-        text.push_str(&format!(
-            "Model Version: ⚠ (expected: {EMBEDDING_MODEL_NAME})\n"
-        ));
-        text.push_str("  Run 'janus cache rebuild' to update embeddings");
-    }
-
-    text
-}
-
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
-    match TicketCache::open().await {
-        Ok(cache) => {
-            let db_path = cache.cache_db_path();
-            let tickets = match cache.get_all_tickets().await {
-                Ok(tickets) => tickets,
-                Err(e) => {
-                    eprintln!("Warning: failed to read tickets from cache: {e}");
-                    eprintln!("Falling back to empty ticket list for status display.");
-                    Vec::new()
-                }
-            };
+    let store = get_or_init_store().await?;
 
-            let mut output = json!({
-                "database_path": db_path.to_string_lossy(),
-                "ticket_count": tickets.len(),
-                "status": "healthy",
-            });
+    let (with_embedding, total) = store.embedding_coverage();
+    let percentage = if total > 0 {
+        (with_embedding as f64 / total as f64 * 100.0) as u32
+    } else {
+        0
+    };
 
-            // Add embedding status
-            let embedding_info = match cache.embedding_coverage().await {
-                Ok((with_embedding, total)) => {
-                    let percentage = if total > 0 {
-                        (with_embedding as f64 / total as f64 * 100.0) as u32
-                    } else {
-                        0
-                    };
+    let emb_dir = crate::types::janus_root().join("embeddings");
+    let emb_dir_size = if emb_dir.exists() {
+        dir_size(&emb_dir)
+    } else {
+        0
+    };
 
-                    // Check model version
-                    let model_version_ok = match cache.get_meta("embedding_model").await {
-                        Ok(Some(stored_model)) => stored_model == EMBEDDING_MODEL_NAME,
-                        _ => false,
-                    };
+    let text = format!(
+        "Cache status:\n  Tickets loaded: {total}\n  Embedding Coverage: {with_embedding}/{total} ({percentage}%)\n  Embedding Model: {EMBEDDING_MODEL_NAME}\n  Embeddings Directory: {}\n  Embeddings Directory Size: {} bytes",
+        crate::utils::format_relative_path(&emb_dir),
+        emb_dir_size,
+    );
 
-                    Some((with_embedding, total, percentage, model_version_ok))
-                }
-                Err(e) => {
-                    eprintln!("Warning: failed to get embedding coverage: {e}");
-                    None
-                }
-            };
+    let output = json!({
+        "ticket_count": total,
+        "status": "healthy",
+        "embedding_coverage": {
+            "with_embedding": with_embedding,
+            "total": total,
+            "percentage": percentage,
+        },
+        "embedding_model": EMBEDDING_MODEL_NAME,
+        "embeddings_directory": emb_dir.to_string_lossy(),
+        "embeddings_directory_size_bytes": emb_dir_size,
+    });
 
-            let text = if let Ok(meta) = fs::metadata(&db_path) {
-                let size = meta.len();
-                let modified_text = if let Ok(modified) = meta.modified() {
-                    format!("  Last modified: {modified:?}")
-                } else {
-                    String::new()
-                };
+    CommandOutput::new(output)
+        .with_text(text)
+        .print(output_json)?;
 
-                format!(
-                    "Cache status:\n  Database path: {}\n  Cached tickets: {}\n  Database size: {} bytes\n{}",
-                    crate::utils::format_relative_path(&db_path),
-                    tickets.len(),
-                    size,
-                    modified_text
-                )
-            } else {
-                format!(
-                    "Cache status:\n  Database path: {}\n  Cached tickets: {}",
-                    crate::utils::format_relative_path(&db_path),
-                    tickets.len()
-                )
-            };
-
-            // Add embedding status to text output
-            let text = if let Some((with_embedding, total, percentage, model_version_ok)) =
-                embedding_info
-            {
-                text + &format_embedding_status(with_embedding, total, percentage, model_version_ok)
-            } else {
-                text
-            };
-
-            if let Ok(meta) = fs::metadata(&db_path) {
-                output["database_size_bytes"] = json!(meta.len());
-                if let Ok(modified) = meta.modified() {
-                    output["last_modified"] = json!(format!("{:?}", modified));
-                }
-            }
-
-            // Add embedding info to JSON output
-            if let Some((with_embedding, total, percentage, model_version_ok)) = embedding_info {
-                output["embedding_coverage"] = json!({
-                    "with_embedding": with_embedding,
-                    "total": total,
-                    "percentage": percentage
-                });
-                output["embedding_model"] = json!(EMBEDDING_MODEL_NAME);
-                output["model_version_ok"] = json!(model_version_ok);
-            }
-
-            CommandOutput::new(output)
-                .with_text(text)
-                .print(output_json)?;
-        }
-        Err(e) => {
-            let status = if is_corruption_error(&e) {
-                "corrupted"
-            } else if is_permission_error(&e) {
-                "permission_denied"
-            } else {
-                "not_available"
-            };
-
-            let text = if is_corruption_error(&e) {
-                "Cache database is corrupted and cannot be opened.\n\nTo fix this issue:\n  1. Run 'janus cache clear' to delete the corrupted cache\n  2. Run any janus command to rebuild the cache automatically\n  3. Or run 'janus cache rebuild' to rebuild it manually".to_string()
-            } else if is_permission_error(&e) {
-                format!(
-                    "Cache database cannot be accessed due to permission issues.\n\nTo fix this issue:\n  1. Check file permissions for:\n     {}\n  2. Ensure the .janus directory is writable\n  3. Try 'janus cache rebuild' after fixing permissions",
-                    crate::utils::format_relative_path(&crate::cache::cache_db_path())
-                )
-            } else {
-                format!(
-                    "Cache not available: {e}\nRun 'janus cache rebuild' to create a cache."
-                )
-            };
-
-            CommandOutput::new(json!({
-                "status": status,
-                "error": e.to_string(),
-            }))
-            .with_text(text)
-            .print(output_json)?;
-
-            return Err(e);
-        }
-    }
     Ok(())
 }
 
-pub async fn cmd_cache_clear(output_json: bool) -> Result<()> {
-    let db_path = match TicketCache::open().await {
-        Ok(cache) => cache.cache_db_path(),
-        Err(e) => {
-            if is_permission_error(&e) {
-                return Err(e);
-            }
+/// Prune orphaned embedding files that no longer correspond to current tickets.
+///
+/// # Concurrency Warning
+///
+/// This command is subject to a TOCTOU race: valid embedding keys are computed from
+/// current ticket file mtimes, and then orphaned files are deleted. If a ticket is
+/// modified between these two steps (e.g., by another process or a concurrent
+/// `janus cache rebuild`), a freshly-generated embedding could be incorrectly pruned.
+/// Do not run this command concurrently with `janus cache rebuild` or other operations
+/// that modify ticket files.
+pub async fn cmd_cache_prune(output_json: bool) -> Result<()> {
+    // 1. Get the store and compute valid embedding keys for all current ticket files
+    let store = get_or_init_store().await?;
+    let tickets = store.get_all_tickets();
 
-            if db_path_from_current_dir().exists() {
-                db_path_from_current_dir()
-            } else {
-                CommandOutput::new(json!({
-                    "action": "cache_clear",
-                    "success": true,
-                    "message": "Cache does not exist or has already been cleared",
-                }))
-                .with_text("Cache does not exist or has already been cleared.\n\nThe cache will be created automatically on the next janus command.")
-                .print(output_json)?;
-                return Ok(());
-            }
+    let mut valid_keys = std::collections::HashSet::new();
+    for ticket in &tickets {
+        let file_path = match &ticket.file_path {
+            Some(fp) => fp,
+            None => continue,
+        };
+        // Get mtime
+        let mtime_ns = match fs::metadata(file_path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos() as i64)
+        {
+            Some(ns) => ns,
+            None => continue,
+        };
+        let key = crate::store::TicketStore::embedding_key(file_path, mtime_ns);
+        valid_keys.insert(key);
+    }
+
+    // 2. Calculate bytes that will be freed (before pruning)
+    let emb_dir = crate::types::janus_root().join("embeddings");
+    let bytes_before = if emb_dir.exists() {
+        dir_size(&emb_dir)
+    } else {
+        0
+    };
+
+    // 3. Prune orphaned embedding files
+    let pruned_count = match crate::store::TicketStore::prune_orphaned(&valid_keys) {
+        Ok(count) => count,
+        Err(e) => {
+            return Err(crate::error::JanusError::Io(e));
         }
     };
 
-    if !output_json {
-        println!(
-            "Deleting cache database: {}",
-            crate::utils::format_relative_path(&db_path)
-        );
-    }
+    let bytes_after = if emb_dir.exists() {
+        dir_size(&emb_dir)
+    } else {
+        0
+    };
+    let bytes_freed = bytes_before.saturating_sub(bytes_after);
 
-    if let Err(e) = crate::cache::delete_cache_files(&db_path) {
-        if e.kind() == std::io::ErrorKind::PermissionDenied {
-            if !output_json {
-                println!("Error: Permission denied when trying to delete cache.");
-                println!(
-                    "Please check file permissions for: {}",
-                    crate::utils::format_relative_path(&db_path)
-                );
-            }
-            return Err(e.into());
-        }
-        return Err(e.into());
-    }
+    // 4. Output results
+    let text = if pruned_count == 0 {
+        "No orphaned embedding files found.".to_string()
+    } else {
+        format!(
+            "Pruned {pruned_count} orphaned embedding file(s), freeing {bytes_freed} bytes.\n\
+             Note: If tickets were modified during pruning, some valid embeddings may have been removed. \
+             Run 'janus cache rebuild' to regenerate if needed."
+        )
+    };
 
     CommandOutput::new(json!({
-        "action": "cache_cleared",
-        "database_path": db_path.to_string_lossy(),
+        "action": "cache_prune",
+        "pruned_count": pruned_count,
+        "bytes_freed": bytes_freed,
+        "valid_keys_count": valid_keys.len(),
         "success": true,
-        "message": format!("Cache database deleted: {}", crate::utils::format_relative_path(&db_path)),
     }))
-    .with_text("Cache cleared successfully.\n\nNote: The cache will be rebuilt automatically on the next janus command.")
+    .with_text(text)
     .print(output_json)
 }
 
 pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
     if !output_json {
-        println!("Rebuilding cache...");
+        println!("Regenerating embeddings for all tickets...");
     }
-
-    let db_path = db_path_from_current_dir();
 
     let start_total = std::time::Instant::now();
 
-    if db_path.exists() {
+    // Delete existing embeddings directory
+    let emb_dir = crate::types::janus_root().join("embeddings");
+    if emb_dir.exists() {
         if !output_json {
             println!(
-                "Found existing cache at: {}",
-                crate::utils::format_relative_path(&db_path)
+                "Deleting existing embeddings at: {}",
+                crate::utils::format_relative_path(&emb_dir)
             );
         }
-        if let Err(e) = crate::cache::delete_cache_files(&db_path) {
-            if e.kind() == std::io::ErrorKind::PermissionDenied {
-                if !output_json {
-                    println!("Error: Permission denied when trying to delete existing cache.");
-                    println!(
-                        "Please check file permissions for: {}",
-                        crate::utils::format_relative_path(&db_path)
-                    );
-                }
-                return Err(e.into());
-            }
+        if let Err(e) = fs::remove_dir_all(&emb_dir) {
             if !output_json {
-                println!("Warning: failed to delete existing cache: {e}");
-                println!("Continuing with rebuild...");
+                println!("Warning: failed to delete embeddings directory: {e}");
             }
-        } else if !output_json {
-            println!("Deleted existing cache.");
         }
     }
 
-    match TicketCache::open().await {
-        Ok(cache) => {
-            let start_sync = std::time::Instant::now();
-            match cache.sync().await {
-                Ok(_changed) => {
-                    let sync_duration = start_sync.elapsed();
+    // Re-embed all tickets
+    let store = get_or_init_store().await?;
+    let tickets = store.get_all_tickets();
+    let ticket_count = tickets.len();
 
-                    let ticket_count = cache.get_all_tickets().await?.len();
+    if !output_json {
+        println!("Generating embeddings for {ticket_count} tickets...");
+    }
 
-                    // Check if we need to regenerate embeddings due to model version mismatch
-                    let needs_reemb = cache.needs_reembedding().await.unwrap_or(true);
+    let mut embedded_count = 0_usize;
+    let mut valid_keys = std::collections::HashSet::new();
 
-                    // Regenerate embeddings if needed (model version mismatch)
-                    if needs_reemb && !output_json {
-                        println!("\nEmbedding model version mismatch detected.");
-                        println!("Regenerating embeddings for all tickets...");
-                    }
+    for ticket in &tickets {
+        let file_path = match &ticket.file_path {
+            Some(fp) => fp,
+            None => continue,
+        };
 
-                    if needs_reemb {
-                        cache.regenerate_all_embeddings(output_json).await?;
-                    }
+        let mtime_ns = match fs::metadata(file_path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos() as i64)
+        {
+            Some(ns) => ns,
+            None => continue,
+        };
 
-                    let total_duration = start_total.elapsed();
+        // Build text for embedding
+        let title = ticket.title.as_deref().unwrap_or("");
+        let body = ticket.body.as_deref().unwrap_or("");
+        let text = if body.is_empty() {
+            title.to_string()
+        } else {
+            format!("{title}\n\n{body}")
+        };
 
-                    // Update model version in meta table after successful rebuild
-                    {
-                        let conn = cache.create_connection().await?;
-                        conn.execute(
-                            "INSERT OR REPLACE INTO meta (key, value) VALUES ('embedding_model', ?1)",
-                            (EMBEDDING_MODEL_NAME,)
-                        ).await?;
-                    }
-
-                    #[allow(unused_mut)]
-                    let mut output = json!({
-                        "action": "cache_rebuilt",
-                        "ticket_count": ticket_count,
-                        "sync_time_ms": sync_duration.as_millis(),
-                        "total_time_ms": total_duration.as_millis(),
-                        "success": true,
-                    });
-
-                    {
-                        output["embeddings_regenerated"] = json!(needs_reemb);
-                        output["embedding_model"] = json!(EMBEDDING_MODEL_NAME);
-                    }
-
-                    CommandOutput::new(output)
-                        .with_text(format!(
-                            "Cache rebuilt successfully:\n  Tickets cached: {ticket_count}\n  Sync time: {sync_duration:?}\n  Total time: {total_duration:?}"
-                        ))
-                        .print(output_json)?;
-
-                    // Log the cache rebuild event with detailed information
-                    let embeddings_regenerated = needs_reemb;
-
-                    let details = json!({
-                        "sync_time_ms": sync_duration.as_millis(),
-                        "embeddings_regenerated": embeddings_regenerated,
-                    });
-                    log_cache_rebuilt(
-                        "explicit_rebuild",
-                        "janus cache rebuild command",
-                        Some(total_duration.as_millis() as u64),
-                        Some(ticket_count),
-                        Some(details),
-                    );
-                }
-                Err(e) => {
+        // Generate embedding
+        match crate::embedding::model::generate_embedding(&text).await {
+            Ok(embedding) => {
+                let key = crate::store::TicketStore::embedding_key(file_path, mtime_ns);
+                if let Err(e) = crate::store::TicketStore::save_embedding(&key, &embedding) {
                     if !output_json {
-                        println!("Error: cache sync failed during rebuild: {e}");
-
-                        if is_permission_error(&e) {
-                            println!(
-                                "\nPermission denied when accessing ticket files or cache directory."
-                            );
-                            println!("Please check file permissions and try again.");
-                        } else if is_corruption_error(&e) {
-                            println!("\nCache corruption detected during rebuild.");
-                            println!("Please run 'janus cache clear' and try again.");
-                        }
+                        eprintln!(
+                            "Warning: failed to save embedding for {}: {e}",
+                            ticket.id.as_deref().unwrap_or("unknown")
+                        );
                     }
-
-                    return Err(e);
+                } else {
+                    valid_keys.insert(key);
+                    embedded_count += 1;
+                    if !output_json && embedded_count % 10 == 0 {
+                        println!("  Progress: {embedded_count}/{ticket_count}");
+                    }
                 }
             }
-        }
-        Err(e) => {
-            if !output_json {
-                println!("Error: failed to initialize cache during rebuild: {e}");
-
-                if is_permission_error(&e) {
-                    println!("\nPermission denied when accessing .janus directory.");
-                    println!(
-                        "Cache path: {}",
-                        crate::utils::format_relative_path(&crate::cache::cache_db_path())
+            Err(e) => {
+                if !output_json {
+                    eprintln!(
+                        "Warning: failed to generate embedding for {}: {e}",
+                        ticket.id.as_deref().unwrap_or("unknown")
                     );
-                    println!("Please check file permissions and try again.");
                 }
             }
-
-            return Err(e);
         }
     }
+
+    // Prune orphaned embedding files
+    if let Err(e) = crate::store::TicketStore::prune_orphaned(&valid_keys) {
+        if !output_json {
+            eprintln!("Warning: failed to prune orphaned embeddings: {e}");
+        }
+    }
+
+    // Reload embeddings into the store
+    store.load_embeddings();
+
+    let total_duration = start_total.elapsed();
+
+    let output = json!({
+        "action": "cache_rebuilt",
+        "ticket_count": ticket_count,
+        "embedded_count": embedded_count,
+        "total_time_ms": total_duration.as_millis(),
+        "success": true,
+        "embedding_model": EMBEDDING_MODEL_NAME,
+    });
+
+    CommandOutput::new(output)
+        .with_text(format!(
+            "Embeddings rebuilt successfully:\n  Tickets: {ticket_count}\n  Embeddings generated: {embedded_count}\n  Total time: {total_duration:?}"
+        ))
+        .print(output_json)?;
+
+    // Log the cache rebuild event
+    let details = json!({
+        "embedded_count": embedded_count,
+        "embedding_model": EMBEDDING_MODEL_NAME,
+    });
+    log_cache_rebuilt(
+        "explicit_rebuild",
+        "janus cache rebuild command",
+        Some(total_duration.as_millis() as u64),
+        Some(ticket_count),
+        Some(details),
+    );
 
     Ok(())
 }
 
-fn db_path_from_current_dir() -> std::path::PathBuf {
-    crate::cache::cache_db_path()
-}
-
-pub async fn cmd_cache_path(output_json: bool) -> Result<()> {
-    let cache = TicketCache::open().await?;
-    let path = cache.cache_db_path();
-
-    // Note: cache path command returns the full path (not relative) because
-    // it's meant to be used programmatically (e.g., for scripts)
-    CommandOutput::new(json!({
-        "path": path.to_string_lossy(),
-    }))
-    .with_text(path.display().to_string())
-    .print(output_json)
+/// Calculate the total size of a directory in bytes.
+///
+/// Recursively traverses subdirectories for robustness, even though the
+/// `.janus/embeddings/` directory is expected to be flat (only `.bin` files).
+fn dir_size(path: &std::path::Path) -> u64 {
+    let mut total = 0;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_file() {
+                    total += meta.len();
+                } else if meta.is_dir() {
+                    total += dir_size(&entry.path());
+                }
+            }
+        }
+    }
+    total
 }

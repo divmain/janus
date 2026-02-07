@@ -911,7 +911,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         })
         .collect();
 
-    // Remote issues still use client-side filtering (no cache search for remote)
+    // Remote issues still use client-side filtering (no store search for remote)
     let filtered_remote = filter_remote_issues(&remote_issues_ref, &query_str);
 
     let local_count = filtered_local.len();

@@ -424,7 +424,7 @@ pub struct TicketMetadata {
     #[serde(skip)]
     pub completion_summary: Option<String>,
 
-    /// Ticket body content (only populated during cache sync, not persisted to YAML)
+    /// Ticket body content (only populated during store initialization, not persisted to YAML)
     #[serde(skip)]
     pub body: Option<String>,
 }
@@ -445,7 +445,11 @@ impl TicketMetadata {
     pub fn compute_depth(&self) -> u32 {
         self.depth.unwrap_or_else(|| {
             // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if self.spawned_from.is_none() { 0 } else { 1 }
+            if self.spawned_from.is_none() {
+                0
+            } else {
+                1
+            }
         })
     }
 

@@ -1031,11 +1031,11 @@ priority: 2
     let _ = janus.run(&["ls"]);
     let status_output = janus.run_success(&["cache", "status"]);
     assert!(status_output.contains("Cache status"));
-    assert!(status_output.contains("Cached tickets"));
+    assert!(status_output.contains("Tickets loaded"));
 }
 
 #[test]
-fn test_cache_clear_command() {
+fn test_cache_prune_command() {
     let janus = JanusTest::new();
 
     let janus_dir = janus.temp_dir.path().join(".janus");
@@ -1058,8 +1058,16 @@ priority: 2
 
     let _ = janus.run(&["ls"]);
 
-    let output = janus.run_success(&["cache", "clear"]);
-    assert!(output.contains("clear"));
+    // Create an orphaned embedding file
+    let emb_dir = janus_dir.join("embeddings");
+    fs::create_dir_all(&emb_dir).unwrap();
+    fs::write(emb_dir.join("orphaned-key.bin"), b"fake embedding data").unwrap();
+
+    let output = janus.run_success(&["cache", "prune"]);
+    assert!(
+        output.contains("Pruned") || output.contains("orphaned"),
+        "Prune output should mention pruning or orphaned files. Got: {output}"
+    );
 
     let output2 = janus.run_success(&["ls"]);
     assert!(output2.contains("j-test"));
@@ -1095,32 +1103,6 @@ priority: 2
 }
 
 #[test]
-fn test_cache_path_command() {
-    let janus = JanusTest::new();
-
-    let output = janus.run_success(&["cache", "path"]);
-    let path_str = output.trim();
-    let cache_path = std::path::PathBuf::from(path_str);
-
-    // After security fix SEC-004, cache path returns relative path for privacy
-    assert!(
-        !cache_path.is_absolute() || cache_path.starts_with(".janus"),
-        "Cache path should be relative for privacy (SEC-004), got: {cache_path:?}"
-    );
-    assert!(
-        cache_path.to_string_lossy().contains("janus"),
-        "Cache path should contain 'janus'"
-    );
-    assert!(
-        cache_path
-            .extension()
-            .map(|ext| ext == "db")
-            .unwrap_or(false),
-        "Cache path should have .db extension"
-    );
-}
-
-#[test]
 fn test_cache_corrupted_database() {
     let janus = JanusTest::new();
 
@@ -1142,31 +1124,18 @@ priority: 2
 "#;
     fs::write(&ticket_path, content).unwrap();
 
-    let _ = janus.run(&["ls"]);
+    // Write a corrupted file in the embeddings directory to simulate bad state
+    let emb_dir = janus_dir.join("embeddings");
+    fs::create_dir_all(&emb_dir).unwrap();
+    fs::write(emb_dir.join("corrupted.bin"), b"bad data").unwrap();
 
-    let cache_path_output = janus.run_success(&["cache", "path"]);
-    let cache_path_relative = std::path::PathBuf::from(cache_path_output.trim());
-    // Resolve relative path against temp directory (SEC-004: cache path now returns relative)
-    let cache_path = janus.temp_dir.path().join(&cache_path_relative);
-
-    assert!(
-        cache_path.exists(),
-        "Cache file should exist after ls: {cache_path:?}"
-    );
-
-    let corrupted_data = b"This is corrupted database data, not SQLite format";
-    fs::write(&cache_path, corrupted_data).unwrap();
-
-    let stderr = janus.run(&["ls"]).stderr;
-    let stderr_str = String::from_utf8_lossy(&stderr);
+    // ls should still work since tickets are read from disk, not embeddings
     let stdout = janus.run(&["ls"]).stdout;
     let stdout_str = String::from_utf8_lossy(&stdout);
 
     assert!(
-        stderr_str.contains("Warning")
-            || stderr_str.contains("corrupted")
-            || stdout_str.contains("j-test"),
-        "Should warn about corruption or fall back to file reads. stderr: {stderr_str}, stdout: {stdout_str}"
+        stdout_str.contains("j-test"),
+        "ls should still show tickets even with corrupted embeddings. stdout: {stdout_str}"
     );
 }
 
@@ -1194,12 +1163,10 @@ priority: 2
 
     let _ = janus.run(&["ls"]);
 
-    let cache_path_output = janus.run_success(&["cache", "path"]);
-    let cache_path_relative = std::path::PathBuf::from(cache_path_output.trim());
-    // Resolve relative path against temp directory (SEC-004: cache path now returns relative)
-    let cache_path = janus.temp_dir.path().join(&cache_path_relative);
-
-    fs::write(&cache_path, b"corrupted data").unwrap();
+    // Write corrupted data in the embeddings directory
+    let emb_dir = janus_dir.join("embeddings");
+    fs::create_dir_all(&emb_dir).unwrap();
+    fs::write(emb_dir.join("corrupted.bin"), b"corrupted data").unwrap();
 
     let output = janus.run_success(&["cache", "rebuild"]);
     assert!(output.contains("rebuilt"));
@@ -1230,16 +1197,13 @@ priority: 2
 "#;
     fs::write(&ticket_path, content).unwrap();
 
-    let _ = janus.run(&["ls"]);
-
-    let cache_path_output = janus.run_success(&["cache", "path"]);
-    let cache_path = std::path::PathBuf::from(cache_path_output.trim());
-    let cache_dir = cache_path.parent().unwrap();
-
-    if cache_dir.exists() {
-        fs::remove_dir_all(cache_dir).ok();
+    // Delete the embeddings directory if it exists
+    let emb_dir = janus_dir.join("embeddings");
+    if emb_dir.exists() {
+        fs::remove_dir_all(&emb_dir).ok();
     }
 
+    // ls should still work without any embeddings directory
     let stdout1 = janus.run(&["ls"]).stdout;
     let stdout1_str = String::from_utf8_lossy(&stdout1);
     assert!(stdout1_str.contains("j-test"));
@@ -1267,15 +1231,11 @@ priority: 2
 "#;
     fs::write(&ticket_path, content).unwrap();
 
-    let _ = janus.run(&["ls"]);
-
-    let cache_path_output = janus.run_success(&["cache", "path"]);
-    let cache_path_relative = std::path::PathBuf::from(cache_path_output.trim());
-    // Resolve relative path against temp directory (SEC-004: cache path now returns relative)
-    let cache_path = janus.temp_dir.path().join(&cache_path_relative);
-
+    // Write corrupt data to embeddings directory
+    let emb_dir = janus_dir.join("embeddings");
+    fs::create_dir_all(&emb_dir).unwrap();
     let corrupt_content = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA];
-    fs::write(&cache_path, &corrupt_content).unwrap();
+    fs::write(emb_dir.join("corrupt.bin"), &corrupt_content).unwrap();
 
     let output = janus.run_success(&["show", "j-test"]);
     assert!(output.contains("Test ticket"));

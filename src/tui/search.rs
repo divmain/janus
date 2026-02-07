@@ -241,13 +241,13 @@ pub fn strip_semantic_modifier(query: &str) -> &str {
     }
 }
 
-/// Perform semantic search using the cache.
+/// Perform semantic search using the in-memory store.
 /// Returns SearchResults on success, or an error string on failure.
 pub async fn perform_semantic_search(
     query: &str,
-) -> std::result::Result<Vec<crate::embedding::search::SearchResult>, String> {
-    use crate::cache::get_or_init_cache;
+) -> std::result::Result<Vec<crate::store::search::SearchResult>, String> {
     use crate::remote::config::Config;
+    use crate::store::get_or_init_store;
 
     // Check if semantic search is enabled
     match Config::load() {
@@ -263,28 +263,27 @@ pub async fn perform_semantic_search(
         }
     }
 
-    // Get cache
-    let cache = get_or_init_cache().await.ok_or("Cache not available")?;
+    // Get store
+    let store = get_or_init_store()
+        .await
+        .map_err(|e| format!("Failed to initialize store: {e}"))?;
 
     // Check if embeddings are available
-    let (with_embedding, total) = cache
-        .embedding_coverage()
-        .await
-        .map_err(|e| format!("Failed to check embeddings: {e}"))?;
+    let (with_embedding, total) = store.embedding_coverage();
 
     if total == 0 {
-        return Err("No tickets in cache".to_string());
+        return Err("No tickets available".to_string());
     }
 
     if with_embedding == 0 {
         return Err("No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings for all tickets.".to_string());
     }
 
-    // Perform semantic search with hard-coded limit of 10
-    let results = cache
-        .semantic_search(query, 10)
+    // Generate query embedding and perform semantic search
+    let query_embedding = crate::embedding::model::generate_embedding(query)
         .await
-        .map_err(|e| format!("Semantic search failed: {e}"))?;
+        .map_err(|e| format!("Failed to generate query embedding: {e}"))?;
+    let results = store.semantic_search(&query_embedding, 10);
 
     Ok(results)
 }
@@ -293,7 +292,7 @@ pub async fn perform_semantic_search(
 /// Fuzzy results take precedence (appear first)
 pub fn merge_search_results(
     fuzzy: Vec<FilteredTicket>,
-    semantic: Vec<crate::embedding::search::SearchResult>,
+    semantic: Vec<crate::store::search::SearchResult>,
 ) -> Vec<FilteredTicket> {
     use std::collections::HashSet;
 
@@ -319,8 +318,8 @@ pub fn merge_search_results(
     result
 }
 
-impl From<crate::embedding::search::SearchResult> for FilteredTicket {
-    fn from(result: crate::embedding::search::SearchResult) -> Self {
+impl From<crate::store::search::SearchResult> for FilteredTicket {
+    fn from(result: crate::store::search::SearchResult) -> Self {
         Self {
             ticket: Arc::new(result.ticket),
             score: 0,              // Fuzzy score not applicable
@@ -330,7 +329,7 @@ impl From<crate::embedding::search::SearchResult> for FilteredTicket {
     }
 }
 
-/// Compute title highlight indices for tickets returned from SQL search.
+/// Compute title highlight indices for tickets returned from text search.
 ///
 /// Runs lightweight fuzzy matching on title only (not body) to determine
 /// which characters to highlight in the UI.
@@ -364,7 +363,7 @@ pub fn compute_title_highlights(tickets: &[TicketMetadata], query: &str) -> Vec<
 
             FilteredTicket {
                 ticket: Arc::new(ticket.clone()),
-                score: 0, // Score not relevant for SQL-based search
+                score: 0, // Score not relevant for store-based search
                 title_indices,
                 is_semantic: false,
             }
@@ -571,7 +570,7 @@ mod tests {
 
         // Create semantic results (including duplicate)
         let semantic = vec![
-            crate::embedding::search::SearchResult {
+            crate::store::search::SearchResult {
                 ticket: TicketMetadata {
                     id: Some("ticket-1".to_string()), // Duplicate
                     title: Some("First Ticket".to_string()),
@@ -579,7 +578,7 @@ mod tests {
                 },
                 similarity: 0.95,
             },
-            crate::embedding::search::SearchResult {
+            crate::store::search::SearchResult {
                 ticket: TicketMetadata {
                     id: Some("ticket-2".to_string()), // New
                     title: Some("Second Ticket".to_string()),

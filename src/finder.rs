@@ -1,17 +1,17 @@
 //! Simple find-by-partial-ID functions for tickets and plans.
 //!
 //! This module provides two async functions for finding entities (tickets, plans)
-//! by partial ID. The implementation follows this algorithm:
-//! 1. Check cache for exact match (file exists)
-//! 2. Check cache for partial matches
-//! 3. Fall back to filesystem-based search if cache unavailable
-//! 4. Handle exact vs partial matches
-//! 5. Return ambiguous ID errors for multiple matches
+//! by partial ID. The store is treated as authoritative when available:
+//! 1. If the store initializes successfully:
+//!    a. Check for exact match on disk (file exists)
+//!    b. Check store for partial matches
+//!    c. Return NotFound/Ambiguous errors (no filesystem fallback)
+//! 2. If the store fails to initialize, fall back to filesystem-based search
 
 use std::path::{Path, PathBuf};
 
-use crate::cache;
 use crate::error::{JanusError, Result};
+use crate::store::get_or_init_store;
 use crate::types::{plans_dir, tickets_items_dir};
 use crate::utils::DirScanner;
 
@@ -41,43 +41,28 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     // Validate ID before any path construction
     validate_id(partial_id)?;
 
-    // Try cache first
-    match cache::get_or_init_cache().await {
-        Some(cache) => {
-            // Exact match check - does file exist?
+    // Use store as authoritative source when available; filesystem fallback only when store fails
+    match get_or_init_store().await {
+        Ok(store) => {
+            // Exact match check - does file exist on disk?
             let exact_match_path = dir.join(format!("{partial_id}.md"));
             if exact_match_path.exists() {
                 return Ok(exact_match_path);
             }
 
-            // Partial match via cache
-            match cache.find_by_partial_id(partial_id).await {
-                Ok(matches) => match matches.len() {
-                    0 => {}
-                    1 => {
-                        let filename = format!("{}.md", &matches[0]);
-                        return Ok(dir.join(filename));
-                    }
-                    _ => {
-                        return Err(JanusError::AmbiguousId(partial_id.to_string(), matches));
-                    }
-                },
-                Err(e) => {
-                    eprintln!(
-                        "Warning: cache lookup failed for ticket '{partial_id}': {e}. Falling back to file reads."
-                    );
-                }
+            // Partial match via store (store is authoritative, no filesystem fallback)
+            let matches = store.find_by_partial_id(partial_id);
+            match matches.len() {
+                0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+                1 => Ok(dir.join(format!("{}.md", &matches[0]))),
+                _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
             }
         }
-        None => {
-            eprintln!(
-                "Warning: cache not available for ticket lookup '{partial_id}'. Falling back to file reads."
-            );
+        Err(_) => {
+            // FALLBACK: File-based implementation only when store is unavailable
+            find_ticket_by_id_filesystem(partial_id, &dir)
         }
     }
-
-    // FALLBACK: File-based implementation
-    find_ticket_by_id_filesystem(partial_id, &dir)
 }
 
 /// Find a plan by partial ID.
@@ -91,46 +76,31 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     // Validate ID before any path construction
     validate_id(partial_id)?;
 
-    // Try cache first
-    match cache::get_or_init_cache().await {
-        Some(cache) => {
-            // Exact match check - does file exist?
+    // Use store as authoritative source when available; filesystem fallback only when store fails
+    match get_or_init_store().await {
+        Ok(store) => {
+            // Exact match check - does file exist on disk?
             let exact_match_path = dir.join(format!("{partial_id}.md"));
             if exact_match_path.exists() {
                 return Ok(exact_match_path);
             }
 
-            // Partial match via cache
-            match cache.find_plan_by_partial_id(partial_id).await {
-                Ok(matches) => match matches.len() {
-                    0 => {}
-                    1 => {
-                        let filename = format!("{}.md", &matches[0]);
-                        return Ok(dir.join(filename));
-                    }
-                    _ => {
-                        return Err(JanusError::AmbiguousPlanId(partial_id.to_string(), matches));
-                    }
-                },
-                Err(e) => {
-                    eprintln!(
-                        "Warning: cache lookup failed for plan '{partial_id}': {e}. Falling back to file reads."
-                    );
-                }
+            // Partial match via store (store is authoritative, no filesystem fallback)
+            let matches = store.find_plan_by_partial_id(partial_id);
+            match matches.len() {
+                0 => Err(JanusError::PlanNotFound(partial_id.to_string())),
+                1 => Ok(dir.join(format!("{}.md", &matches[0]))),
+                _ => Err(JanusError::AmbiguousPlanId(partial_id.to_string(), matches)),
             }
         }
-        None => {
-            eprintln!(
-                "Warning: cache not available for plan lookup '{partial_id}'. Falling back to file reads."
-            );
+        Err(_) => {
+            // FALLBACK: File-based implementation only when store is unavailable
+            find_plan_by_id_filesystem(partial_id, &dir)
         }
     }
-
-    // FALLBACK: File-based implementation
-    find_plan_by_id_filesystem(partial_id, &dir)
 }
 
-/// Filesystem-based find implementation for tickets (fallback when cache unavailable).
+/// Filesystem-based find implementation for tickets (fallback when store unavailable).
 fn find_ticket_by_id_filesystem(partial_id: &str, dir: &Path) -> Result<PathBuf> {
     let files = DirScanner::find_markdown_files_from_path(dir).unwrap_or_else(|e| {
         eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);
@@ -156,7 +126,7 @@ fn find_ticket_by_id_filesystem(partial_id: &str, dir: &Path) -> Result<PathBuf>
     }
 }
 
-/// Filesystem-based find implementation for plans (fallback when cache unavailable).
+/// Filesystem-based find implementation for plans (fallback when store unavailable).
 fn find_plan_by_id_filesystem(partial_id: &str, dir: &Path) -> Result<PathBuf> {
     let files = DirScanner::find_markdown_files_from_path(dir).unwrap_or_else(|e| {
         eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);

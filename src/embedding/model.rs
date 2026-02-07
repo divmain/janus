@@ -127,7 +127,27 @@ pub async fn generate_ticket_embedding(
     generate_embedding(&full_text).await
 }
 
-/// Compute cosine similarity between two embeddings
+/// Compute cosine similarity between two embedding vectors.
+///
+/// Returns a value in `[-1.0, 1.0]`, where `1.0` means identical direction,
+/// `0.0` means orthogonal (unrelated), and `-1.0` means opposite.
+///
+/// # Cases that return `0.0`
+///
+/// - **Dimension mismatch**: Cosine similarity is undefined for vectors of
+///   different dimensions. Returning `0.0` ensures mismatched embeddings are
+///   ranked last rather than causing a panic. In practice, this case should
+///   not occur because [`load_embeddings()`](crate::store::embeddings) validates
+///   that all loaded embeddings match [`EMBEDDING_DIMENSIONS`] at load time,
+///   discarding any that don't.
+///
+/// - **Zero-norm vectors**: If either vector has zero magnitude, division by
+///   zero is avoided by returning `0.0`. This is a safe default; zero-norm
+///   vectors are implausible outputs from real embedding models.
+///
+/// - **Genuinely orthogonal vectors**: For valid, non-zero vectors that happen
+///   to be perpendicular, `0.0` is the mathematically correct cosine similarity,
+///   indicating no semantic relationship.
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 0.0;

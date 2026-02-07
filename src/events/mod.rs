@@ -426,11 +426,11 @@ pub fn log_ticket_moved(plan_id: &str, ticket_id: &str, from_phase: &str, to_pha
     ));
 }
 
-/// Log a cache rebuilt event
+/// Log a store rebuilt event
 ///
-/// This function logs detailed information about why the cache was rebuilt,
+/// This function logs detailed information about why the store was rebuilt,
 /// including the reason, duration, and additional context to help debug
-/// issues where cache regeneration happens unexpectedly.
+/// issues where store regeneration happens unexpectedly.
 pub fn log_cache_rebuilt(
     reason: &str,
     trigger: &str,
@@ -589,7 +589,7 @@ mod tests {
     fn test_log_cache_rebuilt() {
         let _temp = setup_test_dir();
 
-        // Log a cache rebuilt event with all fields
+        // Log a store rebuilt event with all fields
         log_cache_rebuilt(
             "version_mismatch",
             "automatic_schema_update",
@@ -601,7 +601,7 @@ mod tests {
             })),
         );
 
-        // Log a minimal cache rebuilt event
+        // Log a minimal store rebuilt event
         log_cache_rebuilt(
             "corruption_recovery",
             "automatic_recovery",
@@ -628,20 +628,16 @@ mod tests {
         assert_eq!(events[1].event_type, EventType::CacheRebuilt);
         assert_eq!(events[1].data["reason"], "corruption_recovery");
         assert_eq!(events[1].data["trigger"], "automatic_recovery");
-        assert!(
-            !events[1]
-                .data
-                .as_object()
-                .unwrap()
-                .contains_key("duration_ms")
-        );
-        assert!(
-            !events[1]
-                .data
-                .as_object()
-                .unwrap()
-                .contains_key("ticket_count")
-        );
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("duration_ms"));
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("ticket_count"));
         assert!(!events[1].data.as_object().unwrap().contains_key("details"));
     }
 

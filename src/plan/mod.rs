@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::cache;
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
@@ -263,121 +262,25 @@ impl Entity for Plan {
     }
 }
 
-/// Get all plans from the plans directory
+/// Get all plans from the in-memory store.
 ///
-/// Uses mtime comparison to avoid unnecessary file reads - only re-reads
-/// files that have been modified since they were cached.
+/// The store is populated from disk on first access and kept
+/// up-to-date via the filesystem watcher.
 pub async fn get_all_plans() -> Result<PlanLoadResult> {
-    // Try cache first
-    if let Some(cache) = cache::get_or_init_cache().await {
-        if let Ok(cached_plans) = cache.get_all_plans().await {
+    match crate::store::get_or_init_store().await {
+        Ok(store) => {
+            let plans = store.get_all_plans();
             let mut result = PlanLoadResult::new();
-            let p_dir = plans_dir();
-
-            // Scan directory to get current file mtimes
-            let disk_files = match cache::TicketCache::scan_directory_static(&p_dir) {
-                Ok(files) => files,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to scan plans directory: {e}. Falling back to file reads."
-                    );
-                    return Ok(get_all_plans_from_disk());
-                }
-            };
-
-            // Get cached mtimes for comparison
-            let cached_mtimes = match cache.get_cached_plan_mtimes().await {
-                Ok(mtimes) => mtimes,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to get cached plan mtimes: {e}. Falling back to file reads."
-                    );
-                    return Ok(get_all_plans_from_disk());
-                }
-            };
-
-            // Build a map of cached plans by ID for quick lookup
-            let cached_map: HashMap<_, _> = cached_plans
-                .into_iter()
-                .filter_map(|p| p.id.clone().map(|id| (id, p)))
-                .collect();
-
-            // Process each file on disk
-            for (id, disk_mtime) in disk_files {
-                let file_path = p_dir.join(format!("{id}.md"));
-
-                // Check if file needs re-reading (not in cache or mtime differs)
-                let needs_reread = match cached_mtimes.get(&id) {
-                    Some(&cached_mtime) => disk_mtime != cached_mtime,
-                    None => true, // Not in cache, must read
-                };
-
-                if needs_reread {
-                    // File modified or not cached - read from disk
-                    match fs::read_to_string(&file_path) {
-                        Ok(content) => match parse_plan_content(&content) {
-                            Ok(mut metadata) => {
-                                if metadata.id.is_none() {
-                                    metadata.id = Some(id.clone());
-                                }
-                                metadata.file_path = Some(file_path);
-                                result.add_plan(metadata);
-                            }
-                            Err(e) => {
-                                result.add_failure(
-                                    file_path.to_string_lossy().into_owned(),
-                                    e.to_string(),
-                                );
-                            }
-                        },
-                        Err(e) => {
-                            result.add_failure(
-                                file_path.to_string_lossy().into_owned(),
-                                e.to_string(),
-                            );
-                        }
-                    }
-                } else if let Some(_cached_plan) = cached_map.get(&id) {
-                    // File unchanged - use cached data, but we need to convert CachedPlanMetadata
-                    // to PlanMetadata. Since the cached data has all the same fields, we read
-                    // from disk anyway in this case to get the full PlanMetadata structure.
-                    // This is still efficient because we only do this for unchanged files.
-                    match fs::read_to_string(&file_path) {
-                        Ok(content) => match parse_plan_content(&content) {
-                            Ok(mut metadata) => {
-                                if metadata.id.is_none() {
-                                    metadata.id = Some(id.clone());
-                                }
-                                metadata.file_path = Some(file_path);
-                                result.add_plan(metadata);
-                            }
-                            Err(e) => {
-                                result.add_failure(
-                                    file_path.to_string_lossy().into_owned(),
-                                    e.to_string(),
-                                );
-                            }
-                        },
-                        Err(e) => {
-                            result.add_failure(
-                                file_path.to_string_lossy().into_owned(),
-                                e.to_string(),
-                            );
-                        }
-                    }
-                }
+            for plan in plans {
+                result.add_plan(plan);
             }
-
-            if result.success_count() == 0 && result.failure_count() > 0 {
-                eprintln!("Warning: cache read had failures, falling back to file reads");
-                return Ok(get_all_plans_from_disk());
-            }
-            return Ok(result);
+            Ok(result)
         }
-        eprintln!("Warning: cache read failed, falling back to file reads");
+        Err(_) => {
+            // Fall back to disk reads if store initialization fails
+            Ok(get_all_plans_from_disk())
+        }
     }
-
-    Ok(get_all_plans_from_disk())
 }
 
 /// Build a HashMap by ID from all plans

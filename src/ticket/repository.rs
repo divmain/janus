@@ -1,170 +1,16 @@
 //! Ticket repository module.
 //!
 //! This module provides functions for querying and retrieving tickets.
-//! All functions are async and support caching when available.
+//! All functions are async and use the in-memory store.
 
+use crate::store::get_or_init_store;
 use crate::ticket::content;
 use crate::types::LoadResult;
 use crate::utils::DirScanner;
-use crate::{TicketMetadata, cache};
+use crate::TicketMetadata;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use tokio::fs as tokio_fs;
-
-/// Action to take when cache validation failures are detected
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CacheRecoveryAction {
-    /// No action needed - validation was successful
-    NoAction,
-    /// Repair individual cache entries
-    RepairIndividual,
-    /// Force a full cache rebuild
-    ForceRebuild,
-}
-
-/// Scan the tickets directory to get current file mtimes.
-///
-/// Returns a HashMap mapping ticket IDs to their modification times.
-fn scan_disk_files(items_dir: &Path) -> crate::error::Result<HashMap<String, i64>> {
-    cache::TicketCache::scan_directory_static(items_dir).map_err(|e| {
-        crate::error::JanusError::CacheAccessFailed(items_dir.to_path_buf(), e.to_string())
-    })
-}
-
-/// Read and parse a single ticket from disk.
-///
-/// Reads the file content and parses it into TicketMetadata.
-/// The ticket ID is set from the provided ID if not already present in the metadata.
-async fn read_ticket_from_disk(id: &str, file_path: &Path) -> crate::error::Result<TicketMetadata> {
-    let content = tokio_fs::read_to_string(file_path).await.map_err(|e| {
-        crate::error::JanusError::StorageError {
-            operation: "read",
-            item_type: "ticket",
-            path: file_path.to_path_buf(),
-            source: e,
-        }
-    })?;
-
-    let mut metadata = content::parse(&content)
-        .map_err(|e| crate::error::JanusError::InvalidFormat(e.to_string()))?;
-
-    if metadata.id.is_none() {
-        metadata.id = Some(id.to_string());
-    }
-    metadata.file_path = Some(file_path.to_path_buf());
-
-    Ok(metadata)
-}
-
-/// Compare disk mtimes with cached mtimes to determine which files need re-reading.
-///
-/// Returns a tuple of (needs_reread, unchanged) where:
-/// - needs_reread: IDs that have been modified or are not in cache
-/// - unchanged: IDs that are unchanged and can use cached data
-fn compute_cache_diff(
-    disk_files: &HashMap<String, i64>,
-    cached_mtimes: &HashMap<String, i64>,
-) -> (Vec<String>, Vec<String>) {
-    let mut needs_reread = Vec::new();
-    let mut unchanged = Vec::new();
-
-    for (id, disk_mtime) in disk_files {
-        match cached_mtimes.get(id) {
-            Some(&cached_mtime) if disk_mtime == &cached_mtime => {
-                unchanged.push(id.clone());
-            }
-            _ => {
-                needs_reread.push(id.clone());
-            }
-        }
-    }
-
-    (needs_reread, unchanged)
-}
-
-/// Handle cache validation failures and determine recovery action.
-///
-/// If failure rate exceeds 10%, returns ForceRebuild.
-/// Otherwise, if there are tickets to repair, returns RepairIndividual.
-fn handle_validation_failures(
-    failures: usize,
-    total: usize,
-    tickets_to_repair: &[TicketMetadata],
-) -> CacheRecoveryAction {
-    if total == 0 {
-        return CacheRecoveryAction::NoAction;
-    }
-
-    let failure_rate = (failures as f64 / total as f64) * 100.0;
-
-    if failure_rate > 10.0 {
-        CacheRecoveryAction::ForceRebuild
-    } else if !tickets_to_repair.is_empty() {
-        CacheRecoveryAction::RepairIndividual
-    } else {
-        CacheRecoveryAction::NoAction
-    }
-}
-
-/// Repair cache entries based on validation results.
-///
-/// Either repairs individual cache entries or triggers full rebuild based on failure rate.
-async fn repair_cache_entries(
-    cache: &cache::TicketCache,
-    tickets: &[TicketMetadata],
-    validation_failures: usize,
-    total_validated: usize,
-) -> crate::error::Result<()> {
-    let action = handle_validation_failures(validation_failures, total_validated, tickets);
-
-    match action {
-        CacheRecoveryAction::ForceRebuild => {
-            eprintln!(
-                "Warning: {validation_failures} validation failures out of {total_validated} files exceeds threshold. Triggering cache rebuild..."
-            );
-            if let Err(e) = cache.force_rebuild_tickets().await {
-                eprintln!(
-                    "Warning: cache rebuild failed: {e}. Continuing with disk data."
-                );
-            }
-        }
-        CacheRecoveryAction::RepairIndividual => {
-            for ticket in tickets {
-                if let Err(e) = cache.update_ticket(ticket).await {
-                    eprintln!(
-                        "Warning: failed to repair cache entry for ticket '{}': {}.",
-                        ticket.id.as_deref().unwrap_or("unknown"),
-                        e
-                    );
-                }
-            }
-        }
-        CacheRecoveryAction::NoAction => {}
-    }
-
-    Ok(())
-}
-
-/// Macro to attempt a cache operation and fall back to file reads on failure
-///
-/// This eliminates the DRY violation of the cache check → operation → warning → fallback pattern.
-#[macro_export]
-macro_rules! with_cache_fallback {
-    // Pattern: cache variable, cache method call, fallback expression
-    ($cache:ident, $cache_method:ident($($cache_args:expr),*), $fallback:expr) => {{
-        if let Some(cache) = $cache {
-            if let Ok(result) = cache.$cache_method($($cache_args),*).await {
-                Ok(result)
-            } else {
-                eprintln!("Warning: cache read failed, falling back to file reads");
-                $fallback
-            }
-        } else {
-            $fallback
-        }
-    }};
-}
 
 /// Result of loading tickets from disk, including both successes and failures
 pub type TicketLoadResult = LoadResult<TicketMetadata>;
@@ -202,98 +48,29 @@ pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
     DirScanner::find_markdown_files(tickets_items_dir())
 }
 
-/// Get all tickets from cache or disk
+/// Get all tickets from the in-memory store.
 ///
-/// Returns a `TicketLoadResult` containing both successfully loaded tickets
-/// and any failures that occurred during loading.
-///
-/// Uses mtime comparison to avoid unnecessary file reads - only re-reads
-/// files that have been modified since they were cached.
-///
-/// When validation detects stale or corrupted cache data, this function will:
-/// 1. Repair individual cache entries for successfully validated tickets
-/// 2. Trigger a full cache rebuild if the validation failure rate exceeds 10%
+/// Returns a `TicketLoadResult` containing all loaded tickets.
+/// The store is populated from disk on first access and kept
+/// up-to-date via the filesystem watcher.
 pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusError> {
-    let cache = match cache::get_or_init_cache().await {
-        Some(c) => c,
-        None => return Ok(get_all_tickets_from_disk()),
-    };
-
-    let cached_tickets = match cache.get_all_tickets().await {
-        Ok(t) => t,
-        Err(_) => return Ok(get_all_tickets_from_disk()),
-    };
-
-    let items_dir = crate::types::tickets_items_dir();
-
-    // Step 1: Scan disk to get current file mtimes
-    let disk_files = match scan_disk_files(&items_dir) {
-        Ok(files) => files,
-        Err(_) => return Ok(get_all_tickets_from_disk()),
-    };
-
-    // Step 2: Get cached mtimes for comparison
-    let cached_mtimes = match cache.get_cached_mtimes().await {
-        Ok(m) => m,
-        Err(_) => return Ok(get_all_tickets_from_disk()),
-    };
-
-    // Step 3: Compute diff to find files needing re-read
-    let (needs_reread, unchanged) = compute_cache_diff(&disk_files, &cached_mtimes);
-
-    // Build cached ticket map for quick lookup
-    let cached_map: HashMap<_, _> = cached_tickets
-        .into_iter()
-        .filter_map(|t| t.id.clone().map(|id| (id, t)))
-        .collect();
-
-    let mut result = TicketLoadResult::new();
-    let mut tickets_to_repair: Vec<TicketMetadata> = Vec::new();
-    let mut validation_failures = 0_usize;
-
-    // Step 4: Process unchanged files from cache
-    for id in unchanged {
-        if let Some(cached) = cached_map.get(&id) {
-            let mut metadata = cached.clone();
-            metadata.file_path = Some(items_dir.join(format!("{id}.md")));
-            result.add_ticket(metadata);
+    match get_or_init_store().await {
+        Ok(store) => {
+            let tickets = store.get_all_tickets();
+            let mut result = TicketLoadResult::new();
+            for ticket in tickets {
+                result.add_ticket(ticket);
+            }
+            Ok(result)
+        }
+        Err(_) => {
+            // Fall back to disk reads if store initialization fails
+            Ok(get_all_tickets_from_disk())
         }
     }
-
-    // Step 5: Read modified/new files from disk
-    for id in needs_reread {
-        let file_path = items_dir.join(format!("{id}.md"));
-        match read_ticket_from_disk(&id, &file_path).await {
-            Ok(metadata) => {
-                tickets_to_repair.push(metadata.clone());
-                result.add_ticket(metadata);
-            }
-            Err(e) => {
-                validation_failures += 1;
-                result.add_failure(file_path.to_string_lossy().into_owned(), e.to_string());
-            }
-        }
-    }
-
-    // Step 6: Repair cache if needed
-    let total_validated = disk_files.len();
-    repair_cache_entries(
-        cache,
-        &tickets_to_repair,
-        validation_failures,
-        total_validated,
-    )
-    .await?;
-
-    // Fallback to disk if all cache reads failed
-    if result.success_count() == 0 && result.failure_count() > 0 {
-        return Ok(get_all_tickets_from_disk());
-    }
-
-    Ok(result)
 }
 
-/// Get all tickets from disk (fallback when cache is unavailable)
+/// Get all tickets from disk (fallback when store is unavailable)
 ///
 /// Returns a `TicketLoadResult` containing both successfully loaded tickets
 /// and any failures that occurred during loading.
@@ -340,20 +117,19 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
 /// Build a HashMap by ID from all tickets
 pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError>
 {
-    let cache = cache::get_or_init_cache().await;
-    with_cache_fallback!(
-        cache,
-        build_ticket_map(),
-        async {
-            let result = get_all_tickets().await?;
-            let map: HashMap<_, _> = result
+    match get_or_init_store().await {
+        Ok(store) => Ok(store.build_ticket_map()),
+        Err(_) => {
+            // Fall back to disk reads if store initialization fails
+            let result = get_all_tickets_from_disk();
+            let map = result
                 .items
                 .into_iter()
                 .filter_map(|m| m.id.clone().map(|id| (id, m)))
                 .collect();
             Ok(map)
-        }.await
-    )
+        }
+    }
 }
 
 /// Get all tickets and the map together (efficient single call)
@@ -374,43 +150,19 @@ pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
 }
 
 /// Get the count of tickets spawned from a given ticket.
-///
-/// This function uses the cache when available, falling back to
-/// scanning all tickets and counting matches.
 pub async fn get_children_count(ticket_id: &str) -> Result<usize, crate::error::JanusError> {
-    let cache = cache::get_or_init_cache().await;
-    with_cache_fallback!(
-        cache,
-        get_children_count(ticket_id),
-        async {
-            let result = get_all_tickets().await?;
-            Ok(result
-                .items
-                .iter()
-                .filter(|t| t.spawned_from.as_ref() == Some(&ticket_id.to_string()))
-                .count())
-        }.await
-    )
+    match get_or_init_store().await {
+        Ok(store) => Ok(store.get_children_count(ticket_id)),
+        Err(_) => Ok(0),
+    }
 }
 
 /// Get the count of children for all tickets that have spawned children.
 ///
-/// This performs a single GROUP BY query instead of N individual queries.
 /// Returns a HashMap mapping parent ticket IDs to their children count.
 pub async fn get_all_children_counts() -> Result<HashMap<String, usize>, crate::error::JanusError> {
-    let cache = cache::get_or_init_cache().await;
-    with_cache_fallback!(
-        cache,
-        get_all_children_counts(),
-        async {
-            let result = get_all_tickets().await?;
-            let mut counts: HashMap<String, usize> = HashMap::new();
-            for ticket in &result.items {
-                if let Some(parent_id) = &ticket.spawned_from {
-                    *counts.entry(parent_id.clone()).or_insert(0) += 1;
-                }
-            }
-            Ok(counts)
-        }.await
-    )
+    match get_or_init_store().await {
+        Ok(store) => Ok(store.get_all_children_counts()),
+        Err(_) => Ok(HashMap::new()),
+    }
 }

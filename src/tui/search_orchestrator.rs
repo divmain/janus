@@ -3,7 +3,7 @@
 //! This module provides reusable components for handling search state
 //! across different views (browser, board, etc.) with consistent behavior:
 //! - Search is triggered (not while typing)
-//! - SQL search via cache
+//! - Text search via store
 //! - Search in-flight indicator
 //! - Result caching
 
@@ -63,11 +63,15 @@ impl SearchState {
                         &query
                     };
 
-                    let results = if let Some(cache) = crate::cache::get_or_init_cache().await {
-                        cache.search_tickets(fuzzy_query).await.unwrap_or_default()
-                    } else {
-                        vec![]
+                    let store = match crate::store::get_or_init_store().await {
+                        Ok(store) => store,
+                        Err(_) => {
+                            search_filtered_setter.set(Some(vec![]));
+                            search_in_flight_setter.set(false);
+                            return;
+                        }
                     };
+                    let results = store.search_tickets(fuzzy_query);
 
                     let highlighted = compute_title_highlights(&results, fuzzy_query);
                     search_filtered_setter.set(Some(highlighted));
@@ -211,7 +215,7 @@ impl SearchState {
 ///
 /// # Arguments
 /// * `all_tickets` - All tickets in the system
-/// * `search_state` - Search state with cached results
+/// * `search_state` - Search state with results
 /// * `query` - Current search query
 ///
 /// # Returns
