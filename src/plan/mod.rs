@@ -22,6 +22,7 @@ use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
 use crate::types::{EntityType, TicketMetadata, plans_dir};
+use crate::utils::validation::validate_safe_id;
 use crate::utils::{DirScanner, extract_id_from_path};
 
 // Re-export status computation functions
@@ -44,34 +45,6 @@ fn find_plans() -> Vec<String> {
     })
 }
 
-/// Entity type for ID validation error messages.
-#[derive(Debug, Clone, Copy)]
-enum EntityKind {
-    Plan,
-}
-
-/// Validate that an ID is safe for filesystem use (no path traversal)
-fn validate_id(id: &str, kind: EntityKind) -> Result<()> {
-    let make_error = |id: &str| match kind {
-        EntityKind::Plan => JanusError::InvalidPlanId(id.to_string()),
-    };
-
-    // Check for path separators and parent directory references
-    if id.contains('/') || id.contains('\\') || id.contains("..") {
-        return Err(make_error(id));
-    }
-
-    // Ensure ID contains only alphanumeric characters, hyphens, and underscores
-    if !id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(make_error(id));
-    }
-
-    Ok(())
-}
-
 /// Find a plan by partial ID.
 ///
 /// Searches for a plan file matching the given partial ID in the plans directory.
@@ -81,7 +54,7 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     let dir = plans_dir();
 
     // Validate ID before any path construction
-    validate_id(partial_id, EntityKind::Plan)?;
+    validate_safe_id(partial_id).map_err(|_| JanusError::InvalidPlanId(partial_id.to_string()))?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {

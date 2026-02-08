@@ -1,4 +1,5 @@
 pub mod dir_scanner;
+pub mod validation;
 
 use jiff::Timestamp;
 use rand::Rng;

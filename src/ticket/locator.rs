@@ -10,6 +10,7 @@ use crate::cache::get_or_init_store;
 use crate::error::{JanusError, Result};
 use crate::locator::ticket_path;
 use crate::types::tickets_items_dir;
+use crate::utils::validation::validate_safe_id;
 use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
 
 fn validate_partial_id(id: &str) -> Result<String> {
@@ -18,34 +19,6 @@ fn validate_partial_id(id: &str) -> Result<String> {
         JanusError::ValidationInvalidCharacters(_, _) => JanusError::InvalidTicketIdCharacters,
         _ => e,
     })
-}
-
-/// Entity type for ID validation error messages.
-#[derive(Debug, Clone, Copy)]
-enum EntityKind {
-    Ticket,
-}
-
-/// Validate that an ID is safe for filesystem use (no path traversal)
-fn validate_id(id: &str, kind: EntityKind) -> Result<()> {
-    let make_error = |id: &str| match kind {
-        EntityKind::Ticket => JanusError::InvalidTicketId(id.to_string()),
-    };
-
-    // Check for path separators and parent directory references
-    if id.contains('/') || id.contains('\\') || id.contains("..") {
-        return Err(make_error(id));
-    }
-
-    // Ensure ID contains only alphanumeric characters, hyphens, and underscores
-    if !id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(make_error(id));
-    }
-
-    Ok(())
 }
 
 /// Find a ticket by partial ID.
@@ -57,7 +30,8 @@ async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
     let dir = tickets_items_dir();
 
     // Validate ID before any path construction
-    validate_id(partial_id, EntityKind::Ticket)?;
+    validate_safe_id(partial_id)
+        .map_err(|_| JanusError::InvalidTicketId(partial_id.to_string()))?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {
@@ -243,31 +217,5 @@ mod tests {
         let path = TicketLocator::file_path_for_id("j-test");
         assert!(path.ends_with("j-test.md"));
         assert!(path.to_string_lossy().contains("items"));
-    }
-
-    #[test]
-    fn test_validate_id_with_path_traversal() {
-        // Path traversal should be rejected
-        assert!(validate_id("../etc/passwd", EntityKind::Ticket).is_err());
-        assert!(validate_id("ticket/../other", EntityKind::Ticket).is_err());
-        assert!(validate_id("ticket\\..\\other", EntityKind::Ticket).is_err());
-    }
-
-    #[test]
-    fn test_validate_id_with_special_chars() {
-        // Special characters should be rejected
-        assert!(validate_id("j@b1", EntityKind::Ticket).is_err());
-        assert!(validate_id("j#b1", EntityKind::Ticket).is_err());
-        assert!(validate_id("j$b1", EntityKind::Ticket).is_err());
-        assert!(validate_id("j%b1", EntityKind::Ticket).is_err());
-    }
-
-    #[test]
-    fn test_validate_id_valid() {
-        // Valid IDs should pass
-        assert!(validate_id("j-a1b2", EntityKind::Ticket).is_ok());
-        assert!(validate_id("j_a1b2", EntityKind::Ticket).is_ok());
-        assert!(validate_id("ticket123", EntityKind::Ticket).is_ok());
-        assert!(validate_id("TICKET-ABC", EntityKind::Ticket).is_ok());
     }
 }
