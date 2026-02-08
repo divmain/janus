@@ -604,18 +604,22 @@ pub struct ImportableTask {
 
 /// Detailed validation error for plan import.
 ///
-pub type ImportValidationError = (Option<usize>, String, Option<String>);
+pub struct ImportValidationError {
+    pub line: Option<usize>,
+    pub message: String,
+    pub hint: Option<String>,
+}
 
 pub fn display_import_validation_error(error: &ImportValidationError) -> String {
     let mut result = String::new();
 
-    if let Some(line) = error.0 {
+    if let Some(line) = error.line {
         result.push_str(&format!("Line {line}: "));
     }
 
-    result.push_str(&error.1);
+    result.push_str(&error.message);
 
-    if let Some(hint) = &error.2 {
+    if let Some(hint) = &error.hint {
         result.push_str(&format!("\n    Hint: {hint}"));
     }
 
@@ -975,19 +979,27 @@ mod tests {
 
     #[test]
     fn test_import_validation_error_new() {
-        let err = (None, "Missing title".to_string(), None);
-        assert!(err.0.is_none());
-        assert_eq!(err.1, "Missing title");
-        assert!(err.2.is_none());
+        let err = ImportValidationError {
+            line: None,
+            message: "Missing title".to_string(),
+            hint: None,
+        };
+        assert!(err.line.is_none());
+        assert_eq!(err.message, "Missing title");
+        assert!(err.hint.is_none());
         assert_eq!(display_import_validation_error(&err), "Missing title");
     }
 
     #[test]
     fn test_import_validation_error_at_line() {
-        let err = (Some(42), "Invalid syntax".to_string(), None);
-        assert_eq!(err.0, Some(42));
-        assert_eq!(err.1, "Invalid syntax");
-        assert!(err.2.is_none());
+        let err = ImportValidationError {
+            line: Some(42),
+            message: "Invalid syntax".to_string(),
+            hint: None,
+        };
+        assert_eq!(err.line, Some(42));
+        assert_eq!(err.message, "Invalid syntax");
+        assert!(err.hint.is_none());
         assert_eq!(
             display_import_validation_error(&err),
             "Line 42: Invalid syntax"
@@ -996,14 +1008,14 @@ mod tests {
 
     #[test]
     fn test_import_validation_error_with_hint() {
-        let err = (
-            None,
-            "Missing plan title".to_string(),
-            Some("Add a # Title heading".to_string()),
-        );
-        assert!(err.0.is_none());
-        assert_eq!(err.1, "Missing plan title");
-        assert_eq!(err.2, Some("Add a # Title heading".to_string()));
+        let err = ImportValidationError {
+            line: None,
+            message: "Missing plan title".to_string(),
+            hint: Some("Add a # Title heading".to_string()),
+        };
+        assert!(err.line.is_none());
+        assert_eq!(err.message, "Missing plan title");
+        assert_eq!(err.hint, Some("Add a # Title heading".to_string()));
         assert_eq!(
             display_import_validation_error(&err),
             "Missing plan title\n    Hint: Add a # Title heading"
@@ -1012,15 +1024,15 @@ mod tests {
 
     #[test]
     fn test_import_validation_error_full() {
-        let err = (
-            Some(10),
-            "Phase has no tasks".to_string(),
-            Some("Add ### Task headers under the phase".to_string()),
-        );
-        assert_eq!(err.0, Some(10));
-        assert_eq!(err.1, "Phase has no tasks");
+        let err = ImportValidationError {
+            line: Some(10),
+            message: "Phase has no tasks".to_string(),
+            hint: Some("Add ### Task headers under the phase".to_string()),
+        };
+        assert_eq!(err.line, Some(10));
+        assert_eq!(err.message, "Phase has no tasks");
         assert_eq!(
-            err.2,
+            err.hint,
             Some("Add ### Task headers under the phase".to_string())
         );
         assert_eq!(
@@ -1031,7 +1043,11 @@ mod tests {
 
     #[test]
     fn test_import_validation_error_display_fn() {
-        let err = (Some(5), "Test error".to_string(), None);
+        let err = ImportValidationError {
+            line: Some(5),
+            message: "Test error".to_string(),
+            hint: None,
+        };
         assert_eq!(display_import_validation_error(&err), "Line 5: Test error");
     }
 
