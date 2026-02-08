@@ -49,11 +49,24 @@ impl TicketRepository {
     /// is called. The filesystem watcher provides eventual consistency for
     /// external changes, but direct mutations need immediate store updates.
     pub async fn refresh_ticket_in_store(ticket_id: &str) {
-        if let Ok(ticket) = crate::ticket::Ticket::find(ticket_id).await {
-            if let Ok(metadata) = ticket.read() {
-                if let Ok(store) = get_or_init_store().await {
-                    store.upsert_ticket(metadata);
-                }
+        let ticket = match crate::ticket::Ticket::find(ticket_id).await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Warning: failed to find ticket '{ticket_id}' for store refresh: {e}");
+                return;
+            }
+        };
+        let metadata = match ticket.read() {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Warning: failed to read ticket '{ticket_id}' for store refresh: {e}");
+                return;
+            }
+        };
+        match get_or_init_store().await {
+            Ok(store) => store.upsert_ticket(metadata),
+            Err(e) => {
+                eprintln!("Warning: failed to init store for ticket refresh: {e}");
             }
         }
     }
@@ -64,13 +77,55 @@ impl TicketRepository {
     /// called after a mutation writes plan changes to disk, so the in-memory
     /// store is immediately consistent.
     pub async fn refresh_plan_in_store(plan_id: &str) {
-        if let Ok(plan) = crate::plan::Plan::find(plan_id).await {
-            if let Ok(metadata) = plan.read() {
-                if let Ok(store) = get_or_init_store().await {
-                    store.upsert_plan(metadata);
+        let plan = match crate::plan::Plan::find(plan_id).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Warning: failed to find plan '{plan_id}' for store refresh: {e}");
+                return;
+            }
+        };
+        let metadata = match plan.read() {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("Warning: failed to read plan '{plan_id}' for store refresh: {e}");
+                return;
+            }
+        };
+        match get_or_init_store().await {
+            Ok(store) => store.upsert_plan(metadata),
+            Err(e) => {
+                eprintln!("Warning: failed to init store for plan refresh: {e}");
+            }
+        }
+    }
+
+    /// Refresh a single ticket in a local ticket list after a mutation.
+    ///
+    /// Re-reads the ticket from the store and replaces it in-place in the
+    /// provided vec, avoiding the O(n log n) cost of reloading all tickets.
+    /// Returns the updated vec.
+    pub async fn refresh_single_ticket(
+        mut tickets: Vec<TicketMetadata>,
+        ticket_id: &str,
+    ) -> Vec<TicketMetadata> {
+        if let Ok(store) = get_or_init_store().await {
+            if let Some(updated) = store.get_ticket(ticket_id) {
+                // Find and replace the ticket in the vec
+                if let Some(pos) = tickets.iter().position(|t| t.id.as_deref() == Some(ticket_id))
+                {
+                    tickets[pos] = updated;
+                } else {
+                    // Ticket was newly created — append and re-sort
+                    tickets.push(updated);
+                    tickets.sort_by(|a, b| {
+                        a.id.as_deref()
+                            .unwrap_or("")
+                            .cmp(b.id.as_deref().unwrap_or(""))
+                    });
                 }
             }
         }
+        tickets
     }
 
     /// Reload all tickets from disk (async)

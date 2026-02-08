@@ -15,16 +15,27 @@ use crate::store::get_or_init_store;
 use crate::types::{plans_dir, tickets_items_dir};
 use crate::utils::DirScanner;
 
+/// Entity type for ID validation error messages.
+enum EntityKind {
+    Ticket,
+    Plan,
+}
+
 /// Validate that an ID is safe for filesystem use (no path traversal)
-fn validate_id(id: &str) -> Result<()> {
+fn validate_id(id: &str, kind: EntityKind) -> Result<()> {
+    let make_error = |id: &str| match kind {
+        EntityKind::Ticket => JanusError::InvalidTicketId(id.to_string()),
+        EntityKind::Plan => JanusError::InvalidPlanId(id.to_string()),
+    };
+
     // Check for path separators and parent directory references
     if id.contains('/') || id.contains('\\') || id.contains("..") {
-        return Err(JanusError::InvalidPlanId(id.to_string()));
+        return Err(make_error(id));
     }
 
     // Ensure ID contains only alphanumeric characters, hyphens, and underscores
     if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-        return Err(JanusError::InvalidPlanId(id.to_string()));
+        return Err(make_error(id));
     }
 
     Ok(())
@@ -39,7 +50,7 @@ pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
     let dir = tickets_items_dir();
 
     // Validate ID before any path construction
-    validate_id(partial_id)?;
+    validate_id(partial_id, EntityKind::Ticket)?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {
@@ -74,7 +85,7 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     let dir = plans_dir();
 
     // Validate ID before any path construction
-    validate_id(partial_id)?;
+    validate_id(partial_id, EntityKind::Plan)?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {

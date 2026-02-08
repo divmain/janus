@@ -29,6 +29,8 @@ pub struct SearchState {
     pub semantic_error: State<Option<String>>,
     /// Handler for semantic search
     pub semantic_handler: Handler<String>,
+    /// The most recently launched query — used to detect stale semantic results
+    latest_query: State<String>,
 }
 
 impl SearchState {
@@ -39,6 +41,7 @@ impl SearchState {
         let search_pending = hooks.use_state(|| false);
         let semantic_pending = hooks.use_state(|| false);
         let semantic_error: State<Option<String>> = hooks.use_state(|| None);
+        let latest_query: State<String> = hooks.use_state(String::new);
 
         // Fuzzy search handler
         let search_handler: Handler<String> = hooks.use_async_handler({
@@ -85,11 +88,16 @@ impl SearchState {
             let semantic_filtered_setter = search_filtered;
             let semantic_pending_setter = semantic_pending;
             let semantic_error_setter = semantic_error;
+            let latest_query_state = latest_query;
 
             move |query: String| {
                 let mut semantic_filtered_setter = semantic_filtered_setter;
                 let mut semantic_pending_setter = semantic_pending_setter;
                 let mut semantic_error_setter = semantic_error_setter;
+                let latest_query_state = latest_query_state;
+
+                // Capture the query at launch time for staleness detection
+                let launched_query = query.clone();
 
                 Box::pin(async move {
                     // Only run if query starts with ~
@@ -115,6 +123,13 @@ impl SearchState {
                     // Perform semantic search
                     match crate::tui::search::perform_semantic_search(clean_query).await {
                         Ok(semantic_results) => {
+                            // Check if the query has changed since we launched this search.
+                            // If so, these results are stale — discard them.
+                            if *latest_query_state.read() != launched_query {
+                                semantic_pending_setter.set(false);
+                                return;
+                            }
+
                             // Get current fuzzy results and merge
                             let current_filtered = semantic_filtered_setter.read().clone();
                             if let Some(fuzzy_results) = current_filtered {
@@ -132,6 +147,11 @@ impl SearchState {
                             semantic_error_setter.set(None);
                         }
                         Err(e) => {
+                            // Also check staleness for errors — don't show stale error toasts
+                            if *latest_query_state.read() != launched_query {
+                                semantic_pending_setter.set(false);
+                                return;
+                            }
                             semantic_error_setter.set(Some(e));
                         }
                     }
@@ -149,6 +169,7 @@ impl SearchState {
             semantic_pending,
             semantic_error,
             semantic_handler,
+            latest_query,
         }
     }
 
@@ -161,6 +182,9 @@ impl SearchState {
     pub fn trigger(&mut self, query: String) {
         self.pending.set(false);
         self.in_flight.set(true);
+
+        // Record the latest query so the semantic handler can detect staleness
+        self.latest_query.set(query.clone());
 
         // Always trigger fuzzy search
         self.handler.clone()(query.clone());

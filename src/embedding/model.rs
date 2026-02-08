@@ -1,25 +1,36 @@
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::OnceLock;
-
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use directories::BaseDirs;
 use fastembed::{EmbeddingModel as FastembedModel, InitOptions, TextEmbedding};
+use tokio::sync::OnceCell;
 
 use crate::remote::config::Config;
 
 pub const EMBEDDING_DIMENSIONS: usize = 768;
 pub const EMBEDDING_MODEL_NAME: &str = "jinaai/jina-embeddings-v2-base-code";
 
-/// Wrapper around the fastembed TextEmbedding model with lazy loading
-/// Uses Mutex for interior mutability since TextEmbedding requires &mut self
+/// Wrapper around the fastembed TextEmbedding model with lazy loading.
+///
+/// Uses `std::sync::Mutex` (not `tokio::sync::Mutex`) because the embedding
+/// inference is CPU-bound and always runs inside `spawn_blocking`. This avoids
+/// holding an async mutex while blocking the tokio executor thread.
+///
+/// The inner model is wrapped in `Arc<Mutex<_>>` so it can be moved into
+/// `spawn_blocking` closures which require `'static` captured values.
 pub struct EmbeddingModel {
-    inner: Mutex<TextEmbedding>,
+    inner: Arc<Mutex<TextEmbedding>>,
 }
 
-/// Global singleton for the embedding model
-static EMBEDDING_MODEL: OnceLock<Result<EmbeddingModel, String>> = OnceLock::new();
+/// Global singleton for the embedding model.
+///
+/// Uses `tokio::sync::OnceCell` with `get_or_try_init()` so that if
+/// initialization fails (e.g., network timeout downloading the model),
+/// the cell remains unset and subsequent calls will retry. This is
+/// important for long-running processes (TUI, MCP server) where a
+/// transient failure should not permanently disable semantic search.
+static EMBEDDING_MODEL: OnceCell<EmbeddingModel> = OnceCell::const_new();
 
 impl EmbeddingModel {
     /// Load the embedding model from cache or download it
@@ -28,9 +39,7 @@ impl EmbeddingModel {
 
         // Parse the model name string to get the enum variant
         let model = FastembedModel::from_str(EMBEDDING_MODEL_NAME).map_err(|e| {
-            format!(
-                "Invalid embedding model name '{EMBEDDING_MODEL_NAME}': {e}"
-            )
+            format!("Invalid embedding model name '{EMBEDDING_MODEL_NAME}': {e}")
         })?;
 
         let options = InitOptions::new(model)
@@ -44,30 +53,51 @@ impl EmbeddingModel {
         })?;
 
         Ok(Self {
-            inner: Mutex::new(inner),
+            inner: Arc::new(Mutex::new(inner)),
         })
     }
 
-    /// Generate embedding for a single text
+    /// Generate embedding for a single text.
+    ///
+    /// Runs the CPU-bound inference on a blocking thread via `spawn_blocking`
+    /// to avoid stalling the async executor.
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>, String> {
-        let mut guard = self.inner.lock().await;
+        let text = text.to_string();
+        let inner = Arc::clone(&self.inner);
 
-        let embeddings = guard
-            .embed(vec![text], None)
-            .map_err(|e| format!("{e}"))?;
-
-        embeddings
-            .into_iter()
-            .next()
-            .ok_or_else(|| "No embedding generated".to_string())
+        tokio::task::spawn_blocking(move || {
+            let mut guard = inner
+                .lock()
+                .map_err(|e| format!("Embedding model mutex poisoned: {e}"))?;
+            let embeddings = guard
+                .embed(vec![&text], None)
+                .map_err(|e| format!("{e}"))?;
+            embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| "No embedding generated".to_string())
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {e}"))?
     }
 
-    /// Generate embeddings for a batch of texts
+    /// Generate embeddings for a batch of texts.
+    ///
+    /// Runs the CPU-bound inference on a blocking thread via `spawn_blocking`
+    /// to avoid stalling the async executor.
     pub async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, String> {
-        let mut guard = self.inner.lock().await;
+        let texts_owned: Vec<String> = texts.iter().map(|s| s.to_string()).collect();
+        let inner = Arc::clone(&self.inner);
 
-        let texts_vec: Vec<&str> = texts.to_vec();
-        guard.embed(texts_vec, None).map_err(|e| format!("{e}"))
+        tokio::task::spawn_blocking(move || {
+            let mut guard = inner
+                .lock()
+                .map_err(|e| format!("Embedding model mutex poisoned: {e}"))?;
+            let texts_ref: Vec<&str> = texts_owned.iter().map(|s| s.as_str()).collect();
+            guard.embed(texts_ref, None).map_err(|e| format!("{e}"))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {e}"))?
     }
 }
 
@@ -83,11 +113,20 @@ fn get_embedding_cache_dir() -> Result<PathBuf, String> {
     Ok(cache_dir)
 }
 
-/// Get or initialize the global embedding model singleton
+/// Get or initialize the global embedding model singleton.
 ///
 /// Returns an error if semantic search is disabled in the config.
-pub fn get_embedding_model() -> Result<&'static EmbeddingModel, String> {
-    // Check if semantic search is enabled before loading the model
+///
+/// Uses `get_or_try_init()` so that if initialization fails (e.g., network
+/// timeout downloading the model from HuggingFace), the `OnceCell` remains
+/// unset and subsequent calls will retry. This matches the retry-on-failure
+/// pattern used by the store singleton in `src/store/mod.rs`.
+///
+/// The config check is performed on every call (before touching the `OnceCell`)
+/// so that a config change can take effect without restarting the process.
+pub async fn get_embedding_model() -> Result<&'static EmbeddingModel, String> {
+    // Check if semantic search is enabled before loading the model.
+    // This runs on every call so config changes take effect on retry.
     match Config::load() {
         Ok(config) => {
             if !config.semantic_search_enabled() {
@@ -104,14 +143,17 @@ pub fn get_embedding_model() -> Result<&'static EmbeddingModel, String> {
     }
 
     EMBEDDING_MODEL
-        .get_or_init(EmbeddingModel::load)
-        .as_ref()
-        .map_err(|e| e.clone())
+        .get_or_try_init(|| async {
+            tokio::task::spawn_blocking(EmbeddingModel::load)
+                .await
+                .map_err(|e| format!("spawn_blocking failed: {e}"))?
+        })
+        .await
 }
 
 /// Generate embedding for a single text (convenience function)
 pub async fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
-    let model = get_embedding_model()?;
+    let model = get_embedding_model().await?;
     model.embed(text).await
 }
 
@@ -256,26 +298,30 @@ mod tests {
         assert_eq!(similarity, 0.0);
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn test_lazy_loading() {
+    async fn test_lazy_loading() {
         // Note: In a parallel test environment, we can't guarantee that
         // the singleton hasn't been initialized by another test. We only
         // verify that calling get_embedding_model() works correctly.
 
         // Try to get the model - this will initialize it if not already done
-        let result = get_embedding_model();
-
-        // After calling get_embedding_model, the OnceLock should contain a value
-        assert!(
-            EMBEDDING_MODEL.get().is_some(),
-            "Model should be loaded after first use"
-        );
+        let result = get_embedding_model().await;
 
         // The result type depends on whether model loading succeeded
         match result {
-            Ok(_) => println!("Model loaded successfully"),
-            Err(_) => println!("Model loading failed (expected in some environments)"),
+            Ok(_) => {
+                // After a successful call, the OnceCell should contain a value
+                assert!(
+                    EMBEDDING_MODEL.initialized(),
+                    "Model should be loaded after successful init"
+                );
+                println!("Model loaded successfully");
+            }
+            Err(e) => {
+                // On failure, the OnceCell should remain unset so retry is possible
+                println!("Model loading failed (expected in some environments): {e}");
+            }
         }
     }
 }

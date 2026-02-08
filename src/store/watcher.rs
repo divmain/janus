@@ -61,6 +61,17 @@ impl StoreWatcher {
     /// If `.janus/` doesn't exist, the watcher is still returned but won't
     /// produce events. Subdirectories created after startup (e.g. `items/`,
     /// `plans/`) are automatically picked up by the recursive watch.
+    ///
+    /// # Limitation: `.janus/` must exist at startup
+    ///
+    /// If `.janus/` does not exist when this method is called, no OS watch
+    /// is registered. If `.janus/` is created later (e.g. by running
+    /// `janus create` in another terminal), the watcher will **not** pick it
+    /// up — the TUI or MCP server must be restarted.
+    ///
+    /// Watching the parent working directory for `.janus/` creation would
+    /// trigger events for every file change in the project, which is too
+    /// noisy to be practical.
     pub fn start(store: &'static TicketStore) -> Result<(Self, broadcast::Receiver<StoreEvent>)> {
         let (broadcast_tx, broadcast_rx) = broadcast::channel(64);
         let (bridge_tx, bridge_rx) = tokio::sync::mpsc::unbounded_channel::<notify::Event>();
@@ -90,6 +101,16 @@ impl StoreWatcher {
             if let Err(e) = watcher.watch(&root, RecursiveMode::Recursive) {
                 eprintln!("Warning: failed to watch .janus directory: {e}");
             }
+        } else {
+            // .janus/ doesn't exist yet — nothing to watch.
+            // If it's created later (e.g. `janus create` in another terminal),
+            // the watcher won't pick it up automatically. The TUI or MCP server
+            // must be restarted to begin watching. The TUI handles this case by
+            // showing a "No Janus Directory" empty state via InitResult::NoJanusDir.
+            eprintln!(
+                "Note: .janus directory not found — file watching is disabled. \
+                 Restart after creating your first ticket."
+            );
         }
 
         // Spawn the background debounce + process task
@@ -117,6 +138,16 @@ impl StoreWatcher {
 /// alive for the process lifetime. This replaces `std::mem::forget` with an explicit
 /// static, so the OS file handles are properly documented as intentionally long-lived
 /// and could be reclaimed if we ever add a shutdown path.
+///
+/// # Limitation: no recovery after watcher failure
+///
+/// If the underlying `notify::RecommendedWatcher` encounters a fatal error after
+/// successful initialization (e.g., the OS revokes the watch handle, or the
+/// background thread panics), the `OnceLock` prevents re-initialization. The
+/// watcher will silently stop delivering events for the rest of the process
+/// lifetime. In practice this is unlikely — `notify` watchers are robust on
+/// macOS (FSEvents), Linux (inotify), and Windows (ReadDirectoryChanges) — but
+/// if it occurs, the process must be restarted.
 static WATCHER: OnceLock<StoreWatcher> = OnceLock::new();
 
 /// Start the filesystem watcher for the given store.
@@ -145,7 +176,10 @@ pub async fn start_watching(
     let _ = WATCHER.set(watcher);
 
     // Always subscribe from whichever watcher won the race into WATCHER.
-    Ok(WATCHER.get().unwrap().subscribe())
+    Ok(WATCHER
+        .get()
+        .expect("WATCHER must be initialized: either we set it or another thread did")
+        .subscribe())
 }
 
 /// Subscribe to store change events (if watcher has been started).
@@ -291,7 +325,7 @@ fn is_ticket_path(path: &Path) -> bool {
         if let std::path::Component::Normal(s) = comp {
             if *s == "items" && i > 0 {
                 if let std::path::Component::Normal(parent) = &components[i - 1] {
-                    if parent.to_string_lossy().starts_with(".janus") {
+                    if parent.to_string_lossy() == ".janus" {
                         return true;
                     }
                 }
@@ -308,7 +342,7 @@ fn is_plan_path(path: &Path) -> bool {
         if let std::path::Component::Normal(s) = comp {
             if *s == "plans" && i > 0 {
                 if let std::path::Component::Normal(parent) = &components[i - 1] {
-                    if parent.to_string_lossy().starts_with(".janus") {
+                    if parent.to_string_lossy() == ".janus" {
                         return true;
                     }
                 }
@@ -342,7 +376,15 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
                 }
             }
             metadata.file_path = Some(path.to_path_buf());
+            // Capture the ID before upsert consumes ownership
+            let ticket_id = metadata.id.clone();
             store.upsert_ticket(metadata);
+            // Invalidate stale embedding — the ticket content changed but
+            // the embedding was computed from the old content. The user can
+            // run `janus cache rebuild` to regenerate embeddings.
+            if let Some(id) = &ticket_id {
+                store.embeddings().remove(id);
+            }
             true
         }
         Err(_) => false,

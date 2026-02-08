@@ -98,7 +98,7 @@ impl ServerHandler for JanusTools {
 
     /// List available tools.
     ///
-    /// Returns all 11 Janus tools with their schemas and descriptions.
+    /// Returns all 13 Janus tools with their schemas and descriptions.
     async fn list_tools(
         &self,
         _pagination: Option<PaginatedRequestParam>,

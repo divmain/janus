@@ -253,7 +253,12 @@ pub fn log_status_changed(ticket_id: &str, from: &str, to: &str, summary: Option
 pub fn log_note_added(ticket_id: &str, note_preview: &str) {
     // Truncate note to first 100 chars for preview
     let preview = if note_preview.len() > 100 {
-        format!("{}...", &note_preview[..97])
+        let end = note_preview
+            .char_indices()
+            .nth(97)
+            .map(|(i, _)| i)
+            .unwrap_or(note_preview.len());
+        format!("{}...", &note_preview[..end])
     } else {
         note_preview.to_string()
     };

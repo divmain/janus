@@ -2,11 +2,13 @@ pub mod dir_scanner;
 
 use jiff::Timestamp;
 use rand::Rng;
+use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::process::Command;
+use std::sync::LazyLock;
 use uuid::Uuid;
 
 use crate::error::{JanusError, Result};
@@ -193,9 +195,7 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
     if RESERVED_PREFIXES.contains(&prefix) {
         return Err(JanusError::InvalidPrefix(
             prefix.to_string(),
-            format!(
-                "Prefix '{prefix}' is reserved and cannot be used for tickets"
-            ),
+            format!("Prefix '{prefix}' is reserved and cannot be used for tickets"),
         ));
     }
 
@@ -544,6 +544,31 @@ pub fn open_in_editor(path: &Path) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+/// Regex to parse priority filter (e.g., "p0", "p1", "P2")
+static PRIORITY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bp([0-4])\b").expect("priority filter regex should be valid")
+});
+
+/// Regex to strip priority shorthand from query
+static PRIORITY_SHORTHAND_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bp[0-4]\b").expect("priority shorthand regex should be valid")
+});
+
+/// Parse a priority filter from the query (e.g., "p0", "p1", "P2")
+pub fn parse_priority_filter(query: &str) -> Option<u8> {
+    PRIORITY_RE
+        .captures(query)
+        .and_then(|c| c.get(1)?.as_str().parse().ok())
+}
+
+/// Strip priority shorthand from the query for fuzzy matching
+pub fn strip_priority_shorthand(query: &str) -> String {
+    PRIORITY_SHORTHAND_RE
+        .replace_all(query, "")
+        .trim()
+        .to_string()
 }
 
 #[cfg(unix)]

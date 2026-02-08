@@ -14,6 +14,8 @@ pub use repository::{
     get_all_tickets_from_disk, get_all_tickets_with_map, get_children_count, get_file_mtime,
 };
 
+use std::collections::{HashMap, HashSet};
+
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::{
@@ -410,6 +412,74 @@ pub fn resolve_id_from_map<T>(
         1 => Ok(matches[0].clone()),
         _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
     }
+}
+
+/// Check if adding a dependency would create a circular dependency.
+///
+/// This function performs both direct and transitive circular dependency detection:
+/// - Direct: A->B when B already depends on A
+/// - Transitive: A->B->C->A (multi-level cycles)
+///
+/// Returns an error describing the cycle if one is detected.
+pub fn check_circular_dependency(
+    from_id: &str,
+    to_id: &str,
+    ticket_map: &HashMap<String, TicketMetadata>,
+) -> Result<()> {
+    // Direct circular dependency: A->B when B already depends on A
+    if let Some(dep_ticket) = ticket_map.get(to_id)
+        && dep_ticket.deps.contains(&from_id.to_string())
+    {
+        return Err(JanusError::CircularDependency(format!(
+            "{from_id} -> {to_id} (direct: {to_id} already depends on {from_id})"
+        )));
+    }
+
+    // Transitive circular dependency: A->B->...->A
+    // Use DFS to detect if we can reach from_id starting from to_id
+    fn has_path_to(
+        current: &str,
+        target: &str,
+        ticket_map: &HashMap<String, TicketMetadata>,
+        visited: &mut HashSet<String>,
+        path: &mut Vec<String>,
+    ) -> Option<Vec<String>> {
+        if current == target {
+            path.push(current.to_string());
+            return Some(path.clone());
+        }
+
+        if visited.contains(current) {
+            return None;
+        }
+
+        visited.insert(current.to_string());
+        path.push(current.to_string());
+
+        if let Some(ticket) = ticket_map.get(current) {
+            for dep in &ticket.deps {
+                if let Some(found_path) = has_path_to(dep, target, ticket_map, visited, path) {
+                    return Some(found_path);
+                }
+            }
+        }
+
+        path.pop();
+        None
+    }
+
+    let mut visited = HashSet::new();
+    let mut path = Vec::new();
+
+    if let Some(cycle_path) = has_path_to(to_id, from_id, ticket_map, &mut visited, &mut path) {
+        // Format the cycle path for the error message
+        let cycle_str = cycle_path.join(" -> ");
+        return Err(JanusError::CircularDependency(format!(
+            "{from_id} -> {to_id} would create cycle: {cycle_str}"
+        )));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

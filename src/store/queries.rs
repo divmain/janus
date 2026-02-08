@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::plan::types::PlanMetadata;
 use crate::store::TicketStore;
-use crate::tui::search::{parse_priority_filter, strip_priority_shorthand};
 use crate::types::{TicketMetadata, TicketSize};
+use crate::utils::{parse_priority_filter, strip_priority_shorthand};
 
 impl TicketStore {
     /// Get all tickets as a Vec, sorted by id for deterministic ordering.
@@ -25,11 +25,14 @@ impl TicketStore {
 
     /// Find tickets by partial ID substring match, returning matching IDs.
     pub fn find_by_partial_id(&self, partial_id: &str) -> Vec<String> {
-        self.tickets()
+        let mut matches: Vec<String> = self
+            .tickets()
             .iter()
             .filter(|r| r.key().contains(partial_id))
             .map(|r| r.key().clone())
-            .collect()
+            .collect();
+        matches.sort();
+        matches
     }
 
     /// Build a HashMap of ticket_id -> metadata.
@@ -151,11 +154,14 @@ impl TicketStore {
 
     /// Find plans by partial ID substring match, returning matching IDs.
     pub fn find_plan_by_partial_id(&self, partial_id: &str) -> Vec<String> {
-        self.plans()
+        let mut matches: Vec<String> = self
+            .plans()
             .iter()
             .filter(|r| r.key().contains(partial_id))
             .map(|r| r.key().clone())
-            .collect()
+            .collect();
+        matches.sort();
+        matches
     }
 }
 
@@ -428,6 +434,35 @@ mod tests {
 
         let none = store.get_tickets_by_size(&[]);
         assert!(none.is_empty());
+    }
+
+    #[test]
+    fn test_get_tickets_by_size_from_parsed_content() {
+        use crate::store::test_helpers::make_ticket_content;
+        use crate::ticket::parse_ticket;
+
+        let store = TicketStore::empty();
+
+        // Parse tickets from make_ticket_content (which includes size: medium)
+        let content1 = make_ticket_content("j-t1t1", "Ticket One");
+        let meta1 = parse_ticket(&content1).expect("should parse ticket");
+        store.upsert_ticket(meta1);
+
+        let content2 = make_ticket_content("j-t2t2", "Ticket Two");
+        let meta2 = parse_ticket(&content2).expect("should parse ticket");
+        store.upsert_ticket(meta2);
+
+        // Both tickets should be medium size from make_ticket_content
+        let medium = store.get_tickets_by_size(&[TicketSize::Medium]);
+        assert_eq!(medium.len(), 2);
+
+        // No tickets should match small
+        let small = store.get_tickets_by_size(&[TicketSize::Small]);
+        assert!(small.is_empty());
+
+        // Verify ticket metadata has size populated
+        let ticket = store.get_ticket("j-t1t1").unwrap();
+        assert_eq!(ticket.size, Some(TicketSize::Medium));
     }
 
     #[test]

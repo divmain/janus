@@ -98,10 +98,13 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                             toast_setter.set(Some(Toast::success(format!(
                                 "Updated {ticket_id} to {status}"
                             ))));
-                            // Refresh the mutated ticket in the store, then reload
+                            // Refresh the mutated ticket in the store, then update in-place
                             crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
-                            let tickets =
-                                crate::tui::repository::TicketRepository::load_tickets().await;
+                            let current = all_tickets_setter.read().clone();
+                            let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
+                                current,
+                                &ticket_id,
+                            ).await;
                             all_tickets_setter.set(tickets);
                         }
                         Err(e) => {

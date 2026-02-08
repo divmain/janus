@@ -20,17 +20,15 @@
 //! | `get_plan_status` | Get plan progress information |
 //! | `get_children` | Get tickets spawned from a parent |
 //! | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
-//! | `semantic_search` | Find tickets semantically similar to a query (semantic-search feature) |
+//! | `semantic_search` | Find tickets semantically similar to a query (requires semantic-search config) |
 
 use rmcp::{
     handler::server::{tool::ToolRouter, wrapper::Parameters},
     schemars::{self, JsonSchema},
-    tool,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use std::fs;
 use std::str::FromStr;
 
 use crate::store::get_or_init_store;
@@ -40,7 +38,7 @@ use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::remote::config::Config;
-use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map};
+use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, check_circular_dependency, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
 
@@ -262,586 +260,170 @@ impl Default for JanusTools {
     }
 }
 
-impl JanusTools {
-    /// Create a new JanusTools instance with all tools registered
-    pub fn new() -> Self {
-        use rmcp::{
-            handler::server::tool::ToolRoute,
-            model::Tool,
-        };
-        use schemars::schema_for;
-        use std::sync::Arc;
+    /// Macro to register a tool with required arguments (errors if args missing).
+    /// Generates the ToolRoute boilerplate: extract args, deserialize, call impl, wrap result.
+    macro_rules! register_tool {
+        ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident) => {{
+            use rmcp::handler::server::tool::ToolRoute;
+            use rmcp::model::Tool;
+            use schemars::schema_for;
+            use std::sync::Arc;
 
-        let mut router = ToolRouter::new();
-
-        // Helper to create Tool metadata from request type schema
-        fn create_tool_meta<S: Serialize>(
-            name: &str,
-            description: &str,
-            schema: S,
-        ) -> Tool {
-            let schema_value = serde_json::to_value(schema).unwrap();
+            let schema_value = serde_json::to_value(schema_for!($req_type)).unwrap();
             let schema_obj = match schema_value {
                 serde_json::Value::Object(obj) => obj,
                 _ => panic!("Schema must be an object"),
             };
-            Tool::new(
-                name.to_string(),
-                description.to_string(),
-                Arc::new(schema_obj),
-            )
-        }
+            let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj));
+            let route = ToolRoute::new_dyn(
+                tool,
+                |ctx: rmcp::handler::server::tool::ToolCallContext<'_, JanusTools>| {
+                    Box::pin(async move {
+                        let this = ctx.service;
+                        let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
+                            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                            message: std::borrow::Cow::Borrowed("Missing arguments"),
+                            data: None,
+                        })?;
+                        let request: $req_type =
+                            serde_json::from_value(serde_json::Value::Object(args)).map_err(
+                                |e| rmcp::model::ErrorData {
+                                    code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                                    message: std::borrow::Cow::Owned(format!(
+                                        "Invalid parameters: {e}"
+                                    )),
+                                    data: None,
+                                },
+                            )?;
+                        match this.$method(Parameters(request)).await {
+                            Ok(result) => Ok(rmcp::model::CallToolResult {
+                                content: vec![rmcp::model::Content::text(result)],
+                                structured_content: None,
+                                is_error: None,
+                                meta: None,
+                            }),
+                            Err(e) => Ok(rmcp::model::CallToolResult {
+                                content: vec![rmcp::model::Content::text(e)],
+                                structured_content: None,
+                                is_error: Some(true),
+                                meta: None,
+                            }),
+                        }
+                    })
+                },
+            );
+            $router.add_route(route);
+        }};
+    }
 
-        // create_ticket
-        let tool = create_tool_meta(
-            "create_ticket",
+    /// Macro to register a tool with optional arguments (defaults if args missing).
+    /// Same as register_tool! but uses `unwrap_or_default()` instead of `ok_or(...)`.
+    macro_rules! register_tool_optional_args {
+        ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident) => {{
+            use rmcp::handler::server::tool::ToolRoute;
+            use rmcp::model::Tool;
+            use schemars::schema_for;
+            use std::sync::Arc;
+
+            let schema_value = serde_json::to_value(schema_for!($req_type)).unwrap();
+            let schema_obj = match schema_value {
+                serde_json::Value::Object(obj) => obj,
+                _ => panic!("Schema must be an object"),
+            };
+            let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj));
+            let route = ToolRoute::new_dyn(
+                tool,
+                |ctx: rmcp::handler::server::tool::ToolCallContext<'_, JanusTools>| {
+                    Box::pin(async move {
+                        let this = ctx.service;
+                        let args = ctx.arguments.unwrap_or_default();
+                        let request: $req_type =
+                            serde_json::from_value(serde_json::Value::Object(args)).map_err(
+                                |e| rmcp::model::ErrorData {
+                                    code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                                    message: std::borrow::Cow::Owned(format!(
+                                        "Invalid parameters: {e}"
+                                    )),
+                                    data: None,
+                                },
+                            )?;
+                        match this.$method(Parameters(request)).await {
+                            Ok(result) => Ok(rmcp::model::CallToolResult {
+                                content: vec![rmcp::model::Content::text(result)],
+                                structured_content: None,
+                                is_error: None,
+                                meta: None,
+                            }),
+                            Err(e) => Ok(rmcp::model::CallToolResult {
+                                content: vec![rmcp::model::Content::text(e)],
+                                structured_content: None,
+                                is_error: Some(true),
+                                meta: None,
+                            }),
+                        }
+                    })
+                },
+            );
+            $router.add_route(route);
+        }};
+    }
+
+impl JanusTools {
+    /// Create a new JanusTools instance with all tools registered
+    pub fn new() -> Self {
+        let mut router = ToolRouter::new();
+
+        register_tool!(router, "create_ticket",
             "Create a new ticket. Returns the ticket ID and file path.",
-            schema_for!(CreateTicketRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: CreateTicketRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.create_ticket_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            CreateTicketRequest, create_ticket_impl);
 
-        // spawn_subtask
-        let tool = create_tool_meta(
-            "spawn_subtask",
+        register_tool!(router, "spawn_subtask",
             "Create a new ticket as a child of an existing ticket. Sets spawning metadata for decomposition tracking.",
-            schema_for!(SpawnSubtaskRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: SpawnSubtaskRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.spawn_subtask_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            SpawnSubtaskRequest, spawn_subtask_impl);
 
-        // update_status
-        let tool = create_tool_meta(
-            "update_status",
+        register_tool!(router, "update_status",
             "Change a ticket's status. Valid statuses: new, next, in_progress, complete, cancelled.",
-            schema_for!(UpdateStatusRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: UpdateStatusRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.update_status_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            UpdateStatusRequest, update_status_impl);
 
-        // add_note
-        let tool = create_tool_meta(
-            "add_note",
+        register_tool!(router, "add_note",
             "Add a timestamped note to a ticket. Notes are appended under a '## Notes' section.",
-            schema_for!(AddNoteRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: AddNoteRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.add_note_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            AddNoteRequest, add_note_impl);
 
-        // list_tickets
-        let tool = create_tool_meta(
-            "list_tickets",
+        register_tool_optional_args!(router, "list_tickets",
             "Query tickets with optional filters. Returns a list of matching tickets with their metadata.",
-            schema_for!(ListTicketsRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.unwrap_or_default();
-                    let request: ListTicketsRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.list_tickets_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            ListTicketsRequest, list_tickets_impl);
 
-        // show_ticket
-        let tool = create_tool_meta(
-            "show_ticket",
+        register_tool!(router, "show_ticket",
             "Get full ticket content including metadata, body, dependencies, and relationships. Returns markdown optimized for LLM consumption.",
-            schema_for!(ShowTicketRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: ShowTicketRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.show_ticket_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            ShowTicketRequest, show_ticket_impl);
 
-        // add_dependency
-        let tool = create_tool_meta(
-            "add_dependency",
+        register_tool!(router, "add_dependency",
             "Add a dependency. The first ticket will depend on the second (blocking relationship).",
-            schema_for!(AddDependencyRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: AddDependencyRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.add_dependency_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            AddDependencyRequest, add_dependency_impl);
 
-        // remove_dependency
-        let tool = create_tool_meta(
-            "remove_dependency",
+        register_tool!(router, "remove_dependency",
             "Remove a dependency from a ticket.",
-            schema_for!(RemoveDependencyRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: RemoveDependencyRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.remove_dependency_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            RemoveDependencyRequest, remove_dependency_impl);
 
-        // add_ticket_to_plan
-        let tool = create_tool_meta(
-            "add_ticket_to_plan",
+        register_tool!(router, "add_ticket_to_plan",
             "Add a ticket to a plan. For phased plans, specify the phase.",
-            schema_for!(AddTicketToPlanRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: AddTicketToPlanRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.add_ticket_to_plan_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            AddTicketToPlanRequest, add_ticket_to_plan_impl);
 
-        // get_plan_status
-        let tool = create_tool_meta(
-            "get_plan_status",
+        register_tool!(router, "get_plan_status",
             "Get plan status including progress percentage and phase breakdown. Returns markdown optimized for LLM consumption.",
-            schema_for!(GetPlanStatusRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: GetPlanStatusRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.get_plan_status_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            GetPlanStatusRequest, get_plan_status_impl);
 
-        // get_children
-        let tool = create_tool_meta(
-            "get_children",
+        register_tool!(router, "get_children",
             "Get all tickets that were spawned from a given parent ticket. Returns markdown optimized for LLM consumption.",
-            schema_for!(GetChildrenRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: GetChildrenRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.get_children_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            GetChildrenRequest, get_children_impl);
 
-        // get_next_available_ticket
-        let tool = create_tool_meta(
-            "get_next_available_ticket",
+        register_tool_optional_args!(router, "get_next_available_ticket",
             "Query the Janus ticket backlog for the next ticket(s) to work on, based on priority and dependency resolution. Returns tickets in optimal order (dependencies before dependents). Use this if you've been instructed to work on tickets on the backlog. Do NOT use this for guidance on your current task.",
-            schema_for!(GetNextAvailableTicketRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.unwrap_or_default();
-                    let request: GetNextAvailableTicketRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.get_next_available_ticket_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            GetNextAvailableTicketRequest, get_next_available_ticket_impl);
 
-        // semantic_search
-        let tool = create_tool_meta(
-            "semantic_search",
+        register_tool!(router, "semantic_search",
             "Find tickets semantically similar to a natural language query. Uses vector embeddings for fuzzy matching by intent rather than exact keywords.",
-            schema_for!(SemanticSearchRequest),
-        );
-        let route = ToolRoute::new_dyn(
-            tool,
-            |ctx: rmcp::handler::server::tool::ToolCallContext<'_, Self>| {
-                Box::pin(async move {
-                    let this = ctx.service;
-                    let args = ctx.arguments.ok_or(rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Borrowed("Missing arguments"),
-                        data: None,
-                    })?;
-                    let request: SemanticSearchRequest = serde_json::from_value(
-                        serde_json::Value::Object(args),
-                    )
-                    .map_err(|e| rmcp::model::ErrorData {
-                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                        message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
-                        data: None,
-                    })?;
-                    match this.semantic_search_impl(Parameters(request)).await {
-                        Ok(result) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(result)],
-                            structured_content: None,
-                            is_error: None,
-                            meta: None,
-                        }),
-                        Err(e) => Ok(rmcp::model::CallToolResult {
-                            content: vec![rmcp::model::Content::text(e)],
-                            structured_content: None,
-                            is_error: Some(true),
-                            meta: None,
-                        }),
-                    }
-                })
-            },
-        );
-        router.add_route(route);
+            SemanticSearchRequest, semantic_search_impl);
 
         Self { tool_router: router }
     }
@@ -920,11 +502,6 @@ impl JanusTools {
 
     /// Spawn a subtask from a parent ticket.
     /// Sets spawned_from, spawn_context, and depth fields.
-    #[tool(
-        name = "spawn_subtask",
-        description = "Create a new ticket as a child of an existing ticket. Sets spawning metadata for decomposition tracking."
-    )]
-    /// Implementation for spawn_subtask tool
     async fn spawn_subtask_impl(
         &self,
         Parameters(request): Parameters<SpawnSubtaskRequest>,
@@ -977,11 +554,6 @@ impl JanusTools {
 
     /// Update a ticket's status.
     /// When closing (complete/cancelled), optionally include a summary.
-    #[tool(
-        name = "update_status",
-        description = "Change a ticket's status. Valid statuses: new, next, in_progress, complete, cancelled."
-    )]
-    /// Implementation for update_status tool
     async fn update_status_impl(
         &self,
         Parameters(request): Parameters<UpdateStatusRequest>,
@@ -1038,11 +610,6 @@ impl JanusTools {
     }
 
     /// Add a timestamped note to a ticket.
-    #[tool(
-        name = "add_note",
-        description = "Add a timestamped note to a ticket. Notes are appended under a '## Notes' section."
-    )]
-    /// Implementation for add_note tool
     async fn add_note_impl(
         &self,
         Parameters(request): Parameters<AddNoteRequest>,
@@ -1055,18 +622,19 @@ impl JanusTools {
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
 
-        let mut content = fs::read_to_string(&ticket.file_path).map_err(|e| e.to_string())?;
+        let content = ticket.read_content().map_err(|e| e.to_string())?;
+        let mut new_content = content;
 
         // Add Notes section if it doesn't exist
-        if !content.contains("## Notes") {
-            content.push_str("\n## Notes");
+        if !new_content.contains("## Notes") {
+            new_content.push_str("\n## Notes");
         }
 
         // Add the note with timestamp
         let timestamp = iso_date();
-        content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, request.note));
+        new_content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, request.note));
 
-        fs::write(&ticket.file_path, &content).map_err(|e| e.to_string())?;
+        ticket.write(&new_content).map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately
         crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
@@ -1079,7 +647,8 @@ impl JanusTools {
                 &ticket.id,
                 json!({
                     "content_preview": if request.note.len() > 100 {
-                        format!("{}...", &request.note[..97])
+                        let end = request.note.char_indices().nth(97).map(|(i, _)| i).unwrap_or(request.note.len());
+                        format!("{}...", &request.note[..end])
                     } else {
                         request.note.clone()
                     },
@@ -1092,11 +661,6 @@ impl JanusTools {
     }
 
     /// List tickets with optional filters.
-    #[tool(
-        name = "list_tickets",
-        description = "Query tickets with optional filters. Returns a list of matching tickets with their metadata."
-    )]
-    /// Implementation for list_tickets tool
     async fn list_tickets_impl(
         &self,
         Parameters(request): Parameters<ListTicketsRequest>,
@@ -1196,7 +760,7 @@ impl JanusTools {
                     let all_deps_complete = t.deps.iter().all(|dep_id| {
                         ticket_map
                             .get(dep_id)
-                            .map(|dep| dep.status == Some(TicketStatus::Complete))
+                            .map(|dep| dep.status.map(|s| s.is_terminal()).unwrap_or(false))
                             .unwrap_or(false)
                     });
                     if !all_deps_complete {
@@ -1215,7 +779,7 @@ impl JanusTools {
                     let has_incomplete_dep = t.deps.iter().any(|dep_id| {
                         ticket_map
                             .get(dep_id)
-                            .map(|dep| dep.status != Some(TicketStatus::Complete))
+                            .map(|dep| !dep.status.map(|s| s.is_terminal()).unwrap_or(false))
                             .unwrap_or(true)
                     });
                     if !has_incomplete_dep {
@@ -1246,11 +810,6 @@ impl JanusTools {
     }
 
     /// Show full ticket content and metadata.
-    #[tool(
-        name = "show_ticket",
-        description = "Get full ticket content including metadata, body, dependencies, and relationships. Returns markdown optimized for LLM consumption."
-    )]
-    /// Implementation for show_ticket tool
     async fn show_ticket_impl(
         &self,
         Parameters(request): Parameters<ShowTicketRequest>,
@@ -1280,15 +839,15 @@ impl JanusTools {
             }
 
             // Check if other ticket is blocked by current ticket
-            if other.deps.contains(&ticket.id) && other.status != Some(TicketStatus::Complete) {
+            if other.deps.contains(&ticket.id) && !other.status.is_some_and(|s| s.is_terminal()) {
                 blocking.push(other);
             }
         }
 
-        // Find blockers (deps that are not complete)
+        // Find blockers (deps that are not terminal)
         for dep_id in &metadata.deps {
             if let Some(dep) = ticket_map.get(dep_id)
-                && dep.status != Some(TicketStatus::Complete)
+                && !dep.status.is_some_and(|s| s.is_terminal())
             {
                 blockers.push(dep);
             }
@@ -1300,11 +859,6 @@ impl JanusTools {
     }
 
     /// Add a dependency between tickets.
-    #[tool(
-        name = "add_dependency",
-        description = "Add a dependency. The first ticket will depend on the second (blocking relationship)."
-    )]
-    /// Implementation for add_dependency tool
     async fn add_dependency_impl(
         &self,
         Parameters(request): Parameters<AddDependencyRequest>,
@@ -1320,7 +874,8 @@ impl JanusTools {
         let ticket_map = build_ticket_map()
             .await
             .map_err(|e| format!("failed to load tickets: {e}"))?;
-        check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)?;
+        check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)
+            .map_err(|e| e.to_string())?;
 
         let added = ticket
             .add_to_array_field("deps", &dep_ticket.id)
@@ -1356,11 +911,6 @@ impl JanusTools {
     }
 
     /// Remove a dependency between tickets.
-    #[tool(
-        name = "remove_dependency",
-        description = "Remove a dependency from a ticket."
-    )]
-    /// Implementation for remove_dependency tool
     async fn remove_dependency_impl(
         &self,
         Parameters(request): Parameters<RemoveDependencyRequest>,
@@ -1401,11 +951,6 @@ impl JanusTools {
     }
 
     /// Add a ticket to a plan.
-    #[tool(
-        name = "add_ticket_to_plan",
-        description = "Add a ticket to a plan. For phased plans, specify the phase."
-    )]
-    /// Implementation for add_ticket_to_plan tool
     async fn add_ticket_to_plan_impl(
         &self,
         Parameters(request): Parameters<AddTicketToPlanRequest>,
@@ -1486,11 +1031,6 @@ impl JanusTools {
     }
 
     /// Get plan status and progress.
-    #[tool(
-        name = "get_plan_status",
-        description = "Get plan status including progress percentage and phase breakdown. Returns markdown optimized for LLM consumption."
-    )]
-    /// Implementation for get_plan_status tool
     async fn get_plan_status_impl(
         &self,
         Parameters(request): Parameters<GetPlanStatusRequest>,
@@ -1514,11 +1054,6 @@ impl JanusTools {
     }
 
     /// Get tickets spawned from a parent ticket.
-    #[tool(
-        name = "get_children",
-        description = "Get all tickets that were spawned from a given parent ticket. Returns markdown optimized for LLM consumption."
-    )]
-    /// Implementation for get_children tool
     async fn get_children_impl(
         &self,
         Parameters(request): Parameters<GetChildrenRequest>,
@@ -1546,11 +1081,6 @@ impl JanusTools {
     }
 
     /// Query the Janus ticket backlog for the next ticket(s) to work on.
-    #[tool(
-        name = "get_next_available_ticket",
-        description = "Query the Janus ticket backlog for the next ticket(s) to work on, based on priority and dependency resolution. Returns tickets in optimal order (dependencies before dependents). Use this if you've been instructed to work on tickets on the backlog. Do NOT use this for guidance on your current task."
-    )]
-    /// Implementation for get_next_available_ticket tool
     async fn get_next_available_ticket_impl(
         &self,
         Parameters(request): Parameters<GetNextAvailableTicketRequest>,
@@ -1588,11 +1118,6 @@ impl JanusTools {
     }
 
     /// Find tickets semantically similar to a natural language query.
-    #[tool(
-        name = "semantic_search",
-        description = "Find tickets semantically similar to a natural language query. Uses vector embeddings for fuzzy matching by intent rather than exact keywords."
-    )]
-    /// Implementation for semantic_search tool
     async fn semantic_search_impl(
         &self,
         Parameters(request): Parameters<SemanticSearchRequest>,
@@ -1606,7 +1131,7 @@ impl JanusTools {
         match Config::load() {
             Ok(config) => {
                 if !config.semantic_search_enabled() {
-                    return Ok("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true".to_string());
+                    return Err("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true".to_string());
                 }
             }
             Err(e) => {
@@ -1910,58 +1435,6 @@ fn format_ticket_list_as_markdown(tickets: &[&TicketMetadata], filter_summary: &
     output
 }
 
-/// Check for circular dependencies
-fn check_circular_dependency(
-    from_id: &str,
-    to_id: &str,
-    ticket_map: &HashMap<String, TicketMetadata>,
-) -> Result<(), String> {
-    use std::collections::HashSet;
-
-    // Direct circular check
-    if let Some(dep_ticket) = ticket_map.get(to_id)
-        && dep_ticket.deps.contains(&from_id.to_string())
-    {
-        return Err(format!(
-            "Circular dependency: {to_id} already depends on {from_id}"
-        ));
-    }
-
-    // Transitive circular check via DFS
-    fn has_path_to(
-        current: &str,
-        target: &str,
-        ticket_map: &HashMap<String, TicketMetadata>,
-        visited: &mut HashSet<String>,
-    ) -> bool {
-        if current == target {
-            return true;
-        }
-        if visited.contains(current) {
-            return false;
-        }
-        visited.insert(current.to_string());
-
-        if let Some(ticket) = ticket_map.get(current) {
-            for dep in &ticket.deps {
-                if has_path_to(dep, target, ticket_map, visited) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    let mut visited = HashSet::new();
-    if has_path_to(to_id, from_id, ticket_map, &mut visited) {
-        return Err(format!(
-            "Circular dependency: adding {from_id} -> {to_id} would create a cycle"
-        ));
-    }
-
-    Ok(())
-}
-
 /// Format plan status as markdown for LLM consumption
 fn format_plan_status_as_markdown(
     plan_id: &str,
@@ -2209,7 +1682,7 @@ mod tests {
         // b -> a should fail because a already depends on b
         let result = check_circular_dependency("b", "a", &ticket_map);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Circular dependency"));
+        assert!(result.unwrap_err().to_string().contains("circular dependency"));
     }
 
     #[test]
