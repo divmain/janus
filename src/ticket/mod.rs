@@ -258,6 +258,35 @@ impl Ticket {
         }
     }
 
+    /// Add a timestamped note to the ticket.
+    ///
+    /// Adds the note text under a "## Notes" section. If the section doesn't exist,
+    /// it will be created. The note is prefixed with a timestamp.
+    ///
+    /// # Errors
+    ///
+    /// Returns `JanusError::EmptyNote` if the note text is empty or only whitespace.
+    pub fn add_note(&self, note_text: &str) -> Result<()> {
+        // Validate that note is not empty or only whitespace
+        if note_text.trim().is_empty() {
+            return Err(JanusError::EmptyNote);
+        }
+
+        let timestamp = crate::utils::iso_date();
+
+        let content = self.read_content()?;
+        let mut new_content = content;
+        if !new_content.contains("## Notes") {
+            new_content.push_str("\n## Notes");
+        }
+        new_content.push_str(&format!("\n\n**{timestamp}**\n\n{note_text}"));
+        self.write(&new_content)?;
+
+        crate::events::log_note_added(&self.id, note_text);
+
+        Ok(())
+    }
+
     /// Write a completion summary section to the ticket file.
     ///
     /// If a "## Completion Summary" section already exists, it will be updated.

@@ -72,6 +72,29 @@ impl TicketFilter for StatusFilter {
     }
 }
 
+/// Filter tickets by type
+pub struct TypeFilter {
+    target_type: String,
+}
+
+impl TypeFilter {
+    pub fn new(ticket_type: &str) -> Self {
+        Self {
+            target_type: ticket_type.to_string(),
+        }
+    }
+}
+
+impl TicketFilter for TypeFilter {
+    fn matches(&self, ticket: &TicketMetadata, _context: &TicketFilterContext) -> bool {
+        let ticket_type = ticket
+            .ticket_type
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| "task".to_string());
+        ticket_type == self.target_type
+    }
+}
+
 /// Filter tickets by spawned_from relationship
 pub struct SpawningFilter {
     spawned_from: Option<String>,

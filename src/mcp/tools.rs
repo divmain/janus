@@ -652,32 +652,18 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<AddNoteRequest>,
     ) -> Result<String, String> {
-        if request.note.trim().is_empty() {
-            return Err("Note content cannot be empty".to_string());
-        }
-
         let ticket = Ticket::find(&request.id)
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
 
-        let content = ticket.read_content().map_err(|e| e.to_string())?;
-        let mut new_content = content;
-
-        // Add Notes section if it doesn't exist
-        if !new_content.contains("## Notes") {
-            new_content.push_str("\n## Notes");
-        }
-
-        // Add the note with timestamp
-        let timestamp = iso_date();
-        new_content.push_str(&format!("\n\n**{}**\n\n{}", timestamp, request.note));
-
-        ticket.write(&new_content).map_err(|e| e.to_string())?;
+        // Use the shared add_note method on Ticket
+        ticket.add_note(&request.note).map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately
         crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
 
         // Log with MCP actor
+        let timestamp = iso_date();
         log_event(
             Event::new(
                 EventType::NoteAdded,
@@ -703,7 +689,12 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<ListTicketsRequest>,
     ) -> Result<String, String> {
-        let (tickets, ticket_map) = get_all_tickets_with_map()
+        use crate::query::{
+            BlockedFilter, ReadyFilter, SizeFilter, SpawningFilter, StatusFilter,
+            TicketQueryBuilder, TypeFilter,
+        };
+
+        let (tickets, _ticket_map) = get_all_tickets_with_map()
             .await
             .map_err(|e| format!("failed to load tickets: {e}"))?;
 
@@ -735,116 +726,79 @@ impl JanusTools {
             None
         };
 
-        let filtered: Vec<&TicketMetadata> = tickets
-            .iter()
-            .filter(|t| {
-                // Filter by spawned_from
-                if let Some(ref parent_id) = resolved_spawned_from {
-                    match &t.spawned_from {
-                        Some(sf) if sf == parent_id => {}
-                        _ => return false,
-                    }
-                }
+        // Build the query using TicketQueryBuilder
+        let mut query_builder = TicketQueryBuilder::new();
 
-                // Filter by depth
-                if let Some(target_depth) = request.depth {
-                    let ticket_depth = t
-                        .depth
-                        .unwrap_or_else(|| if t.spawned_from.is_none() { 0 } else { 1 });
-                    if ticket_depth != target_depth {
-                        return false;
-                    }
-                }
+        // Add spawned_from filter
+        if let Some(ref parent_id) = resolved_spawned_from {
+            query_builder = query_builder.with_filter(Box::new(SpawningFilter::new(
+                Some(parent_id),
+                None,
+                None,
+            )));
+        }
 
-                // Filter by status
-                if let Some(ref status_filter) = request.status {
-                    let ticket_status = t
-                        .status
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "new".to_string());
-                    if ticket_status != *status_filter {
-                        return false;
-                    }
-                }
+        // Add depth filter
+        if let Some(target_depth) = request.depth {
+            query_builder = query_builder.with_filter(Box::new(SpawningFilter::new(
+                None,
+                Some(target_depth),
+                None,
+            )));
+        }
 
-                // Filter by type
-                if let Some(ref type_filter) = request.ticket_type {
-                    let ticket_type = t
-                        .ticket_type
-                        .map(|tt| tt.to_string())
-                        .unwrap_or_else(|| "task".to_string());
-                    if ticket_type != *type_filter {
-                        return false;
-                    }
-                }
+        // Add status filter
+        if let Some(ref status_filter) = request.status {
+            query_builder = query_builder.with_filter(Box::new(StatusFilter::new(status_filter)));
+        }
 
-                // Filter by size
-                if let Some(ref sizes) = size_filter {
-                    if let Some(ticket_size) = t.size {
-                        if !sizes.contains(&ticket_size) {
-                            return false;
-                        }
-                    } else {
-                        // Ticket has no size, exclude it when filtering by size
-                        return false;
-                    }
-                }
+        // Add type filter
+        if let Some(ref type_filter) = request.ticket_type {
+            query_builder = query_builder.with_filter(Box::new(TypeFilter::new(type_filter)));
+        }
 
-                // Filter by ready (no incomplete dependencies)
-                if request.ready == Some(true) {
-                    if !matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
-                        return false;
-                    }
-                    let all_deps_complete = t.deps.iter().all(|dep_id| {
-                        ticket_map
-                            .get(dep_id)
-                            .map(|dep| dep.status.map(|s| s.is_terminal()).unwrap_or(false))
-                            .unwrap_or(false)
-                    });
-                    if !all_deps_complete {
-                        return false;
-                    }
-                }
+        // Add size filter
+        if let Some(ref sizes) = size_filter {
+            query_builder = query_builder.with_filter(Box::new(SizeFilter::new(sizes.clone())));
+        }
 
-                // Filter by blocked (has incomplete dependencies)
-                if request.blocked == Some(true) {
-                    if !matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
-                        return false;
-                    }
-                    if t.deps.is_empty() {
-                        return false;
-                    }
-                    let has_incomplete_dep = t.deps.iter().any(|dep_id| {
-                        ticket_map
-                            .get(dep_id)
-                            .map(|dep| !dep.status.map(|s| s.is_terminal()).unwrap_or(false))
-                            .unwrap_or(true)
-                    });
-                    if !has_incomplete_dep {
-                        return false;
-                    }
-                }
+        // Add ready filter
+        if request.ready == Some(true) {
+            query_builder = query_builder.with_filter(Box::new(ReadyFilter));
+        }
 
-                // Exclude closed tickets by default (unless filtering by status)
-                if request.status.is_none() {
-                    let is_closed = matches!(
-                        t.status,
-                        Some(TicketStatus::Complete) | Some(TicketStatus::Cancelled)
-                    );
-                    if is_closed {
-                        return false;
-                    }
-                }
+        // Add blocked filter
+        if request.blocked == Some(true) {
+            query_builder = query_builder.with_filter(Box::new(BlockedFilter));
+        }
 
-                true
-            })
-            .collect();
+        // Execute the query
+        let mut filtered_tickets = query_builder
+            .execute(tickets)
+            .await
+            .map_err(|e| format!("query execution failed: {e}"))?;
+
+        // Exclude closed tickets by default (unless filtering by status)
+        if request.status.is_none() {
+            filtered_tickets.retain(|t| {
+                !matches!(
+                    t.status,
+                    Some(TicketStatus::Complete) | Some(TicketStatus::Cancelled)
+                )
+            });
+        }
+
+        // Convert to references for the formatter
+        let filtered_refs: Vec<&TicketMetadata> = filtered_tickets.iter().collect();
 
         // Build filter summary
         let filter_summary = build_filter_summary(&request);
 
         // Format as markdown
-        Ok(format_ticket_list_as_markdown(&filtered, &filter_summary))
+        Ok(format_ticket_list_as_markdown(
+            &filtered_refs,
+            &filter_summary,
+        ))
     }
 
     /// Show full ticket content and metadata.

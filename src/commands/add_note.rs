@@ -1,8 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
-use crate::error::{JanusError, Result};
-use crate::events::log_note_added;
+use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, iso_date, read_stdin};
 
@@ -19,22 +18,10 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
         String::new()
     };
 
-    // Validate that note is not empty or only whitespace
-    if note.trim().is_empty() {
-        return Err(JanusError::EmptyNote);
-    }
+    // Use the shared add_note method on Ticket
+    ticket.add_note(&note)?;
 
     let timestamp = iso_date();
-
-    let content = ticket.read_content()?;
-    let mut new_content = content;
-    if !new_content.contains("## Notes") {
-        new_content.push_str("\n## Notes");
-    }
-    new_content.push_str(&format!("\n\n**{timestamp}**\n\n{note}"));
-    ticket.write(&new_content)?;
-
-    log_note_added(&ticket.id, &note);
 
     CommandOutput::new(json!({
         "id": ticket.id,
