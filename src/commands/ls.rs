@@ -112,7 +112,7 @@ pub async fn cmd_ls(
             if filter_ready || filter_blocked {
                 // We need to compute these using the context
                 use crate::query::{BlockedFilter, ReadyFilter, TicketFilterContext};
-                let context = TicketFilterContext::new().await?;
+                let context = TicketFilterContext::new_from_disk().await?;
 
                 let ready: Vec<_> = if filter_ready {
                     tickets
@@ -158,7 +158,7 @@ pub async fn cmd_ls(
             } else {
                 // Only closed/active filters, no need for complex context
                 use crate::query::TicketFilterContext;
-                let context = TicketFilterContext::new().await?;
+                let context = TicketFilterContext::new_from_disk().await?;
 
                 let closed: Vec<_> = if filter_closed {
                     tickets

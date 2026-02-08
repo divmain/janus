@@ -17,12 +17,22 @@ pub struct TicketFilterContext {
 }
 
 impl TicketFilterContext {
-    pub async fn new() -> Result<Self> {
-        let ticket_map = build_ticket_map().await?;
-        Ok(Self {
+    /// Create a new context with the provided ticket map.
+    /// The ticket map should be built once by the caller and passed in
+    /// to avoid rebuilding it for each query execution.
+    pub fn new(ticket_map: HashMap<String, TicketMetadata>) -> Self {
+        Self {
             ticket_map,
             warned_dangling: RefCell::new(HashSet::new()),
-        })
+        }
+    }
+
+    /// Create a new context by building the ticket map from disk.
+    /// This is a convenience method for when the caller doesn't have
+    /// the ticket map readily available.
+    pub async fn new_from_disk() -> Result<Self> {
+        let ticket_map = build_ticket_map().await?;
+        Ok(Self::new(ticket_map))
     }
 
     /// Warn about a dangling dependency if we haven't already warned about it.
@@ -301,7 +311,12 @@ impl TicketQueryBuilder {
 
     /// Execute the query against the provided tickets
     pub async fn execute(self, tickets: Vec<TicketMetadata>) -> Result<Vec<TicketMetadata>> {
-        let context = TicketFilterContext::new().await?;
+        // Build ticket map once from the provided tickets
+        let ticket_map: HashMap<String, TicketMetadata> = tickets
+            .iter()
+            .filter_map(|t| t.id.as_ref().map(|id| (id.clone(), t.clone())))
+            .collect();
+        let context = TicketFilterContext::new(ticket_map);
 
         // Apply all filters
         let mut filtered: Vec<TicketMetadata> = tickets
