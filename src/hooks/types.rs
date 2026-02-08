@@ -3,11 +3,10 @@
 //! This module defines the core types used for hook events and contexts.
 
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{JanusError, Result};
+use crate::error::JanusError;
 use crate::types::EntityType;
 
 /// Events that can trigger hooks.
@@ -71,8 +70,9 @@ impl HookEvent {
     }
 }
 
-enum_display!(
+enum_display_fromstr!(
     HookEvent,
+    JanusError::InvalidHookEvent,
     {
         TicketCreated => "ticket_created",
         TicketUpdated => "ticket_updated",
@@ -85,25 +85,6 @@ enum_display!(
         PostDelete => "post_delete",
     }
 );
-
-impl FromStr for HookEvent {
-    type Err = JanusError;
-
-    fn from_str(s: &str) -> Result<Self> {
-        match s.to_lowercase().as_str() {
-            "ticket_created" => Ok(HookEvent::TicketCreated),
-            "ticket_updated" => Ok(HookEvent::TicketUpdated),
-            "plan_created" => Ok(HookEvent::PlanCreated),
-            "plan_updated" => Ok(HookEvent::PlanUpdated),
-            "plan_deleted" => Ok(HookEvent::PlanDeleted),
-            "pre_write" => Ok(HookEvent::PreWrite),
-            "post_write" => Ok(HookEvent::PostWrite),
-            "pre_delete" => Ok(HookEvent::PreDelete),
-            "post_delete" => Ok(HookEvent::PostDelete),
-            _ => Err(JanusError::InvalidHookEvent(s.to_string())),
-        }
-    }
-}
 
 /// Context passed to hook scripts via environment variables.
 #[derive(Debug, Clone, Default)]

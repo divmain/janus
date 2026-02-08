@@ -35,7 +35,7 @@ macro_rules! enum_display_fromstr {
         impl std::str::FromStr for $enum_name {
             type Err = $crate::error::JanusError;
 
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
+            fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
                 match s.to_lowercase().as_str() {
                     $($str => Ok($enum_name::$variant),)+
                     _ => Err($error_variant(s.to_string())),
