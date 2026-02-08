@@ -1,13 +1,14 @@
 mod builder;
-mod content;
 mod locator;
 mod manipulator;
 mod parser;
 mod repository;
 
 pub use crate::types::ArrayField;
+pub use crate::types::validate_field_name;
 pub use builder::TicketBuilder;
-pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
+pub use manipulator::{extract_body, remove_field, update_field, update_title};
+pub use parser::parse as parse_ticket;
 
 pub use repository::{
     TicketLoadResult, build_ticket_map, find_tickets, get_all_children_counts, get_all_tickets,
@@ -23,7 +24,6 @@ use crate::hooks::{
     run_pre_hooks_async,
 };
 use crate::parser::parse_document;
-use crate::ticket::content::validate_field_name;
 use crate::ticket::locator::TicketLocator;
 use crate::ticket::manipulator::{
     remove_field as remove_field_from_content, update_field as update_field_in_content,

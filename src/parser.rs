@@ -211,8 +211,7 @@ impl ParsedDocument {
     ///
     /// This uses the raw YAML string for proper type conversion via serde.
     pub fn deserialize_frontmatter<T: DeserializeOwned>(&self) -> Result<T> {
-        yaml::from_str(&self.frontmatter_raw)
-            .map_err(|e| JanusError::Other(format!("YAML parsing error: {e}")))
+        Ok(yaml::from_str(&self.frontmatter_raw)?)
     }
 }
 
@@ -235,8 +234,7 @@ impl ParsedDocument {
 pub fn parse_document(content: &str) -> Result<ParsedDocument> {
     let (frontmatter_raw, body) = split_frontmatter(content)?;
 
-    let frontmatter: HashMap<String, yaml::Value> = yaml::from_str(&frontmatter_raw)
-        .map_err(|e| JanusError::Other(format!("YAML parsing error: {e}")))?;
+    let frontmatter: HashMap<String, yaml::Value> = yaml::from_str(&frontmatter_raw)?;
 
     Ok(ParsedDocument {
         frontmatter_raw,

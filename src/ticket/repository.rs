@@ -5,7 +5,7 @@
 
 use crate::TicketMetadata;
 use crate::cache::get_or_init_store;
-use crate::ticket::content;
+use crate::ticket::parse_ticket;
 use crate::types::LoadResult;
 use crate::utils::DirScanner;
 use std::collections::HashMap;
@@ -95,7 +95,7 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
     for file in files {
         let file_path = items_dir.join(&file);
         match fs::read_to_string(&file_path) {
-            Ok(content_str) => match content::parse(&content_str) {
+            Ok(content_str) => match parse_ticket(&content_str) {
                 Ok(mut metadata) => {
                     metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
                     metadata.file_path = Some(file_path);

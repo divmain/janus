@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 use crate::cache::get_or_init_store;
 use crate::error::{JanusError, Result};
-use crate::locator::ticket_path;
 use crate::types::tickets_items_dir;
 use crate::utils::validation::validate_safe_id;
 use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
@@ -109,25 +108,6 @@ impl TicketLocator {
         let file_path = find_ticket_by_id_impl(&partial_id).await?;
         TicketLocator::new(file_path)
     }
-
-    /// Create a locator for a new ticket with the given ID
-    ///
-    /// This is used when creating new tickets. The file does not need to exist.
-    #[allow(dead_code)]
-    pub fn with_id(id: &str) -> Self {
-        TicketLocator {
-            file_path: ticket_path(id),
-            id: id.to_string(),
-        }
-    }
-
-    /// Get the file path for a given ticket ID
-    ///
-    /// Does not verify that the file exists.
-    #[allow(dead_code)]
-    pub fn file_path_for_id(id: &str) -> PathBuf {
-        ticket_path(id)
-    }
 }
 
 #[cfg(test)]
@@ -203,19 +183,5 @@ mod tests {
         let locator = result.unwrap();
         assert_eq!(locator.id, "ticket_123");
         assert_eq!(locator.file_path, path);
-    }
-
-    #[test]
-    fn test_ticket_locator_with_id() {
-        let locator = TicketLocator::with_id("j-test");
-        assert_eq!(locator.id, "j-test");
-        assert!(locator.file_path.ends_with("j-test.md"));
-    }
-
-    #[test]
-    fn test_ticket_locator_file_path_for_id() {
-        let path = TicketLocator::file_path_for_id("j-test");
-        assert!(path.ends_with("j-test.md"));
-        assert!(path.to_string_lossy().contains("items"));
     }
 }

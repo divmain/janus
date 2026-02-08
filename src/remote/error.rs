@@ -108,18 +108,6 @@ impl From<ApiError> for JanusError {
     }
 }
 
-/// Extension trait for error types that can be converted to HTTP status info.
-///
-/// This allows provider-specific error types to provide status information
-/// without needing to implement the full AsHttpError trait themselves.
-pub trait HttpErrorInfo {
-    /// Get the HTTP status code and optional retry-after value.
-    fn http_status_info(&self) -> Option<(reqwest::StatusCode, Option<u64>)>;
-
-    /// Get the error message for display.
-    fn error_message(&self) -> String;
-}
-
 /// Build a detailed error message from an octocrab GitHub error.
 ///
 /// This extracts structured error information from octocrab's error types

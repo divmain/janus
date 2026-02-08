@@ -360,14 +360,12 @@ impl std::str::FromStr for TicketField {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TicketMetadata {
+    // --- Persisted YAML fields ---
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uuid: Option<String>,
-
-    #[serde(skip)]
-    pub title: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<TicketStatus>,
@@ -415,6 +413,10 @@ pub struct TicketMetadata {
     /// Whether the ticket has been triaged (reviewed and assessed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub triaged: Option<bool>,
+
+    // --- Runtime-only fields ---
+    #[serde(skip)]
+    pub title: Option<String>,
 
     #[serde(skip)]
     pub file_path: Option<PathBuf>,
