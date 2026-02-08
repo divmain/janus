@@ -109,10 +109,11 @@ pub fn generate_mermaid(
 }
 
 fn truncate_title(title: &str, max_len: usize) -> String {
-    if title.len() <= max_len {
+    if title.chars().count() <= max_len {
         title.to_string()
     } else {
-        format!("{}...", &title[..max_len - 3])
+        let truncated: String = title.chars().take(max_len.saturating_sub(3)).collect();
+        format!("{truncated}...")
     }
 }
 

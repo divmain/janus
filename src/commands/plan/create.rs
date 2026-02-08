@@ -21,7 +21,7 @@ use crate::utils::{generate_uuid, iso_date};
 pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Result<()> {
     ensure_plans_dir()?;
 
-    let id = generate_plan_id();
+    let id = generate_plan_id()?;
     let uuid = generate_uuid();
     let now = iso_date();
 

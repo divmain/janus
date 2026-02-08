@@ -393,7 +393,7 @@ pub fn ensure_plans_dir() -> Result<()> {
 }
 
 /// Generate a unique plan ID with collision checking
-pub fn generate_plan_id() -> String {
+pub fn generate_plan_id() -> Result<String> {
     use crate::utils::generate_hash;
 
     const RETRIES_PER_LENGTH: u32 = 40;
@@ -406,14 +406,14 @@ pub fn generate_plan_id() -> String {
             let filename = format!("{candidate}.md");
 
             if !p_dir.join(&filename).exists() {
-                return candidate;
+                return Ok(candidate);
             }
         }
     }
 
-    panic!(
+    Err(JanusError::Other(format!(
         "Failed to generate unique plan ID after trying hash lengths 4-8 with {RETRIES_PER_LENGTH} retries each"
-    );
+    )))
 }
 
 #[cfg(test)]
@@ -444,7 +444,7 @@ This is the description.
 
     #[test]
     fn test_generate_plan_id_format() {
-        let id = generate_plan_id();
+        let id = generate_plan_id().unwrap();
         assert!(id.starts_with("plan-"));
         let parts: Vec<&str> = id.split('-').collect();
         assert_eq!(parts.len(), 2);

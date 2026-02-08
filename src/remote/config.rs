@@ -246,6 +246,24 @@ impl Config {
                 ),
             ))
         })?;
+
+        // Set restrictive permissions on Unix (owner read/write only)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&path, permissions).map_err(|e| {
+                JanusError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to set permissions on config at {}: {}",
+                        crate::utils::format_relative_path(&path),
+                        e
+                    ),
+                ))
+            })?;
+        }
+
         Ok(())
     }
 

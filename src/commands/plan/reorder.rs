@@ -34,6 +34,32 @@ fn parse_and_validate_ticket_order(
     Ok(new_ticket_order)
 }
 
+fn parse_and_validate_phase_order(
+    new_order: &str,
+    original_phases: &[(String, String)],
+) -> Result<Vec<String>> {
+    let new_phase_order: Vec<String> = new_order
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            // Extract phase number (before colon or the whole line)
+            l.split(':').next().unwrap_or(l).trim().to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // Build set of original phase numbers
+    let original_set: HashSet<_> = original_phases.iter().map(|(num, _)| num).collect();
+    let new_set: HashSet<_> = new_phase_order.iter().collect();
+
+    // Validate set equality - no phases dropped or added
+    if original_set != new_set {
+        return Err(JanusError::ReorderTicketMismatch);
+    }
+
+    Ok(new_phase_order)
+}
+
 /// Reorder tickets or phases interactively
 ///
 /// # Arguments
@@ -80,15 +106,8 @@ pub async fn cmd_plan_reorder(
             return Ok(());
         }
 
-        // Parse new order
-        let new_phase_order: Vec<String> = new_order
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(|l| {
-                // Extract phase number (before colon or the whole line)
-                l.split(':').next().unwrap_or(l).trim().to_string()
-            })
-            .collect();
+        // Parse and validate new phase order
+        let new_phase_order = parse_and_validate_phase_order(&new_order, &phases)?;
 
         // Reorder sections based on new phase order
         let mut phase_sections: Vec<PlanSection> = Vec::new();

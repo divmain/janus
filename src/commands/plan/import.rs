@@ -68,8 +68,9 @@ fn print_import_summary(plan: &ImportablePlan) {
 
     // Description (truncated if long)
     if let Some(ref desc) = plan.description {
-        let desc_preview = if desc.len() > 200 {
-            format!("{}...", &desc[..200])
+        let desc_preview = if desc.chars().count() > 200 {
+            let truncated: String = desc.chars().take(200).collect();
+            format!("{truncated}...")
         } else {
             desc.clone()
         };
@@ -287,7 +288,7 @@ pub async fn cmd_plan_import(
     };
 
     // 8. Generate plan metadata
-    let plan_id = generate_plan_id();
+    let plan_id = generate_plan_id()?;
     let uuid = generate_uuid();
     let now = iso_date();
 

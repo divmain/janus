@@ -148,9 +148,9 @@ pub fn generate_id_with_custom_prefix(custom_prefix: Option<&str>) -> Result<Str
     match custom_prefix {
         Some(prefix) if !prefix.is_empty() => {
             validate_prefix(prefix)?;
-            Ok(generate_unique_id_with_prefix(prefix))
+            generate_unique_id_with_prefix(prefix)
         }
-        _ => Ok(generate_unique_id_with_prefix("task")),
+        _ => generate_unique_id_with_prefix("task"),
     }
 }
 
@@ -285,7 +285,7 @@ pub fn validate_filename(name: &str) -> Result<()> {
 
 /// Generate a unique short ID with collision checking
 /// Returns a short ID that does not exist in the tickets directory
-pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
+pub fn generate_unique_id_with_prefix(prefix: &str) -> Result<String> {
     const RETRIES_PER_LENGTH: u32 = 40;
     let tickets_dir = tickets_items_dir();
 
@@ -297,14 +297,14 @@ pub fn generate_unique_id_with_prefix(prefix: &str) -> String {
 
             // Validate the ID is file-safe before checking for existence
             if validate_filename(&candidate).is_ok() && !tickets_dir.join(&filename).exists() {
-                return candidate;
+                return Ok(candidate);
             }
         }
     }
 
-    panic!(
+    Err(JanusError::Other(format!(
         "Failed to generate unique ID after trying hash lengths 4-8 with {RETRIES_PER_LENGTH} retries each"
-    );
+    )))
 }
 
 /// Generate a random hex hash of the specified length
@@ -556,7 +556,7 @@ mod tests {
 
     #[test]
     fn test_generate_unique_id_with_prefix_format() {
-        let id = generate_unique_id_with_prefix("task");
+        let id = generate_unique_id_with_prefix("task").unwrap();
         // Should start with prefix "task-"
         assert!(id.starts_with("task-"));
         // Should contain a dash
@@ -916,7 +916,7 @@ mod tests {
         let prefixes = vec!["task", "bug", "feature", "my-prefix", "test_under"];
 
         for prefix in prefixes {
-            let id = generate_unique_id_with_prefix(prefix);
+            let id = generate_unique_id_with_prefix(prefix).unwrap();
             assert!(
                 validate_filename(&id).is_ok(),
                 "Generated ID '{id}' should be file-safe"
