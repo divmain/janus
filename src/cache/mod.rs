@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use dashmap::DashMap;
 use tokio::sync::OnceCell;
@@ -9,6 +9,51 @@ use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
 use crate::ticket::parse_ticket;
 use crate::types::{TicketMetadata, plans_dir, tickets_items_dir};
+
+/// Trait for entity metadata that can be loaded from files.
+///
+/// This trait abstracts over `TicketMetadata` and `PlanMetadata` to enable
+/// generic file loading functionality without code duplication.
+pub trait EntityMetadata: Send + 'static {
+    /// Get the entity ID if set.
+    fn id(&self) -> Option<&str>;
+    /// Set the entity ID.
+    fn set_id(&mut self, id: String);
+    /// Get the file path if set.
+    fn file_path(&self) -> Option<&PathBuf>;
+    /// Set the file path.
+    fn set_file_path(&mut self, path: PathBuf);
+}
+
+impl EntityMetadata for TicketMetadata {
+    fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+    fn set_id(&mut self, id: String) {
+        self.id = Some(id);
+    }
+    fn file_path(&self) -> Option<&PathBuf> {
+        self.file_path.as_ref()
+    }
+    fn set_file_path(&mut self, path: PathBuf) {
+        self.file_path = Some(path);
+    }
+}
+
+impl EntityMetadata for PlanMetadata {
+    fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+    fn set_id(&mut self, id: String) {
+        self.id = Some(id);
+    }
+    fn file_path(&self) -> Option<&PathBuf> {
+        self.file_path.as_ref()
+    }
+    fn set_file_path(&mut self, path: PathBuf) {
+        self.file_path = Some(path);
+    }
+}
 
 pub mod embeddings;
 pub mod queries;
@@ -79,12 +124,37 @@ impl TicketStore {
         Ok(store)
     }
 
-    /// Load all ticket files from a directory into the store.
-    fn load_tickets_from_dir(&self, dir: &Path) {
+    /// Generic function to load entities from a directory into the store.
+    ///
+    /// This function abstracts the common logic for loading both tickets and plans
+    /// from markdown files, eliminating code duplication between `load_tickets_from_dir`
+    /// and `load_plans_from_dir`.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `T`: The entity metadata type (e.g., `TicketMetadata`, `PlanMetadata`)
+    /// - `F`: The parser function type
+    ///
+    /// # Arguments
+    ///
+    /// - `dir`: The directory to scan for `.md` files
+    /// - `entity_name`: Name of the entity type (for error messages: "ticket" or "plan")
+    /// - `parser`: Function to parse file content into the entity type
+    /// - `insert`: Function to insert the parsed entity into the appropriate DashMap
+    fn load_entities_from_dir<T, F>(
+        &self,
+        dir: &Path,
+        entity_name: &str,
+        parser: F,
+        mut insert: impl FnMut(T),
+    ) where
+        T: EntityMetadata,
+        F: Fn(&str) -> crate::error::Result<T>,
+    {
         let entries = match fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(e) => {
-                eprintln!("Warning: failed to read tickets directory: {e}");
+                eprintln!("Warning: failed to read {entity_name}s directory: {e}");
                 return;
             }
         };
@@ -93,66 +163,52 @@ impl TicketStore {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "md") {
                 match fs::read_to_string(&path) {
-                    Ok(content) => match parse_ticket(&content) {
+                    Ok(content) => match parser(&content) {
                         Ok(mut metadata) => {
-                            if metadata.id.is_none() {
+                            if metadata.id().is_none() {
                                 if let Some(stem) = path.file_stem() {
-                                    metadata.id = Some(stem.to_string_lossy().to_string());
+                                    metadata.set_id(stem.to_string_lossy().to_string());
                                 }
                             }
-                            metadata.file_path = Some(path);
-                            if let Some(id) = metadata.id.clone() {
-                                self.tickets.insert(id, metadata);
+                            metadata.set_file_path(path);
+                            if metadata.id().is_some() {
+                                insert(metadata);
                             }
                         }
                         Err(e) => {
-                            eprintln!("Warning: failed to parse ticket {}: {e}", path.display());
+                            eprintln!(
+                                "Warning: failed to parse {entity_name} {}: {e}",
+                                path.display()
+                            );
                         }
                     },
                     Err(e) => {
-                        eprintln!("Warning: failed to read ticket {}: {e}", path.display());
+                        eprintln!(
+                            "Warning: failed to read {entity_name} {}: {e}",
+                            path.display()
+                        );
                     }
                 }
             }
         }
     }
 
+    /// Load all ticket files from a directory into the store.
+    fn load_tickets_from_dir(&self, dir: &Path) {
+        self.load_entities_from_dir(dir, "ticket", parse_ticket, |metadata: TicketMetadata| {
+            if let Some(id) = metadata.id.clone() {
+                self.tickets.insert(id, metadata);
+            }
+        });
+    }
+
     /// Load all plan files from a directory into the store.
     fn load_plans_from_dir(&self, dir: &Path) {
-        let entries = match fs::read_dir(dir) {
-            Ok(entries) => entries,
-            Err(e) => {
-                eprintln!("Warning: failed to read plans directory: {e}");
-                return;
+        self.load_entities_from_dir(dir, "plan", parse_plan_content, |metadata: PlanMetadata| {
+            if let Some(id) = metadata.id.clone() {
+                self.plans.insert(id, metadata);
             }
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "md") {
-                match fs::read_to_string(&path) {
-                    Ok(content) => match parse_plan_content(&content) {
-                        Ok(mut metadata) => {
-                            if metadata.id.is_none() {
-                                if let Some(stem) = path.file_stem() {
-                                    metadata.id = Some(stem.to_string_lossy().to_string());
-                                }
-                            }
-                            metadata.file_path = Some(path);
-                            if let Some(id) = metadata.id.clone() {
-                                self.plans.insert(id, metadata);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Warning: failed to parse plan {}: {e}", path.display());
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("Warning: failed to read plan {}: {e}", path.display());
-                    }
-                }
-            }
-        }
+        });
     }
 
     /// Insert or update a ticket in the store.
