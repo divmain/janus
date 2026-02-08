@@ -49,8 +49,10 @@ impl FrontmatterEditor {
         let yaml_line = format!("{field}: {serialized_value}");
         let mut field_found = false;
 
+        let field_prefix = format!("{field}: ");
+        let field_exact = format!("{field}:");
         for line in &mut self.frontmatter_lines {
-            if line.starts_with(&format!("{field}:")) {
+            if line.starts_with(&field_prefix) || *line == field_exact {
                 *line = yaml_line.clone();
                 field_found = true;
                 break;
@@ -66,8 +68,10 @@ impl FrontmatterEditor {
 
     /// Remove a field from the frontmatter.
     pub fn remove_field(&mut self, field: &str) {
+        let field_prefix = format!("{field}: ");
+        let field_exact = format!("{field}:");
         self.frontmatter_lines
-            .retain(|line| !line.starts_with(&format!("{field}:")));
+            .retain(|line| !(line.starts_with(&field_prefix) || *line == field_exact));
     }
 
     /// Build the final content with the updated frontmatter.
@@ -374,5 +378,62 @@ id: test-1234
 
         let result = update_field(content, "title", "'quoted' and \"double-quoted\"").unwrap();
         assert!(result.contains("title:"));
+    }
+
+    #[test]
+    fn test_update_field_prefix_collision() {
+        // Test that "type:" doesn't match "type_info:"
+        let content = r#"---
+id: test-1234
+type: bug
+type_info: some metadata
+---
+# Test Ticket"#;
+
+        let result = update_field(content, "type", "feature").unwrap();
+        // type should be updated
+        assert!(result.contains("type: feature"));
+        // type_info should remain unchanged
+        assert!(result.contains("type_info: some metadata"));
+        assert!(!result.contains("type_info: feature"));
+    }
+
+    #[test]
+    fn test_update_field_prefix_collision_field_with_value() {
+        // Test that "status:" doesn't match "status_code:"
+        let content = r#"---
+id: test-1234
+status: new
+status_code: 200
+---
+# Test Ticket"#;
+
+        let result = update_field(content, "status", "complete").unwrap();
+        // status should be updated
+        assert!(result.contains("status: complete"));
+        // status_code should remain unchanged
+        assert!(result.contains("status_code: 200"));
+        assert!(!result.contains("status_code: complete"));
+    }
+
+    #[test]
+    fn test_remove_field_prefix_collision() {
+        // Test that "type:" doesn't remove "type_info:"
+        let content = r#"---
+id: test-1234
+type: bug
+type_info: some metadata
+priority: 2
+---
+# Test Ticket"#;
+
+        let result = remove_field(content, "type").unwrap();
+        // type should be removed
+        assert!(!result.contains("type: bug"));
+        // type_info should remain
+        assert!(result.contains("type_info: some metadata"));
+        // other fields should remain
+        assert!(result.contains("id: test-1234"));
+        assert!(result.contains("priority: 2"));
     }
 }

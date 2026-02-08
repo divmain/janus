@@ -116,12 +116,7 @@ impl Ticket {
     /// Write raw content without hooks (blocking - for sync contexts).
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
-        std::fs::write(&self.file_path, content).map_err(|e| JanusError::StorageError {
-            operation: "write",
-            item_type: "ticket",
-            path: self.file_path.clone(),
-            source: e,
-        })
+        crate::fs::write_file_atomic(&self.file_path, content)
     }
 
     /// Ensure the parent directory exists (blocking - for sync contexts).

@@ -267,6 +267,17 @@ impl RemoteStatus {
             RemoteStatus::Closed => TicketStatus::Complete,
             RemoteStatus::Custom(s) => {
                 let lower = s.to_lowercase();
+                // Check for exact matches first (case-insensitive)
+                if lower == "done" || lower == "complete" || lower == "closed" {
+                    return TicketStatus::Complete;
+                }
+                if lower == "cancelled" || lower == "canceled" {
+                    return TicketStatus::Cancelled;
+                }
+                if lower == "in progress" || lower == "inprogress" {
+                    return TicketStatus::InProgress;
+                }
+                // Fall back to substring matching for non-exact matches
                 if lower.contains("done") || lower.contains("complete") || lower.contains("closed")
                 {
                     TicketStatus::Complete

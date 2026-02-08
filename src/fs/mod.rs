@@ -20,9 +20,31 @@ pub fn read_file(path: &Path) -> Result<String> {
 
 /// Write file content with error handling
 pub fn write_file(path: &Path, content: &str) -> Result<()> {
+    write_file_atomic(path, content)
+}
+
+/// Write file atomically using temp file and rename.
+///
+/// This ensures that the original file is never in a partially written state.
+/// The write is atomic: either the new content is fully written, or the
+/// original file remains unchanged.
+pub fn write_file_atomic(path: &Path, content: &str) -> Result<()> {
     ensure_parent_dir(path)?;
-    std::fs::write(path, content).map_err(|e| JanusError::StorageError {
+
+    // Create a temp file in the same directory as the target file
+    let temp_path = path.with_extension("tmp");
+
+    // Write to temp file first
+    std::fs::write(&temp_path, content).map_err(|e| JanusError::StorageError {
         operation: "write",
+        item_type: "file",
+        path: temp_path.clone(),
+        source: e,
+    })?;
+
+    // Atomically rename temp file to target path
+    std::fs::rename(&temp_path, path).map_err(|e| JanusError::StorageError {
+        operation: "rename",
         item_type: "file",
         path: path.to_path_buf(),
         source: e,
@@ -111,11 +133,35 @@ pub async fn read_file_async(path: &Path) -> Result<String> {
 
 /// Write file content with error handling (async version)
 pub async fn write_file_async(path: &Path, content: &str) -> Result<()> {
+    write_file_async_atomic(path, content).await
+}
+
+/// Write file atomically using temp file and rename (async version).
+///
+/// This ensures that the original file is never in a partially written state.
+/// The write is atomic: either the new content is fully written, or the
+/// original file remains unchanged.
+pub async fn write_file_async_atomic(path: &Path, content: &str) -> Result<()> {
     ensure_parent_dir_async(path).await?;
-    tokio_fs::write(path, content)
+
+    // Create a temp file in the same directory as the target file
+    let temp_path = path.with_extension("tmp");
+
+    // Write to temp file first
+    tokio_fs::write(&temp_path, content)
         .await
         .map_err(|e| JanusError::StorageError {
             operation: "write",
+            item_type: "file",
+            path: temp_path.clone(),
+            source: e,
+        })?;
+
+    // Atomically rename temp file to target path
+    tokio_fs::rename(&temp_path, path)
+        .await
+        .map_err(|e| JanusError::StorageError {
+            operation: "rename",
             item_type: "file",
             path: path.to_path_buf(),
             source: e,
