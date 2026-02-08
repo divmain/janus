@@ -26,6 +26,7 @@ use crate::remote::config::Config;
 use crate::ticket::Ticket;
 use crate::types::EntityType;
 use crate::types::janus_root;
+use crate::utils::is_stdin_tty;
 
 /// The directory within .janus where hook scripts are stored.
 const HOOKS_DIR: &str = "hooks";
@@ -162,6 +163,19 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
             "recipe '{recipe}' is missing config.yaml"
         )));
     };
+
+    // Security warning for interactive mode before installing remote scripts
+    if !output_json && !force && is_stdin_tty() {
+        let confirmed = interactive::confirm(&format!(
+            "You are about to install and execute scripts from {}. Continue",
+            "github.com/divmain/janus".cyan()
+        ))?;
+        if !confirmed {
+            println!("Installation aborted.");
+            return Ok(());
+        }
+        println!();
+    }
 
     // Check for conflicts and handle based on mode
     let janus_dir = janus_root();

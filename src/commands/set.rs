@@ -3,7 +3,6 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::log_field_updated;
-use crate::parser::parse_document;
 use crate::ticket::Ticket;
 use std::str::FromStr;
 
@@ -68,112 +67,6 @@ async fn validate_parent(value: &str, ticket: &Ticket) -> Result<String> {
         return Err(JanusError::SelfParentTicket);
     }
     Ok(parent_ticket.id)
-}
-
-/// Extract current value of a body section from ticket content
-fn extract_section_content(ticket: &Ticket, section_name: &str) -> Result<Option<String>> {
-    let content = ticket.read_content()?;
-    let doc = parse_document(&content).map_err(|e| {
-        JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", ticket.id, e))
-    })?;
-    Ok(doc.extract_section(section_name))
-}
-
-/// Extract the description (content between title and first H2)
-fn extract_description(ticket: &Ticket) -> Result<Option<String>> {
-    let content = ticket.read_content()?;
-    let doc = parse_document(&content).map_err(|e| {
-        JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", ticket.id, e))
-    })?;
-
-    // Get body without title
-    let body = &doc.body;
-    let title_end = body.find('\n').unwrap_or(0);
-    let after_title = &body[title_end..].trim_start();
-
-    // Find first H2 or end of document
-    if let Some(h2_pos) = after_title.find("\n## ") {
-        let desc = after_title[..h2_pos].trim();
-        if desc.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(desc.to_string()))
-        }
-    } else {
-        // No H2 sections, everything after title is description
-        let desc = after_title.trim();
-        if desc.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(desc.to_string()))
-        }
-    }
-}
-
-/// Update a body section in a ticket
-fn update_body_section(ticket: &Ticket, section_name: &str, content: Option<&str>) -> Result<()> {
-    let raw_content = ticket.read_content()?;
-    let doc = parse_document(&raw_content).map_err(|e| {
-        JanusError::InvalidFormat(format!(
-            "Failed to parse ticket {} at {}: {}",
-            ticket.id,
-            crate::utils::format_relative_path(&ticket.file_path),
-            e
-        ))
-    })?;
-
-    let updated_body = if let Some(new_content) = content {
-        doc.update_section(section_name, new_content)
-    } else {
-        // Remove the section if content is None
-        let pattern = format!(r"(?ims)^##\s+{}\s*\n.*?", regex::escape(section_name));
-        let section_re = regex::Regex::new(&pattern).expect("section regex should be valid");
-        section_re.replace(&doc.body, "").to_string()
-    };
-
-    let new_content = format!("---\n{}\n---\n{}", doc.frontmatter_raw, updated_body);
-    ticket.write(&new_content)
-}
-
-/// Update the description (content between title and first H2)
-fn update_description(ticket: &Ticket, description: Option<&str>) -> Result<()> {
-    let raw_content = ticket.read_content()?;
-    let doc = parse_document(&raw_content).map_err(|e| {
-        JanusError::InvalidFormat(format!(
-            "Failed to parse ticket {} at {}: {}",
-            ticket.id,
-            crate::utils::format_relative_path(&ticket.file_path),
-            e
-        ))
-    })?;
-
-    // Get body without title
-    let body = &doc.body;
-    let title_end = body.find('\n').unwrap_or(body.len());
-    let title = &body[..title_end];
-    let after_title = &body[title_end..];
-
-    // Find first H2 or end of document
-    let h2_pos = after_title.find("\n## ");
-
-    let new_body = if let Some(pos) = h2_pos {
-        let from_h2 = &after_title[pos..];
-        if let Some(desc) = description {
-            format!("{title}\n\n{desc}{from_h2}")
-        } else {
-            format!("{title}{from_h2}")
-        }
-    } else {
-        // No H2 sections
-        if let Some(desc) = description {
-            format!("{title}\n\n{desc}")
-        } else {
-            title.to_string()
-        }
-    };
-
-    let new_content = format!("---\n{}\n---\n{}", doc.frontmatter_raw, new_body);
-    ticket.write(&new_content)
 }
 
 /// Format a field change for display
@@ -272,32 +165,32 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
             }
         }
         "design" => {
-            previous_value = extract_section_content(&ticket, "Design")?;
+            previous_value = ticket.extract_section("Design")?;
             if let Some(value) = value {
                 new_value = value.to_string();
-                update_body_section(&ticket, "Design", Some(&new_value))?;
+                ticket.update_section("Design", Some(&new_value))?;
             } else {
-                update_body_section(&ticket, "Design", None)?;
+                ticket.update_section("Design", None)?;
                 new_value = String::new();
             }
         }
         "acceptance" => {
-            previous_value = extract_section_content(&ticket, "Acceptance Criteria")?;
+            previous_value = ticket.extract_section("Acceptance Criteria")?;
             if let Some(value) = value {
                 new_value = value.to_string();
-                update_body_section(&ticket, "Acceptance Criteria", Some(&new_value))?;
+                ticket.update_section("Acceptance Criteria", Some(&new_value))?;
             } else {
-                update_body_section(&ticket, "Acceptance Criteria", None)?;
+                ticket.update_section("Acceptance Criteria", None)?;
                 new_value = String::new();
             }
         }
         "description" => {
-            previous_value = extract_description(&ticket)?;
+            previous_value = ticket.extract_description()?;
             if let Some(value) = value {
                 new_value = value.to_string();
-                update_description(&ticket, Some(&new_value))?;
+                ticket.update_description(Some(&new_value))?;
             } else {
-                update_description(&ticket, None)?;
+                ticket.update_description(None)?;
                 new_value = String::new();
             }
         }

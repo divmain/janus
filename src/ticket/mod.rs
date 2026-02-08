@@ -287,9 +287,64 @@ impl Ticket {
     /// If a "## Completion Summary" section already exists, it will be updated.
     /// Otherwise, a new section will be appended to the end of the file.
     pub fn write_completion_summary(&self, summary: &str) -> Result<()> {
-        let content = self.read_content()?;
+        self.update_section("Completion Summary", Some(summary))
+    }
 
+    /// Extract current value of a body section from ticket content.
+    ///
+    /// Returns `Ok(Some(content))` if the section exists,
+    /// `Ok(None)` if it doesn't exist,
+    /// or an error if parsing fails.
+    pub fn extract_section(&self, section_name: &str) -> Result<Option<String>> {
+        let content = self.read_content()?;
         let doc = parse_document(&content).map_err(|e| {
+            JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", self.id, e))
+        })?;
+        Ok(doc.extract_section(section_name))
+    }
+
+    /// Extract the description (content between title and first H2).
+    ///
+    /// Returns `Ok(Some(desc))` if there is description content,
+    /// `Ok(None)` if the description is empty,
+    /// or an error if parsing fails.
+    pub fn extract_description(&self) -> Result<Option<String>> {
+        let content = self.read_content()?;
+        let doc = parse_document(&content).map_err(|e| {
+            JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", self.id, e))
+        })?;
+
+        // Get body without title
+        let body = &doc.body;
+        let title_end = body.find('\n').unwrap_or(0);
+        let after_title = &body[title_end..].trim_start();
+
+        // Find first H2 or end of document
+        if let Some(h2_pos) = after_title.find("\n## ") {
+            let desc = after_title[..h2_pos].trim();
+            if desc.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(desc.to_string()))
+            }
+        } else {
+            // No H2 sections, everything after title is description
+            let desc = after_title.trim();
+            if desc.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(desc.to_string()))
+            }
+        }
+    }
+
+    /// Update a body section in the ticket.
+    ///
+    /// If `content` is `Some(value)`, the section will be created or updated.
+    /// If `content` is `None`, the section will be removed if it exists.
+    pub fn update_section(&self, section_name: &str, content: Option<&str>) -> Result<()> {
+        let raw_content = self.read_content()?;
+        let doc = parse_document(&raw_content).map_err(|e| {
             JanusError::InvalidFormat(format!(
                 "Failed to parse ticket {} at {}: {}",
                 self.id,
@@ -297,10 +352,61 @@ impl Ticket {
                 e
             ))
         })?;
-        let updated_body = doc.update_section("Completion Summary", summary);
+
+        let updated_body = if let Some(new_content) = content {
+            doc.update_section(section_name, new_content)
+        } else {
+            // Remove the section if content is None
+            let pattern = format!(r"(?ims)^##\s+{}\s*\n.*?", regex::escape(section_name));
+            let section_re = regex::Regex::new(&pattern).expect("section regex should be valid");
+            section_re.replace(&doc.body, "").to_string()
+        };
 
         let new_content = format!("---\n{}\n---\n{}", doc.frontmatter_raw, updated_body);
+        self.write(&new_content)
+    }
 
+    /// Update the description (content between title and first H2).
+    ///
+    /// If `description` is `Some(value)`, the description will be created or updated.
+    /// If `description` is `None`, the description will be removed.
+    pub fn update_description(&self, description: Option<&str>) -> Result<()> {
+        let raw_content = self.read_content()?;
+        let doc = parse_document(&raw_content).map_err(|e| {
+            JanusError::InvalidFormat(format!(
+                "Failed to parse ticket {} at {}: {}",
+                self.id,
+                crate::utils::format_relative_path(&self.file_path),
+                e
+            ))
+        })?;
+
+        // Get body without title
+        let body = &doc.body;
+        let title_end = body.find('\n').unwrap_or(body.len());
+        let title = &body[..title_end];
+        let after_title = &body[title_end..];
+
+        // Find first H2 or end of document
+        let h2_pos = after_title.find("\n## ");
+
+        let new_body = if let Some(pos) = h2_pos {
+            let from_h2 = &after_title[pos..];
+            if let Some(desc) = description {
+                format!("{title}\n\n{desc}{from_h2}")
+            } else {
+                format!("{title}{from_h2}")
+            }
+        } else {
+            // No H2 sections
+            if let Some(desc) = description {
+                format!("{title}\n\n{desc}")
+            } else {
+                title.to_string()
+            }
+        };
+
+        let new_content = format!("---\n{}\n---\n{}", doc.frontmatter_raw, new_body);
         self.write(&new_content)
     }
 

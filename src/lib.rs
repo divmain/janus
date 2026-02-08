@@ -13,6 +13,7 @@ pub mod locator;
 pub mod mcp;
 pub mod next;
 pub mod parser;
+pub mod paths;
 pub mod plan;
 pub mod query;
 pub mod remote;
