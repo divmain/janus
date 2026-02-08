@@ -30,9 +30,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::time::Duration;
+use tokio::time::timeout;
 
 use crate::cache::get_or_init_store;
+
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
+
+/// Timeout for embedding generation (30 seconds)
+const EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
@@ -1216,10 +1222,22 @@ impl JanusTools {
         let limit = request.limit.unwrap_or(10);
         let threshold = request.threshold.unwrap_or(0.0);
 
-        // Generate query embedding and perform search
-        let query_embedding = crate::embedding::model::generate_embedding(&request.query)
-            .await
-            .map_err(|e| format!("Failed to generate query embedding: {e}"))?;
+        // Generate query embedding with timeout and perform search
+        let query_embedding = match timeout(
+            EMBEDDING_TIMEOUT,
+            crate::embedding::model::generate_embedding(&request.query),
+        )
+        .await
+        {
+            Ok(Ok(embedding)) => embedding,
+            Ok(Err(e)) => return Err(format!("Failed to generate query embedding: {e}")),
+            Err(_) => {
+                return Err(format!(
+                    "Embedding generation timed out after {} seconds. The embedding service may be unresponsive.",
+                    EMBEDDING_TIMEOUT.as_secs()
+                ));
+            }
+        };
         let results = store.semantic_search(&query_embedding, limit);
 
         // Filter by threshold

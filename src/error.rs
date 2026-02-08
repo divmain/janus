@@ -353,6 +353,9 @@ pub enum JanusError {
 
     #[error("semantic search not available: embeddings not generated")]
     EmbeddingsNotAvailable,
+
+    #[error("embedding generation timed out after {seconds} seconds")]
+    EmbeddingTimeout { seconds: u64 },
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;

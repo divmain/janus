@@ -1,5 +1,7 @@
 use serde_json::json;
 use std::fs;
+use std::time::Duration;
+use tokio::time::timeout;
 
 use super::CommandOutput;
 use crate::cache::get_or_init_store;
@@ -7,6 +9,9 @@ use crate::error::Result;
 use crate::events::log_cache_rebuilt;
 
 use crate::embedding::model::EMBEDDING_MODEL_NAME;
+
+/// Timeout for embedding generation per ticket (30 seconds)
+const EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     let store = get_or_init_store().await?;
@@ -191,9 +196,15 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
             format!("{title}\n\n{body}")
         };
 
-        // Generate embedding
-        match crate::embedding::model::generate_embedding(&text).await {
-            Ok(embedding) => {
+        // Generate embedding with timeout
+        let embedding_result = timeout(
+            EMBEDDING_TIMEOUT,
+            crate::embedding::model::generate_embedding(&text),
+        )
+        .await;
+
+        match embedding_result {
+            Ok(Ok(embedding)) => {
                 let key = crate::cache::TicketStore::embedding_key(file_path, mtime_ns);
                 if let Err(e) = crate::cache::TicketStore::save_embedding(&key, &embedding) {
                     if !output_json {
@@ -210,10 +221,19 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                     }
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 if !output_json {
                     eprintln!(
                         "Warning: failed to generate embedding for {}: {e}",
+                        ticket.id.as_deref().unwrap_or("unknown")
+                    );
+                }
+            }
+            Err(_) => {
+                if !output_json {
+                    eprintln!(
+                        "Warning: embedding generation timed out after {} seconds for {}",
+                        EMBEDDING_TIMEOUT.as_secs(),
                         ticket.id.as_deref().unwrap_or("unknown")
                     );
                 }
