@@ -5,7 +5,7 @@
 
 use iocraft::prelude::*;
 
-use crate::formatting::extract_ticket_body;
+use crate::display::extract_ticket_body;
 use crate::tui::components::{Clickable, Select, Selectable, TextEditor, options_for};
 use crate::tui::services::{TicketEditService, TicketFormValidator};
 use crate::tui::theme::theme;

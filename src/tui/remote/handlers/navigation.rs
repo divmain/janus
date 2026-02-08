@@ -66,7 +66,7 @@ fn handle_detail_down(ctx: &mut HandlerContext<'_>) {
             && let Ok(ticket_handle) = crate::ticket::Ticket::new(file_path.clone())
             && let Ok(content) = ticket_handle.read_content()
         {
-            let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
+            let body = crate::display::extract_ticket_body(&content).unwrap_or_default();
             let body_lines = body.lines().count();
             let visible_lines = 10;
             let mut scroll_data = *ctx.view_data.detail_scroll.read();
@@ -238,7 +238,7 @@ fn handle_go_bottom(ctx: &mut HandlerContext<'_>) {
                     && let Ok(ticket_handle) = crate::ticket::Ticket::new(file_path.clone())
                     && let Ok(content) = ticket_handle.read_content()
                 {
-                    let body = crate::formatting::extract_ticket_body(&content).unwrap_or_default();
+                    let body = crate::display::extract_ticket_body(&content).unwrap_or_default();
                     let body_lines = body.lines().count();
                     let visible_lines = 10;
                     let mut scroll_data = *ctx.view_data.detail_scroll.read();

@@ -5,7 +5,7 @@
 
 use iocraft::prelude::*;
 
-use crate::formatting::extract_ticket_body;
+use crate::display::extract_ticket_body;
 use crate::remote::{RemoteIssue, RemoteStatus};
 use crate::ticket::Ticket;
 use crate::tui::components::{Clickable, TextViewer};
