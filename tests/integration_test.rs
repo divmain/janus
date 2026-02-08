@@ -203,6 +203,7 @@ fn test_create_spawned_with_other_options() {
     assert!(child_output.contains("depth: 1"));
 }
 
+#[test]
 fn test_set_parent_self_reference() {
     let janus = JanusTest::new();
 
@@ -211,6 +212,7 @@ fn test_set_parent_self_reference() {
     assert!(stderr.contains("cannot be its own parent"));
 }
 
+#[test]
 fn test_set_immutable_id_field_fails() {
     let janus = JanusTest::new();
 
@@ -228,6 +230,7 @@ fn test_set_immutable_uuid_field_fails() {
     assert!(stderr.contains("invalid field"));
 }
 
+#[test]
 fn test_ls_next_in_plan_phased() {
     let janus = JanusTest::new();
 
@@ -273,6 +276,7 @@ fn test_ls_next_in_plan_phased() {
     assert!(output.contains(&t2_id), "Phase 2 task should still appear");
 }
 
+#[test]
 fn test_ls_spawned_from_filter() {
     let janus = JanusTest::new();
 
@@ -695,6 +699,7 @@ fn test_ls_sort_by_invalid_uses_priority() {
 // Add-note command tests
 // ============================================================================
 
+#[test]
 fn test_add_note_empty_string() {
     let janus = JanusTest::new();
 
@@ -718,6 +723,7 @@ fn test_add_note_whitespace_only() {
 // Edit command tests
 // ============================================================================
 
+#[test]
 fn test_config_show_empty() {
     let janus = JanusTest::new();
 
