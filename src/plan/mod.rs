@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 use crate::cache::get_or_init_store;
 use crate::entity::Entity;
-use crate::error::{JanusError, Result};
+use crate::error::{FileOperation, JanusError, Result, format_file_error};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
 use crate::types::{EntityType, TicketMetadata, plans_dir};
@@ -191,16 +191,8 @@ impl Plan {
 
     /// Read the raw content of the plan file
     pub fn read_content(&self) -> Result<String> {
-        fs::read_to_string(&self.file_path).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to read plan at {}: {}",
-                    crate::utils::format_relative_path(&self.file_path),
-                    e
-                ),
-            ))
-        })
+        fs::read_to_string(&self.file_path)
+            .map_err(|e| format_file_error(&self.file_path, FileOperation::Read, "plan", e))
     }
 
     /// Write content to the plan file
@@ -240,16 +232,8 @@ impl Plan {
     /// Write raw content without hooks
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
-        fs::write(&self.file_path, content).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to write plan at {}: {}",
-                    crate::utils::format_relative_path(&self.file_path),
-                    e
-                ),
-            ))
-        })
+        fs::write(&self.file_path, content)
+            .map_err(|e| format_file_error(&self.file_path, FileOperation::Write, "plan", e))
     }
 
     /// Ensure the parent directory exists
@@ -270,16 +254,8 @@ impl Plan {
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        fs::remove_file(&self.file_path).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to delete plan at {}: {}",
-                    crate::utils::format_relative_path(&self.file_path),
-                    e
-                ),
-            ))
-        })?;
+        fs::remove_file(&self.file_path)
+            .map_err(|e| format_file_error(&self.file_path, FileOperation::Delete, "plan", e))?;
 
         run_post_hooks(HookEvent::PostDelete, &context);
         run_post_hooks(HookEvent::PlanDeleted, &context);
