@@ -13,6 +13,9 @@ use crate::embedding::model::EMBEDDING_MODEL_NAME;
 /// Timeout for embedding generation per ticket (30 seconds)
 const EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Batch size for embedding generation (tune based on memory/performance)
+const EMBEDDING_BATCH_SIZE: usize = 32;
+
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     let store = get_or_init_store().await?;
 
@@ -171,70 +174,98 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
     let mut embedded_count = 0_usize;
     let mut valid_keys = std::collections::HashSet::new();
 
-    for ticket in &tickets {
-        let file_path = match &ticket.file_path {
-            Some(fp) => fp,
-            None => continue,
-        };
+    // Process tickets in batches for better performance
+    let ticket_batches: Vec<Vec<_>> = tickets
+        .chunks(EMBEDDING_BATCH_SIZE)
+        .map(|chunk| chunk.to_vec())
+        .collect();
 
-        let mtime_ns = match fs::metadata(file_path)
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos() as i64)
-        {
-            Some(ns) => ns,
-            None => continue,
-        };
+    for (batch_idx, batch) in ticket_batches.iter().enumerate() {
+        // Collect batch data: (file_path, mtime_ns, ticket_id, text)
+        let batch_data: Vec<_> = batch
+            .iter()
+            .filter_map(|ticket| {
+                let file_path = ticket.file_path.as_ref()?;
+                let mtime_ns = fs::metadata(file_path)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos() as i64)?;
 
-        // Build text for embedding
-        let title = ticket.title.as_deref().unwrap_or("");
-        let body = ticket.body.as_deref().unwrap_or("");
-        let text = if body.is_empty() {
-            title.to_string()
-        } else {
-            format!("{title}\n\n{body}")
-        };
+                let title = ticket.title.as_deref().unwrap_or("");
+                let body = ticket.body.as_deref().unwrap_or("");
+                let text = if body.is_empty() {
+                    title.to_string()
+                } else {
+                    format!("{title}\n\n{body}")
+                };
 
-        // Generate embedding with timeout
-        let embedding_result = timeout(
-            EMBEDDING_TIMEOUT,
-            crate::embedding::model::generate_embedding(&text),
-        )
-        .await;
+                Some((file_path, mtime_ns, ticket.id.clone(), text))
+            })
+            .collect();
+
+        if batch_data.is_empty() {
+            continue;
+        }
+
+        // Extract texts for batch embedding
+        let texts: Vec<&str> = batch_data
+            .iter()
+            .map(|(_, _, _, text)| text.as_str())
+            .collect();
+
+        // Calculate timeout for this batch (30 seconds per ticket in batch)
+        let batch_timeout = EMBEDDING_TIMEOUT.saturating_mul(batch_data.len() as u32);
+
+        // Get embedding model and generate batch embeddings with timeout
+        let model_result = crate::embedding::model::get_embedding_model().await;
+        let embedding_result = match model_result {
+            Ok(model) => timeout(batch_timeout, model.embed_batch(&texts)).await,
+            Err(e) => {
+                if !output_json {
+                    eprintln!("Warning: failed to get embedding model for batch: {e}");
+                }
+                continue;
+            }
+        };
 
         match embedding_result {
-            Ok(Ok(embedding)) => {
-                let key = crate::cache::TicketStore::embedding_key(file_path, mtime_ns);
-                if let Err(e) = crate::cache::TicketStore::save_embedding(&key, &embedding) {
-                    if !output_json {
-                        eprintln!(
-                            "Warning: failed to save embedding for {}: {e}",
-                            ticket.id.as_deref().unwrap_or("unknown")
-                        );
-                    }
-                } else {
-                    valid_keys.insert(key);
-                    embedded_count += 1;
-                    if !output_json && embedded_count % 10 == 0 {
-                        println!("  Progress: {embedded_count}/{ticket_count}");
+            Ok(Ok(embeddings)) => {
+                // Save all embeddings from the batch
+                for (i, (file_path, mtime_ns, ticket_id, _)) in batch_data.iter().enumerate() {
+                    if let Some(embedding) = embeddings.get(i) {
+                        let key = crate::cache::TicketStore::embedding_key(file_path, *mtime_ns);
+                        if let Err(e) = crate::cache::TicketStore::save_embedding(&key, embedding) {
+                            if !output_json {
+                                eprintln!(
+                                    "Warning: failed to save embedding for {}: {e}",
+                                    ticket_id.as_deref().unwrap_or("unknown")
+                                );
+                            }
+                        } else {
+                            valid_keys.insert(key);
+                            embedded_count += 1;
+                            if !output_json && embedded_count % 10 == 0 {
+                                println!("  Progress: {embedded_count}/{ticket_count}");
+                            }
+                        }
                     }
                 }
             }
             Ok(Err(e)) => {
                 if !output_json {
                     eprintln!(
-                        "Warning: failed to generate embedding for {}: {e}",
-                        ticket.id.as_deref().unwrap_or("unknown")
+                        "Warning: failed to generate embeddings for batch {}: {e}",
+                        batch_idx + 1
                     );
                 }
             }
             Err(_) => {
                 if !output_json {
                     eprintln!(
-                        "Warning: embedding generation timed out after {} seconds for {}",
-                        EMBEDDING_TIMEOUT.as_secs(),
-                        ticket.id.as_deref().unwrap_or("unknown")
+                        "Warning: batch {} embedding generation timed out after {} seconds",
+                        batch_idx + 1,
+                        batch_timeout.as_secs()
                     );
                 }
             }
