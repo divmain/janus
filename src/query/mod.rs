@@ -10,6 +10,10 @@ use crate::error::Result;
 use crate::ticket::build_ticket_map;
 use crate::types::{TicketMetadata, TicketSize, TicketStatus};
 
+pub mod sort;
+
+pub use sort::{sort_by_created, sort_by_id, sort_by_priority, sort_tickets_by};
+
 /// Context passed to filters containing shared state
 pub struct TicketFilterContext {
     pub ticket_map: HashMap<String, TicketMetadata>,
@@ -277,6 +281,7 @@ impl TicketFilter for ActiveFilter {
 /// Query builder for filtering and sorting tickets
 pub struct TicketQueryBuilder {
     filters: Vec<Box<dyn TicketFilter>>,
+    or_filter_groups: Vec<Vec<Box<dyn TicketFilter>>>,
     sort_by: String,
     limit: Option<usize>,
 }
@@ -286,14 +291,24 @@ impl TicketQueryBuilder {
     pub fn new() -> Self {
         Self {
             filters: Vec::new(),
+            or_filter_groups: Vec::new(),
             sort_by: "priority".to_string(),
             limit: None,
         }
     }
 
-    /// Add a filter to the query
+    /// Add a filter to the query (AND composition)
     pub fn with_filter(mut self, filter: Box<dyn TicketFilter>) -> Self {
         self.filters.push(filter);
+        self
+    }
+
+    /// Add a group of filters that will be OR-composed together.
+    /// Tickets matching ANY filter in the group will be included.
+    pub fn with_or_filters(mut self, filters: Vec<Box<dyn TicketFilter>>) -> Self {
+        if !filters.is_empty() {
+            self.or_filter_groups.push(filters);
+        }
         self
     }
 
@@ -318,14 +333,24 @@ impl TicketQueryBuilder {
             .collect();
         let context = TicketFilterContext::new(ticket_map);
 
-        // Apply all filters
+        // Apply AND filters first
         let mut filtered: Vec<TicketMetadata> = tickets
             .into_iter()
             .filter(|t| self.filters.iter().all(|f| f.matches(t, &context)))
             .collect();
 
-        // Sort
-        crate::display::sort_tickets_by(&mut filtered, &self.sort_by);
+        // Apply OR filter groups
+        for or_group in self.or_filter_groups {
+            let or_matches: Vec<TicketMetadata> = filtered
+                .iter()
+                .filter(|t| or_group.iter().any(|f| f.matches(t, &context)))
+                .cloned()
+                .collect();
+            filtered = or_matches;
+        }
+
+        // Sort using local sort function
+        sort::sort_tickets_by(&mut filtered, &self.sort_by);
 
         // Apply limit
         if let Some(limit) = self.limit {

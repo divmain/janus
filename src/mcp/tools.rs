@@ -68,6 +68,87 @@ use super::format::{
 };
 
 // ============================================================================
+// Input Validation Constants
+// ============================================================================
+
+/// Maximum length for ticket titles
+const MAX_TITLE_LENGTH: usize = 200;
+/// Maximum length for descriptions, notes, and summaries
+const MAX_DESCRIPTION_LENGTH: usize = 5000;
+
+/// Validates a title string.
+/// Returns Ok if valid, Err with message if invalid.
+fn validate_title(title: &str) -> Result<(), String> {
+    if title.is_empty() {
+        return Err("Title cannot be empty".to_string());
+    }
+    if title.len() > MAX_TITLE_LENGTH {
+        return Err(format!(
+            "Title too long: {} characters (max: {})",
+            title.len(),
+            MAX_TITLE_LENGTH
+        ));
+    }
+    // Check for control characters (except newlines which aren't expected in titles)
+    if title.chars().any(|c| c.is_control()) {
+        return Err("Title contains invalid control characters".to_string());
+    }
+    Ok(())
+}
+
+/// Validates a description/note string.
+/// Returns Ok if valid, Err with message if invalid.
+fn validate_description(text: &str, field_name: &str) -> Result<(), String> {
+    if text.len() > MAX_DESCRIPTION_LENGTH {
+        return Err(format!(
+            "{} too long: {} characters (max: {})",
+            field_name,
+            text.len(),
+            MAX_DESCRIPTION_LENGTH
+        ));
+    }
+    // Allow newlines but reject other control characters
+    if text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\r')
+    {
+        return Err(format!("{field_name} contains invalid control characters"));
+    }
+    Ok(())
+}
+
+/// Validates a note (non-empty version of description validation).
+/// Returns Ok if valid, Err with message if invalid.
+fn validate_note(note: &str) -> Result<(), String> {
+    if note.is_empty() {
+        return Err("Note cannot be empty".to_string());
+    }
+    validate_description(note, "Note")
+}
+
+/// Validates an optional summary.
+/// Returns Ok if valid or None, Err with message if Some and invalid.
+fn validate_optional_summary(summary: Option<&str>) -> Result<(), String> {
+    if let Some(text) = summary {
+        if text.len() > MAX_DESCRIPTION_LENGTH {
+            return Err(format!(
+                "Summary too long: {} characters (max: {})",
+                text.len(),
+                MAX_DESCRIPTION_LENGTH
+            ));
+        }
+        // Allow newlines but reject other control characters
+        if text
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\r')
+        {
+            return Err("Summary contains invalid control characters".to_string());
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
 // Tool Request Types
 // ============================================================================
 
@@ -75,7 +156,7 @@ use super::format::{
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct CreateTicketRequest {
     /// Title of the ticket (required)
-    #[schemars(description = "The title for the new ticket")]
+    #[schemars(description = "The title for the new ticket (max 200 chars, non-empty)")]
     pub title: String,
 
     /// Ticket type: bug, feature, task, epic, or chore (default: task)
@@ -88,7 +169,7 @@ pub struct CreateTicketRequest {
     pub priority: Option<u8>,
 
     /// Description/body content for the ticket
-    #[schemars(description = "Optional description text for the ticket body")]
+    #[schemars(description = "Optional description text for the ticket body (max 5000 chars)")]
     pub description: Option<String>,
 
     /// Size estimate: xsmall, small, medium, large, xlarge (or aliases: xs, s, m, l, xl)
@@ -96,6 +177,18 @@ pub struct CreateTicketRequest {
         description = "Size estimate for the ticket. Valid values: xsmall/xs, small/s, medium/m, large/l, xlarge/xl"
     )]
     pub size: Option<String>,
+}
+
+impl CreateTicketRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    fn validate(&self) -> Result<(), String> {
+        validate_title(&self.title)?;
+        if let Some(ref desc) = self.description {
+            validate_description(desc, "Description")?;
+        }
+        Ok(())
+    }
 }
 
 /// Request parameters for spawning a subtask
@@ -106,16 +199,33 @@ pub struct SpawnSubtaskRequest {
     pub parent_id: String,
 
     /// Title of the new subtask
-    #[schemars(description = "Title for the new subtask")]
+    #[schemars(description = "Title for the new subtask (max 200 chars, non-empty)")]
     pub title: String,
 
     /// Description/body content for the subtask
-    #[schemars(description = "Optional description text for the subtask")]
+    #[schemars(description = "Optional description text for the subtask (max 5000 chars)")]
     pub description: Option<String>,
 
     /// Context explaining why this subtask was created
-    #[schemars(description = "Context explaining why this subtask was spawned from the parent")]
+    #[schemars(
+        description = "Context explaining why this subtask was spawned from the parent (max 5000 chars)"
+    )]
     pub spawn_context: Option<String>,
+}
+
+impl SpawnSubtaskRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    fn validate(&self) -> Result<(), String> {
+        validate_title(&self.title)?;
+        if let Some(ref desc) = self.description {
+            validate_description(desc, "Description")?;
+        }
+        if let Some(ref context) = self.spawn_context {
+            validate_description(context, "Spawn context")?;
+        }
+        Ok(())
+    }
 }
 
 /// Request parameters for updating ticket status
@@ -130,8 +240,18 @@ pub struct UpdateStatusRequest {
     pub status: String,
 
     /// Optional summary when closing (completing/cancelling) a ticket
-    #[schemars(description = "Optional completion summary (recommended when closing tickets)")]
+    #[schemars(
+        description = "Optional completion summary (max 5000 chars, recommended when closing tickets)"
+    )]
     pub summary: Option<String>,
+}
+
+impl UpdateStatusRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    fn validate(&self) -> Result<(), String> {
+        validate_optional_summary(self.summary.as_deref())
+    }
 }
 
 /// Request parameters for adding a note
@@ -142,8 +262,18 @@ pub struct AddNoteRequest {
     pub id: String,
 
     /// Note content to add
-    #[schemars(description = "The note text to add (will be timestamped)")]
+    #[schemars(
+        description = "The note text to add (will be timestamped, max 5000 chars, non-empty)"
+    )]
     pub note: String,
+}
+
+impl AddNoteRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    fn validate(&self) -> Result<(), String> {
+        validate_note(&self.note)
+    }
 }
 
 /// Request parameters for listing tickets
@@ -494,6 +624,9 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<CreateTicketRequest>,
     ) -> Result<String, String> {
+        // Validate input
+        request.validate()?;
+
         let mut builder = TicketBuilder::new(&request.title)
             .description(request.description.as_deref())
             .run_hooks(true);
@@ -556,6 +689,9 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<SpawnSubtaskRequest>,
     ) -> Result<String, String> {
+        // Validate input
+        request.validate()?;
+
         // Find the parent ticket to get its depth
         let parent = Ticket::find(&request.parent_id)
             .await
@@ -608,6 +744,9 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<UpdateStatusRequest>,
     ) -> Result<String, String> {
+        // Validate input
+        request.validate()?;
+
         let ticket = Ticket::find(&request.id)
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
@@ -664,6 +803,9 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<AddNoteRequest>,
     ) -> Result<String, String> {
+        // Validate input
+        request.validate()?;
+
         let ticket = Ticket::find(&request.id)
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
@@ -2279,5 +2421,185 @@ mod tests {
         // Test invalid size
         assert!("invalid".parse::<TicketSize>().is_err());
         assert!("tiny".parse::<TicketSize>().is_err());
+    }
+
+    // ============================================================================
+    // Input Validation Tests
+    // ============================================================================
+
+    #[test]
+    fn test_validate_title_empty() {
+        let result = validate_title("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    #[test]
+    fn test_validate_title_too_long() {
+        let long_title = "a".repeat(201);
+        let result = validate_title(&long_title);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too long"));
+    }
+
+    #[test]
+    fn test_validate_title_max_length() {
+        let max_title = "a".repeat(200);
+        let result = validate_title(&max_title);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_title_control_chars() {
+        let result = validate_title("Title\x00with\x01nulls");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("control characters"));
+    }
+
+    #[test]
+    fn test_validate_title_newline() {
+        let result = validate_title("Title\nwith newline");
+        assert!(result.is_err()); // Newlines not allowed in titles
+    }
+
+    #[test]
+    fn test_validate_title_valid() {
+        let result = validate_title("Valid Ticket Title");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_description_too_long() {
+        let long_desc = "a".repeat(5001);
+        let result = validate_description(&long_desc, "Description");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too long"));
+    }
+
+    #[test]
+    fn test_validate_description_max_length() {
+        let max_desc = "a".repeat(5000);
+        let result = validate_description(&max_desc, "Description");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_description_control_chars() {
+        let result = validate_description("Desc\x00with\x01nulls", "Description");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("control characters"));
+    }
+
+    #[test]
+    fn test_validate_description_newlines_allowed() {
+        let result = validate_description("Line 1\nLine 2\r\nLine 3", "Description");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_note_empty() {
+        let result = validate_note("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    #[test]
+    fn test_validate_note_valid() {
+        let result = validate_note("This is a valid note.");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_optional_summary_none() {
+        let result = validate_optional_summary(None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_optional_summary_valid() {
+        let result = validate_optional_summary(Some("Valid summary"));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_optional_summary_too_long() {
+        let long_summary = "a".repeat(5001);
+        let result = validate_optional_summary(Some(&long_summary));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_ticket_request_valid() {
+        let request = CreateTicketRequest {
+            title: "Valid Title".to_string(),
+            ticket_type: None,
+            priority: None,
+            description: None,
+            size: None,
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_create_ticket_request_empty_title() {
+        let request = CreateTicketRequest {
+            title: "".to_string(),
+            ticket_type: None,
+            priority: None,
+            description: None,
+            size: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_create_ticket_request_long_description() {
+        let request = CreateTicketRequest {
+            title: "Valid Title".to_string(),
+            ticket_type: None,
+            priority: None,
+            description: Some("a".repeat(5001)),
+            size: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_spawn_subtask_request_valid() {
+        let request = SpawnSubtaskRequest {
+            parent_id: "j-a1b2".to_string(),
+            title: "Valid Subtask".to_string(),
+            description: Some("Valid description".to_string()),
+            spawn_context: Some("Spawned for testing".to_string()),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_update_status_request_valid() {
+        let request = UpdateStatusRequest {
+            id: "j-a1b2".to_string(),
+            status: "complete".to_string(),
+            summary: Some("Completed successfully".to_string()),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_add_note_request_valid() {
+        let request = AddNoteRequest {
+            id: "j-a1b2".to_string(),
+            note: "This is a valid note.".to_string(),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_add_note_request_empty() {
+        let request = AddNoteRequest {
+            id: "j-a1b2".to_string(),
+            note: "".to_string(),
+        };
+        assert!(request.validate().is_err());
     }
 }

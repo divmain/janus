@@ -3,16 +3,69 @@ use std::fmt::Write;
 
 use super::{
     CommandOutput, FormatOptions, format_deps, format_ticket_line, get_next_items_phased,
-    get_next_items_simple, sort_tickets_by, ticket_to_json,
+    get_next_items_simple, ticket_to_json,
 };
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 use crate::query::{
-    ActiveFilter, ClosedFilter, SizeFilter, SpawningFilter, StatusFilter, TicketFilter,
-    TicketQueryBuilder, TriagedFilter,
+    ActiveFilter, BlockedFilter, ClosedFilter, ReadyFilter, SizeFilter, SpawningFilter,
+    StatusFilter, TicketQueryBuilder, TriagedFilter,
 };
 use crate::ticket::{Ticket, build_ticket_map, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketSize};
+
+/// Options for the `ls` command, bundling all filter and display parameters.
+pub struct LsOptions {
+    pub filter_ready: bool,
+    pub filter_blocked: bool,
+    pub filter_closed: bool,
+    pub filter_active: bool,
+    pub status_filter: Option<String>,
+    pub spawned_from: Option<String>,
+    pub depth: Option<u32>,
+    pub max_depth: Option<u32>,
+    pub next_in_plan: Option<String>,
+    pub phase: Option<u32>,
+    pub triaged: Option<String>,
+    pub size_filter: Option<Vec<TicketSize>>,
+    pub limit: Option<usize>,
+    pub sort_by: String,
+    pub output_json: bool,
+}
+
+impl LsOptions {
+    /// Create a new LsOptions with sensible defaults.
+    pub fn new() -> Self {
+        Self {
+            filter_ready: false,
+            filter_blocked: false,
+            filter_closed: false,
+            filter_active: false,
+            status_filter: None,
+            spawned_from: None,
+            depth: None,
+            max_depth: None,
+            next_in_plan: None,
+            phase: None,
+            triaged: None,
+            size_filter: None,
+            limit: None,
+            sort_by: "priority".to_string(),
+            output_json: false,
+        }
+    }
+
+    /// Returns true if any status-based filter flags are set (--ready, --blocked, --closed, --active)
+    fn has_status_flags(&self) -> bool {
+        self.filter_ready || self.filter_blocked || self.filter_closed || self.filter_active
+    }
+}
+
+impl Default for LsOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Formats a list of tickets for output, handling both JSON and text formats.
 /// This helper consolidates the common output formatting logic used by listing commands.
@@ -37,7 +90,98 @@ fn format_ticket_list(display_tickets: &[TicketMetadata], output_json: bool) -> 
         .print(output_json)
 }
 
-/// List all tickets, optionally filtered by status or other criteria
+/// List all tickets, optionally filtered by status or other criteria.
+/// This is the main entry point using the LsOptions struct.
+pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
+    // Handle --next-in-plan filter specially as it uses different logic
+    if let Some(ref plan_id) = opts.next_in_plan {
+        // --phase cannot be used with --next-in-plan
+        if opts.phase.is_some() {
+            return Err(JanusError::Other(
+                "--phase cannot be used with --next-in-plan".to_string(),
+            ));
+        }
+        return cmd_ls_next_in_plan(plan_id, opts.limit, &opts.sort_by, opts.output_json).await;
+    }
+
+    let (tickets, _ticket_map) = get_all_tickets_with_map().await?;
+
+    // Resolve spawned_from partial ID to full ID if provided
+    let resolved_spawned_from = if let Some(ref partial_id) = opts.spawned_from {
+        let ticket = Ticket::find(partial_id).await?;
+        Some(ticket.id)
+    } else {
+        None
+    };
+
+    // Build query using TicketQueryBuilder
+    let mut builder = TicketQueryBuilder::new().with_sort(&opts.sort_by);
+
+    // Add spawning filter if any spawning criteria are specified
+    if resolved_spawned_from.is_some() || opts.depth.is_some() || opts.max_depth.is_some() {
+        builder = builder.with_filter(Box::new(SpawningFilter::new(
+            resolved_spawned_from.as_deref(),
+            opts.depth,
+            opts.max_depth,
+        )));
+    }
+
+    // Add triaged filter if specified
+    if let Some(ref triaged_value) = opts.triaged {
+        let filter_value = triaged_value == "true";
+        builder = builder.with_filter(Box::new(TriagedFilter::new(filter_value)));
+    }
+
+    // Add size filter if specified
+    if let Some(ref sizes) = opts.size_filter {
+        builder = builder.with_filter(Box::new(SizeFilter::new(sizes.clone())));
+    }
+
+    // Add status-based filters
+    if let Some(ref status) = opts.status_filter {
+        // --status flag is mutually exclusive with --ready, --blocked, --closed
+        builder = builder.with_filter(Box::new(StatusFilter::new(status)));
+    } else if opts.has_status_flags() {
+        // Use OR-composition for status filters via the query builder
+        let mut or_filters: Vec<Box<dyn crate::query::TicketFilter>> = Vec::new();
+
+        if opts.filter_ready {
+            or_filters.push(Box::new(ReadyFilter));
+        }
+        if opts.filter_blocked {
+            or_filters.push(Box::new(BlockedFilter));
+        }
+        if opts.filter_closed {
+            or_filters.push(Box::new(ClosedFilter));
+        }
+        if opts.filter_active {
+            or_filters.push(Box::new(ActiveFilter));
+        }
+
+        if !or_filters.is_empty() {
+            builder = builder.with_or_filters(or_filters);
+        }
+    } else {
+        // Default: exclude closed tickets (use ActiveFilter as the base)
+        builder = builder.with_filter(Box::new(ActiveFilter));
+    }
+
+    // Apply limit if specified
+    if let Some(lim) = opts.limit {
+        builder = builder.with_limit(lim);
+    }
+
+    // Execute the query
+    let display_tickets = builder.execute(tickets).await?;
+    format_ticket_list(&display_tickets, opts.output_json)
+}
+
+/// List all tickets, optionally filtered by status or other criteria.
+/// This legacy function accepts individual parameters for backward compatibility.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use cmd_ls_with_options with LsOptions instead"
+)]
 #[allow(clippy::too_many_arguments)]
 pub async fn cmd_ls(
     filter_ready: bool,
@@ -56,165 +200,24 @@ pub async fn cmd_ls(
     sort_by: &str,
     output_json: bool,
 ) -> Result<()> {
-    // Handle --next-in-plan filter specially as it uses different logic
-    if let Some(plan_id) = next_in_plan {
-        // --phase cannot be used with --next-in-plan
-        if phase.is_some() {
-            return Err(JanusError::Other(
-                "--phase cannot be used with --next-in-plan".to_string(),
-            ));
-        }
-        return cmd_ls_next_in_plan(plan_id, limit, sort_by, output_json).await;
-    }
-
-    let (tickets, _ticket_map) = get_all_tickets_with_map().await?;
-
-    // Resolve spawned_from partial ID to full ID if provided
-    let resolved_spawned_from = if let Some(partial_id) = spawned_from {
-        let ticket = Ticket::find(partial_id).await?;
-        Some(ticket.id)
-    } else {
-        None
+    let opts = LsOptions {
+        filter_ready,
+        filter_blocked,
+        filter_closed,
+        filter_active,
+        status_filter: status_filter.map(|s| s.to_string()),
+        spawned_from: spawned_from.map(|s| s.to_string()),
+        depth,
+        max_depth,
+        next_in_plan: next_in_plan.map(|s| s.to_string()),
+        phase,
+        triaged: triaged.map(|s| s.to_string()),
+        size_filter,
+        limit,
+        sort_by: sort_by.to_string(),
+        output_json,
     };
-
-    // Build query using TicketQueryBuilder
-    let mut builder = TicketQueryBuilder::new().with_sort(sort_by);
-
-    // Add spawning filter if any spawning criteria are specified
-    if resolved_spawned_from.is_some() || depth.is_some() || max_depth.is_some() {
-        builder = builder.with_filter(Box::new(SpawningFilter::new(
-            resolved_spawned_from.as_deref(),
-            depth,
-            max_depth,
-        )));
-    }
-
-    // Add triaged filter if specified
-    if let Some(triaged_value) = triaged {
-        let filter_value = triaged_value == "true";
-        builder = builder.with_filter(Box::new(TriagedFilter::new(filter_value)));
-    }
-
-    // Add size filter if specified
-    if let Some(sizes) = size_filter {
-        builder = builder.with_filter(Box::new(SizeFilter::new(sizes)));
-    }
-
-    // Add status-based filters
-    if let Some(status) = status_filter {
-        // --status flag is mutually exclusive with --ready, --blocked, --closed
-        builder = builder.with_filter(Box::new(StatusFilter::new(status)));
-    } else if filter_ready || filter_blocked || filter_closed || filter_active {
-        // Union behavior: combine filters with OR logic
-        // We use a custom approach here since filters are normally AND-based
-        // For union filters, we need to handle them specially
-        let (ready_tickets, blocked_tickets, closed_tickets, active_tickets) =
-            if filter_ready || filter_blocked {
-                // We need to compute these using the context
-                use crate::query::{BlockedFilter, ReadyFilter, TicketFilterContext};
-                let context = TicketFilterContext::new_from_disk().await?;
-
-                let ready: Vec<_> = if filter_ready {
-                    tickets
-                        .iter()
-                        .filter(|t| ReadyFilter.matches(t, &context))
-                        .cloned()
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-
-                let blocked: Vec<_> = if filter_blocked {
-                    tickets
-                        .iter()
-                        .filter(|t| BlockedFilter.matches(t, &context))
-                        .cloned()
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-
-                let closed: Vec<_> = if filter_closed {
-                    tickets
-                        .iter()
-                        .filter(|t| ClosedFilter.matches(t, &context))
-                        .cloned()
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-
-                let active: Vec<_> = if filter_active {
-                    tickets
-                        .iter()
-                        .filter(|t| ActiveFilter.matches(t, &context))
-                        .cloned()
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-
-                (ready, blocked, closed, active)
-            } else {
-                // Only closed/active filters, no need for complex context
-                use crate::query::TicketFilterContext;
-                let context = TicketFilterContext::new_from_disk().await?;
-
-                let closed: Vec<_> = if filter_closed {
-                    tickets
-                        .iter()
-                        .filter(|t| ClosedFilter.matches(t, &context))
-                        .cloned()
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-
-                let active: Vec<_> = if filter_active {
-                    tickets
-                        .iter()
-                        .filter(|t| ActiveFilter.matches(t, &context))
-                        .cloned()
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-
-                (Vec::new(), Vec::new(), closed, active)
-            };
-
-        // Combine all matching tickets (union)
-        let mut display_tickets: Vec<TicketMetadata> = ready_tickets;
-        display_tickets.extend(blocked_tickets);
-        display_tickets.extend(closed_tickets);
-        display_tickets.extend(active_tickets);
-
-        // Remove duplicates
-        display_tickets.sort_by(|a, b| a.id.cmp(&b.id));
-        display_tickets.dedup_by(|a, b| a.id == b.id);
-
-        // Sort and apply limit
-        sort_tickets_by(&mut display_tickets, sort_by);
-        if let Some(limit) = limit {
-            if limit < display_tickets.len() {
-                display_tickets.truncate(limit);
-            }
-        }
-
-        return format_ticket_list(&display_tickets, output_json);
-    } else {
-        // Default: exclude closed tickets (use ActiveFilter as the base)
-        builder = builder.with_filter(Box::new(ActiveFilter));
-    }
-
-    // Apply limit if specified
-    if let Some(lim) = limit {
-        builder = builder.with_limit(lim);
-    }
-
-    // Execute the query
-    let display_tickets = builder.execute(tickets).await?;
-    format_ticket_list(&display_tickets, output_json)
+    cmd_ls_with_options(opts).await
 }
 
 /// Handle --next-in-plan filter using plan next logic
@@ -224,6 +227,8 @@ async fn cmd_ls_next_in_plan(
     sort_by: &str,
     output_json: bool,
 ) -> Result<()> {
+    use crate::query::sort_tickets_by;
+
     let plan = Plan::find(plan_id).await?;
     let metadata = plan.read()?;
     let ticket_map = build_ticket_map().await?;

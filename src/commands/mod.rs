@@ -37,7 +37,9 @@ pub use hook::{
     cmd_hook_disable, cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run,
 };
 pub use link::{cmd_link_add, cmd_link_remove};
+#[allow(deprecated)]
 pub use ls::cmd_ls;
+pub use ls::{LsOptions, cmd_ls_with_options};
 pub use next::cmd_next;
 pub use plan::{
     NextItemResult, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete,

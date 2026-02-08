@@ -23,7 +23,7 @@
 /// # Examples
 ///
 /// ```
-/// use crate::utils::validation::validate_safe_id;
+/// use janus::utils::validation::validate_safe_id;
 ///
 /// assert!(validate_safe_id("j-a1b2").is_ok());
 /// assert!(validate_safe_id("plan-abc123").is_ok());
@@ -31,18 +31,21 @@
 /// assert!(validate_safe_id("invalid@id").is_err());
 /// ```
 pub fn validate_safe_id(id: &str) -> Result<(), String> {
+    // Trim whitespace for validation
+    let trimmed = id.trim();
+
     // Check for empty or whitespace-only
-    if id.trim().is_empty() {
+    if trimmed.is_empty() {
         return Err("ID cannot be empty or only whitespace".to_string());
     }
 
     // Check for path separators and parent directory references
-    if id.contains('/') || id.contains('\\') || id.contains("..") {
+    if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") {
         return Err("ID cannot contain path separators or traversal sequences".to_string());
     }
 
     // Ensure ID contains only alphanumeric characters, hyphens, and underscores
-    if !id
+    if !trimmed
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
     {

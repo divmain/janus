@@ -7,6 +7,7 @@ use janus::cli::{
 };
 use janus::cli::{Cli, Commands};
 use janus::commands::cmd_search;
+#[allow(deprecated)]
 use janus::commands::{
     cmd_add_note, cmd_adopt, cmd_board, cmd_cache_prune, cmd_cache_rebuild, cmd_cache_status,
     cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add,
@@ -125,7 +126,9 @@ async fn main() -> ExitCode {
             limit,
             sort_by,
             json,
-        } => {
+        } =>
+        {
+            #[allow(deprecated)]
             cmd_ls(
                 ready,
                 blocked,
