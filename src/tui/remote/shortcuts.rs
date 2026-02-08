@@ -1,7 +1,7 @@
 //! Shared shortcut computation logic for remote TUI
 //!
 //! This module provides common shortcut computation functions used by both
-//! the view component (view.rs) and the model layer (model.rs).
+//! the view component (view.rs).
 
 use crate::tui::components::footer::Shortcut;
 use crate::tui::components::{
@@ -35,8 +35,7 @@ impl ModalVisibility {
 /// the appropriate shortcuts. Falls back to normal mode shortcuts if
 /// no modal is active.
 ///
-/// This shared function is used by both view.rs and model.rs to ensure
-/// consistent shortcut behavior across the TUI.
+/// This shared function ensures consistent shortcut behavior across the TUI.
 pub fn compute_shortcuts(modals: &ModalVisibility, current_view: ViewMode) -> Vec<Shortcut> {
     // Check modal states in priority order
     if modals.show_help_modal {

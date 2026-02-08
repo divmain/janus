@@ -8,6 +8,7 @@ use super::HandleResult;
 use super::context::HandlerContext;
 
 /// Handle events when search box is focused
+#[allow(dead_code)]
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match handle_search_input(code, KeyModifiers::NONE) {
         SearchAction::ClearAndExit => {

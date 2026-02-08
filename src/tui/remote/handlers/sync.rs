@@ -82,7 +82,6 @@ fn apply_sync_changes(
 }
 
 /// Handle 's' key to start sync operation (called from global handler when sync preview is not open)
-#[allow(dead_code)]
 pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
     let selected_ids: Vec<String> = if ctx.view_state.active_view() == ViewMode::Local {
         ctx.view_data

@@ -1,9 +1,0 @@
----
-source: tests/tui_remote_test.rs
-expression: "(vm.modal.show_help, vm.modal.show_filter, vm.modal.filter_state.is_some())"
----
-(
-    false,
-    true,
-    true,
-)

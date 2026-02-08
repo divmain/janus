@@ -12,7 +12,6 @@ mod filter_modal;
 mod handlers;
 mod help_modal;
 mod link_mode;
-pub mod model;
 mod operations;
 pub mod shortcuts;
 mod state;
@@ -33,3 +32,6 @@ pub use sync_preview::{
     SyncChange, SyncChangeWithContext, SyncDecision, SyncDirection, SyncPreview, SyncPreviewState,
 };
 pub use view::{RemoteTui, RemoteTuiProps};
+
+#[cfg(test)]
+mod tests;

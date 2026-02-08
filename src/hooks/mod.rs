@@ -486,10 +486,7 @@ pub fn context_to_env(context: &HookContext, janus_root: &Path) -> HashMap<Strin
         env.insert("JANUS_NEW_VALUE".to_string(), new_value.clone());
     }
 
-    env.insert(
-        "JANUS_ROOT".to_string(),
-        crate::utils::format_relative_path(janus_root),
-    );
+    env.insert("JANUS_ROOT".to_string(), janus_root.display().to_string());
 
     env
 }

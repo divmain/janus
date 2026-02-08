@@ -59,7 +59,6 @@ impl<'a> NavigationState<'a> {
         self.nav.set(nav);
     }
 
-    #[allow(dead_code)]
     pub fn clear_selection(&mut self) {
         let mut nav = self.nav.read().clone();
         nav.clear_selection();
@@ -300,7 +299,6 @@ impl<'a> FilteringState<'a> {
 pub struct AsyncHandlers<'a> {
     pub fetch_handler: &'a Handler<(Platform, RemoteQuery)>,
     pub push_handler: &'a Handler<(Vec<String>, Platform, RemoteQuery)>,
-    #[allow(dead_code)]
     pub sync_fetch_handler: &'a Handler<(Vec<String>, Platform)>,
     pub sync_apply_handler: &'a Handler<(SyncPreviewState, Platform, RemoteQuery)>,
     pub link_handler: &'a Handler<LinkSource>,
@@ -320,4 +318,29 @@ pub struct HandlerContext<'a> {
     pub modals: ModalState<'a>,
     pub filters: FilteringState<'a>,
     pub handlers: AsyncHandlers<'a>,
+}
+
+impl<'a> HandlerContext<'a> {
+    /// Build a lightweight, read-only snapshot of which modals/modes are active.
+    ///
+    /// This is consumed by `keymap::key_to_action` so that key mapping is a
+    /// pure function that doesn't need mutable access to the context.
+    pub fn modal_state_snapshot(&self) -> super::keymap::ModalStateSnapshot {
+        super::keymap::ModalStateSnapshot {
+            show_help_modal: self.modals.show_help(),
+            show_error_modal: self.modals.show_error(),
+            sync_preview_active: self.modals.sync_preview.read().is_some(),
+            sync_preview_current_index: self
+                .modals
+                .sync_preview
+                .read()
+                .as_ref()
+                .map(|s| s.current_change_index),
+            link_mode_active: self.modals.link_mode.read().is_some(),
+            filter_modal_active: self.filters.filter_modal.read().is_some(),
+            confirm_dialog_active: self.modals.confirm_dialog.read().is_some(),
+            search_focused: self.search.is_focused(),
+            detail_pane_focused: self.view_state.detail_pane_focused(),
+        }
+    }
 }

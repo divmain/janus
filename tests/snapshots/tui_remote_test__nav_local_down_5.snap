@@ -1,8 +1,0 @@
----
-source: tests/tui_remote_test.rs
-expression: "(state.local_selected_index, state.local_scroll_offset)"
----
-(
-    5,
-    0,
-)

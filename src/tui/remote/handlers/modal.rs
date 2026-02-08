@@ -7,6 +7,7 @@ use super::context::HandlerContext;
 use crate::tui::remote::help_modal::help_content_line_count;
 
 /// Handle modal keys (Esc for dismissal, j/k for scroll)
+#[allow(dead_code)]
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     // Handle help modal scrolling
     if ctx.modals.show_help() {

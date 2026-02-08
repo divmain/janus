@@ -1,8 +1,0 @@
----
-source: tests/tui_remote_test.rs
-expression: "(state.local_selected_index, state.local_selected_ids.len(),)"
----
-(
-    2,
-    3,
-)

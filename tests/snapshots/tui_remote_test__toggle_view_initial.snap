@@ -1,8 +1,0 @@
----
-source: tests/tui_remote_test.rs
-expression: "(vm1.local_list.is_focused, vm1.remote_list.is_focused)"
----
-(
-    true,
-    false,
-)

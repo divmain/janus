@@ -1,9 +1,0 @@
----
-source: tests/tui_remote_test.rs
-expression: "(initial_idx, state.local_selected_index, &state.search_query)"
----
-(
-    2,
-    0,
-    "test",
-)
