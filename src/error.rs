@@ -1,47 +1,4 @@
-use std::io;
-use std::path::Path;
-
 use thiserror::Error;
-
-/// File operation types for error formatting
-#[derive(Debug, Clone, Copy)]
-pub enum FileOperation {
-    Read,
-    Write,
-    Delete,
-}
-
-impl FileOperation {
-    fn as_str(&self) -> &'static str {
-        match self {
-            FileOperation::Read => "read",
-            FileOperation::Write => "write",
-            FileOperation::Delete => "delete",
-        }
-    }
-}
-
-/// Format a file I/O error with consistent error messages.
-///
-/// Creates a `JanusError::Io` with a formatted message like:
-/// "Failed to {operation} {item_type} at {path}: {source}"
-pub fn format_file_error(
-    path: &Path,
-    operation: FileOperation,
-    item_type: &str,
-    source: io::Error,
-) -> JanusError {
-    JanusError::Io(io::Error::new(
-        source.kind(),
-        format!(
-            "Failed to {} {} at {}: {}",
-            operation.as_str(),
-            item_type,
-            crate::utils::format_relative_path(path),
-            source
-        ),
-    ))
-}
 
 /// Generic helper to format error messages with a prefix, a key, and a list of items
 fn format_error_with_list(prefix: &str, key: &str, label: &str, items: &[String]) -> String {

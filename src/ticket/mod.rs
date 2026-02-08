@@ -17,7 +17,7 @@ pub use repository::{
 use std::collections::{HashMap, HashSet};
 
 use crate::entity::Entity;
-use crate::error::{FileOperation, JanusError, Result, format_file_error};
+use crate::error::{JanusError, Result};
 use crate::hooks::{
     HookContext, HookEvent, run_post_hooks, run_post_hooks_async, run_pre_hooks,
     run_pre_hooks_async,
@@ -86,13 +86,22 @@ impl Ticket {
     pub async fn read_content_async(&self) -> Result<String> {
         tokio_fs::read_to_string(&self.file_path)
             .await
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Read, "ticket", e))
+            .map_err(|e| JanusError::StorageError {
+                operation: "read",
+                item_type: "ticket",
+                path: self.file_path.clone(),
+                source: e,
+            })
     }
 
     /// Read the raw content of the ticket file (blocking - for sync contexts).
     pub fn read_content(&self) -> Result<String> {
-        std::fs::read_to_string(&self.file_path)
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Read, "ticket", e))
+        std::fs::read_to_string(&self.file_path).map_err(|e| JanusError::StorageError {
+            operation: "read",
+            item_type: "ticket",
+            path: self.file_path.clone(),
+            source: e,
+        })
     }
 
     /// Write content to the ticket file with hooks.
@@ -107,8 +116,12 @@ impl Ticket {
     /// Write raw content without hooks (blocking - for sync contexts).
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
-        std::fs::write(&self.file_path, content)
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Write, "ticket", e))
+        std::fs::write(&self.file_path, content).map_err(|e| JanusError::StorageError {
+            operation: "write",
+            item_type: "ticket",
+            path: self.file_path.clone(),
+            source: e,
+        })
     }
 
     /// Ensure the parent directory exists (blocking - for sync contexts).
@@ -292,7 +305,12 @@ impl Ticket {
 
         tokio_fs::remove_file(&self.file_path)
             .await
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Delete, "ticket", e))?;
+            .map_err(|e| JanusError::StorageError {
+                operation: "delete",
+                item_type: "ticket",
+                path: self.file_path.clone(),
+                source: e,
+            })?;
 
         run_post_hooks_async(HookEvent::PostDelete, &context).await;
 
@@ -324,8 +342,12 @@ impl Entity for Ticket {
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        std::fs::remove_file(&self.file_path)
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Delete, "ticket", e))?;
+        std::fs::remove_file(&self.file_path).map_err(|e| JanusError::StorageError {
+            operation: "delete",
+            item_type: "ticket",
+            path: self.file_path.clone(),
+            source: e,
+        })?;
 
         run_post_hooks(HookEvent::PostDelete, &context);
 

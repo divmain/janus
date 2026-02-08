@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 use crate::cache::get_or_init_store;
 use crate::entity::Entity;
-use crate::error::{FileOperation, JanusError, Result, format_file_error};
+use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
 use crate::types::{EntityType, TicketMetadata, plans_dir};
@@ -191,8 +191,12 @@ impl Plan {
 
     /// Read the raw content of the plan file
     pub fn read_content(&self) -> Result<String> {
-        fs::read_to_string(&self.file_path)
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Read, "plan", e))
+        fs::read_to_string(&self.file_path).map_err(|e| JanusError::StorageError {
+            operation: "read",
+            item_type: "plan",
+            path: self.file_path.clone(),
+            source: e,
+        })
     }
 
     /// Write content to the plan file
@@ -232,8 +236,12 @@ impl Plan {
     /// Write raw content without hooks
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
-        fs::write(&self.file_path, content)
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Write, "plan", e))
+        fs::write(&self.file_path, content).map_err(|e| JanusError::StorageError {
+            operation: "write",
+            item_type: "plan",
+            path: self.file_path.clone(),
+            source: e,
+        })
     }
 
     /// Ensure the parent directory exists
@@ -254,8 +262,12 @@ impl Plan {
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        fs::remove_file(&self.file_path)
-            .map_err(|e| format_file_error(&self.file_path, FileOperation::Delete, "plan", e))?;
+        fs::remove_file(&self.file_path).map_err(|e| JanusError::StorageError {
+            operation: "delete",
+            item_type: "plan",
+            path: self.file_path.clone(),
+            source: e,
+        })?;
 
         run_post_hooks(HookEvent::PostDelete, &context);
         run_post_hooks(HookEvent::PlanDeleted, &context);
@@ -399,15 +411,11 @@ pub fn get_all_plans_from_disk() -> PlanLoadResult {
 /// Ensure the plans directory exists
 pub fn ensure_plans_dir() -> Result<()> {
     let p_dir = plans_dir();
-    fs::create_dir_all(&p_dir).map_err(|e| {
-        JanusError::Io(std::io::Error::new(
-            e.kind(),
-            format!(
-                "Failed to create plans directory at {}: {}",
-                crate::utils::format_relative_path(&p_dir),
-                e
-            ),
-        ))
+    fs::create_dir_all(&p_dir).map_err(|e| JanusError::StorageError {
+        operation: "create",
+        item_type: "directory",
+        path: p_dir.clone(),
+        source: e,
     })
 }
 
