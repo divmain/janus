@@ -5,11 +5,6 @@ use std::str::FromStr;
 use crate::error::JanusError;
 use crate::hooks::HookContext;
 
-// Legacy constants - kept for backward compatibility
-pub const TICKETS_DIR: &str = ".janus";
-pub const TICKETS_ITEMS_DIR: &str = ".janus/items";
-pub const PLANS_DIR: &str = ".janus/plans";
-
 /// Returns the root Janus directory path.
 ///
 /// Resolution order:
@@ -62,8 +57,9 @@ impl TicketStatus {
     }
 }
 
-enum_display!(
+enum_display_fromstr!(
     TicketStatus,
+    JanusError::InvalidStatus,
     {
         New => "new",
         Next => "next",
@@ -72,25 +68,6 @@ enum_display!(
         Cancelled => "cancelled",
     }
 );
-
-impl FromStr for TicketStatus {
-    type Err = JanusError;
-
-    /// Parses a ticket status from a string.
-    ///
-    /// Parsing is case-insensitive: "new", "NEW", and "New" all parse to TicketStatus::New.
-    /// Valid values: "new", "next", "in_progress", "complete", "cancelled"
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "new" => Ok(TicketStatus::New),
-            "next" => Ok(TicketStatus::Next),
-            "in_progress" => Ok(TicketStatus::InProgress),
-            "complete" => Ok(TicketStatus::Complete),
-            "cancelled" => Ok(TicketStatus::Cancelled),
-            _ => Err(JanusError::InvalidStatus(s.to_string())),
-        }
-    }
-}
 
 pub const VALID_STATUSES: &[&str] = &["new", "next", "in_progress", "complete", "cancelled"];
 
@@ -437,6 +414,14 @@ impl TicketMetadata {
         self.priority
             .map(|p| p.as_num())
             .unwrap_or(DEFAULT_PRIORITY)
+    }
+
+    /// Parse the `created` field as a jiff::Timestamp.
+    ///
+    /// Returns `Some(Timestamp)` if the field is present and valid,
+    /// `None` if the field is missing or cannot be parsed.
+    pub fn created_timestamp(&self) -> Option<jiff::Timestamp> {
+        self.created.as_ref().and_then(|s| s.parse().ok())
     }
 
     /// Compute the effective depth of this ticket.

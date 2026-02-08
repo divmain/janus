@@ -70,26 +70,6 @@ async fn validate_parent(value: &str, ticket: &Ticket) -> Result<String> {
     Ok(parent_ticket.id)
 }
 
-/// Validate external_ref (free-form string)
-fn validate_external_ref(value: &str) -> String {
-    value.to_string()
-}
-
-/// Validate design (free-form text, no validation needed)
-fn validate_design(value: &str) -> String {
-    value.to_string()
-}
-
-/// Validate acceptance (free-form text, no validation needed)
-fn validate_acceptance(value: &str) -> String {
-    value.to_string()
-}
-
-/// Validate description (free-form text, no validation needed)
-fn validate_description(value: &str) -> String {
-    value.to_string()
-}
-
 /// Extract current value of a body section from ticket content
 fn extract_section_content(ticket: &Ticket, section_name: &str) -> Result<Option<String>> {
     let content = ticket.read_content()?;
@@ -273,7 +253,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
         "external_ref" => {
             previous_value = metadata.external_ref.clone();
             if let Some(value) = value {
-                new_value = validate_external_ref(value);
+                new_value = value.to_string();
                 ticket.update_field("external_ref", value)?;
             } else {
                 ticket.remove_field("external_ref")?;
@@ -294,7 +274,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
         "design" => {
             previous_value = extract_section_content(&ticket, "Design")?;
             if let Some(value) = value {
-                new_value = validate_design(value);
+                new_value = value.to_string();
                 update_body_section(&ticket, "Design", Some(&new_value))?;
             } else {
                 update_body_section(&ticket, "Design", None)?;
@@ -304,7 +284,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
         "acceptance" => {
             previous_value = extract_section_content(&ticket, "Acceptance Criteria")?;
             if let Some(value) = value {
-                new_value = validate_acceptance(value);
+                new_value = value.to_string();
                 update_body_section(&ticket, "Acceptance Criteria", Some(&new_value))?;
             } else {
                 update_body_section(&ticket, "Acceptance Criteria", None)?;
@@ -314,7 +294,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
         "description" => {
             previous_value = extract_description(&ticket)?;
             if let Some(value) = value {
-                new_value = validate_description(value);
+                new_value = value.to_string();
                 update_description(&ticket, Some(&new_value))?;
             } else {
                 update_description(&ticket, None)?;

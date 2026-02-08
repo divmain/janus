@@ -183,7 +183,9 @@ pub async fn cmd_mcp() -> Result<()> {
 
     // Initialize store and start filesystem watcher for live updates
     let store = crate::cache::get_or_init_store().await?;
-    let _ = crate::cache::start_watching(store).await;
+    if let Err(e) = crate::cache::start_watching(store).await {
+        eprintln!("Warning: Failed to start filesystem watcher: {e}");
+    }
 
     let server = JanusTools::new();
 

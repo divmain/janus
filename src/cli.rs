@@ -325,7 +325,7 @@ pub enum Commands {
         #[arg(long)]
         spawn: bool,
 
-        /// Show both deps and spawning relationships (default)
+        /// Show both deps and spawning relationships (default, provided for explicitness)
         #[arg(long)]
         all: bool,
 
