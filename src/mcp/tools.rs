@@ -30,8 +30,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::time::timeout;
+
+use regex::Regex;
 
 use crate::cache::get_or_init_store;
 
@@ -39,6 +42,15 @@ use crate::events::{Actor, EntityType, Event, EventType, log_event};
 
 /// Timeout for embedding generation (30 seconds)
 const EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Regex for finding the "Completion Summary" section in ticket content
+static COMPLETION_SUMMARY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?mi)^## completion summary\s*$").expect("regex should compile"));
+
+/// Regex for finding the next H2 heading
+static NEXT_H2_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^## ").expect("regex should compile"));
+
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
@@ -1239,9 +1251,7 @@ fn write_completion_summary(ticket: &Ticket, summary: &str) -> crate::error::Res
     let content = ticket.read_content()?;
 
     // Check if there's already a Completion Summary section
-    let section_pattern =
-        regex::Regex::new(r"(?mi)^## completion summary\s*$").expect("regex should compile");
-    let section_start = section_pattern.find(&content).map(|m| m.start());
+    let section_start = COMPLETION_SUMMARY_RE.find(&content).map(|m| m.start());
 
     let new_content = if let Some(start_idx) = section_start {
         // Replace existing section
@@ -1253,8 +1263,7 @@ fn write_completion_summary(ticket: &Ticket, summary: &str) -> crate::error::Res
         let section_content_start = start_idx + header_end;
 
         let section_content = &content[section_content_start..];
-        let next_h2_re = regex::Regex::new(r"(?m)^## ").expect("regex should compile");
-        let section_end = next_h2_re
+        let section_end = NEXT_H2_RE
             .find(section_content)
             .map(|m| section_content_start + m.start())
             .unwrap_or(content.len());

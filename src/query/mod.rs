@@ -193,13 +193,13 @@ impl TicketFilter for ReadyFilter {
             return false;
         }
 
-        // All deps must be complete
+        // All deps must be terminal (complete or cancelled)
         let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
         ticket.deps.iter().all(|dep_id| {
             context
                 .ticket_map
                 .get(dep_id)
-                .map(|dep| dep.status == Some(TicketStatus::Complete))
+                .map(|dep| dep.status.is_some_and(|s| s.is_terminal()))
                 .unwrap_or_else(|| {
                     context.warn_dangling(ticket_id, dep_id);
                     false
@@ -225,13 +225,13 @@ impl TicketFilter for BlockedFilter {
             return false;
         }
 
-        // Check if any dep is incomplete
+        // Check if any dep is incomplete (not terminal)
         let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
         ticket.deps.iter().any(|dep_id| {
             context
                 .ticket_map
                 .get(dep_id)
-                .map(|dep| dep.status != Some(TicketStatus::Complete))
+                .map(|dep| !dep.status.is_some_and(|s| s.is_terminal()))
                 .unwrap_or_else(|| {
                     context.warn_dangling(ticket_id, dep_id);
                     true

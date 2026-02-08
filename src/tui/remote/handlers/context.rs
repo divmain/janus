@@ -30,15 +30,15 @@ pub struct NavigationState<'a> {
 
 impl<'a> NavigationState<'a> {
     pub fn selected_index(&self) -> usize {
-        self.nav.read().clone().selected_index
+        self.nav.read().selected_index
     }
 
     pub fn scroll_offset(&self) -> usize {
-        self.nav.read().clone().scroll_offset
+        self.nav.read().scroll_offset
     }
 
     pub fn selected_ids(&self) -> HashSet<String> {
-        self.nav.read().clone().selected_ids.clone()
+        self.nav.read().selected_ids.clone()
     }
 
     pub fn set_selected_index(&mut self, index: usize) {

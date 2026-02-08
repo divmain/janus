@@ -4,7 +4,7 @@ use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::log_status_changed;
 use crate::ticket::Ticket;
-use crate::types::{TicketStatus, VALID_STATUSES};
+use crate::types::TicketStatus;
 
 /// Update a ticket's status
 async fn update_status(id: &str, new_status: TicketStatus, output_json: bool) -> Result<()> {
@@ -91,14 +91,6 @@ pub async fn cmd_reopen(id: &str, output_json: bool) -> Result<()> {
 }
 
 /// Set a ticket's status to an arbitrary value
-pub async fn cmd_status(id: &str, status: &str, output_json: bool) -> Result<()> {
-    let parsed_status: TicketStatus = status.parse().map_err(|_| {
-        JanusError::InvalidStatus(format!(
-            "'{}'. Must be one of: {}",
-            status,
-            VALID_STATUSES.join(", ")
-        ))
-    })?;
-
-    update_status(id, parsed_status, output_json).await
+pub async fn cmd_status(id: &str, status: TicketStatus, output_json: bool) -> Result<()> {
+    update_status(id, status, output_json).await
 }

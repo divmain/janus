@@ -276,11 +276,11 @@ async fn read_ready_tickets() -> Result<ReadResourceResult, ResourceError> {
             if !matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
                 return false;
             }
-            // All deps must be complete
+            // All deps must be terminal (complete or cancelled)
             t.deps.iter().all(|dep_id| {
                 ticket_map
                     .get(dep_id)
-                    .is_some_and(|dep| dep.status == Some(TicketStatus::Complete))
+                    .is_some_and(|dep| dep.status.is_some_and(|s| s.is_terminal()))
             })
         })
         .map(ticket_to_json)
@@ -318,11 +318,11 @@ async fn read_blocked_tickets() -> Result<ReadResourceResult, ResourceError> {
             if t.deps.is_empty() {
                 return false;
             }
-            // At least one dep must be incomplete
+            // At least one dep must be incomplete (not terminal)
             t.deps.iter().any(|dep_id| {
                 ticket_map
                     .get(dep_id)
-                    .is_none_or(|dep| dep.status != Some(TicketStatus::Complete))
+                    .is_none_or(|dep| !dep.status.is_some_and(|s| s.is_terminal()))
             })
         })
         .map(|t| {
@@ -334,7 +334,7 @@ async fn read_blocked_tickets() -> Result<ReadResourceResult, ResourceError> {
                 .filter(|dep_id| {
                     ticket_map
                         .get(*dep_id)
-                        .is_none_or(|dep| dep.status != Some(TicketStatus::Complete))
+                        .is_none_or(|dep| !dep.status.is_some_and(|s| s.is_terminal()))
                 })
                 .map(|dep_id| {
                     let dep = ticket_map.get(dep_id);

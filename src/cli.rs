@@ -166,7 +166,7 @@ pub enum Commands {
 
         /// New status: new, next, in_progress, complete, cancelled (case-insensitive)
         #[arg(value_parser = parse_status)]
-        status: String,
+        status: TicketStatus,
 
         /// Output as JSON
         #[arg(long)]
@@ -937,14 +937,10 @@ fn parse_type(s: &str) -> Result<TicketType, String> {
     )
 }
 
-fn parse_status(s: &str) -> Result<String, String> {
+fn parse_status(s: &str) -> Result<TicketStatus, String> {
     parse_with_validation(
         s,
-        |v| {
-            TicketStatus::from_str(v)
-                .map(|_| v.to_string())
-                .map_err(|_| String::new())
-        },
+        |v| TicketStatus::from_str(v).map_err(|_| String::new()),
         "status",
         VALID_STATUSES,
     )
