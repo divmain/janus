@@ -30,9 +30,7 @@ impl TicketFilterContext {
     pub fn warn_dangling(&self, ticket_id: &str, dep_id: &str) -> bool {
         let mut warned = self.warned_dangling.borrow_mut();
         if warned.insert(dep_id.to_string()) {
-            eprintln!(
-                "Warning: Ticket {ticket_id} references dangling dependency {dep_id}"
-            );
+            eprintln!("Warning: Ticket {ticket_id} references dangling dependency {dep_id}");
             true
         } else {
             false

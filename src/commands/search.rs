@@ -64,7 +64,8 @@ pub async fn cmd_search(
 
     if with_embedding == 0 {
         return Err(JanusError::Other(
-            "No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings.".to_string()
+            "No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings."
+                .to_string(),
         ));
     }
 

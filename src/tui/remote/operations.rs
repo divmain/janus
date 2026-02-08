@@ -393,9 +393,8 @@ pub fn adopt_issues(issues: &[RemoteIssue], _local_ids: &HashSet<String>) -> Res
 
 /// Build a RemoteRef from a RemoteIssue
 fn build_remote_ref_from_issue(issue: &RemoteIssue) -> Result<RemoteRef> {
-    let parsed_url = Url::parse(&issue.url).map_err(|e| {
-        JanusError::InvalidRemoteRef(issue.id.clone(), format!("invalid URL: {e}"))
-    })?;
+    let parsed_url = Url::parse(&issue.url)
+        .map_err(|e| JanusError::InvalidRemoteRef(issue.id.clone(), format!("invalid URL: {e}")))?;
 
     let host = parsed_url.host_str().ok_or_else(|| {
         JanusError::InvalidRemoteRef(issue.id.clone(), "URL has no host".to_string())

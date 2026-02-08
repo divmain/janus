@@ -38,9 +38,8 @@ impl EmbeddingModel {
         let cache_dir = get_embedding_cache_dir()?;
 
         // Parse the model name string to get the enum variant
-        let model = FastembedModel::from_str(EMBEDDING_MODEL_NAME).map_err(|e| {
-            format!("Invalid embedding model name '{EMBEDDING_MODEL_NAME}': {e}")
-        })?;
+        let model = FastembedModel::from_str(EMBEDDING_MODEL_NAME)
+            .map_err(|e| format!("Invalid embedding model name '{EMBEDDING_MODEL_NAME}': {e}"))?;
 
         let options = InitOptions::new(model)
             .with_cache_dir(cache_dir)
@@ -69,9 +68,7 @@ impl EmbeddingModel {
             let mut guard = inner
                 .lock()
                 .map_err(|e| format!("Embedding model mutex poisoned: {e}"))?;
-            let embeddings = guard
-                .embed(vec![&text], None)
-                .map_err(|e| format!("{e}"))?;
+            let embeddings = guard.embed(vec![&text], None).map_err(|e| format!("{e}"))?;
             embeddings
                 .into_iter()
                 .next()
@@ -233,9 +230,7 @@ mod tests {
             }
             Err(e) => {
                 // In CI environments, the model might not be available
-                println!(
-                    "Embedding generation failed (expected in some environments): {e}"
-                );
+                println!("Embedding generation failed (expected in some environments): {e}");
             }
         }
     }

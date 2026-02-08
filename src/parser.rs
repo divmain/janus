@@ -181,9 +181,7 @@ impl ParsedDocument {
         } else {
             // Section doesn't exist - append it
             let trimmed_body = self.body.trim_end();
-            format!(
-                "{trimmed_body}\n\n## {section_name}\n\n{section_content}\n"
-            )
+            format!("{trimmed_body}\n\n## {section_name}\n\n{section_content}\n")
         }
     }
 

@@ -5,8 +5,8 @@ use iocraft::prelude::KeyCode;
 use super::super::error_toast::Toast;
 use super::super::link_mode::{LinkModeState, LinkSource};
 use super::super::state::ViewMode;
-use super::context::HandlerContext;
 use super::HandleResult;
+use super::context::HandlerContext;
 
 /// Handle link mode completion (when link mode is active and 'l' is pressed)
 pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {

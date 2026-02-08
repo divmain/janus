@@ -13,11 +13,11 @@ use crate::tui::components::toast::Toast;
 use crate::types::TicketMetadata;
 
 use super::filter::{
-    filter_local_tickets, filter_remote_issues, FilteredLocalTicket, FilteredRemoteIssue,
+    FilteredLocalTicket, FilteredRemoteIssue, filter_local_tickets, filter_remote_issues,
 };
 use super::filter_modal::FilterState;
 use super::link_mode::LinkModeState;
-use super::shortcuts::{compute_shortcuts, ModalVisibility};
+use super::shortcuts::{ModalVisibility, compute_shortcuts};
 use super::state::ViewMode;
 use super::sync_preview::SyncPreviewState;
 
@@ -1134,13 +1134,7 @@ mod tests {
     fn test_reduce_page_down() {
         let mut state = state_with_data();
         state.local_tickets = (0..20)
-            .map(|i| {
-                make_ticket(
-                    &format!("j-{i}"),
-                    &format!("Task {i}"),
-                    TicketStatus::New,
-                )
-            })
+            .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
             .collect();
         let new_state = reduce_remote_state(state, RemoteAction::PageDown, 10);
         assert_eq!(new_state.local_selected_index, 5); // Half page
@@ -1150,13 +1144,7 @@ mod tests {
     fn test_reduce_page_up() {
         let mut state = state_with_data();
         state.local_tickets = (0..20)
-            .map(|i| {
-                make_ticket(
-                    &format!("j-{i}"),
-                    &format!("Task {i}"),
-                    TicketStatus::New,
-                )
-            })
+            .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
             .collect();
         state.local_selected_index = 10;
         let new_state = reduce_remote_state(state, RemoteAction::PageUp, 10);

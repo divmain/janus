@@ -73,9 +73,7 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
     let text = if added_count == 0 {
         "All links already exist".to_string()
     } else {
-        format!(
-            "Added {added_count} link(s) between {num_tickets} tickets"
-        )
+        format!("Added {added_count} link(s) between {num_tickets} tickets")
     };
 
     CommandOutput::new(json!({

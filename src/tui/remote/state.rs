@@ -2,8 +2,8 @@
 
 use std::collections::HashSet;
 
-use crate::remote::config::Platform;
 use crate::remote::RemoteQuery;
+use crate::remote::config::Platform;
 
 /// Active view mode in the remote TUI
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -8,7 +8,7 @@ mod repository;
 pub use crate::types::ArrayField;
 pub use builder::TicketBuilder;
 pub use content::{extract_body, parse as parse_ticket, remove_field, update_field, update_title};
-pub use locator::find_ticket_by_id;
+
 pub use repository::{
     TicketLoadResult, build_ticket_map, find_tickets, get_all_children_counts, get_all_tickets,
     get_all_tickets_from_disk, get_all_tickets_with_map, get_children_count, get_file_mtime,
@@ -143,8 +143,7 @@ impl Ticket {
     /// Write raw content without hooks (blocking - for sync contexts).
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
-        std::fs::write(&self.file_path, content)
-            .map_err(|e| format_write_error(&self.file_path, e))
+        std::fs::write(&self.file_path, content).map_err(|e| format_write_error(&self.file_path, e))
     }
 
     /// Ensure the parent directory exists (blocking - for sync contexts).

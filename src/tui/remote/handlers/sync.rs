@@ -6,8 +6,8 @@ use iocraft::prelude::KeyCode;
 
 use super::super::error_toast::Toast;
 use super::super::state::ViewMode;
-use super::context::HandlerContext;
 use super::HandleResult;
+use super::context::HandlerContext;
 
 /// Handle sync preview mode events
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {

@@ -3,11 +3,11 @@
 //! This module provides functions for querying and retrieving tickets.
 //! All functions are async and use the in-memory store.
 
+use crate::TicketMetadata;
 use crate::store::get_or_init_store;
 use crate::ticket::content;
 use crate::types::LoadResult;
 use crate::utils::DirScanner;
-use crate::TicketMetadata;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;

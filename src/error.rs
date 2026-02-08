@@ -97,7 +97,9 @@ pub enum JanusError {
     #[error("plan '{0}' not found")]
     PlanNotFound(String),
 
-    #[error("invalid ticket ID '{0}': must contain only alphanumeric characters, hyphens, and underscores")]
+    #[error(
+        "invalid ticket ID '{0}': must contain only alphanumeric characters, hyphens, and underscores"
+    )]
     InvalidTicketId(String),
 
     #[error("invalid plan ID '{0}': must contain only alphanumeric characters and hyphens")]

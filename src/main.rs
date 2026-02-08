@@ -9,8 +9,8 @@ use janus::cli::{Cli, Commands};
 use janus::commands::cmd_search;
 use janus::commands::{
     cmd_add_note, cmd_adopt, cmd_board, cmd_cache_prune, cmd_cache_rebuild, cmd_cache_status,
-    cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create,
-    cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_doctor, cmd_edit, cmd_graph, cmd_hook_disable,
+    cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add,
+    cmd_dep_remove, cmd_dep_tree, cmd_doctor, cmd_edit, cmd_graph, cmd_hook_disable,
     cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add,
     cmd_link_remove, cmd_ls, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
     cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket,
@@ -192,9 +192,10 @@ async fn main() -> ExitCode {
             HookAction::Log { lines, json } => cmd_hook_log(lines, json),
         },
 
-        Commands::Doctor { json } => {
-            handle_validation_result(cmd_doctor(json), "Ticket health check failed - some files have errors")
-        }
+        Commands::Doctor { json } => handle_validation_result(
+            cmd_doctor(json),
+            "Ticket health check failed - some files have errors",
+        ),
 
         Commands::Plan { action } => match action {
             PlanAction::Create {
@@ -306,9 +307,10 @@ async fn main() -> ExitCode {
                 .await
             }
             PlanAction::ImportSpec => cmd_show_import_spec(),
-            PlanAction::Verify { json } => {
-                handle_validation_result(cmd_plan_verify(json), "Plan verification failed - some files have errors")
-            }
+            PlanAction::Verify { json } => handle_validation_result(
+                cmd_plan_verify(json),
+                "Plan verification failed - some files have errors",
+            ),
         },
 
         Commands::Graph {

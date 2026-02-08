@@ -12,8 +12,8 @@ use iocraft::prelude::*;
 use crate::formatting::extract_ticket_body;
 use crate::ticket::Ticket;
 use crate::tui::components::{
-    Clickable, EmptyState, EmptyStateKind, ModalState, NoteModalData, StoreErrorModalData,
-    SearchBox, TicketDetail, TicketList, TicketModalData, Toast, browser_shortcuts,
+    Clickable, EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox,
+    StoreErrorModalData, TicketDetail, TicketList, TicketModalData, Toast, browser_shortcuts,
     cancel_confirm_modal_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
     error_modal_shortcuts, note_input_modal_shortcuts, search_shortcuts, triage_shortcuts,
 };
@@ -134,12 +134,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             "Status cycled for {ticket_id}"
                         ))));
                         // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
-                            current,
+                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
                             &ticket_id,
-                        ).await;
+                        )
+                        .await;
+                        let current = all_tickets_setter.read().clone();
+                        let tickets =
+                            crate::tui::repository::TicketRepository::refresh_single_ticket(
+                                current, &ticket_id,
+                            )
+                            .await;
                         all_tickets_setter.set(tickets);
                     }
                     Err(e) => {
@@ -168,12 +172,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         };
                         toast_setter.set(Some(Toast::success(msg)));
                         // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
-                            current,
+                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
                             &ticket_id,
-                        ).await;
+                        )
+                        .await;
+                        let current = all_tickets_setter.read().clone();
+                        let tickets =
+                            crate::tui::repository::TicketRepository::refresh_single_ticket(
+                                current, &ticket_id,
+                            )
+                            .await;
                         all_tickets_setter.set(tickets);
                     }
                     Err(e) => {
@@ -200,18 +208,21 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     Ok(_) => {
                         toast_setter.set(Some(Toast::success(format!("Cancelled {ticket_id}"))));
                         // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
-                            current,
+                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
                             &ticket_id,
-                        ).await;
+                        )
+                        .await;
+                        let current = all_tickets_setter.read().clone();
+                        let tickets =
+                            crate::tui::repository::TicketRepository::refresh_single_ticket(
+                                current, &ticket_id,
+                            )
+                            .await;
                         all_tickets_setter.set(tickets);
                     }
                     Err(e) => {
-                        toast_setter.set(Some(Toast::error(format!(
-                            "Failed to cancel ticket: {e}"
-                        ))));
+                        toast_setter
+                            .set(Some(Toast::error(format!("Failed to cancel ticket: {e}"))));
                     }
                 }
             }
@@ -231,12 +242,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                         toast_setter
                             .set(Some(Toast::success(format!("Added note to {ticket_id}"))));
                         // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
-                            current,
+                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
                             &ticket_id,
-                        ).await;
+                        )
+                        .await;
+                        let current = all_tickets_setter.read().clone();
+                        let tickets =
+                            crate::tui::repository::TicketRepository::refresh_single_ticket(
+                                current, &ticket_id,
+                            )
+                            .await;
                         all_tickets_setter.set(tickets);
                     }
                     Err(e) => {

@@ -166,9 +166,7 @@ pub async fn cmd_plan_remove_phase(
             }
             migrated_tickets = phase_tickets.len();
             if !output_json {
-                println!(
-                    "Migrated {migrated_tickets} tickets to phase '{migrate_to}'"
-                );
+                println!("Migrated {migrated_tickets} tickets to phase '{migrate_to}'");
             }
         } else if !force {
             return Err(JanusError::PhaseNotEmpty(phase_name));

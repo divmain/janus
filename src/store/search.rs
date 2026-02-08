@@ -115,7 +115,7 @@ mod tests {
         let results = store.semantic_search(&query, 10);
 
         assert_eq!(results.len(), 3); // Only tickets with embeddings
-                                      // Most similar should be j-auth
+        // Most similar should be j-auth
         assert_eq!(results[0].ticket.id.as_deref(), Some("j-auth"));
         assert!(results[0].similarity > results[1].similarity);
     }

@@ -4,7 +4,7 @@ use std::io;
 use std::str::FromStr;
 
 use crate::types::{
-    TicketPriority, TicketSize, TicketStatus, TicketType, DEFAULT_PRIORITY_STR, VALID_PRIORITIES,
+    DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES,
     VALID_SIZES, VALID_STATUSES, VALID_TYPES,
 };
 

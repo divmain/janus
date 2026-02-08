@@ -411,8 +411,7 @@ impl LinearProvider {
     ///
     /// Configures HTTP client with 30s connect timeout and 60s total timeout.
     pub fn new(api_key: &str) -> Self {
-        let client = build_linear_http_client()
-            .expect("Failed to create HTTP client");
+        let client = build_linear_http_client().expect("Failed to create HTTP client");
 
         Self {
             client,
@@ -518,12 +517,9 @@ impl LinearProvider {
                     .get("Retry-After")
                     .and_then(|v| v.to_str().ok())
                     .and_then(|s| s.parse::<u64>().ok());
-                let error = super::error::ApiError::with_status(
-                    format!("HTTP {status}"),
-                    "Linear",
-                    status,
-                )
-                .with_retry_after(retry_after.unwrap_or(60));
+                let error =
+                    super::error::ApiError::with_status(format!("HTTP {status}"), "Linear", status)
+                        .with_retry_after(retry_after.unwrap_or(60));
                 return Err(LinearError { inner: error });
             }
 

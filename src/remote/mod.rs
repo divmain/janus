@@ -8,7 +8,7 @@ pub mod error;
 pub mod github;
 pub mod linear;
 
-pub use error::{build_github_error_message, ApiError};
+pub use error::{ApiError, build_github_error_message};
 
 use std::fmt;
 use std::str::FromStr;

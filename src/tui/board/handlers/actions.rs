@@ -7,8 +7,8 @@ use iocraft::prelude::{KeyCode, KeyModifiers};
 
 use crate::tui::edit::extract_body_for_edit;
 
-use super::context::BoardHandlerContext;
 use super::HandleResult;
+use super::context::BoardHandlerContext;
 
 /// Handle action keys
 pub fn handle(

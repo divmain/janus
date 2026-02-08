@@ -40,9 +40,7 @@ pub fn format_ticket_line(
         priority_str
     };
 
-    format!(
-        "{colored_id} {colored_priority}{colored_status} - {title}{suffix}"
-    )
+    format!("{colored_id} {colored_priority}{colored_status} - {title}{suffix}")
 }
 
 /// Format a ticket as a bullet point (for show command sections) with colors

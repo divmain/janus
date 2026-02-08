@@ -4,8 +4,8 @@ use iocraft::prelude::{KeyCode, State};
 
 use crate::tui::board::model::COLUMNS;
 
-use super::context::BoardHandlerContext;
 use super::HandleResult;
+use super::context::BoardHandlerContext;
 
 /// Handle column toggle keys (1-5)
 pub fn handle_toggle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult {

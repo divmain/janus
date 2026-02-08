@@ -7,7 +7,6 @@ pub mod display;
 pub mod entity;
 pub mod error;
 pub mod events;
-pub mod finder;
 pub mod formatting;
 pub mod hooks;
 pub mod locator;

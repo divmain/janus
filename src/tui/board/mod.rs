@@ -24,7 +24,7 @@ use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
 use handlers::{BoardAsyncHandlers, BoardHandlerContext};
-use model::{COLUMNS, COLUMN_NAMES, COLUMN_KEYS};
+use model::{COLUMN_KEYS, COLUMN_NAMES, COLUMNS};
 
 /// Props for the KanbanBoard component
 #[derive(Default, Props)]
@@ -99,17 +99,20 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                 "Updated {ticket_id} to {status}"
                             ))));
                             // Refresh the mutated ticket in the store, then update in-place
-                            crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
-                            let current = all_tickets_setter.read().clone();
-                            let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
-                                current,
+                            crate::tui::repository::TicketRepository::refresh_ticket_in_store(
                                 &ticket_id,
-                            ).await;
+                            )
+                            .await;
+                            let current = all_tickets_setter.read().clone();
+                            let tickets =
+                                crate::tui::repository::TicketRepository::refresh_single_ticket(
+                                    current, &ticket_id,
+                                )
+                                .await;
                             all_tickets_setter.set(tickets);
                         }
                         Err(e) => {
-                            toast_setter
-                                .set(Some(Toast::error(format!("Failed to update: {e}"))));
+                            toast_setter.set(Some(Toast::error(format!("Failed to update: {e}"))));
                         }
                     },
                     Err(e) => {

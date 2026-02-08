@@ -252,9 +252,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                     });
                     println!("{}", serde_json::to_string_pretty(&output)?);
                 } else {
-                    println!(
-                        "{masked} (masked - showing first 2 and last 2 characters)"
-                    );
+                    println!("{masked} (masked - showing first 2 and last 2 characters)");
                 }
             } else {
                 return Err(JanusError::Config("github.token not set".to_string()));
@@ -271,9 +269,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                         "masked": true,
                     }))?;
                 } else {
-                    println!(
-                        "{masked} (masked - showing first 2 and last 2 characters)"
-                    );
+                    println!("{masked} (masked - showing first 2 and last 2 characters)");
                 }
             } else {
                 return Err(JanusError::Config("linear.api_key not set".to_string()));

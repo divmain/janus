@@ -11,7 +11,7 @@ use crate::query::{
     ActiveFilter, ClosedFilter, SizeFilter, SpawningFilter, StatusFilter, TicketFilter,
     TicketQueryBuilder, TriagedFilter,
 };
-use crate::ticket::{build_ticket_map, find_ticket_by_id, get_all_tickets_with_map};
+use crate::ticket::{Ticket, build_ticket_map, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketSize};
 
 /// Formats a list of tickets for output, handling both JSON and text formats.
@@ -71,14 +71,8 @@ pub async fn cmd_ls(
 
     // Resolve spawned_from partial ID to full ID if provided
     let resolved_spawned_from = if let Some(partial_id) = spawned_from {
-        let ticket_path = find_ticket_by_id(partial_id).await?;
-        Some(
-            ticket_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| JanusError::InvalidFormat("Invalid ticket path".to_string()))?
-                .to_string(),
-        )
+        let ticket = Ticket::find(partial_id).await?;
+        Some(ticket.id)
     } else {
         None
     };

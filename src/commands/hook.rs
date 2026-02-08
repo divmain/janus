@@ -325,9 +325,7 @@ fn fetch_files_recursive<'a>(
     path: &'a str,
 ) -> RecursiveFetchFuture<'a> {
     Box::pin(async move {
-        let url = format!(
-            "https://api.github.com/repos/divmain/janus/contents/{path}"
-        );
+        let url = format!("https://api.github.com/repos/divmain/janus/contents/{path}");
         let response = client
             .get(&url)
             .header("User-Agent", "janus-cli")

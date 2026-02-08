@@ -3,8 +3,8 @@
 use iocraft::prelude::KeyCode;
 
 use super::super::state::ViewMode;
-use super::context::HandlerContext;
 use super::HandleResult;
+use super::context::HandlerContext;
 
 /// Handle Space key for toggling selection
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {

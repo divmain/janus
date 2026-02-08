@@ -496,13 +496,7 @@ mod tests {
 
     fn state_with_tickets(count: usize) -> ViewState {
         let tickets: Vec<TicketMetadata> = (0..count)
-            .map(|i| {
-                make_ticket(
-                    &format!("j-{i}"),
-                    &format!("Task {i}"),
-                    TicketStatus::New,
-                )
-            })
+            .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
             .collect();
         ViewState {
             tickets,
@@ -1008,13 +1002,7 @@ mod tests {
     fn test_view_scroll_down_adjusts_offset() {
         let mut state = ViewState {
             tickets: (0..30)
-                .map(|i| {
-                    make_ticket(
-                        &format!("j-{i}"),
-                        &format!("Task {i}"),
-                        TicketStatus::New,
-                    )
-                })
+                .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
                 .collect(),
             selected_index: 9, // At the boundary of visible area
             scroll_offset: 0,
@@ -1031,13 +1019,7 @@ mod tests {
     fn test_view_scroll_up_adjusts_offset() {
         let mut state = ViewState {
             tickets: (0..30)
-                .map(|i| {
-                    make_ticket(
-                        &format!("j-{i}"),
-                        &format!("Task {i}"),
-                        TicketStatus::New,
-                    )
-                })
+                .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
                 .collect(),
             selected_index: 10,
             scroll_offset: 10, // Scrolled down
@@ -1054,13 +1036,7 @@ mod tests {
     fn test_view_go_to_bottom_large_list() {
         let mut state = ViewState {
             tickets: (0..100)
-                .map(|i| {
-                    make_ticket(
-                        &format!("j-{i}"),
-                        &format!("Task {i}"),
-                        TicketStatus::New,
-                    )
-                })
+                .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
                 .collect(),
             selected_index: 0,
             scroll_offset: 0,
@@ -1077,13 +1053,7 @@ mod tests {
     fn test_view_page_down_large_list() {
         let mut state = ViewState {
             tickets: (0..100)
-                .map(|i| {
-                    make_ticket(
-                        &format!("j-{i}"),
-                        &format!("Task {i}"),
-                        TicketStatus::New,
-                    )
-                })
+                .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
                 .collect(),
             selected_index: 0,
             scroll_offset: 0,
@@ -1099,13 +1069,7 @@ mod tests {
     fn test_view_model_scroll_info() {
         let state = ViewState {
             tickets: (0..50)
-                .map(|i| {
-                    make_ticket(
-                        &format!("j-{i}"),
-                        &format!("Task {i}"),
-                        TicketStatus::New,
-                    )
-                })
+                .map(|i| make_ticket(&format!("j-{i}"), &format!("Task {i}"), TicketStatus::New))
                 .collect(),
             selected_index: 25,
             scroll_offset: 20,

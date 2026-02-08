@@ -283,18 +283,16 @@ fn execute_hook(
             }
             None => {
                 if let Err(e) = child.kill() {
-                    eprintln!(
-                        "Warning: failed to kill timed-out hook '{script_name}': {e}"
-                    );
+                    eprintln!("Warning: failed to kill timed-out hook '{script_name}': {e}");
                 }
                 match child.wait_timeout(Duration::from_secs(5)) {
                     Ok(Some(_)) => {}
-                    Ok(None) => eprintln!(
-                        "Warning: hook '{script_name}' did not terminate after SIGKILL"
-                    ),
-                    Err(e) => eprintln!(
-                        "Warning: error waiting for hook '{script_name}' cleanup: {e}"
-                    ),
+                    Ok(None) => {
+                        eprintln!("Warning: hook '{script_name}' did not terminate after SIGKILL")
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: error waiting for hook '{script_name}' cleanup: {e}")
+                    }
                 }
 
                 return Err(JanusError::HookTimeout {
@@ -411,16 +409,14 @@ async fn execute_hook_async(
             }
             Err(_) => {
                 if let Err(e) = child.kill().await {
-                    eprintln!(
-                        "Warning: failed to kill timed-out hook '{script_name}': {e}"
-                    );
+                    eprintln!("Warning: failed to kill timed-out hook '{script_name}': {e}");
                 }
                 // Give it a moment to clean up
                 match timeout(Duration::from_secs(5), child.wait()).await {
                     Ok(_) => {}
-                    Err(_) => eprintln!(
-                        "Warning: hook '{script_name}' did not terminate after SIGKILL"
-                    ),
+                    Err(_) => {
+                        eprintln!("Warning: hook '{script_name}' did not terminate after SIGKILL")
+                    }
                 }
 
                 return Err(JanusError::HookTimeout {
@@ -506,9 +502,7 @@ fn log_hook_failure(hook_name: &str, error: &JanusError) {
         _ => error.to_string(),
     };
 
-    let log_entry = format!(
-        "{timestamp}: post-hook '{hook_name}' failed: {error_detail}\n"
-    );
+    let log_entry = format!("{timestamp}: post-hook '{hook_name}' failed: {error_detail}\n");
 
     // Try to append to the log file, but don't fail if we can't
     match OpenOptions::new()

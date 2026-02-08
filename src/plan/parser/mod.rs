@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{parse_document, Arena, Options};
+use comrak::{Arena, Options, parse_document};
 use regex::Regex;
 use serde::Deserialize;
 
@@ -31,9 +31,9 @@ use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection};
 
 // Re-export public functions from submodules
 pub use import::{
-    is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
     ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME,
-    PHASE_HEADER_REGEX, PHASE_PATTERN,
+    PHASE_HEADER_REGEX, PHASE_PATTERN, is_completed_task, is_phase_header, is_section_alias,
+    parse_importable_plan,
 };
 pub use sections::parse_ticket_list;
 pub use serialize::serialize_plan;
@@ -657,11 +657,13 @@ No H1 heading, just content.
         let metadata = parse_plan_content(content).unwrap();
         assert!(metadata.title.is_none());
         // Content before first H2 is description
-        assert!(metadata
-            .description
-            .as_ref()
-            .unwrap()
-            .contains("No H1 heading"));
+        assert!(
+            metadata
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("No H1 heading")
+        );
     }
 
     #[test]
@@ -1118,11 +1120,13 @@ Implement the core synchronization logic.
             metadata.title,
             Some("SQLite Cache Implementation Plan".to_string())
         );
-        assert!(metadata
-            .description
-            .as_ref()
-            .unwrap()
-            .contains("SQLite-based caching layer"));
+        assert!(
+            metadata
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("SQLite-based caching layer")
+        );
 
         // Acceptance criteria
         assert_eq!(metadata.acceptance_criteria.len(), 3);

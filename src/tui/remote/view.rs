@@ -10,10 +10,10 @@
 use std::collections::HashSet;
 
 /// Macro to reduce boilerplate in async handlers by consolidating State cloning.
-/// 
+///
 /// This macro simplifies the repetitive pattern where each async handler needs
 /// to clone State values twice (outside closure and inside closure for async block).
-/// 
+///
 /// Usage:
 ///   clone_states!(var1, var2, var3);  
 ///   // expands to: let var1 = var1.clone(); let var2 = var2.clone(); ...
@@ -112,14 +112,16 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         hooks.use_state(super::state::ViewDisplayData::new);
 
     // Detail pane scroll state (separate for local and remote)
-    let mut detail_scroll: State<super::state::DetailScrollData> = hooks.use_state(Default::default);
+    let mut detail_scroll: State<super::state::DetailScrollData> =
+        hooks.use_state(Default::default);
 
     // Operation/modal state
     let mut toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut link_mode: State<Option<LinkModeState>> = hooks.use_state(|| None);
     let mut confirm_dialog: State<Option<ConfirmDialogState>> = hooks.use_state(|| None);
     let mut sync_preview: State<Option<SyncPreviewState>> = hooks.use_state(|| None);
-    let mut modal_visibility: State<super::state::ModalVisibilityData> = hooks.use_state(Default::default);
+    let mut modal_visibility: State<super::state::ModalVisibilityData> =
+        hooks.use_state(Default::default);
 
     // Last error info (for error detail modal) - stores (type, message)
     let last_error: State<Option<(String, String)>> = hooks.use_state(|| None);
@@ -130,7 +132,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let mut search_state = SearchState::use_state(&mut hooks);
 
     // Filter and provider configuration
-    let mut filter_config: State<super::state::FilterConfigData> = hooks.use_state(Default::default);
+    let mut filter_config: State<super::state::FilterConfigData> =
+        hooks.use_state(Default::default);
 
     // Filter modal state (separate from config since it's a modal overlay)
     let mut filter_state: State<Option<FilterState>> = hooks.use_state(|| None);
@@ -626,9 +629,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
                 // Report results
                 if errors.is_empty() {
-                    toast.set(Some(Toast::info(format!(
-                        "Unlinked {unlinked} ticket(s)"
-                    ))));
+                    toast.set(Some(Toast::info(format!("Unlinked {unlinked} ticket(s)"))));
                 } else if unlinked > 0 {
                     // Partial success
                     toast.set(Some(Toast::warning(format!(
@@ -959,8 +960,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             }) if should_process_key_event(kind) => {
                 // Build the handler context with grouped state references
                 use handlers::context::{
-                    AsyncHandlers, FilteringState, ModalState, NavigationState,
-                    SearchState, ViewData, ViewState,
+                    AsyncHandlers, FilteringState, ModalState, NavigationState, SearchState,
+                    ViewData, ViewState,
                 };
 
                 let mut ctx = HandlerContext {

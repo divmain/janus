@@ -2,8 +2,8 @@
 
 use iocraft::prelude::KeyCode;
 
-use super::context::BoardHandlerContext;
 use super::HandleResult;
+use super::context::BoardHandlerContext;
 
 /// Handle navigation keys
 pub fn handle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult {

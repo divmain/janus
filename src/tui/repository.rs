@@ -111,7 +111,9 @@ impl TicketRepository {
         if let Ok(store) = get_or_init_store().await {
             if let Some(updated) = store.get_ticket(ticket_id) {
                 // Find and replace the ticket in the vec
-                if let Some(pos) = tickets.iter().position(|t| t.id.as_deref() == Some(ticket_id))
+                if let Some(pos) = tickets
+                    .iter()
+                    .position(|t| t.id.as_deref() == Some(ticket_id))
                 {
                     tickets[pos] = updated;
                 } else {

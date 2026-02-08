@@ -10,7 +10,7 @@ use crate::tui::components::{
     board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::repository::InitResult;
-use crate::tui::search::{filter_tickets, FilteredTicket};
+use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::types::{TicketMetadata, TicketStatus};
 
 // Column configuration constants

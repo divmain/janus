@@ -25,24 +25,37 @@ impl ReverseEdges {
         for (id, ticket) in ticket_map {
             // Build reverse_deps: for each dep, add this ticket to its reverse list
             for dep in &ticket.deps {
-                reverse_deps.entry(dep.clone()).or_default().push(id.clone());
+                reverse_deps
+                    .entry(dep.clone())
+                    .or_default()
+                    .push(id.clone());
             }
 
             // Build reverse_spawned: for each parent, add this ticket to its children list
             if let Some(parent) = &ticket.spawned_from {
-                reverse_spawned.entry(parent.clone()).or_default().push(id.clone());
+                reverse_spawned
+                    .entry(parent.clone())
+                    .or_default()
+                    .push(id.clone());
             }
         }
 
-        Self { reverse_deps, reverse_spawned }
+        Self {
+            reverse_deps,
+            reverse_spawned,
+        }
     }
 
     fn get_dependents(&self, ticket_id: &str) -> &[String] {
-        self.reverse_deps.get(ticket_id).map_or(&[], |v| v.as_slice())
+        self.reverse_deps
+            .get(ticket_id)
+            .map_or(&[], |v| v.as_slice())
     }
 
     fn get_children(&self, ticket_id: &str) -> &[String] {
-        self.reverse_spawned.get(ticket_id).map_or(&[], |v| v.as_slice())
+        self.reverse_spawned
+            .get(ticket_id)
+            .map_or(&[], |v| v.as_slice())
     }
 }
 

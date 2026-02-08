@@ -1,7 +1,16 @@
+//! Ticket locator module - handles finding and path resolution for tickets
+//!
+//! This module provides the `TicketLocator` type which encapsulates the relationship
+//! between a ticket's ID and its file path on disk. It handles both finding existing
+//! tickets by partial ID and creating locators for new tickets.
+
+use std::path::PathBuf;
+
 use crate::error::{JanusError, Result};
 use crate::locator::ticket_path;
-use crate::utils::{extract_id_from_path, validate_identifier};
-use std::path::PathBuf;
+use crate::store::get_or_init_store;
+use crate::types::tickets_items_dir;
+use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
 
 fn validate_partial_id(id: &str) -> Result<String> {
     validate_identifier(id, "Ticket ID").map_err(|e| match e {
@@ -11,9 +20,93 @@ fn validate_partial_id(id: &str) -> Result<String> {
     })
 }
 
-pub async fn find_ticket_by_id(partial_id: &str) -> Result<PathBuf> {
-    let partial_id = validate_partial_id(partial_id)?;
-    crate::finder::find_ticket_by_id(&partial_id).await
+/// Entity type for ID validation error messages.
+#[derive(Debug, Clone, Copy)]
+enum EntityKind {
+    Ticket,
+}
+
+/// Validate that an ID is safe for filesystem use (no path traversal)
+fn validate_id(id: &str, kind: EntityKind) -> Result<()> {
+    let make_error = |id: &str| match kind {
+        EntityKind::Ticket => JanusError::InvalidTicketId(id.to_string()),
+    };
+
+    // Check for path separators and parent directory references
+    if id.contains('/') || id.contains('\\') || id.contains("..") {
+        return Err(make_error(id));
+    }
+
+    // Ensure ID contains only alphanumeric characters, hyphens, and underscores
+    if !id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(make_error(id));
+    }
+
+    Ok(())
+}
+
+/// Find a ticket by partial ID.
+///
+/// Searches for a ticket file matching the given partial ID in the tickets directory.
+/// Returns the full path to the ticket file if found, or an error if not found
+/// or if multiple tickets match (ambiguous).
+async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
+    let dir = tickets_items_dir();
+
+    // Validate ID before any path construction
+    validate_id(partial_id, EntityKind::Ticket)?;
+
+    // Use store as authoritative source when available; filesystem fallback only when store fails
+    match get_or_init_store().await {
+        Ok(store) => {
+            // Exact match check - does file exist on disk?
+            let exact_match_path = dir.join(format!("{partial_id}.md"));
+            if exact_match_path.exists() {
+                return Ok(exact_match_path);
+            }
+
+            // Partial match via store (store is authoritative, no filesystem fallback)
+            let matches = store.find_by_partial_id(partial_id);
+            match matches.len() {
+                0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+                1 => Ok(dir.join(format!("{}.md", &matches[0]))),
+                _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
+            }
+        }
+        Err(_) => {
+            // FALLBACK: File-based implementation only when store is unavailable
+            find_ticket_by_id_filesystem(partial_id, &dir)
+        }
+    }
+}
+
+/// Filesystem-based find implementation for tickets (fallback when store unavailable).
+fn find_ticket_by_id_filesystem(partial_id: &str, dir: &std::path::Path) -> Result<PathBuf> {
+    let files = DirScanner::find_markdown_files_from_path(dir).unwrap_or_else(|e| {
+        eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);
+        Vec::new()
+    });
+
+    // Check for exact match first
+    let exact_name = format!("{partial_id}.md");
+    if files.iter().any(|f| f == &exact_name) {
+        return Ok(dir.join(&exact_name));
+    }
+
+    // Then check for partial matches
+    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
+
+    match matches.len() {
+        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        1 => Ok(dir.join(matches[0])),
+        _ => Err(JanusError::AmbiguousId(
+            partial_id.to_string(),
+            matches.iter().map(|m| m.replace(".md", "")).collect(),
+        )),
+    }
 }
 
 /// Simple locator for ticket files
@@ -38,7 +131,8 @@ impl TicketLocator {
     ///
     /// Searches for a ticket matching the given partial ID.
     pub async fn find(partial_id: &str) -> Result<Self> {
-        let file_path = find_ticket_by_id(partial_id).await?;
+        let partial_id = validate_partial_id(partial_id)?;
+        let file_path = find_ticket_by_id_impl(&partial_id).await?;
         TicketLocator::new(file_path)
     }
 
@@ -149,5 +243,31 @@ mod tests {
         let path = TicketLocator::file_path_for_id("j-test");
         assert!(path.ends_with("j-test.md"));
         assert!(path.to_string_lossy().contains("items"));
+    }
+
+    #[test]
+    fn test_validate_id_with_path_traversal() {
+        // Path traversal should be rejected
+        assert!(validate_id("../etc/passwd", EntityKind::Ticket).is_err());
+        assert!(validate_id("ticket/../other", EntityKind::Ticket).is_err());
+        assert!(validate_id("ticket\\..\\other", EntityKind::Ticket).is_err());
+    }
+
+    #[test]
+    fn test_validate_id_with_special_chars() {
+        // Special characters should be rejected
+        assert!(validate_id("j@b1", EntityKind::Ticket).is_err());
+        assert!(validate_id("j#b1", EntityKind::Ticket).is_err());
+        assert!(validate_id("j$b1", EntityKind::Ticket).is_err());
+        assert!(validate_id("j%b1", EntityKind::Ticket).is_err());
+    }
+
+    #[test]
+    fn test_validate_id_valid() {
+        // Valid IDs should pass
+        assert!(validate_id("j-a1b2", EntityKind::Ticket).is_ok());
+        assert!(validate_id("j_a1b2", EntityKind::Ticket).is_ok());
+        assert!(validate_id("ticket123", EntityKind::Ticket).is_ok());
+        assert!(validate_id("TICKET-ABC", EntityKind::Ticket).is_ok());
     }
 }

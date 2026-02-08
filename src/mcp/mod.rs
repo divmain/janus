@@ -58,8 +58,6 @@ use resources::{ResourceError, list_all_resource_templates, list_all_resources, 
 use tools::JanusTools;
 use types::{MCP_PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION};
 
-
-
 impl ServerHandler for JanusTools {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {

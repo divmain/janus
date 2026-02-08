@@ -463,13 +463,17 @@ mod tests {
     fn test_is_ticket_path() {
         assert!(is_ticket_path(Path::new("/tmp/foo/.janus/items/j-a1b2.md")));
         assert!(is_ticket_path(Path::new(".janus/items/j-a1b2.md")));
-        assert!(!is_ticket_path(Path::new("/tmp/foo/.janus/plans/plan-a.md")));
+        assert!(!is_ticket_path(Path::new(
+            "/tmp/foo/.janus/plans/plan-a.md"
+        )));
         assert!(!is_ticket_path(Path::new("/tmp/foo/items/j-a1b2.md")));
     }
 
     #[test]
     fn test_is_plan_path() {
-        assert!(is_plan_path(Path::new("/tmp/foo/.janus/plans/plan-a1b2.md")));
+        assert!(is_plan_path(Path::new(
+            "/tmp/foo/.janus/plans/plan-a1b2.md"
+        )));
         assert!(is_plan_path(Path::new(".janus/plans/plan-a1b2.md")));
         assert!(!is_plan_path(Path::new("/tmp/foo/.janus/items/j-a.md")));
         assert!(!is_plan_path(Path::new("/tmp/foo/plans/plan-a.md")));
@@ -545,23 +549,14 @@ mod tests {
 
         let store = leak_store(TicketStore::init().expect("init should succeed"));
         assert_eq!(
-            store
-                .tickets()
-                .get("j-mod1")
-                .unwrap()
-                .title
-                .as_deref(),
+            store.tickets().get("j-mod1").unwrap().title.as_deref(),
             Some("Original Title")
         );
 
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
 
         // Modify the ticket file
-        fs::write(
-            &ticket_path,
-            make_ticket_content("j-mod1", "Updated Title"),
-        )
-        .unwrap();
+        fs::write(&ticket_path, make_ticket_content("j-mod1", "Updated Title")).unwrap();
 
         let result = timeout(Duration::from_secs(3), rx.recv()).await;
         assert!(result.is_ok(), "should receive a broadcast event");
@@ -569,12 +564,7 @@ mod tests {
         sleep(Duration::from_millis(50)).await;
 
         assert_eq!(
-            store
-                .tickets()
-                .get("j-mod1")
-                .unwrap()
-                .title
-                .as_deref(),
+            store.tickets().get("j-mod1").unwrap().title.as_deref(),
             Some("Updated Title")
         );
 
@@ -598,11 +588,7 @@ mod tests {
 
         // Create a ticket file while watcher is running
         let ticket_path = janus_root.join("items").join("j-del1.md");
-        fs::write(
-            &ticket_path,
-            make_ticket_content("j-del1", "To Be Deleted"),
-        )
-        .unwrap();
+        fs::write(&ticket_path, make_ticket_content("j-del1", "To Be Deleted")).unwrap();
 
         // Wait for creation event
         let _ = timeout(Duration::from_secs(3), rx.recv()).await;
@@ -618,7 +604,10 @@ mod tests {
         // Wait for the watcher to process the deletion event.
         let deadline = Duration::from_secs(5);
         let result = timeout(deadline, rx.recv()).await;
-        assert!(result.is_ok(), "should receive a broadcast event for deletion");
+        assert!(
+            result.is_ok(),
+            "should receive a broadcast event for deletion"
+        );
 
         sleep(Duration::from_millis(100)).await;
 

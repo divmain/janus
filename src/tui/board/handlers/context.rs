@@ -9,7 +9,7 @@ use iocraft::prelude::{Handler, State};
 
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::{EditFormState, EditMode};
-use crate::tui::search::{filter_tickets, FilteredTicket};
+use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::types::{TicketMetadata, TicketStatus};
 

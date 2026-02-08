@@ -31,18 +31,23 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::store::get_or_init_store;
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::remote::config::Config;
-use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, check_circular_dependency, get_all_tickets_with_map};
+use crate::store::get_or_init_store;
+use crate::ticket::{
+    Ticket, TicketBuilder, build_ticket_map, check_circular_dependency, get_all_tickets_with_map,
+};
 use crate::types::{TicketMetadata, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
 
-use super::format::{format_children_table_row, format_plan_ticket_entry, format_related_tickets_section, format_ticket_id, format_ticket_table_row, format_ticket_title, format_spawn_context_line};
+use super::format::{
+    format_children_table_row, format_plan_ticket_entry, format_related_tickets_section,
+    format_spawn_context_line, format_ticket_id, format_ticket_table_row, format_ticket_title,
+};
 
 // ============================================================================
 // Tool Request Types
@@ -260,22 +265,23 @@ impl Default for JanusTools {
     }
 }
 
-    /// Macro to register a tool with required arguments (errors if args missing).
-    /// Generates the ToolRoute boilerplate: extract args, deserialize, call impl, wrap result.
-    macro_rules! register_tool {
-        ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident) => {{
-            use rmcp::handler::server::tool::ToolRoute;
-            use rmcp::model::Tool;
-            use schemars::schema_for;
-            use std::sync::Arc;
+/// Macro to register a tool with required arguments (errors if args missing).
+/// Generates the ToolRoute boilerplate: extract args, deserialize, call impl, wrap result.
+macro_rules! register_tool {
+    ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident) => {{
+        use rmcp::handler::server::tool::ToolRoute;
+        use rmcp::model::Tool;
+        use schemars::schema_for;
+        use std::sync::Arc;
 
-            let schema_value = serde_json::to_value(schema_for!($req_type)).unwrap();
-            let schema_obj = match schema_value {
-                serde_json::Value::Object(obj) => obj,
-                _ => panic!("Schema must be an object"),
-            };
-            let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj));
-            let route = ToolRoute::new_dyn(
+        let schema_value = serde_json::to_value(schema_for!($req_type)).unwrap();
+        let schema_obj = match schema_value {
+            serde_json::Value::Object(obj) => obj,
+            _ => panic!("Schema must be an object"),
+        };
+        let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj));
+        let route =
+            ToolRoute::new_dyn(
                 tool,
                 |ctx: rmcp::handler::server::tool::ToolCallContext<'_, JanusTools>| {
                     Box::pin(async move {
@@ -285,16 +291,14 @@ impl Default for JanusTools {
                             message: std::borrow::Cow::Borrowed("Missing arguments"),
                             data: None,
                         })?;
-                        let request: $req_type =
-                            serde_json::from_value(serde_json::Value::Object(args)).map_err(
-                                |e| rmcp::model::ErrorData {
-                                    code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                                    message: std::borrow::Cow::Owned(format!(
-                                        "Invalid parameters: {e}"
-                                    )),
-                                    data: None,
-                                },
-                            )?;
+                        let request: $req_type = serde_json::from_value(serde_json::Value::Object(
+                            args,
+                        ))
+                        .map_err(|e| rmcp::model::ErrorData {
+                            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                            message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
+                            data: None,
+                        })?;
                         match this.$method(Parameters(request)).await {
                             Ok(result) => Ok(rmcp::model::CallToolResult {
                                 content: vec![rmcp::model::Content::text(result)],
@@ -312,41 +316,40 @@ impl Default for JanusTools {
                     })
                 },
             );
-            $router.add_route(route);
-        }};
-    }
+        $router.add_route(route);
+    }};
+}
 
-    /// Macro to register a tool with optional arguments (defaults if args missing).
-    /// Same as register_tool! but uses `unwrap_or_default()` instead of `ok_or(...)`.
-    macro_rules! register_tool_optional_args {
-        ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident) => {{
-            use rmcp::handler::server::tool::ToolRoute;
-            use rmcp::model::Tool;
-            use schemars::schema_for;
-            use std::sync::Arc;
+/// Macro to register a tool with optional arguments (defaults if args missing).
+/// Same as register_tool! but uses `unwrap_or_default()` instead of `ok_or(...)`.
+macro_rules! register_tool_optional_args {
+    ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident) => {{
+        use rmcp::handler::server::tool::ToolRoute;
+        use rmcp::model::Tool;
+        use schemars::schema_for;
+        use std::sync::Arc;
 
-            let schema_value = serde_json::to_value(schema_for!($req_type)).unwrap();
-            let schema_obj = match schema_value {
-                serde_json::Value::Object(obj) => obj,
-                _ => panic!("Schema must be an object"),
-            };
-            let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj));
-            let route = ToolRoute::new_dyn(
+        let schema_value = serde_json::to_value(schema_for!($req_type)).unwrap();
+        let schema_obj = match schema_value {
+            serde_json::Value::Object(obj) => obj,
+            _ => panic!("Schema must be an object"),
+        };
+        let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj));
+        let route =
+            ToolRoute::new_dyn(
                 tool,
                 |ctx: rmcp::handler::server::tool::ToolCallContext<'_, JanusTools>| {
                     Box::pin(async move {
                         let this = ctx.service;
                         let args = ctx.arguments.unwrap_or_default();
-                        let request: $req_type =
-                            serde_json::from_value(serde_json::Value::Object(args)).map_err(
-                                |e| rmcp::model::ErrorData {
-                                    code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                                    message: std::borrow::Cow::Owned(format!(
-                                        "Invalid parameters: {e}"
-                                    )),
-                                    data: None,
-                                },
-                            )?;
+                        let request: $req_type = serde_json::from_value(serde_json::Value::Object(
+                            args,
+                        ))
+                        .map_err(|e| rmcp::model::ErrorData {
+                            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                            message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
+                            data: None,
+                        })?;
                         match this.$method(Parameters(request)).await {
                             Ok(result) => Ok(rmcp::model::CallToolResult {
                                 content: vec![rmcp::model::Content::text(result)],
@@ -364,68 +367,122 @@ impl Default for JanusTools {
                     })
                 },
             );
-            $router.add_route(route);
-        }};
-    }
+        $router.add_route(route);
+    }};
+}
 
 impl JanusTools {
     /// Create a new JanusTools instance with all tools registered
     pub fn new() -> Self {
         let mut router = ToolRouter::new();
 
-        register_tool!(router, "create_ticket",
+        register_tool!(
+            router,
+            "create_ticket",
             "Create a new ticket. Returns the ticket ID and file path.",
-            CreateTicketRequest, create_ticket_impl);
+            CreateTicketRequest,
+            create_ticket_impl
+        );
 
-        register_tool!(router, "spawn_subtask",
+        register_tool!(
+            router,
+            "spawn_subtask",
             "Create a new ticket as a child of an existing ticket. Sets spawning metadata for decomposition tracking.",
-            SpawnSubtaskRequest, spawn_subtask_impl);
+            SpawnSubtaskRequest,
+            spawn_subtask_impl
+        );
 
-        register_tool!(router, "update_status",
+        register_tool!(
+            router,
+            "update_status",
             "Change a ticket's status. Valid statuses: new, next, in_progress, complete, cancelled.",
-            UpdateStatusRequest, update_status_impl);
+            UpdateStatusRequest,
+            update_status_impl
+        );
 
-        register_tool!(router, "add_note",
+        register_tool!(
+            router,
+            "add_note",
             "Add a timestamped note to a ticket. Notes are appended under a '## Notes' section.",
-            AddNoteRequest, add_note_impl);
+            AddNoteRequest,
+            add_note_impl
+        );
 
-        register_tool_optional_args!(router, "list_tickets",
+        register_tool_optional_args!(
+            router,
+            "list_tickets",
             "Query tickets with optional filters. Returns a list of matching tickets with their metadata.",
-            ListTicketsRequest, list_tickets_impl);
+            ListTicketsRequest,
+            list_tickets_impl
+        );
 
-        register_tool!(router, "show_ticket",
+        register_tool!(
+            router,
+            "show_ticket",
             "Get full ticket content including metadata, body, dependencies, and relationships. Returns markdown optimized for LLM consumption.",
-            ShowTicketRequest, show_ticket_impl);
+            ShowTicketRequest,
+            show_ticket_impl
+        );
 
-        register_tool!(router, "add_dependency",
+        register_tool!(
+            router,
+            "add_dependency",
             "Add a dependency. The first ticket will depend on the second (blocking relationship).",
-            AddDependencyRequest, add_dependency_impl);
+            AddDependencyRequest,
+            add_dependency_impl
+        );
 
-        register_tool!(router, "remove_dependency",
+        register_tool!(
+            router,
+            "remove_dependency",
             "Remove a dependency from a ticket.",
-            RemoveDependencyRequest, remove_dependency_impl);
+            RemoveDependencyRequest,
+            remove_dependency_impl
+        );
 
-        register_tool!(router, "add_ticket_to_plan",
+        register_tool!(
+            router,
+            "add_ticket_to_plan",
             "Add a ticket to a plan. For phased plans, specify the phase.",
-            AddTicketToPlanRequest, add_ticket_to_plan_impl);
+            AddTicketToPlanRequest,
+            add_ticket_to_plan_impl
+        );
 
-        register_tool!(router, "get_plan_status",
+        register_tool!(
+            router,
+            "get_plan_status",
             "Get plan status including progress percentage and phase breakdown. Returns markdown optimized for LLM consumption.",
-            GetPlanStatusRequest, get_plan_status_impl);
+            GetPlanStatusRequest,
+            get_plan_status_impl
+        );
 
-        register_tool!(router, "get_children",
+        register_tool!(
+            router,
+            "get_children",
             "Get all tickets that were spawned from a given parent ticket. Returns markdown optimized for LLM consumption.",
-            GetChildrenRequest, get_children_impl);
+            GetChildrenRequest,
+            get_children_impl
+        );
 
-        register_tool_optional_args!(router, "get_next_available_ticket",
+        register_tool_optional_args!(
+            router,
+            "get_next_available_ticket",
             "Query the Janus ticket backlog for the next ticket(s) to work on, based on priority and dependency resolution. Returns tickets in optimal order (dependencies before dependents). Use this if you've been instructed to work on tickets on the backlog. Do NOT use this for guidance on your current task.",
-            GetNextAvailableTicketRequest, get_next_available_ticket_impl);
+            GetNextAvailableTicketRequest,
+            get_next_available_ticket_impl
+        );
 
-        register_tool!(router, "semantic_search",
+        register_tool!(
+            router,
+            "semantic_search",
             "Find tickets semantically similar to a natural language query. Uses vector embeddings for fuzzy matching by intent rather than exact keywords.",
-            SemanticSearchRequest, semantic_search_impl);
+            SemanticSearchRequest,
+            semantic_search_impl
+        );
 
-        Self { tool_router: router }
+        Self {
+            tool_router: router,
+        }
     }
 
     /// Get the tool router for use with ServerHandler
@@ -1135,9 +1192,7 @@ impl JanusTools {
                 }
             }
             Err(e) => {
-                eprintln!(
-                    "Warning: failed to load config: {e}. Proceeding with semantic search."
-                );
+                eprintln!("Warning: failed to load config: {e}. Proceeding with semantic search.");
             }
         }
 
@@ -1494,9 +1549,7 @@ fn format_children_as_markdown(
     let mut output = String::new();
 
     // Header with parent info
-    output.push_str(&format!(
-        "# Children of {parent_id}: {parent_title}\n\n"
-    ));
+    output.push_str(&format!("# Children of {parent_id}: {parent_title}\n\n"));
 
     // Handle empty results
     if children.is_empty() {
@@ -1682,7 +1735,12 @@ mod tests {
         // b -> a should fail because a already depends on b
         let result = check_circular_dependency("b", "a", &ticket_map);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("circular dependency"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("circular dependency")
+        );
     }
 
     #[test]

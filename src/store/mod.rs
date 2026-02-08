@@ -106,17 +106,11 @@ impl TicketStore {
                             }
                         }
                         Err(e) => {
-                            eprintln!(
-                                "Warning: failed to parse ticket {}: {e}",
-                                path.display()
-                            );
+                            eprintln!("Warning: failed to parse ticket {}: {e}", path.display());
                         }
                     },
                     Err(e) => {
-                        eprintln!(
-                            "Warning: failed to read ticket {}: {e}",
-                            path.display()
-                        );
+                        eprintln!("Warning: failed to read ticket {}: {e}", path.display());
                     }
                 }
             }
@@ -150,17 +144,11 @@ impl TicketStore {
                             }
                         }
                         Err(e) => {
-                            eprintln!(
-                                "Warning: failed to parse plan {}: {e}",
-                                path.display()
-                            );
+                            eprintln!("Warning: failed to parse plan {}: {e}", path.display());
                         }
                     },
                     Err(e) => {
-                        eprintln!(
-                            "Warning: failed to read plan {}: {e}",
-                            path.display()
-                        );
+                        eprintln!("Warning: failed to read plan {}: {e}", path.display());
                     }
                 }
             }
@@ -263,8 +251,8 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
-    use super::*;
     use super::test_helpers::{make_plan_content, make_ticket_content};
+    use super::*;
     use crate::types::{TicketPriority, TicketStatus, TicketType};
 
     /// Set up a temporary Janus directory with ticket and plan files.
