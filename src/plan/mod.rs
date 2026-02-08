@@ -16,11 +16,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::cache::get_or_init_store;
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
-use crate::store::get_or_init_store;
 use crate::types::{EntityType, TicketMetadata, plans_dir};
 use crate::utils::{DirScanner, extract_id_from_path};
 
@@ -208,7 +208,7 @@ impl Plan {
     /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `PlanUpdated`
     /// hooks after successful write.
     pub fn write(&self, content: &str) -> Result<()> {
-        crate::storage::with_write_hooks(
+        crate::fs::with_write_hooks(
             self.hook_context(),
             || self.write_raw(content),
             Some(HookEvent::PlanUpdated),
@@ -352,7 +352,7 @@ impl Entity for Plan {
 /// The store is populated from disk on first access and kept
 /// up-to-date via the filesystem watcher.
 pub async fn get_all_plans() -> Result<PlanLoadResult> {
-    match crate::store::get_or_init_store().await {
+    match crate::cache::get_or_init_store().await {
         Ok(store) => {
             let plans = store.get_all_plans();
             let mut result = PlanLoadResult::new();

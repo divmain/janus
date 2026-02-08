@@ -4,7 +4,7 @@
 //! All functions are async and use the in-memory store.
 
 use crate::TicketMetadata;
-use crate::store::get_or_init_store;
+use crate::cache::get_or_init_store;
 use crate::ticket::content;
 use crate::types::LoadResult;
 use crate::utils::DirScanner;

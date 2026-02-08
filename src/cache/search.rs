@@ -1,5 +1,5 @@
+use crate::cache::TicketStore;
 use crate::embedding::model::cosine_similarity;
-use crate::store::TicketStore;
 use crate::types::TicketMetadata;
 
 /// Result of a semantic search, containing the matched ticket and its similarity score.
@@ -52,7 +52,7 @@ impl TicketStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::store::TicketStore;
+    use crate::cache::TicketStore;
     use crate::types::{TicketMetadata, TicketStatus};
 
     /// Helper to create a store with tickets and mock embeddings.

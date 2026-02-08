@@ -432,8 +432,8 @@ mod tests {
     use tokio::time::{sleep, timeout};
 
     use super::*;
-    use crate::store::TicketStore;
-    use crate::store::test_helpers::{make_plan_content, make_ticket_content};
+    use crate::cache::TicketStore;
+    use crate::cache::test_helpers::{make_plan_content, make_ticket_content};
 
     /// Set up a temporary Janus directory structure.
     fn setup_test_dir() -> TempDir {

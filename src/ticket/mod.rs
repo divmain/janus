@@ -133,7 +133,7 @@ impl Ticket {
 
     /// Write content to the ticket file with hooks.
     pub fn write(&self, content: &str) -> Result<()> {
-        crate::storage::with_write_hooks(
+        crate::fs::with_write_hooks(
             self.hook_context(),
             || self.write_raw(content),
             Some(HookEvent::TicketUpdated),
@@ -162,7 +162,7 @@ impl Ticket {
             .with_field_name(field)
             .with_new_value(value);
 
-        crate::storage::with_write_hooks(
+        crate::fs::with_write_hooks(
             context,
             || {
                 let new_content = update_field_in_content(&raw_content, field, value)?;
@@ -180,7 +180,7 @@ impl Ticket {
 
         let context = self.hook_context().with_field_name(field);
 
-        crate::storage::with_write_hooks(
+        crate::fs::with_write_hooks(
             context,
             || {
                 let new_content = remove_field_from_content(&raw_content, field)?;
@@ -261,7 +261,7 @@ impl Ticket {
             .with_field_name(field)
             .with_new_value(&json_value);
 
-        crate::storage::with_write_hooks(
+        crate::fs::with_write_hooks(
             context,
             || {
                 let new_content = update_field_in_content(&raw_content, field, &json_value)?;

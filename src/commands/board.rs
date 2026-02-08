@@ -5,8 +5,8 @@
 
 use iocraft::prelude::*;
 
+use crate::cache::{get_or_init_store, start_watching};
 use crate::error::{JanusError, Result};
-use crate::store::{get_or_init_store, start_watching};
 use crate::tui::KanbanBoard;
 
 /// Launch the kanban board TUI

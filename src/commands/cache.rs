@@ -2,9 +2,9 @@ use serde_json::json;
 use std::fs;
 
 use super::CommandOutput;
+use crate::cache::get_or_init_store;
 use crate::error::Result;
 use crate::events::log_cache_rebuilt;
-use crate::store::get_or_init_store;
 
 use crate::embedding::model::EMBEDDING_MODEL_NAME;
 
@@ -82,7 +82,7 @@ pub async fn cmd_cache_prune(output_json: bool) -> Result<()> {
             Some(ns) => ns,
             None => continue,
         };
-        let key = crate::store::TicketStore::embedding_key(file_path, mtime_ns);
+        let key = crate::cache::TicketStore::embedding_key(file_path, mtime_ns);
         valid_keys.insert(key);
     }
 
@@ -95,7 +95,7 @@ pub async fn cmd_cache_prune(output_json: bool) -> Result<()> {
     };
 
     // 3. Prune orphaned embedding files
-    let pruned_count = match crate::store::TicketStore::prune_orphaned(&valid_keys) {
+    let pruned_count = match crate::cache::TicketStore::prune_orphaned(&valid_keys) {
         Ok(count) => count,
         Err(e) => {
             return Err(crate::error::JanusError::Io(e));
@@ -194,8 +194,8 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
         // Generate embedding
         match crate::embedding::model::generate_embedding(&text).await {
             Ok(embedding) => {
-                let key = crate::store::TicketStore::embedding_key(file_path, mtime_ns);
-                if let Err(e) = crate::store::TicketStore::save_embedding(&key, &embedding) {
+                let key = crate::cache::TicketStore::embedding_key(file_path, mtime_ns);
+                if let Err(e) = crate::cache::TicketStore::save_embedding(&key, &embedding) {
                     if !output_json {
                         eprintln!(
                             "Warning: failed to save embedding for {}: {e}",
@@ -222,7 +222,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
     }
 
     // Prune orphaned embedding files
-    if let Err(e) = crate::store::TicketStore::prune_orphaned(&valid_keys) {
+    if let Err(e) = crate::cache::TicketStore::prune_orphaned(&valid_keys) {
         if !output_json {
             eprintln!("Warning: failed to prune orphaned embeddings: {e}");
         }

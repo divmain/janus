@@ -3,11 +3,11 @@
 //! This command performs semantic search over tickets using vector embeddings
 //! to find tickets semantically similar to the query text.
 
+use crate::cache::get_or_init_store;
+use crate::cache::search::SearchResult;
 use crate::commands::print_json;
 use crate::error::{JanusError, Result};
 use crate::remote::config::Config;
-use crate::store::get_or_init_store;
-use crate::store::search::SearchResult;
 use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};

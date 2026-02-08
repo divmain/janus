@@ -8,6 +8,7 @@ pub mod entity;
 pub mod error;
 pub mod events;
 pub mod formatting;
+pub mod fs;
 pub mod hooks;
 pub mod locator;
 pub mod mcp;
@@ -17,14 +18,13 @@ pub mod plan;
 pub mod query;
 pub mod remote;
 pub mod status;
-pub mod storage;
 pub mod ticket;
 pub mod tui;
 pub mod types;
 pub mod utils;
 
+pub mod cache;
 pub mod embedding;
-pub mod store;
 
 pub use entity::Entity;
 pub use error::{JanusError, Result};

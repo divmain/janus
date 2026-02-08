@@ -31,13 +31,13 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use crate::cache::get_or_init_store;
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{PlanMetadata, PlanStatus};
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::remote::config::Config;
-use crate::store::get_or_init_store;
 use crate::ticket::{
     Ticket, TicketBuilder, build_ticket_map, check_circular_dependency, get_all_tickets_with_map,
 };
