@@ -3,11 +3,15 @@ use std::sync::LazyLock;
 
 use comrak::nodes::NodeValue;
 use comrak::{Arena, Options};
+use dashmap::DashMap;
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde_yaml_ng as yaml;
 
 use crate::error::{JanusError, Result};
+/// Cache for compiled section regexes to avoid recompilation on every call.
+/// The key is the regex pattern string, the value is the compiled Regex.
+static SECTION_REGEX_CACHE: LazyLock<DashMap<String, Regex>> = LazyLock::new(DashMap::new);
 
 pub static TITLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid"));
@@ -131,7 +135,16 @@ impl ParsedDocument {
             r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
             regex::escape(section_name)
         );
-        let section_re = Regex::new(&pattern).expect("section regex should be valid");
+
+        // Try to get from cache first, otherwise compile and cache
+        let section_re = SECTION_REGEX_CACHE
+            .get(&pattern)
+            .map(|r| r.clone())
+            .unwrap_or_else(|| {
+                let re = Regex::new(&pattern).expect("section regex should be valid");
+                SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
+                re
+            });
 
         section_re.captures(&self.body).map(|caps| {
             caps.get(1)
@@ -156,7 +169,16 @@ impl ParsedDocument {
             r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
             regex::escape(section_name)
         );
-        let section_re = Regex::new(&pattern).expect("section regex should be valid");
+
+        // Try to get from cache first, otherwise compile and cache
+        let section_re = SECTION_REGEX_CACHE
+            .get(&pattern)
+            .map(|r| r.clone())
+            .unwrap_or_else(|| {
+                let re = Regex::new(&pattern).expect("section regex should be valid");
+                SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
+                re
+            });
 
         if let Some(caps) = section_re.captures(&self.body) {
             // Section exists - replace its content
