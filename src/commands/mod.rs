@@ -7,7 +7,7 @@ mod dep;
 mod dep_tree;
 mod doctor;
 mod edit;
-mod graph;
+pub mod graph;
 pub mod hook;
 pub mod interactive;
 

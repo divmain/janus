@@ -5,7 +5,9 @@ mod filter;
 mod formatter;
 mod types;
 
-pub use types::{EdgeType, GraphFormat};
+pub use builder::build_edges;
+pub use formatter::generate_dot;
+pub use types::{Edge, EdgeType, GraphFormat, RelationshipFilter};
 
 use std::collections::HashSet;
 
@@ -15,9 +17,8 @@ use super::CommandOutput;
 use crate::error::Result;
 use crate::ticket::build_ticket_map;
 
-use builder::build_edges;
 use filter::{get_plan_tickets, get_reachable_tickets};
-use formatter::{generate_dot, generate_mermaid};
+use formatter::generate_mermaid;
 
 /// Build the graph command output
 pub async fn cmd_graph(

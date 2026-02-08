@@ -18,7 +18,7 @@
 //! | `janus://graph/deps` | Dependency graph (DOT) | text/vnd.graphviz |
 //! | `janus://graph/spawning` | Spawning graph (DOT) | text/vnd.graphviz |
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use rmcp::model::{
     ListResourcesResult, RawResource, RawResourceTemplate, ReadResourceResult, Resource,
@@ -26,6 +26,7 @@ use rmcp::model::{
 };
 use serde_json::json;
 
+use crate::commands::graph::{RelationshipFilter, build_edges, generate_dot};
 use crate::commands::{get_next_items_phased, get_next_items_simple};
 
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
@@ -560,7 +561,9 @@ async fn read_graph_deps() -> Result<ReadResourceResult, ResourceError> {
     let ticket_map = build_ticket_map()
         .await
         .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
-    let dot = generate_graph_dot(&ticket_map, GraphType::Deps);
+    let ticket_ids: HashSet<String> = ticket_map.keys().cloned().collect();
+    let edges = build_edges(&ticket_ids, &ticket_map, RelationshipFilter::Deps);
+    let dot = generate_dot(&ticket_ids, &edges, &ticket_map);
 
     Ok(ReadResourceResult {
         contents: vec![ResourceContents::TextResourceContents {
@@ -577,7 +580,9 @@ async fn read_graph_spawning() -> Result<ReadResourceResult, ResourceError> {
     let ticket_map = build_ticket_map()
         .await
         .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
-    let dot = generate_graph_dot(&ticket_map, GraphType::Spawn);
+    let ticket_ids: HashSet<String> = ticket_map.keys().cloned().collect();
+    let edges = build_edges(&ticket_ids, &ticket_map, RelationshipFilter::Spawn);
+    let dot = generate_dot(&ticket_ids, &edges, &ticket_map);
 
     Ok(ReadResourceResult {
         contents: vec![ResourceContents::TextResourceContents {
@@ -605,148 +610,6 @@ fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
         "spawned_from": ticket.spawned_from,
         "depth": ticket.depth,
     })
-}
-
-/// Type of graph to generate
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GraphType {
-    Deps,
-    Spawn,
-}
-
-/// Edge in the graph
-#[derive(Debug, Clone)]
-struct Edge {
-    from: String,
-    to: String,
-    edge_type: EdgeType,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EdgeType {
-    /// Dependency: from blocks to
-    Blocks,
-    /// Spawning: from spawned to
-    Spawned,
-}
-
-/// Generate DOT format graph
-fn generate_graph_dot(
-    ticket_map: &HashMap<String, TicketMetadata>,
-    graph_type: GraphType,
-) -> String {
-    let ticket_ids: HashSet<String> = ticket_map.keys().cloned().collect();
-    let edges = build_edges(&ticket_ids, ticket_map, graph_type);
-
-    let mut lines = vec![
-        "digraph janus {".to_string(),
-        "  rankdir=TB;".to_string(),
-        "  node [shape=box];".to_string(),
-        String::new(),
-    ];
-
-    // Sort ticket IDs for deterministic output
-    let mut sorted_ids: Vec<_> = ticket_ids.iter().collect();
-    sorted_ids.sort();
-
-    // Nodes
-    lines.push("  // Nodes".to_string());
-    for id in &sorted_ids {
-        let title = ticket_map
-            .get(*id)
-            .and_then(|t| t.title.as_ref())
-            .map(|t| truncate_title(t, 30))
-            .unwrap_or_default();
-        let label = format!("{}\\n{}", escape_dot(id), escape_dot(&title));
-        lines.push(format!("  \"{id}\" [label=\"{label}\"];"));
-    }
-
-    if !edges.is_empty() {
-        lines.push(String::new());
-        lines.push("  // Edges".to_string());
-
-        // Sort edges for deterministic output
-        let mut sorted_edges = edges;
-        sorted_edges.sort_by(|a, b| (&a.from, &a.to).cmp(&(&b.from, &b.to)));
-
-        for edge in &sorted_edges {
-            match edge.edge_type {
-                EdgeType::Blocks => {
-                    lines.push(format!(
-                        "  \"{}\" -> \"{}\" [label=\"blocks\"];",
-                        edge.from, edge.to
-                    ));
-                }
-                EdgeType::Spawned => {
-                    lines.push(format!(
-                        "  \"{}\" -> \"{}\" [style=dashed, label=\"spawned\"];",
-                        edge.from, edge.to
-                    ));
-                }
-            }
-        }
-    }
-
-    lines.push("}".to_string());
-    lines.join("\n")
-}
-
-/// Build edges between tickets based on graph type
-fn build_edges(
-    ticket_ids: &HashSet<String>,
-    ticket_map: &HashMap<String, TicketMetadata>,
-    graph_type: GraphType,
-) -> Vec<Edge> {
-    let mut edges = Vec::new();
-
-    for id in ticket_ids {
-        if let Some(ticket) = ticket_map.get(id) {
-            match graph_type {
-                GraphType::Deps => {
-                    // Add dependency edges
-                    for dep in &ticket.deps {
-                        if ticket_ids.contains(dep) {
-                            edges.push(Edge {
-                                from: id.clone(),
-                                to: dep.clone(),
-                                edge_type: EdgeType::Blocks,
-                            });
-                        }
-                    }
-                }
-                GraphType::Spawn => {
-                    // Add spawning edges
-                    if let Some(parent) = &ticket.spawned_from
-                        && ticket_ids.contains(parent)
-                    {
-                        edges.push(Edge {
-                            from: parent.clone(),
-                            to: id.clone(),
-                            edge_type: EdgeType::Spawned,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    edges
-}
-
-/// Truncate title to a maximum length
-fn truncate_title(title: &str, max_len: usize) -> String {
-    if title.len() <= max_len {
-        title.to_string()
-    } else {
-        format!("{}...", &title[..max_len - 3])
-    }
-}
-
-/// Escape a string for DOT format
-fn escape_dot(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
 }
 
 #[cfg(test)]
@@ -804,83 +667,6 @@ mod tests {
         assert_eq!(json["status"], "new");
         assert_eq!(json["spawned_from"], "j-parent");
         assert_eq!(json["depth"], 1);
-    }
-
-    #[test]
-    fn test_truncate_title() {
-        assert_eq!(truncate_title("short", 30), "short");
-        assert_eq!(
-            truncate_title("this is a very long title that exceeds limit", 20),
-            "this is a very lo..."
-        );
-    }
-
-    #[test]
-    fn test_escape_dot() {
-        assert_eq!(escape_dot("hello"), "hello");
-        assert_eq!(escape_dot("hello \"world\""), "hello \\\"world\\\"");
-        assert_eq!(escape_dot("line1\nline2"), "line1\\nline2");
-    }
-
-    #[test]
-    fn test_generate_graph_dot_empty() {
-        let ticket_map = HashMap::new();
-        let dot = generate_graph_dot(&ticket_map, GraphType::Deps);
-        assert!(dot.contains("digraph janus"));
-        assert!(dot.contains("rankdir=TB"));
-    }
-
-    #[test]
-    fn test_generate_graph_dot_with_deps() {
-        let mut ticket_map = HashMap::new();
-        ticket_map.insert(
-            "j-a".to_string(),
-            TicketMetadata {
-                id: Some("j-a".to_string()),
-                title: Some("Ticket A".to_string()),
-                deps: vec!["j-b".to_string()],
-                ..Default::default()
-            },
-        );
-        ticket_map.insert(
-            "j-b".to_string(),
-            TicketMetadata {
-                id: Some("j-b".to_string()),
-                title: Some("Ticket B".to_string()),
-                ..Default::default()
-            },
-        );
-
-        let dot = generate_graph_dot(&ticket_map, GraphType::Deps);
-        assert!(dot.contains("\"j-a\" -> \"j-b\""));
-        assert!(dot.contains("blocks"));
-    }
-
-    #[test]
-    fn test_generate_graph_dot_with_spawn() {
-        let mut ticket_map = HashMap::new();
-        ticket_map.insert(
-            "j-parent".to_string(),
-            TicketMetadata {
-                id: Some("j-parent".to_string()),
-                title: Some("Parent".to_string()),
-                ..Default::default()
-            },
-        );
-        ticket_map.insert(
-            "j-child".to_string(),
-            TicketMetadata {
-                id: Some("j-child".to_string()),
-                title: Some("Child".to_string()),
-                spawned_from: Some("j-parent".to_string()),
-                ..Default::default()
-            },
-        );
-
-        let dot = generate_graph_dot(&ticket_map, GraphType::Spawn);
-        assert!(dot.contains("\"j-parent\" -> \"j-child\""));
-        assert!(dot.contains("spawned"));
-        assert!(dot.contains("style=dashed"));
     }
 
     #[test]
