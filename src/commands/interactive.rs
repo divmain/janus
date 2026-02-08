@@ -5,7 +5,7 @@
 
 use std::io::{self, Write};
 
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 
 /// Prompt user for yes/no confirmation
 ///
@@ -60,7 +60,11 @@ pub fn select_option(prompt: &str, options: &[&str], default: Option<usize>) -> 
         io::stdout().flush()?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        let bytes_read = io::stdin().read_line(&mut input)?;
+
+        if bytes_read == 0 {
+            return Err(JanusError::Other("EOF on stdin".into()));
+        }
 
         let input = input.trim();
 
@@ -150,7 +154,11 @@ pub fn prompt_choice(
         io::stdout().flush()?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        let bytes_read = io::stdin().read_line(&mut input)?;
+
+        if bytes_read == 0 {
+            return Err(JanusError::Other("EOF on stdin".into()));
+        }
 
         let input = input.trim().to_lowercase();
 

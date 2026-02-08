@@ -54,22 +54,28 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()
 pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
     let ticket = Ticket::find(id).await?;
 
-    let removed = ticket.remove_from_array_field("deps", dep_id)?;
+    // Resolve the dependency ID to get the full ID
+    let dep_ticket = Ticket::find(dep_id).await?;
+
+    let removed = ticket.remove_from_array_field("deps", &dep_ticket.id)?;
     if !removed {
-        return Err(JanusError::DependencyNotFound(dep_id.to_string()));
+        return Err(JanusError::DependencyNotFound(dep_ticket.id.clone()));
     }
 
     // Log the event
-    log_dependency_removed(&ticket.id, dep_id);
+    log_dependency_removed(&ticket.id, &dep_ticket.id);
 
     let metadata = ticket.read()?;
     CommandOutput::new(json!({
         "id": ticket.id,
         "action": "dep_removed",
-        "dep_id": dep_id,
+        "dep_id": dep_ticket.id,
         "current_deps": metadata.deps,
     }))
-    .with_text(format!("Removed dependency: {} -/-> {}", ticket.id, dep_id))
+    .with_text(format!(
+        "Removed dependency: {} -/-> {}",
+        ticket.id, dep_ticket.id
+    ))
     .print(output_json)
 }
 

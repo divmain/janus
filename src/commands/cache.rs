@@ -146,22 +146,6 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
     let start_total = std::time::Instant::now();
 
-    // Delete existing embeddings directory
-    let emb_dir = crate::types::janus_root().join("embeddings");
-    if emb_dir.exists() {
-        if !output_json {
-            println!(
-                "Deleting existing embeddings at: {}",
-                crate::utils::format_relative_path(&emb_dir)
-            );
-        }
-        if let Err(e) = fs::remove_dir_all(&emb_dir) {
-            if !output_json {
-                println!("Warning: failed to delete embeddings directory: {e}");
-            }
-        }
-    }
-
     // Re-embed all tickets
     let store = get_or_init_store().await?;
     let tickets = store.get_all_tickets();

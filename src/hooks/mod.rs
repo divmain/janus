@@ -452,7 +452,7 @@ async fn execute_hook_async(
 ///
 /// # Returns
 /// A HashMap of environment variable names to values
-pub fn context_to_env(context: &HookContext, _janus_root: &Path) -> HashMap<String, String> {
+pub fn context_to_env(context: &HookContext, janus_root: &Path) -> HashMap<String, String> {
     let mut env = HashMap::new();
 
     if let Some(event) = &context.event {
@@ -486,7 +486,10 @@ pub fn context_to_env(context: &HookContext, _janus_root: &Path) -> HashMap<Stri
         env.insert("JANUS_NEW_VALUE".to_string(), new_value.clone());
     }
 
-    env.insert("JANUS_ROOT".to_string(), ".janus".to_string());
+    env.insert(
+        "JANUS_ROOT".to_string(),
+        crate::utils::format_relative_path(janus_root),
+    );
 
     env
 }
