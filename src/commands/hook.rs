@@ -102,15 +102,14 @@ pub fn cmd_hook_list(output_json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Install a hook recipe from GitHub
-pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> Result<()> {
-    if !output_json {
-        println!("Fetching recipe '{}'...", recipe.cyan());
-    }
-
-    let client = reqwest::Client::new();
-
-    // Fetch the recipe directory contents
+/// Phase 1: Fetch hook scripts from GitHub
+///
+/// Downloads the recipe configuration and all files from the recipe's
+/// files directory via the GitHub API.
+async fn fetch_hook_scripts(
+    recipe: &str,
+    client: &reqwest::Client,
+) -> Result<(RecipeConfig, Vec<(String, String)>)> {
     let recipe_url = format!("{GITHUB_API_BASE}/{recipe}");
     let response = client
         .get(&recipe_url)
@@ -135,11 +134,10 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
 
     // Find config.yaml and files directory
     let mut config_content: Option<String> = None;
-    let mut files_to_install: Vec<(String, String)> = Vec::new(); // (relative_path, content)
+    let mut files_to_install: Vec<(String, String)> = Vec::new();
 
     for item in &contents {
         if item.name == "config.yaml" && item.content_type == "file" {
-            // Fetch config.yaml content
             if let Some(download_url) = &item.download_url {
                 let content = client
                     .get(download_url)
@@ -151,8 +149,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
                 config_content = Some(content);
             }
         } else if item.name == "files" && item.content_type == "dir" {
-            // Recursively fetch all files in the files directory
-            files_to_install = fetch_files_recursive(&client, &item.path).await?;
+            files_to_install = fetch_files_recursive(client, &item.path).await?;
         }
     }
 
@@ -164,25 +161,26 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
         )));
     };
 
-    // Security warning for interactive mode before installing remote scripts
-    if !output_json && !force && is_stdin_tty() {
-        let confirmed = interactive::confirm(&format!(
-            "You are about to install and execute scripts from {}. Continue",
-            "github.com/divmain/janus".cyan()
-        ))?;
-        if !confirmed {
-            println!("Installation aborted.");
-            return Ok(());
-        }
-        println!();
-    }
+    Ok((recipe_config, files_to_install))
+}
 
-    // Check for conflicts and handle based on mode
+/// Files to be written: (target_path, content, is_executable)
+type FilesToWrite = Vec<(PathBuf, String, bool)>;
+
+/// Phase 2: Resolve file conflicts interactively or via force flag
+///
+/// Determines which files should be written vs skipped based on existing
+/// files and user preferences (interactive mode, JSON mode, force flag).
+fn resolve_conflicts(
+    files_to_install: &[(String, String)],
+    force: bool,
+    output_json: bool,
+) -> Result<(FilesToWrite, Vec<String>)> {
     let janus_dir = janus_root();
-    let mut files_to_write: Vec<(PathBuf, String, bool)> = Vec::new(); // (path, content, is_executable)
+    let mut files_to_write: Vec<(PathBuf, String, bool)> = Vec::new();
     let mut files_skipped: Vec<String> = Vec::new();
 
-    for (relative_path, content) in &files_to_install {
+    for (relative_path, content) in files_to_install {
         let target_path = janus_dir.join(relative_path);
         let is_hook_script = relative_path.starts_with("hooks/");
 
@@ -208,7 +206,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
                     }
                     1 => {
                         println!("Installation aborted.");
-                        return Ok(());
+                        return Ok((Vec::new(), Vec::new()));
                     }
                     _ => {
                         println!("  Skipping {relative_path}");
@@ -221,8 +219,20 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
         }
     }
 
-    // Create directories and write files
-    for (path, content, is_executable) in &files_to_write {
+    Ok((files_to_write, files_skipped))
+}
+
+/// Phase 3: Write hook files to disk with proper permissions
+///
+/// Creates parent directories, writes file content, and sets executable
+/// permissions on hook scripts.
+fn write_hook_files(
+    files_to_write: &[(PathBuf, String, bool)],
+    output_json: bool,
+) -> Result<Vec<String>> {
+    let mut installed_files: Vec<String> = Vec::new();
+
+    for (path, content, is_executable) in files_to_write {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 JanusError::Io(std::io::Error::new(
@@ -279,34 +289,86 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
                 crate::utils::format_relative_path(path).green()
             );
         }
+
+        installed_files.push(
+            path.file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_default(),
+        );
     }
 
-    // Merge config into .janus/config.yaml
+    Ok(installed_files)
+}
+
+/// Phase 4: Update hook configuration
+///
+/// Merges recipe hooks configuration into the main Janus config file.
+fn update_hook_config(recipe_config: &RecipeConfig, output_json: bool) -> Result<bool> {
     let mut config_updated = false;
-    if let Some(hooks_config) = recipe_config.hooks
-        && let Some(scripts) = hooks_config.scripts
-    {
-        let mut config = Config::load()?;
-        for (event, script) in scripts {
-            config.hooks.scripts.insert(event, script);
-        }
-        config.save()?;
-        config_updated = true;
-        if !output_json {
-            println!("  Updated {}", "config.yaml".green());
+
+    if let Some(hooks_config) = &recipe_config.hooks {
+        if let Some(scripts) = &hooks_config.scripts {
+            let mut config = Config::load()?;
+            for (event, script) in scripts {
+                config.hooks.scripts.insert(event.clone(), script.clone());
+            }
+            config.save()?;
+            config_updated = true;
+            if !output_json {
+                println!("  Updated {}", "config.yaml".green());
+            }
         }
     }
 
-    if output_json {
-        let installed_files: Vec<String> = files_to_write
-            .iter()
-            .map(|(path, _, _)| {
-                path.file_name()
-                    .map(|f| f.to_string_lossy().to_string())
-                    .unwrap_or_default()
-            })
-            .collect();
+    Ok(config_updated)
+}
 
+/// Install a hook recipe from GitHub
+///
+/// Orchestrates the four phases of hook installation:
+/// 1. Fetch hook scripts from GitHub
+/// 2. Resolve file conflicts
+/// 3. Write hook files
+/// 4. Update hook configuration
+pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> Result<()> {
+    if !output_json {
+        println!("Fetching recipe '{}'...", recipe.cyan());
+    }
+
+    let client = reqwest::Client::new();
+
+    // Phase 1: Fetch hook scripts
+    let (recipe_config, files_to_install) = fetch_hook_scripts(recipe, &client).await?;
+
+    // Security warning for interactive mode before installing remote scripts
+    if !output_json && !force && is_stdin_tty() {
+        let confirmed = interactive::confirm(&format!(
+            "You are about to install and execute scripts from {}. Continue",
+            "github.com/divmain/janus".cyan()
+        ))?;
+        if !confirmed {
+            println!("Installation aborted.");
+            return Ok(());
+        }
+        println!();
+    }
+
+    // Phase 2: Resolve conflicts
+    let (files_to_write, files_skipped) = resolve_conflicts(&files_to_install, force, output_json)?;
+
+    // Early exit if user aborted during conflict resolution
+    if files_to_write.is_empty() && files_skipped.is_empty() {
+        return Ok(());
+    }
+
+    // Phase 3: Write hook files
+    let installed_files = write_hook_files(&files_to_write, output_json)?;
+
+    // Phase 4: Update hook configuration
+    let config_updated = update_hook_config(&recipe_config, output_json)?;
+
+    // Output results
+    if output_json {
         CommandOutput::new(json!({
             "action": "hook_install",
             "recipe": recipe,
