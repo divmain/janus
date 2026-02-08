@@ -238,7 +238,7 @@ impl Plan {
 
     /// Ensure the parent directory exists
     fn ensure_parent_dir(&self) -> Result<()> {
-        crate::utils::ensure_parent_dir(&self.file_path)
+        crate::fs::ensure_parent_dir(&self.file_path)
     }
 
     /// Delete the plan file

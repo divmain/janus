@@ -267,7 +267,7 @@ impl TicketBuilder {
         let file_path = items_dir.join(format!("{id}.md"));
 
         // Ensure parent directory exists
-        crate::utils::ensure_parent_dir(&file_path)?;
+        crate::fs::ensure_parent_dir(&file_path)?;
 
         if self.run_hooks {
             let context = HookContext::new()

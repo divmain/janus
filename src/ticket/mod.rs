@@ -113,7 +113,7 @@ impl Ticket {
 
     /// Ensure the parent directory exists (blocking - for sync contexts).
     fn ensure_parent_dir(&self) -> Result<()> {
-        crate::utils::ensure_parent_dir(&self.file_path)
+        crate::fs::ensure_parent_dir(&self.file_path)
     }
 
     /// Update a field in the ticket's frontmatter.
