@@ -4,8 +4,58 @@ use crate::types::{
     EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
 };
 use crate::utils;
+use serde::Serialize;
 use std::path::PathBuf;
 use std::str::FromStr;
+
+/// Wrapper for priority that serializes as an integer
+#[derive(Debug, Clone, Copy)]
+struct PriorityAsU8(u8);
+
+impl Serialize for PriorityAsU8 {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u8(self.0)
+    }
+}
+
+impl From<TicketPriority> for PriorityAsU8 {
+    fn from(p: TicketPriority) -> Self {
+        PriorityAsU8(p.as_num())
+    }
+}
+
+/// Temporary struct for serializing ticket frontmatter to YAML
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct TicketFrontmatter {
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uuid: Option<String>,
+    status: String,
+    deps: Vec<String>,
+    links: Vec<String>,
+    created: String,
+    r#type: String,
+    priority: PriorityAsU8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    external_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remote: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    spawned_from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    spawn_context: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    depth: Option<u32>,
+    triaged: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<String>,
+}
 
 pub struct TicketBuilder {
     title: String,
@@ -172,54 +222,31 @@ impl TicketBuilder {
         TicketStatus::from_str(&status).map_err(|_| JanusError::InvalidStatus(status.clone()))?;
         TicketType::from_str(&ticket_type)
             .map_err(|_| JanusError::InvalidTicketType(ticket_type.clone()))?;
-        TicketPriority::from_str(&priority)
+        let priority_enum = TicketPriority::from_str(&priority)
             .map_err(|_| JanusError::InvalidPriority(priority.clone()))?;
 
-        let mut frontmatter_lines = vec![
-            "---".to_string(),
-            format!("id: {}", id),
-            format!("status: {}", status),
-            "deps: []".to_string(),
-            "links: []".to_string(),
-            format!("created: {}", now),
-            format!("type: {}", ticket_type),
-            format!("priority: {}", priority),
-        ];
+        let frontmatter_data = TicketFrontmatter {
+            id: id.clone(),
+            uuid,
+            status,
+            deps: vec![],
+            links: vec![],
+            created: now,
+            r#type: ticket_type,
+            priority: priority_enum.into(),
+            external_ref: self.external_ref,
+            parent: self.parent,
+            remote: self.remote,
+            spawned_from: self.spawned_from,
+            spawn_context: self.spawn_context,
+            depth: self.depth,
+            triaged: self.triaged.unwrap_or(false),
+            size: self.size.map(|s| s.to_string()),
+        };
 
-        if let Some(ref uuid_val) = uuid {
-            frontmatter_lines.insert(2, format!("uuid: {uuid_val}"));
-        }
-
-        if let Some(ref ext) = self.external_ref {
-            frontmatter_lines.push(format!("external-ref: {ext}"));
-        }
-        if let Some(ref parent) = self.parent {
-            frontmatter_lines.push(format!("parent: {parent}"));
-        }
-        if let Some(ref remote) = self.remote {
-            frontmatter_lines.push(format!("remote: {remote}"));
-        }
-        if let Some(ref spawned_from) = self.spawned_from {
-            frontmatter_lines.push(format!("spawned-from: {spawned_from}"));
-        }
-        if let Some(ref spawn_context) = self.spawn_context {
-            frontmatter_lines.push(format!("spawn-context: {spawn_context}"));
-        }
-        if let Some(depth) = self.depth {
-            frontmatter_lines.push(format!("depth: {depth}"));
-        }
-        if let Some(triaged) = self.triaged {
-            frontmatter_lines.push(format!("triaged: {triaged}"));
-        } else {
-            frontmatter_lines.push("triaged: false".to_string());
-        }
-        if let Some(size) = self.size {
-            frontmatter_lines.push(format!("size: {size}"));
-        }
-
-        frontmatter_lines.push("---".to_string());
-
-        let frontmatter = frontmatter_lines.join("\n");
+        let yaml_content = serde_yaml_ng::to_string(&frontmatter_data)
+            .map_err(|e| JanusError::Other(format!("Failed to serialize frontmatter: {e}")))?;
+        let frontmatter = format!("---\n{yaml_content}---");
 
         let mut sections = vec![format!("# {}", self.title)];
 
