@@ -1,12 +1,16 @@
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::parser::TITLE_RE;
+
+use serde_json;
 
 /// A helper struct for editing YAML frontmatter in ticket files.
 ///
-/// Handles the common logic of splitting frontmatter from body,
-/// manipulating fields, and reconstructing the content.
+/// Uses structural YAML editing: parses frontmatter into a serde_yaml_ng::Mapping,
+/// performs edits on the mapping, and re-serializes to ensure valid YAML output.
+/// This approach correctly handles multiline values, nested structures, arrays,
+/// and all YAML constructs that would break line-based parsers.
 pub struct FrontmatterEditor {
-    frontmatter_lines: Vec<String>,
+    frontmatter: serde_yaml_ng::Mapping,
     body: String,
 }
 
@@ -14,70 +18,78 @@ impl FrontmatterEditor {
     /// Create a new FrontmatterEditor from raw ticket content.
     pub fn new(raw_content: &str) -> Result<Self> {
         let normalized = raw_content.replace("\r\n", "\n");
-        let (frontmatter, body) = crate::parser::split_frontmatter(&normalized)?;
+        let (frontmatter_str, body) = crate::parser::split_frontmatter(&normalized)?;
+
+        let frontmatter = if frontmatter_str.trim().is_empty() {
+            serde_yaml_ng::Mapping::new()
+        } else {
+            serde_yaml_ng::from_str(&frontmatter_str).map_err(|e| {
+                JanusError::InvalidFormat(format!("Failed to parse frontmatter YAML: {e}"))
+            })?
+        };
 
         Ok(Self {
-            frontmatter_lines: frontmatter.lines().map(|s| s.to_string()).collect(),
+            frontmatter,
             body: body.to_string(),
         })
     }
 
     /// Update a field in the frontmatter.
     ///
-    /// If the field exists, it will be updated in place. If it doesn't exist, it will be appended.
-    /// Values are properly escaped using serde_yaml_ng to ensure special YAML characters
-    /// are handled correctly and prevent YAML injection.
+    /// If the field exists, it will be updated. If it doesn't exist, it will be added.
+    /// Values are properly escaped via serde_yaml_ng serialization to ensure special
+    /// YAML characters are handled correctly and prevent YAML injection.
+    ///
+    /// Arrays can be passed as JSON strings (e.g., `["item1", "item2"]`) and will be
+    /// converted to YAML sequences automatically.
     pub fn update_field(&mut self, field: &str, value: &str) -> Result<()> {
         use serde_yaml_ng::Value;
 
-        let serialized_value = if let Ok(_v) = serde_yaml_ng::from_str::<Value>(value)
-            && !value.contains('\n')
-            && !value.contains('\r')
-        {
-            value.trim().to_string()
+        // Try to parse the value as JSON first (for arrays)
+        let yaml_value = if value.starts_with('[') && value.ends_with(']') {
+            // Attempt to parse as JSON array
+            match serde_json::from_str::<Vec<String>>(value) {
+                Ok(array) => {
+                    // Convert Vec<String> to YAML sequence
+                    Value::Sequence(array.into_iter().map(Value::String).collect())
+                }
+                Err(_) => {
+                    // Not valid JSON, treat as string
+                    Value::String(value.to_string())
+                }
+            }
         } else {
-            serde_yaml_ng::to_string(&Value::String(value.to_string()))
-                .map_err(|e| {
-                    crate::error::JanusError::InvalidFormat(format!(
-                        "Failed to serialize value: {e}"
-                    ))
-                })?
-                .trim()
-                .to_string()
+            // For non-array values, use string
+            Value::String(value.to_string())
         };
 
-        let yaml_line = format!("{field}: {serialized_value}");
-        let mut field_found = false;
-
-        let field_prefix = format!("{field}: ");
-        let field_exact = format!("{field}:");
-        for line in &mut self.frontmatter_lines {
-            if line.starts_with(&field_prefix) || *line == field_exact {
-                *line = yaml_line.clone();
-                field_found = true;
-                break;
-            }
-        }
-
-        if !field_found {
-            self.frontmatter_lines.push(yaml_line);
-        }
+        self.frontmatter
+            .insert(Value::String(field.to_string()), yaml_value);
 
         Ok(())
     }
 
     /// Remove a field from the frontmatter.
     pub fn remove_field(&mut self, field: &str) {
-        let field_prefix = format!("{field}: ");
-        let field_exact = format!("{field}:");
-        self.frontmatter_lines
-            .retain(|line| !(line.starts_with(&field_prefix) || *line == field_exact));
+        use serde_yaml_ng::Value;
+        self.frontmatter.remove(Value::String(field.to_string()));
     }
 
     /// Build the final content with the updated frontmatter.
-    pub fn build(self) -> String {
-        let frontmatter = self.frontmatter_lines.join("\n");
-        format!("---\n{frontmatter}\n---\n{}", self.body)
+    pub fn build(self) -> Result<String> {
+        // Serialize the mapping back to YAML
+        let frontmatter_str = serde_yaml_ng::to_string(&self.frontmatter)
+            .map_err(|e| {
+                JanusError::InvalidFormat(format!("Failed to serialize frontmatter: {e}"))
+            })?
+            .trim()
+            .to_string();
+
+        if frontmatter_str.is_empty() {
+            Ok(format!("---\n---\n{}", self.body))
+        } else {
+            Ok(format!("---\n{frontmatter_str}\n---\n{}", self.body))
+        }
     }
 }
 
@@ -91,14 +103,14 @@ impl FrontmatterEditor {
 pub fn update_field(raw_content: &str, field: &str, value: &str) -> Result<String> {
     let mut editor = FrontmatterEditor::new(raw_content)?;
     editor.update_field(field, value)?;
-    Ok(editor.build())
+    editor.build()
 }
 
 /// Remove a field from the YAML frontmatter of a ticket file.
 pub fn remove_field(raw_content: &str, field: &str) -> Result<String> {
     let mut editor = FrontmatterEditor::new(raw_content)?;
     editor.remove_field(field);
-    Ok(editor.build())
+    editor.build()
 }
 
 /// Extract the body content from a ticket file (everything after the title).
