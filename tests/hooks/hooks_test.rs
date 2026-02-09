@@ -5,6 +5,7 @@ use common::JanusTest;
 use janus::error::JanusError;
 use serial_test::serial;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 
 // ============================================================================
@@ -408,6 +409,7 @@ hooks:
 
 use janus::commands::{cmd_hook_disable, cmd_hook_enable, cmd_hook_list, cmd_hook_run};
 use janus::remote::Config;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
 
@@ -592,6 +594,7 @@ hooks:
 
 #[tokio::test]
 #[serial]
+#[cfg(unix)]
 async fn test_hook_run_success() {
     let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();

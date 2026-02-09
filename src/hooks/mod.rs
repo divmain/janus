@@ -532,7 +532,7 @@ fn log_hook_failure(hook_name: &str, error: &JanusError) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::fs;

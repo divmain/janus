@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
@@ -257,6 +258,7 @@ fn write_hook_files(
         })?;
 
         // Set executable bit on hook scripts
+        #[cfg(unix)]
         if *is_executable {
             let mut perms = fs::metadata(path)
                 .map_err(|e| {
