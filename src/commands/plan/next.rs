@@ -203,7 +203,7 @@ pub fn get_next_items_simple(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::types::{Phase, PlanSection};
+    use crate::plan::types::{Phase, PlanSection, TicketsSection};
 
     // Helper function to create test ticket metadata
     fn make_ticket(id: &str, status: TicketStatus) -> TicketMetadata {
@@ -219,7 +219,7 @@ mod tests {
     fn make_simple_plan(tickets: Vec<&str>) -> PlanMetadata {
         let mut metadata = PlanMetadata::default();
         metadata.sections.push(PlanSection::Tickets(
-            tickets.iter().map(|s| s.to_string()).collect(),
+            TicketsSection::new(tickets.iter().map(|s| s.to_string()).collect()),
         ));
         metadata
     }
@@ -234,6 +234,7 @@ mod tests {
                 description: None,
                 success_criteria: vec![],
                 tickets: tickets.iter().map(|s| s.to_string()).collect(),
+                ..Default::default()
             };
             metadata.sections.push(PlanSection::Phase(phase));
         }

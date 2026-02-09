@@ -6,13 +6,13 @@
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, Options, parse_document};
+use comrak::{parse_document, Arena, Options};
 use regex::Regex;
 
 use crate::error::{JanusError, Result};
 use crate::plan::types::{
-    ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask,
-    display_import_validation_error,
+    display_import_validation_error, ImportValidationError, ImportablePhase, ImportablePlan,
+    ImportableTask,
 };
 
 use super::{extract_text_content, render_node_to_markdown};
@@ -195,10 +195,10 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
     }
 
     // 6. Parse phases from within Implementation section (H3 headers)
-    let phases = if has_implementation {
+    let (phases, implementation_preamble) = if has_implementation {
         parse_phases_from_implementation(root, &options)
     } else {
-        Vec::new()
+        (Vec::new(), None)
     };
 
     // 7. Validate at least one phase exists
@@ -225,6 +225,7 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
         design,
         acceptance_criteria,
         phases,
+        implementation_preamble,
     })
 }
 
@@ -397,25 +398,32 @@ fn extract_h2_section_content<'a>(
 ///
 /// Looks for H3 headers matching the phase pattern under the `## Implementation` section.
 /// Tasks are H4 headers within each phase.
+///
+/// Returns `(phases, implementation_preamble)` where `implementation_preamble` contains
+/// any content between the `## Implementation` heading and the first phase header.
 fn parse_phases_from_implementation<'a>(
     root: &'a AstNode<'a>,
     options: &Options,
-) -> Vec<ImportablePhase> {
+) -> (Vec<ImportablePhase>, Option<String>) {
     let nodes: Vec<_> = root.children().collect();
 
     // Find the Implementation section boundaries
     let Some((impl_start, impl_end)) = find_implementation_section_bounds(&nodes) else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
 
     // Collect phase header positions
     let phase_headers = collect_phase_headers(&nodes, impl_start, impl_end);
     if phase_headers.is_empty() {
-        return Vec::new();
+        return (Vec::new(), None);
     }
 
+    // Extract any preamble content between the Implementation H2 and the first phase header
+    let preamble = extract_implementation_preamble(&nodes, impl_start, &phase_headers, options);
+
     // Build phases from the collected headers
-    build_phases_from_headers(&nodes, &phase_headers, impl_end, options)
+    let phases = build_phases_from_headers(&nodes, &phase_headers, impl_end, options);
+    (phases, preamble)
 }
 
 /// Find the start and end indices of the Implementation section.
@@ -481,6 +489,36 @@ fn collect_phase_headers<'a>(
             })
         })
         .collect()
+}
+
+/// Extract any preamble content between the `## Implementation` heading and the first phase header.
+///
+/// This captures non-phase H3 headings, paragraphs, and other content that appears
+/// before the first `### Phase N: Name` header within the Implementation section.
+fn extract_implementation_preamble<'a>(
+    nodes: &[&'a AstNode<'a>],
+    impl_start: usize,
+    phase_headers: &[PhaseHeader],
+    options: &Options,
+) -> Option<String> {
+    let first_phase_idx = phase_headers[0].index;
+
+    // Content between impl_start+1 (after the ## Implementation heading) and the first phase header
+    if impl_start + 1 >= first_phase_idx {
+        return None;
+    }
+
+    let preamble: String = nodes[impl_start + 1..first_phase_idx]
+        .iter()
+        .map(|node| render_node_to_markdown(node, options))
+        .collect();
+
+    let trimmed = preamble.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 /// Build ImportablePhase structs from collected phase headers.
@@ -1028,12 +1066,11 @@ It has no explicit H4 task headers.
         let task = &phase.tasks[0];
         assert_eq!(task.title, "Implement Phase 1: Setup");
         assert!(task.body.is_some());
-        assert!(
-            task.body
-                .as_ref()
-                .unwrap()
-                .contains("sets up the infrastructure")
-        );
+        assert!(task
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("sets up the infrastructure"));
         assert!(!task.is_complete);
     }
 
@@ -1098,13 +1135,11 @@ Test the full workflow.
         assert_eq!(phase2.tasks.len(), 1, "Should have one fallback task");
         assert_eq!(phase2.tasks[0].title, "Implement Phase 2: Integration");
         assert!(phase2.tasks[0].body.is_some());
-        assert!(
-            phase2.tasks[0]
-                .body
-                .as_ref()
-                .unwrap()
-                .contains("no H4 tasks")
-        );
+        assert!(phase2.tasks[0]
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("no H4 tasks"));
 
         // Phase 3: Has explicit H4 tasks
         let phase3 = &plan.phases[2];
@@ -1303,5 +1338,111 @@ First task description.\r\n\
         assert_eq!(plan.phases[0].number, "1");
         assert_eq!(plan.phases[0].tasks.len(), 1);
         assert_eq!(plan.phases[0].tasks[0].title, "Task 1");
+    }
+
+    // ==================== Implementation Preamble Tests ====================
+
+    #[test]
+    fn test_parse_importable_plan_with_implementation_preamble() {
+        let content = r#"# Plan with Implementation Preamble
+
+## Design
+
+Design details.
+
+## Implementation
+
+### Architecture Overview
+
+This section describes the high-level architecture of the implementation.
+
+Key points:
+- Modular design
+- Event-driven
+
+### Phase 1: Infrastructure
+
+#### Set up database
+
+Create the database schema.
+
+### Phase 2: Core Logic
+
+#### Implement handlers
+
+Handler implementation.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert_eq!(plan.phases.len(), 2);
+        assert_eq!(plan.phases[0].number, "1");
+        assert_eq!(plan.phases[0].name, "Infrastructure");
+        assert_eq!(plan.phases[1].number, "2");
+        assert_eq!(plan.phases[1].name, "Core Logic");
+
+        // Preamble should capture the Architecture Overview H3 and its content
+        let preamble = plan.implementation_preamble.as_ref().unwrap();
+        assert!(
+            preamble.contains("Architecture Overview"),
+            "Preamble should contain the H3 heading"
+        );
+        assert!(
+            preamble.contains("high-level architecture"),
+            "Preamble should contain the paragraph content"
+        );
+        assert!(
+            preamble.contains("Modular design"),
+            "Preamble should contain list items"
+        );
+    }
+
+    #[test]
+    fn test_parse_importable_plan_without_implementation_preamble() {
+        let content = r#"# Plan without Preamble
+
+## Design
+
+Design details.
+
+## Implementation
+
+### Phase 1: Setup
+
+#### Task One
+
+Description.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        assert!(
+            plan.implementation_preamble.is_none(),
+            "Should have no preamble when phases start immediately"
+        );
+    }
+
+    #[test]
+    fn test_parse_importable_plan_preamble_with_plain_text() {
+        let content = r#"# Plan with Plain Preamble
+
+## Design
+
+Design details.
+
+## Implementation
+
+This section covers the implementation approach.
+We will proceed in two phases.
+
+### Phase 1: Foundation
+
+#### Create base
+
+Base task.
+"#;
+
+        let plan = parse_importable_plan(content).unwrap();
+        let preamble = plan.implementation_preamble.as_ref().unwrap();
+        assert!(preamble.contains("implementation approach"));
+        assert!(preamble.contains("two phases"));
     }
 }

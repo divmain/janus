@@ -3,11 +3,11 @@
 //! Handles parsing of phases, ticket lists, and list items within plan sections.
 
 use comrak::nodes::NodeValue;
-use comrak::{Arena, parse_document};
+use comrak::{parse_document, Arena};
 
-use crate::plan::types::Phase;
+use crate::plan::types::{FreeFormSection, Phase};
 
-use super::{H2Section, comrak_options_with_tasklist, extract_text_content, parse_list_items};
+use super::{comrak_options_with_tasklist, extract_text_content, parse_list_items, H2Section};
 
 /// Parse a ticket list from markdown content using comrak AST, extracting just the ticket IDs.
 ///
@@ -61,16 +61,32 @@ pub fn parse_phase_content(phase_info: (String, String), section: &H2Section) ->
         phase.description = Some(description.to_string());
     }
 
-    // Process H3 sections within the phase
+    // Process H3 sections within the phase, tracking order for round-trip fidelity
     for h3 in &section.h3_sections {
         let h3_heading_lower = h3.heading.to_lowercase();
 
         if h3_heading_lower == "success criteria" {
             phase.success_criteria = parse_list_items(&h3.content);
+            let trimmed = h3.content.trim();
+            if !trimmed.is_empty() {
+                phase.success_criteria_raw = Some(trimmed.to_string());
+            }
+            phase.subsection_order.push(h3_heading_lower);
         } else if h3_heading_lower == "tickets" {
             phase.tickets = parse_ticket_list(&h3.content);
+            let trimmed = h3.content.trim();
+            if !trimmed.is_empty() {
+                phase.tickets_raw = Some(trimmed.to_string());
+            }
+            phase.subsection_order.push(h3_heading_lower);
+        } else {
+            // Preserve unknown H3 subsections verbatim for round-trip fidelity
+            phase.subsection_order.push(h3_heading_lower);
+            phase.extra_subsections.push(FreeFormSection {
+                heading: h3.heading.clone(),
+                content: h3.content.trim().to_string(),
+            });
         }
-        // Other H3 sections within a phase are ignored (could be extended later)
     }
 
     phase
@@ -288,5 +304,88 @@ mod tests {
 
         let tickets = parse_ticket_list(content);
         assert_eq!(tickets, vec!["j-a1b2", "j-c3d4"]);
+    }
+
+    // ==================== Unknown H3 Subsection Preservation Tests ====================
+
+    #[test]
+    fn test_parse_phase_preserves_unknown_h3_subsections() {
+        use crate::plan::parser::H2Section;
+        use crate::plan::parser::H3Section;
+
+        let section = H2Section {
+            heading: "Phase 1: Infrastructure".to_string(),
+            content: "Phase description.\n".to_string(),
+            h3_sections: vec![
+                H3Section {
+                    heading: "Success Criteria".to_string(),
+                    content: "- Criterion 1\n".to_string(),
+                },
+                H3Section {
+                    heading: "Implementation Notes".to_string(),
+                    content: "Some important notes about implementation.\n".to_string(),
+                },
+                H3Section {
+                    heading: "Tickets".to_string(),
+                    content: "1. j-a1b2\n".to_string(),
+                },
+                H3Section {
+                    heading: "Risk Assessment".to_string(),
+                    content: "- Risk 1: Might be slow\n- Risk 2: Compatibility\n".to_string(),
+                },
+            ],
+        };
+
+        let phase = parse_phase_content(("1".to_string(), "Infrastructure".to_string()), &section);
+
+        // Known subsections parsed correctly
+        assert_eq!(phase.success_criteria, vec!["Criterion 1"]);
+        assert_eq!(phase.tickets, vec!["j-a1b2"]);
+
+        // Unknown subsections preserved
+        assert_eq!(phase.extra_subsections.len(), 2);
+        assert_eq!(phase.extra_subsections[0].heading, "Implementation Notes");
+        assert!(phase.extra_subsections[0]
+            .content
+            .contains("important notes"));
+        assert_eq!(phase.extra_subsections[1].heading, "Risk Assessment");
+        assert!(phase.extra_subsections[1].content.contains("Risk 1"));
+
+        // Subsection order recorded
+        assert_eq!(
+            phase.subsection_order,
+            vec![
+                "success criteria",
+                "implementation notes",
+                "tickets",
+                "risk assessment"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_phase_no_unknown_subsections() {
+        use crate::plan::parser::H2Section;
+        use crate::plan::parser::H3Section;
+
+        let section = H2Section {
+            heading: "Phase 1: Setup".to_string(),
+            content: String::new(),
+            h3_sections: vec![
+                H3Section {
+                    heading: "Success Criteria".to_string(),
+                    content: "- Done\n".to_string(),
+                },
+                H3Section {
+                    heading: "Tickets".to_string(),
+                    content: "1. j-a1b2\n".to_string(),
+                },
+            ],
+        };
+
+        let phase = parse_phase_content(("1".to_string(), "Setup".to_string()), &section);
+
+        assert!(phase.extra_subsections.is_empty());
+        assert_eq!(phase.subsection_order, vec!["success criteria", "tickets"]);
     }
 }

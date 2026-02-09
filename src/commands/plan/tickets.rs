@@ -75,30 +75,25 @@ pub async fn cmd_plan_add_ticket(
             return Err(JanusError::SimpleplanNoPhase);
         }
 
-        let tickets = metadata
+        let ts = metadata
             .tickets_section_mut()
             .ok_or_else(|| JanusError::PlanNoTicketsSection)?;
 
-        // Add ticket to list
+        // Add ticket to list (mutations invalidate tickets_raw automatically)
         if let Some(after_id) = after {
-            if let Some(pos) = tickets.iter().position(|t| t == after_id) {
-                tickets.insert(pos + 1, resolved_ticket_id.clone());
-                added_position = Some(pos + 1);
+            if ts.insert_ticket_after(resolved_ticket_id.clone(), after_id) {
+                let pos = ts.tickets.iter().position(|t| t == &resolved_ticket_id).unwrap();
+                added_position = Some(pos);
             } else {
                 return Err(JanusError::TicketNotFound(after_id.to_string()));
             }
         } else if let Some(pos) = position {
             let index = pos.saturating_sub(1);
-            if index >= tickets.len() {
-                tickets.push(resolved_ticket_id.clone());
-                added_position = Some(tickets.len().saturating_sub(1));
-            } else {
-                tickets.insert(index, resolved_ticket_id.clone());
-                added_position = Some(index);
-            }
+            ts.insert_ticket_at(resolved_ticket_id.clone(), pos);
+            added_position = Some(index.min(ts.tickets.len().saturating_sub(1)));
         } else {
-            tickets.push(resolved_ticket_id.clone());
-            added_position = Some(tickets.len().saturating_sub(1));
+            ts.add_ticket(resolved_ticket_id.clone());
+            added_position = Some(ts.tickets.len().saturating_sub(1));
         }
     } else {
         return Err(JanusError::PlanNoTicketsOrPhases);
@@ -152,9 +147,8 @@ pub async fn cmd_plan_remove_ticket(
                     break;
                 }
             }
-            PlanSection::Tickets(tickets) => {
-                if let Some(pos) = tickets.iter().position(|t| t == &resolved_id) {
-                    tickets.remove(pos);
+            PlanSection::Tickets(ts) => {
+                if ts.remove_ticket(&resolved_id) {
                     found = true;
                     break;
                 }

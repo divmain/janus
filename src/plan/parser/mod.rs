@@ -20,18 +20,18 @@ mod serialize;
 use std::collections::HashSet;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, Options, parse_document};
+use comrak::{parse_document, Arena, Options};
 use serde::Deserialize;
 
 use crate::error::{JanusError, Result};
 use crate::parser::split_frontmatter;
-use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection};
+use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection, TicketsSection};
 
 // Re-export public functions from submodules
 pub use import::{
+    is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
     ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME,
-    PHASE_HEADER_REGEX, PHASE_PATTERN, is_completed_task, is_phase_header, is_section_alias,
-    parse_importable_plan,
+    PHASE_HEADER_REGEX, PHASE_PATTERN,
 };
 pub use sections::parse_ticket_list;
 pub use serialize::serialize_plan;
@@ -105,10 +105,21 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
     Ok(metadata)
 }
 
+/// Create comrak Options with the table extension enabled.
+///
+/// Tables are a commonly used markdown feature that must be parsed as structured
+/// nodes (not paragraphs with pipe characters) so they round-trip correctly
+/// through `format_commonmark`.
+fn comrak_options() -> Options<'static> {
+    let mut options = Options::default();
+    options.extension.table = true;
+    options
+}
+
 /// Parse the markdown body to extract title, description, and sections
 fn parse_body(body: &str, metadata: &mut PlanMetadata) -> Result<()> {
     let arena = Arena::new();
-    let options = Options::default();
+    let options = comrak_options();
     let root = parse_document(&arena, body, &options);
 
     // Collect all sections from the document
@@ -242,6 +253,20 @@ fn classify_and_add_section(
     // Only the first occurrence is parsed as structured data
     if heading_lower == "acceptance criteria" && seen_sections.insert("acceptance_criteria") {
         metadata.acceptance_criteria = parse_list_items(&section.content);
+        // Store raw content for round-trip fidelity — preserves non-list prose
+        // (paragraphs, code blocks, etc.) that parse_list_items discards.
+        let trimmed_raw = section.content.trim();
+        if !trimmed_raw.is_empty() {
+            metadata.acceptance_criteria_raw = Some(trimmed_raw.to_string());
+        }
+        metadata.acceptance_criteria_extra = section
+            .h3_sections
+            .iter()
+            .map(|h3| FreeFormSection {
+                heading: h3.heading.clone(),
+                content: h3.content.trim().to_string(),
+            })
+            .collect();
         return;
     }
 
@@ -249,7 +274,25 @@ fn classify_and_add_section(
     // Only the first occurrence is parsed as structured data
     if heading_lower == "tickets" && seen_sections.insert("tickets") {
         let tickets = sections::parse_ticket_list(&section.content);
-        metadata.sections.push(PlanSection::Tickets(tickets));
+        let extra_subsections: Vec<FreeFormSection> = section
+            .h3_sections
+            .iter()
+            .map(|h3| FreeFormSection {
+                heading: h3.heading.clone(),
+                content: h3.content.trim().to_string(),
+            })
+            .collect();
+        let trimmed_raw = section.content.trim();
+        let tickets_raw = if !trimmed_raw.is_empty() {
+            Some(trimmed_raw.to_string())
+        } else {
+            None
+        };
+        metadata.sections.push(PlanSection::Tickets(TicketsSection {
+            tickets,
+            tickets_raw,
+            extra_subsections,
+        }));
         return;
     }
 
@@ -356,17 +399,18 @@ pub(crate) fn render_node_to_markdown<'a>(node: &'a AstNode<'a>, options: &Optio
 /// - Task list markers (`- [ ]`, `- [x]`) — the marker is stripped, text preserved
 /// - Multiline list items (full text content is extracted)
 /// - Code blocks containing list-like text (ignored, since they don't produce list nodes)
+/// - Inline formatting (bold, italic, code spans, links) is preserved
 pub fn parse_list_items(content: &str) -> Vec<String> {
     let arena = Arena::new();
     let options = comrak_options_with_tasklist();
     let root = parse_document(&arena, content, &options);
 
-    extract_list_items_from_ast(root)
+    extract_list_items_from_ast(root, &options)
 }
 
 /// Create comrak Options with task list extension enabled.
 pub(crate) fn comrak_options_with_tasklist() -> Options<'static> {
-    let mut options = Options::default();
+    let mut options = comrak_options();
     options.extension.tasklist = true;
     options
 }
@@ -374,8 +418,10 @@ pub(crate) fn comrak_options_with_tasklist() -> Options<'static> {
 /// Extract list items from a comrak AST node tree.
 ///
 /// Walks top-level `NodeValue::List` nodes and collects text from each
-/// `NodeValue::Item` or `NodeValue::TaskItem` child.
-fn extract_list_items_from_ast<'a>(root: &'a AstNode<'a>) -> Vec<String> {
+/// `NodeValue::Item` or `NodeValue::TaskItem` child. Inline formatting
+/// (bold, italic, code spans, links, etc.) is preserved by rendering
+/// each item's children back to markdown.
+fn extract_list_items_from_ast<'a>(root: &'a AstNode<'a>, options: &Options) -> Vec<String> {
     let mut items = Vec::new();
 
     for node in root.children() {
@@ -383,7 +429,16 @@ fn extract_list_items_from_ast<'a>(root: &'a AstNode<'a>) -> Vec<String> {
             for child in node.children() {
                 match &child.data.borrow().value {
                     NodeValue::Item(_) | NodeValue::TaskItem(_) => {
-                        let text = extract_text_content(child).trim().to_string();
+                        // Render each child node (typically Paragraph) of the list
+                        // item to markdown, preserving inline formatting. This avoids
+                        // rendering the list marker itself (e.g. "- " or "1. ").
+                        let text: String = child
+                            .children()
+                            .map(|c| render_node_to_markdown(c, options))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                            .trim()
+                            .to_string();
                         if !text.is_empty() {
                             items.push(text);
                         }
@@ -678,13 +733,11 @@ No H1 heading, just content.
         let metadata = parse_plan_content(content).unwrap();
         assert!(metadata.title.is_none());
         // Content before first H2 is description
-        assert!(
-            metadata
-                .description
-                .as_ref()
-                .unwrap()
-                .contains("No H1 heading")
-        );
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("No H1 heading"));
     }
 
     #[test]
@@ -1141,13 +1194,11 @@ Implement the core synchronization logic.
             metadata.title,
             Some("SQLite Cache Implementation Plan".to_string())
         );
-        assert!(
-            metadata
-                .description
-                .as_ref()
-                .unwrap()
-                .contains("SQLite-based caching layer")
-        );
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("SQLite-based caching layer"));
 
         // Acceptance criteria
         assert_eq!(metadata.acceptance_criteria.len(), 3);
@@ -1337,6 +1388,77 @@ unknown_field: should_be_rejected
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_parse_acceptance_criteria_preserves_inline_formatting() {
+        let content = r#"---
+id: plan-fmt
+uuid: 550e8400-e29b-41d4-a716-446655440090
+created: 2024-01-01T00:00:00Z
+---
+# Inline Formatting Plan
+
+## Acceptance Criteria
+
+- Performance must be **under 5ms** per lookup
+- Use the `TicketStore` API for all queries
+- See [design doc](https://example.com) for details
+- Must support *italic* and **bold** text
+- Combine `code`, **bold**, and *italic* in one item
+
+## Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.acceptance_criteria.len(), 5);
+
+        // Bold formatting preserved
+        assert!(
+            metadata.acceptance_criteria[0].contains("**under 5ms**"),
+            "Expected bold formatting preserved, got: {}",
+            metadata.acceptance_criteria[0]
+        );
+
+        // Code span preserved
+        assert!(
+            metadata.acceptance_criteria[1].contains("`TicketStore`"),
+            "Expected code span preserved, got: {}",
+            metadata.acceptance_criteria[1]
+        );
+
+        // Link preserved
+        assert!(
+            metadata.acceptance_criteria[2].contains("[design doc](https://example.com)"),
+            "Expected link preserved, got: {}",
+            metadata.acceptance_criteria[2]
+        );
+
+        // Italic preserved
+        assert!(
+            metadata.acceptance_criteria[3].contains("*italic*"),
+            "Expected italic preserved, got: {}",
+            metadata.acceptance_criteria[3]
+        );
+
+        // Mixed formatting preserved
+        assert!(
+            metadata.acceptance_criteria[4].contains("`code`"),
+            "Expected code span preserved in mixed item, got: {}",
+            metadata.acceptance_criteria[4]
+        );
+        assert!(
+            metadata.acceptance_criteria[4].contains("**bold**"),
+            "Expected bold preserved in mixed item, got: {}",
+            metadata.acceptance_criteria[4]
+        );
+        assert!(
+            metadata.acceptance_criteria[4].contains("*italic*"),
+            "Expected italic preserved in mixed item, got: {}",
+            metadata.acceptance_criteria[4]
+        );
+    }
+
     // ==================== AST-Based List Parsing Regression Tests ====================
 
     #[test]
@@ -1512,5 +1634,490 @@ created: 2024-01-01T00:00:00Z
         assert_eq!(metadata.acceptance_criteria[1], "Second criterion");
         assert!(metadata.acceptance_criteria[2].contains("Third criterion"));
         assert!(metadata.acceptance_criteria[2].contains("multiple lines"));
+    }
+
+    #[test]
+    fn test_parse_success_criteria_preserves_inline_formatting() {
+        let content = r#"---
+id: plan-fmt-sc
+uuid: 550e8400-e29b-41d4-a716-446655440091
+created: 2024-01-01T00:00:00Z
+---
+# Success Criteria Formatting Plan
+
+## Phase 1: Infrastructure
+
+### Success Criteria
+
+- Database responds in **under 10ms**
+- The `cache_init()` function returns `Ok`
+- See [RFC-42](https://example.com/rfc42) for schema details
+- All *critical* paths are tested
+
+### Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+        assert_eq!(phases[0].success_criteria.len(), 4);
+
+        // Bold preserved
+        assert!(
+            phases[0].success_criteria[0].contains("**under 10ms**"),
+            "Expected bold formatting preserved, got: {}",
+            phases[0].success_criteria[0]
+        );
+
+        // Code spans preserved
+        assert!(
+            phases[0].success_criteria[1].contains("`cache_init()`"),
+            "Expected code span preserved, got: {}",
+            phases[0].success_criteria[1]
+        );
+        assert!(
+            phases[0].success_criteria[1].contains("`Ok`"),
+            "Expected code span preserved, got: {}",
+            phases[0].success_criteria[1]
+        );
+
+        // Link preserved
+        assert!(
+            phases[0].success_criteria[2].contains("[RFC-42](https://example.com/rfc42)"),
+            "Expected link preserved, got: {}",
+            phases[0].success_criteria[2]
+        );
+
+        // Italic preserved
+        assert!(
+            phases[0].success_criteria[3].contains("*critical*"),
+            "Expected italic preserved, got: {}",
+            phases[0].success_criteria[3]
+        );
+    }
+
+    // ==================== Unknown Phase H3 Subsection Tests ====================
+
+    #[test]
+    fn test_parse_phase_with_unknown_h3_subsections() {
+        let content = r#"---
+id: plan-unk-h3
+uuid: 550e8400-e29b-41d4-a716-446655440030
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Unknown Phase Subsections
+
+## Phase 1: Infrastructure
+
+Set up the foundational components.
+
+### Success Criteria
+
+- Database tables created
+
+### Implementation Notes
+
+These are custom notes the user added to the phase.
+They contain useful context that must not be lost.
+
+### Tickets
+
+1. j-a1b2
+2. j-c3d4
+
+### Risk Assessment
+
+- Risk 1: Performance under load
+- Risk 2: Backwards compatibility
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        assert!(metadata.is_phased());
+
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+
+        // Known subsections parsed correctly
+        assert_eq!(phases[0].success_criteria, vec!["Database tables created"]);
+        assert_eq!(phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+
+        // Unknown subsections preserved
+        assert_eq!(phases[0].extra_subsections.len(), 2);
+        assert_eq!(
+            phases[0].extra_subsections[0].heading,
+            "Implementation Notes"
+        );
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("custom notes"));
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("must not be lost"));
+        assert_eq!(phases[0].extra_subsections[1].heading, "Risk Assessment");
+        assert!(phases[0].extra_subsections[1]
+            .content
+            .contains("Performance under load"));
+
+        // Subsection order tracks all H3s
+        assert_eq!(
+            phases[0].subsection_order,
+            vec![
+                "success criteria",
+                "implementation notes",
+                "tickets",
+                "risk assessment"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_phase_unknown_h3_with_code_blocks() {
+        let content = r#"---
+id: plan-unk-code
+uuid: 550e8400-e29b-41d4-a716-446655440031
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Code in Custom Subsection
+
+## Phase 1: Implementation
+
+### API Examples
+
+```rust
+fn example() {
+    println!("This should be preserved");
+}
+```
+
+### Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        let phases = metadata.phases();
+
+        assert_eq!(phases[0].extra_subsections.len(), 1);
+        assert_eq!(phases[0].extra_subsections[0].heading, "API Examples");
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("fn example()"));
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("should be preserved"));
+    }
+
+    // ==================== Tickets Section H3 Subsection Tests ====================
+
+    #[test]
+    fn test_parse_simple_plan_with_h3_under_tickets() {
+        let content = r#"---
+id: plan-tkt-h3
+uuid: 550e8400-e29b-41d4-a716-446655440040
+created: 2024-01-01T00:00:00Z
+---
+# Simple Plan with Ticket Subsections
+
+## Tickets
+
+1. j-a1b2
+2. j-c3d4
+
+### Ordering Notes
+
+Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
+
+### Risk Assessment
+
+- Risk 1: Timeline pressure
+- Risk 2: External dependency
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        assert!(metadata.is_simple());
+        assert!(!metadata.is_phased());
+
+        // Tickets are parsed correctly
+        let tickets = metadata.all_tickets();
+        assert_eq!(tickets, vec!["j-a1b2", "j-c3d4"]);
+
+        // H3 subsections are captured
+        if let PlanSection::Tickets(ts) = &metadata.sections[0] {
+            assert_eq!(ts.extra_subsections.len(), 2);
+            assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
+            assert!(ts.extra_subsections[0].content.contains("API dependency"));
+            assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
+            assert!(ts.extra_subsections[1]
+                .content
+                .contains("Timeline pressure"));
+        } else {
+            panic!("Expected PlanSection::Tickets");
+        }
+    }
+
+    #[test]
+    fn test_parse_simple_plan_tickets_no_h3_still_works() {
+        let content = r#"---
+id: plan-tkt-noh3
+uuid: 550e8400-e29b-41d4-a716-446655440041
+created: 2024-01-01T00:00:00Z
+---
+# Simple Plan without Ticket Subsections
+
+## Tickets
+
+1. j-a1b2
+2. j-c3d4
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        assert!(metadata.is_simple());
+        let tickets = metadata.all_tickets();
+        assert_eq!(tickets, vec!["j-a1b2", "j-c3d4"]);
+
+        // No extra subsections
+        if let PlanSection::Tickets(ts) = &metadata.sections[0] {
+            assert!(ts.extra_subsections.is_empty());
+        } else {
+            panic!("Expected PlanSection::Tickets");
+        }
+    }
+
+    // ==================== Acceptance Criteria H3 Subsection Tests ====================
+
+    #[test]
+    fn test_parse_acceptance_criteria_with_h3_subsections() {
+        let content = r#"---
+id: plan-ac-h3
+uuid: 550e8400-e29b-41d4-a716-446655440050
+created: 2024-01-01T00:00:00Z
+---
+# Plan with AC Subsections
+
+## Acceptance Criteria
+
+- All tests pass
+- Documentation complete
+
+### Testing Notes
+
+Detailed testing instructions here...
+
+Run the full integration suite before merging.
+
+### Verification Steps
+
+1. Deploy to staging
+2. Run smoke tests
+3. Check metrics
+
+## Tickets
+
+1. j-a1b2
+2. j-c3d4
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        // Acceptance criteria list items parsed correctly
+        assert_eq!(metadata.acceptance_criteria.len(), 2);
+        assert_eq!(metadata.acceptance_criteria[0], "All tests pass");
+        assert_eq!(metadata.acceptance_criteria[1], "Documentation complete");
+
+        // H3 subsections captured
+        assert_eq!(metadata.acceptance_criteria_extra.len(), 2);
+        assert_eq!(
+            metadata.acceptance_criteria_extra[0].heading,
+            "Testing Notes"
+        );
+        assert!(metadata.acceptance_criteria_extra[0]
+            .content
+            .contains("Detailed testing instructions"));
+        assert!(metadata.acceptance_criteria_extra[0]
+            .content
+            .contains("integration suite"));
+        assert_eq!(
+            metadata.acceptance_criteria_extra[1].heading,
+            "Verification Steps"
+        );
+        assert!(metadata.acceptance_criteria_extra[1]
+            .content
+            .contains("Deploy to staging"));
+    }
+
+    #[test]
+    fn test_parse_acceptance_criteria_no_h3_still_works() {
+        let content = r#"---
+id: plan-ac-noh3
+uuid: 550e8400-e29b-41d4-a716-446655440051
+created: 2024-01-01T00:00:00Z
+---
+# Plan without AC Subsections
+
+## Acceptance Criteria
+
+- All tests pass
+- Documentation complete
+
+## Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        assert_eq!(metadata.acceptance_criteria.len(), 2);
+        assert!(metadata.acceptance_criteria_extra.is_empty());
+    }
+
+    #[test]
+    fn test_parse_acceptance_criteria_h3_with_code_blocks() {
+        let content = r#"---
+id: plan-ac-code
+uuid: 550e8400-e29b-41d4-a716-446655440052
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Code in AC Subsection
+
+## Acceptance Criteria
+
+- API responds correctly
+
+### Example Responses
+
+```json
+{
+    "status": "ok",
+    "data": []
+}
+```
+
+## Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        assert_eq!(metadata.acceptance_criteria.len(), 1);
+        assert_eq!(metadata.acceptance_criteria_extra.len(), 1);
+        assert_eq!(
+            metadata.acceptance_criteria_extra[0].heading,
+            "Example Responses"
+        );
+        assert!(metadata.acceptance_criteria_extra[0]
+            .content
+            .contains("\"status\": \"ok\""));
+    }
+
+    // ==================== Table Round-Trip Tests ====================
+
+    #[test]
+    fn test_roundtrip_table_in_freeform_section() {
+        let original = r#"---
+id: plan-table
+uuid: 550e8400-e29b-41d4-a716-446655440060
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Table
+
+## Performance Benchmarks
+
+| Operation | Before | After |
+|-----------|--------|-------|
+| Single ticket lookup | ~500ms | <5ms |
+| Full list | ~1-5s | ~25-50ms |
+
+## Tickets
+
+1. j-a1b2
+"#;
+
+        // Parse
+        let metadata = parse_plan_content(original).unwrap();
+
+        let freeform = metadata.free_form_sections();
+        assert_eq!(freeform.len(), 1);
+        assert_eq!(freeform[0].heading, "Performance Benchmarks");
+        // Table content should be present
+        assert!(freeform[0].content.contains("Operation"));
+        assert!(freeform[0].content.contains("Single ticket lookup"));
+
+        // Serialize
+        let serialized = serialize_plan(&metadata);
+
+        // The serialized output should contain the table
+        assert!(serialized.contains("Operation"));
+        assert!(serialized.contains("Single ticket lookup"));
+        assert!(serialized.contains("<5ms"));
+
+        // Re-parse and verify round-trip
+        let reparsed = parse_plan_content(&serialized).unwrap();
+
+        let new_freeform = reparsed.free_form_sections();
+        assert_eq!(new_freeform.len(), 1);
+        assert_eq!(new_freeform[0].heading, "Performance Benchmarks");
+        assert!(new_freeform[0].content.contains("Operation"));
+        assert!(new_freeform[0].content.contains("Single ticket lookup"));
+        assert!(new_freeform[0].content.contains("<5ms"));
+
+        // Verify tickets still parse correctly
+        assert_eq!(reparsed.all_tickets(), vec!["j-a1b2"]);
+    }
+
+    #[test]
+    fn test_roundtrip_table_in_phase_description() {
+        let original = r#"---
+id: plan-table-phase
+uuid: 550e8400-e29b-41d4-a716-446655440061
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Table in Phase
+
+## Phase 1: Schema Design
+
+The following schema will be used:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | Primary key |
+| name | TEXT | Display name |
+| status | TEXT | Current status |
+
+### Tickets
+
+1. j-a1b2
+2. j-c3d4
+"#;
+
+        // Parse
+        let metadata = parse_plan_content(original).unwrap();
+
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+        let desc = phases[0].description.as_ref().unwrap();
+        assert!(desc.contains("schema will be used"));
+        assert!(desc.contains("Column"));
+        assert!(desc.contains("Primary key"));
+
+        // Serialize
+        let serialized = serialize_plan(&metadata);
+
+        // Re-parse and verify round-trip
+        let reparsed = parse_plan_content(&serialized).unwrap();
+
+        let new_phases = reparsed.phases();
+        assert_eq!(new_phases.len(), 1);
+        let new_desc = new_phases[0].description.as_ref().unwrap();
+        assert!(new_desc.contains("schema will be used"));
+        assert!(new_desc.contains("Column"));
+        assert!(new_desc.contains("Primary key"));
+        assert!(new_desc.contains("Display name"));
+        assert_eq!(new_phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
     }
 }

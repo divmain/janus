@@ -5,10 +5,10 @@ use serde_json::json;
 use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::events::log_plan_created;
-use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookEvent};
 use crate::plan::parser::serialize_plan;
-use crate::plan::types::{Phase, PlanMetadata, PlanSection};
-use crate::plan::{Plan, ensure_plans_dir, generate_plan_id};
+use crate::plan::types::{Phase, PlanMetadata, PlanSection, TicketsSection};
+use crate::plan::{ensure_plans_dir, generate_plan_id, Plan};
 
 use crate::utils::{generate_uuid, iso_date};
 
@@ -33,6 +33,8 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
         title: Some(title.to_string()),
         description: None,
         acceptance_criteria: Vec::new(),
+        acceptance_criteria_raw: None,
+        acceptance_criteria_extra: Vec::new(),
         sections: Vec::new(),
         file_path: None,
     };
@@ -40,7 +42,9 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
     // Add phases if provided, otherwise create a simple plan with a Tickets section
     if phases.is_empty() {
         // Simple plan: add an empty Tickets section
-        metadata.sections.push(PlanSection::Tickets(Vec::new()));
+        metadata
+            .sections
+            .push(PlanSection::Tickets(TicketsSection::new(Vec::new())));
     } else {
         // Phased plan: add phases with numbers
         for (i, phase_name) in phases.iter().enumerate() {

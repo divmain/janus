@@ -168,7 +168,7 @@ impl TicketStore {
 #[cfg(test)]
 mod tests {
     use crate::cache::TicketStore;
-    use crate::plan::types::{PlanMetadata, PlanSection};
+    use crate::plan::types::{PlanMetadata, PlanSection, TicketsSection};
     use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
 
     /// Helper to create a test store with some tickets pre-loaded.
@@ -230,17 +230,19 @@ mod tests {
         store.upsert_plan(PlanMetadata {
             id: Some("plan-a1b2".to_string()),
             title: Some("Cache Implementation".to_string()),
-            sections: vec![PlanSection::Tickets(vec![
+            sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
                 "j-a1b2".to_string(),
                 "j-c3d4".to_string(),
-            ])],
+            ]))],
             ..Default::default()
         });
 
         store.upsert_plan(PlanMetadata {
             id: Some("plan-c3d4".to_string()),
             title: Some("Feature Rollout".to_string()),
-            sections: vec![PlanSection::Tickets(vec!["j-e5f6".to_string()])],
+            sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
+                "j-e5f6".to_string()
+            ]))],
             ..Default::default()
         });
 

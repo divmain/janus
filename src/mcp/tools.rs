@@ -1143,10 +1143,10 @@ impl JanusTools {
                 return Err("Cannot use 'phase' parameter with simple plans".to_string());
             }
 
-            let tickets = metadata
+            let ts = metadata
                 .tickets_section_mut()
                 .ok_or("Plan has no tickets section")?;
-            tickets.push(ticket.id.clone());
+            ts.add_ticket(ticket.id.clone());
         } else {
             return Err("Plan has no tickets section or phases".to_string());
         }
@@ -1661,11 +1661,13 @@ mod tests {
         let metadata = PlanMetadata {
             id: Some("plan-a1b2".to_string()),
             title: Some("Implement Authentication".to_string()),
-            sections: vec![PlanSection::Tickets(vec![
-                "j-a1b2".to_string(),
-                "j-c3d4".to_string(),
-                "j-e5f6".to_string(),
-            ])],
+            sections: vec![PlanSection::Tickets(
+                crate::plan::types::TicketsSection::new(vec![
+                    "j-a1b2".to_string(),
+                    "j-c3d4".to_string(),
+                    "j-e5f6".to_string(),
+                ]),
+            )],
             ..Default::default()
         };
 

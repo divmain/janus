@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::commands::{CommandOutput, print_json};
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
-use crate::plan::types::{Phase, PlanMetadata, PlanSection};
+use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection};
 use crate::plan::{
     ImportablePlan, Plan, ensure_plans_dir, generate_plan_id, get_all_plans, parse_importable_plan,
 };
@@ -299,11 +299,20 @@ pub async fn cmd_plan_import(
         title: Some(plan.title.clone()),
         description: plan.description.clone(),
         acceptance_criteria: plan.acceptance_criteria.clone(),
+        acceptance_criteria_raw: None,
+        acceptance_criteria_extra: Vec::new(),
         sections: Vec::new(),
         file_path: None,
     };
 
-    // 9. Build sections with ticket IDs
+    // 9. Include implementation preamble as a free-form section if present
+    if let Some(ref preamble) = plan.implementation_preamble {
+        metadata.sections.push(PlanSection::FreeForm(
+            FreeFormSection::new("Implementation Overview", preamble.clone()),
+        ));
+    }
+
+    // 10. Build sections with ticket IDs
     let mut ticket_idx = 0;
     for import_phase in &plan.phases {
         let mut phase = Phase::new(import_phase.number.clone(), import_phase.name.clone());
@@ -329,7 +338,7 @@ pub async fn cmd_plan_import(
         metadata.sections.push(PlanSection::Phase(phase));
     }
 
-    // 10. Write plan with exactly-once hook semantics:
+    // 11. Write plan with exactly-once hook semantics:
     //     PreWrite -> write -> PostWrite -> PlanCreated
     let plan_handle = Plan::with_id(&plan_id)?;
     let context = plan_handle.hook_context();
@@ -345,7 +354,7 @@ pub async fn cmd_plan_import(
     run_post_hooks(HookEvent::PostWrite, &context);
     run_post_hooks(HookEvent::PlanCreated, &context);
 
-    // 11. Output result
+    // 12. Output result
     let tickets_created: Vec<serde_json::Value> = created_ticket_ids
         .iter()
         .map(|id| json!({ "id": id }))

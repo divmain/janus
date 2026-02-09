@@ -236,7 +236,7 @@ pub fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::types::PlanSection;
+    use crate::plan::types::{PlanSection, TicketsSection};
 
     #[test]
     fn test_compute_aggregate_status_all_complete() {
@@ -308,11 +308,13 @@ mod tests {
     #[test]
     fn test_compute_plan_status_with_tickets() {
         let mut metadata = PlanMetadata::default();
-        metadata.sections.push(PlanSection::Tickets(vec![
-            "j-a1b2".to_string(),
-            "j-c3d4".to_string(),
-            "j-e5f6".to_string(),
-        ]));
+        metadata
+            .sections
+            .push(PlanSection::Tickets(TicketsSection::new(vec![
+                "j-a1b2".to_string(),
+                "j-c3d4".to_string(),
+                "j-e5f6".to_string(),
+            ])));
 
         let mut ticket_map = HashMap::new();
         ticket_map.insert(
@@ -354,6 +356,7 @@ mod tests {
             description: None,
             success_criteria: vec![],
             tickets: vec!["j-a1b2".to_string(), "j-c3d4".to_string()],
+            ..Default::default()
         };
 
         let mut ticket_map = HashMap::new();
@@ -393,6 +396,7 @@ mod tests {
                 "j-exists".to_string(),
                 "j-missing".to_string(), // Not in ticket_map
             ],
+            ..Default::default()
         };
 
         let mut ticket_map = HashMap::new();
@@ -432,6 +436,7 @@ mod tests {
                 description: None,
                 success_criteria: vec![],
                 tickets: tickets.iter().map(|s| s.to_string()).collect(),
+                ..Default::default()
             };
             metadata.sections.push(PlanSection::Phase(phase));
         }
@@ -610,10 +615,12 @@ mod tests {
     fn test_compute_all_phase_statuses_simple_plan() {
         // Simple plan (no phases) should return empty vec
         let mut metadata = PlanMetadata::default();
-        metadata.sections.push(PlanSection::Tickets(vec![
-            "t1".to_string(),
-            "t2".to_string(),
-        ]));
+        metadata
+            .sections
+            .push(PlanSection::Tickets(TicketsSection::new(vec![
+                "t1".to_string(),
+                "t2".to_string(),
+            ])));
 
         let ticket_map = HashMap::new();
         let phase_statuses = compute_all_phase_statuses(&metadata, &ticket_map);
@@ -629,6 +636,7 @@ mod tests {
             description: None,
             success_criteria: vec![],
             tickets: vec![],
+            ..Default::default()
         };
 
         let ticket_map = HashMap::new();

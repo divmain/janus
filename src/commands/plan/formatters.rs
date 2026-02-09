@@ -11,7 +11,7 @@ use crate::commands::ticket_minimal_json_with_exists;
 use crate::display::format_status_colored;
 use crate::error::Result;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanSection, PlanStatus};
-use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
+use crate::plan::{compute_all_phase_statuses, compute_plan_status, Plan};
 use crate::types::TicketMetadata;
 
 pub struct RawFormatter;
@@ -90,8 +90,8 @@ impl FullFormatter {
                     phase_idx += 1;
                     Self::print_phase_section(phase, phase_status, ticket_map, verbose_phases);
                 }
-                PlanSection::Tickets(tickets) => {
-                    Self::print_tickets_section(tickets, ticket_map);
+                PlanSection::Tickets(ts) => {
+                    Self::print_tickets_section(&ts.tickets, ticket_map);
                 }
                 PlanSection::FreeForm(freeform) => {
                     Self::print_freeform_section(freeform);

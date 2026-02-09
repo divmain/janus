@@ -192,19 +192,21 @@ pub async fn cmd_plan_reorder(
         }
 
         phase_obj.tickets = parse_and_validate_ticket_order(&new_order, &phase_obj.tickets)?;
+        phase_obj.tickets_raw = None; // Invalidate stale raw content
     } else if metadata.is_simple() {
         // Reorder tickets in simple plan
-        let tickets = metadata
+        let ts = metadata
             .tickets_section_mut()
             .ok_or_else(|| JanusError::PlanNoTicketsSection)?;
 
-        if tickets.is_empty() {
+        if ts.tickets.is_empty() {
             println!("No tickets to reorder");
             return Ok(());
         }
 
         // Create temp content with current order
-        let temp_content: String = tickets
+        let temp_content: String = ts
+            .tickets
             .iter()
             .enumerate()
             .map(|(i, t)| format!("{}. {}\n", i + 1, t))
@@ -217,7 +219,8 @@ pub async fn cmd_plan_reorder(
             return Ok(());
         }
 
-        *tickets = parse_and_validate_ticket_order(&new_order, tickets)?;
+        ts.tickets = parse_and_validate_ticket_order(&new_order, &ts.tickets)?;
+        ts.tickets_raw = None; // Invalidate stale raw content
     } else {
         println!(
             "Use --phase to specify which phase to reorder, or --reorder-phases to reorder phases"
