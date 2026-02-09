@@ -38,12 +38,7 @@ impl TicketStore {
     /// robust fix would hash file content instead of mtime, but that defeats the
     /// purpose of the fast mtime-based cache invalidation check.
     ///
-    /// # Truncation Note
-    ///
-    /// The `mtime_ns` parameter is `i64`, which is narrower than the `u128` returned
-    /// by `Duration::as_nanos()`. The cast in [`file_mtime_ns`] (`as i64`) silently
-    /// truncates on overflow, but this is safe until approximately the year 2554.
-    pub fn embedding_key(file_path: &Path, mtime_ns: i64) -> String {
+    pub fn embedding_key(file_path: &Path, mtime_ns: u128) -> String {
         // Use a repo-relative path for stability. file_path.display() can vary
         // between runs depending on absolute/relative handling, symlink resolution,
         // and platform formatting—causing cache misses and orphaned .bin files.
@@ -209,13 +204,12 @@ impl TicketStore {
 /// Get file modification time as nanoseconds since UNIX epoch.
 ///
 /// The actual precision depends on the underlying filesystem (see
-/// [`TicketStore::embedding_key`] for details). The `as i64` cast from `u128`
-/// is lossless until ~2554 (when `i64::MAX` nanoseconds is exceeded).
-fn file_mtime_ns(path: &Path) -> Option<i64> {
+/// [`TicketStore::embedding_key`] for details).
+fn file_mtime_ns(path: &Path) -> Option<u128> {
     let metadata = fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?;
     let duration = modified.duration_since(UNIX_EPOCH).ok()?;
-    Some(duration.as_nanos() as i64)
+    Some(duration.as_nanos())
 }
 
 /// Convert a slice of f32 values to little-endian bytes.
@@ -262,7 +256,7 @@ mod tests {
     #[test]
     fn test_embedding_key_deterministic() {
         let path = Path::new("/some/path/ticket.md");
-        let mtime = 1234567890_i64;
+        let mtime = 1234567890_u128;
 
         let key1 = TicketStore::embedding_key(path, mtime);
         let key2 = TicketStore::embedding_key(path, mtime);
