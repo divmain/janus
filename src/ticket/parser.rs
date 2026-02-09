@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::error::Result;
-use crate::parser::{ParsedDocument, parse_document};
+use crate::parser::{parse_document, ParsedDocument};
 use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
 
 /// Strict frontmatter struct for YAML deserialization with required fields.
@@ -78,7 +78,7 @@ fn ticket_metadata_from_document(doc: ParsedDocument) -> Result<TicketMetadata> 
         depth: frontmatter.depth,
         triaged: frontmatter.triaged,
         title: doc.extract_title(),
-        completion_summary: doc.extract_section("completion summary"),
+        completion_summary: doc.extract_section("completion summary")?,
         file_path: None,
         body: None,
     };

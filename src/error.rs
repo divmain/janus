@@ -356,6 +356,9 @@ pub enum JanusError {
 
     #[error("embedding generation timed out after {seconds} seconds")]
     EmbeddingTimeout { seconds: u64 },
+
+    #[error("parse error: {0}")]
+    ParseError(String),
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;

@@ -130,27 +130,30 @@ impl ParsedDocument {
 
     /// Extract a named section from the body (case-insensitive).
     /// Returns the content between the section header and the next H2 or end of document.
-    pub fn extract_section(&self, section_name: &str) -> Option<String> {
+    pub fn extract_section(&self, section_name: &str) -> Result<Option<String>> {
         let pattern = format!(
             r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
             regex::escape(section_name)
         );
 
         // Try to get from cache first, otherwise compile and cache
-        let section_re = SECTION_REGEX_CACHE
-            .get(&pattern)
-            .map(|r| r.clone())
-            .unwrap_or_else(|| {
-                let re = Regex::new(&pattern).expect("section regex should be valid");
-                SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
-                re
-            });
+        let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
+            cached.clone()
+        } else {
+            let re = Regex::new(&pattern).map_err(|e| {
+                JanusError::ParseError(format!(
+                    "failed to compile section regex for '{section_name}': {e}"
+                ))
+            })?;
+            SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
+            re
+        };
 
-        section_re.captures(&self.body).map(|caps| {
+        Ok(section_re.captures(&self.body).map(|caps| {
             caps.get(1)
                 .map(|m| m.as_str().trim().to_string())
                 .unwrap_or_default()
-        })
+        }))
     }
 
     /// Update or add a section in the document body.
@@ -164,26 +167,37 @@ impl ParsedDocument {
     ///
     /// # Returns
     /// The full updated document content (frontmatter + body)
-    pub fn update_section(&self, section_name: &str, section_content: &str) -> String {
+    pub fn update_section(&self, section_name: &str, section_content: &str) -> Result<String> {
         let pattern = format!(
             r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
             regex::escape(section_name)
         );
 
         // Try to get from cache first, otherwise compile and cache
-        let section_re = SECTION_REGEX_CACHE
-            .get(&pattern)
-            .map(|r| r.clone())
-            .unwrap_or_else(|| {
-                let re = Regex::new(&pattern).expect("section regex should be valid");
-                SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
-                re
-            });
+        let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
+            cached.clone()
+        } else {
+            let re = Regex::new(&pattern).map_err(|e| {
+                JanusError::ParseError(format!(
+                    "failed to compile section regex for '{section_name}': {e}"
+                ))
+            })?;
+            SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
+            re
+        };
 
         if let Some(caps) = section_re.captures(&self.body) {
             // Section exists - replace its content
-            let full_match = caps.get(0).expect("full match should exist");
-            let content_match = caps.get(1).expect("content group should exist");
+            let full_match = caps.get(0).ok_or_else(|| {
+                JanusError::ParseError(format!(
+                    "regex full match missing when updating section '{section_name}'"
+                ))
+            })?;
+            let content_match = caps.get(1).ok_or_else(|| {
+                JanusError::ParseError(format!(
+                    "regex capture group missing when updating section '{section_name}'"
+                ))
+            })?;
 
             let before = &self.body[..full_match.start()];
             let after = &self.body[content_match.end()..];
@@ -199,11 +213,13 @@ impl ParsedDocument {
                 format!("\n\n{after_trimmed}")
             };
 
-            format!("{before}{new_section}{separator}")
+            Ok(format!("{before}{new_section}{separator}"))
         } else {
             // Section doesn't exist - append it
             let trimmed_body = self.body.trim_end();
-            format!("{trimmed_body}\n\n## {section_name}\n\n{section_content}\n")
+            Ok(format!(
+                "{trimmed_body}\n\n## {section_name}\n\n{section_content}\n"
+            ))
         }
     }
 
@@ -391,7 +407,7 @@ Section content here.
 More content.
 "#;
         let doc = parse_document(content).unwrap();
-        let section = doc.extract_section("my section").unwrap();
+        let section = doc.extract_section("my section").unwrap().unwrap();
         assert_eq!(section, "Section content here.");
     }
 
@@ -409,7 +425,7 @@ Description.
 Final content.
 "#;
         let doc = parse_document(content).unwrap();
-        let section = doc.extract_section("final section").unwrap();
+        let section = doc.extract_section("final section").unwrap().unwrap();
         assert_eq!(section, "Final content.");
     }
 
@@ -422,7 +438,7 @@ id: test
 
 No sections here."#;
         let doc = parse_document(content).unwrap();
-        assert!(doc.extract_section("nonexistent").is_none());
+        assert!(doc.extract_section("nonexistent").unwrap().is_none());
     }
 
     #[test]
@@ -437,8 +453,8 @@ id: test
 Content.
 "#;
         let doc = parse_document(content).unwrap();
-        assert!(doc.extract_section("uppercase section").is_some());
-        assert!(doc.extract_section("UPPERCASE SECTION").is_some());
+        assert!(doc.extract_section("uppercase section").unwrap().is_some());
+        assert!(doc.extract_section("UPPERCASE SECTION").unwrap().is_some());
     }
 
     #[test]
@@ -457,7 +473,9 @@ Old content here.
 More content.
 "#;
         let doc = parse_document(content).unwrap();
-        let updated = doc.update_section("My Section", "New content here.");
+        let updated = doc
+            .update_section("My Section", "New content here.")
+            .unwrap();
 
         assert!(updated.contains("## My Section\n\nNew content here."));
         assert!(!updated.contains("Old content here."));
@@ -476,7 +494,9 @@ id: test
 Old final content.
 "#;
         let doc = parse_document(content).unwrap();
-        let updated = doc.update_section("Final Section", "Updated final content.");
+        let updated = doc
+            .update_section("Final Section", "Updated final content.")
+            .unwrap();
 
         assert!(updated.contains("## Final Section\n\nUpdated final content."));
         assert!(!updated.contains("Old final content."));
@@ -492,7 +512,9 @@ id: test
 Body content.
 "#;
         let doc = parse_document(content).unwrap();
-        let updated = doc.update_section("New Section", "New section content.");
+        let updated = doc
+            .update_section("New Section", "New section content.")
+            .unwrap();
 
         assert!(updated.contains("## New Section\n\nNew section content."));
         assert!(updated.contains("Body content."));
@@ -510,7 +532,9 @@ id: test
 Content.
 "#;
         let doc = parse_document(content).unwrap();
-        let updated = doc.update_section("uppercase section", "Updated content.");
+        let updated = doc
+            .update_section("uppercase section", "Updated content.")
+            .unwrap();
 
         assert!(updated.contains("## uppercase section\n\nUpdated content."));
     }
@@ -535,7 +559,9 @@ Middle content.
 Last content.
 "#;
         let doc = parse_document(content).unwrap();
-        let updated = doc.update_section("Middle Section", "Updated middle.");
+        let updated = doc
+            .update_section("Middle Section", "Updated middle.")
+            .unwrap();
 
         assert!(updated.contains("## First Section"));
         assert!(updated.contains("First content."));

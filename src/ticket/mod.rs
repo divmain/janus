@@ -300,7 +300,7 @@ impl Ticket {
         let doc = parse_document(&content).map_err(|e| {
             JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", self.id, e))
         })?;
-        Ok(doc.extract_section(section_name))
+        doc.extract_section(section_name)
     }
 
     /// Extract the description (content between title and first H2).
@@ -354,7 +354,7 @@ impl Ticket {
         })?;
 
         let updated_body = if let Some(new_content) = content {
-            doc.update_section(section_name, new_content)
+            doc.update_section(section_name, new_content)?
         } else {
             // Remove the section if content is None
             doc.remove_section(section_name)
