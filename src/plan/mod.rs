@@ -134,7 +134,13 @@ impl Plan {
     }
 
     /// Create a plan handle for a new plan with the given ID
+    ///
+    /// The ID must start with `plan-` and contain only alphanumeric characters and hyphens.
     pub fn with_id(id: &str) -> Result<Self> {
+        // Validate that ID starts with "plan-" prefix
+        if !id.starts_with("plan-") {
+            return Err(JanusError::InvalidPlanId(id.to_string()));
+        }
         // Validate that ID contains only alphanumeric characters and hyphens
         if !id.chars().all(|c| c.is_alphanumeric() || c == '-') {
             return Err(JanusError::InvalidPlanId(id.to_string()));
@@ -472,12 +478,55 @@ This is the description.
     }
 
     #[test]
-    fn test_plan_with_id_invalid() {
+    fn test_plan_with_id_invalid_characters() {
         let result = Plan::with_id("../../../etc/passwd");
         assert!(result.is_err());
         match result.unwrap_err() {
             JanusError::InvalidPlanId(id) => {
                 assert_eq!(id, "../../../etc/passwd");
+            }
+            _ => panic!("Expected InvalidPlanId error"),
+        }
+    }
+
+    #[test]
+    fn test_plan_with_id_missing_prefix() {
+        let result = Plan::with_id("test-1234");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidPlanId(id) => {
+                assert_eq!(id, "test-1234");
+            }
+            _ => panic!("Expected InvalidPlanId error"),
+        }
+    }
+
+    #[test]
+    fn test_plan_with_id_empty() {
+        let result = Plan::with_id("");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidPlanId(id) => {
+                assert_eq!(id, "");
+            }
+            _ => panic!("Expected InvalidPlanId error"),
+        }
+    }
+
+    #[test]
+    fn test_plan_with_id_only_prefix() {
+        // "plan-" alone has no hash portion but is structurally valid per the checks
+        let result = Plan::with_id("plan-");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_plan_with_id_prefix_case_sensitive() {
+        let result = Plan::with_id("Plan-abc");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            JanusError::InvalidPlanId(id) => {
+                assert_eq!(id, "Plan-abc");
             }
             _ => panic!("Expected InvalidPlanId error"),
         }

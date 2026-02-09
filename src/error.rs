@@ -102,7 +102,7 @@ pub enum JanusError {
     )]
     InvalidTicketId(String),
 
-    #[error("invalid plan ID '{0}': must contain only alphanumeric characters and hyphens")]
+    #[error("invalid plan ID '{0}': must start with 'plan-' and contain only alphanumeric characters and hyphens")]
     InvalidPlanId(String),
 
     #[error("{}", format_ambiguous_plan_id(.0, .1))]
