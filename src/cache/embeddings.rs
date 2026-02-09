@@ -44,7 +44,18 @@ impl TicketStore {
     /// by `Duration::as_nanos()`. The cast in [`file_mtime_ns`] (`as i64`) silently
     /// truncates on overflow, but this is safe until approximately the year 2554.
     pub fn embedding_key(file_path: &Path, mtime_ns: i64) -> String {
-        let input = format!("{}:{}", file_path.display(), mtime_ns);
+        // Use a repo-relative path for stability. file_path.display() can vary
+        // between runs depending on absolute/relative handling, symlink resolution,
+        // and platform formatting—causing cache misses and orphaned .bin files.
+        let root = janus_root();
+        let relative = file_path.strip_prefix(&root).unwrap_or(file_path);
+        // Use forward slashes for cross-platform consistency
+        let stable_path: String = relative
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let input = format!("{stable_path}:{mtime_ns}");
         let hash = blake3::hash(input.as_bytes());
         hash.to_hex().to_string()
     }
