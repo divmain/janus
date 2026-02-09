@@ -95,6 +95,17 @@ impl JanusTest {
     }
 
     #[allow(dead_code)]
+    pub fn delete_ticket(&self, id: &str) {
+        let path = self
+            .temp_dir
+            .path()
+            .join(".janus")
+            .join("items")
+            .join(format!("{id}.md"));
+        fs::remove_file(path).expect("Failed to delete ticket file");
+    }
+
+    #[allow(dead_code)]
     pub fn write_ticket(&self, id: &str, content: &str) {
         let dir = self.temp_dir.path().join(".janus").join("items");
         fs::create_dir_all(&dir).expect("Failed to create .janus/items directory");

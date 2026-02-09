@@ -8,6 +8,7 @@ use crate::events::{log_ticket_added_to_plan, log_ticket_moved, log_ticket_remov
 use crate::plan::Plan;
 use crate::plan::types::PlanSection;
 use crate::ticket::Ticket;
+use crate::types::TicketId;
 
 /// Add a ticket to a plan
 ///
@@ -134,9 +135,18 @@ pub async fn cmd_plan_remove_ticket(
     let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
 
-    // Validate ticket exists
-    let ticket = Ticket::find(ticket_id).await?;
-    let resolved_id = ticket.id;
+    // Try to resolve the ticket. If it exists, use its canonical ID.
+    // If it doesn't exist (dangling reference), validate the raw ID format
+    // and use it directly so users can clean up stale plan references.
+    let resolved_id = match Ticket::find(ticket_id).await {
+        Ok(ticket) => ticket.id,
+        Err(JanusError::TicketNotFound(_)) => {
+            // Ticket file is gone — validate the ID format and use it as-is
+            TicketId::new(ticket_id)?;
+            ticket_id.to_string()
+        }
+        Err(e) => return Err(e),
+    };
 
     let mut found = false;
     let mut removed_from_phase: Option<String> = None;

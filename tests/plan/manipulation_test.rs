@@ -205,6 +205,118 @@ fn test_plan_remove_ticket_not_in_plan() {
 }
 
 #[test]
+fn test_plan_remove_dangling_ticket_simple() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Create a ticket and add it to the plan
+    let ticket_id = janus
+        .run_success(&["create", "Doomed Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+
+    // Delete the ticket file to create a dangling reference
+    janus.delete_ticket(&ticket_id);
+
+    // Removing the dangling ticket should still succeed
+    let output = janus.run_success(&["plan", "remove-ticket", &plan_id, &ticket_id]);
+    assert!(output.contains("Removed"));
+    assert!(output.contains(&ticket_id));
+
+    // Verify ticket is no longer in plan
+    let plan_content = janus.read_plan(&plan_id);
+    assert!(!plan_content.contains(&ticket_id));
+}
+
+#[test]
+fn test_plan_remove_dangling_ticket_phased() {
+    let janus = JanusTest::new();
+
+    // Create a phased plan
+    let plan_id = janus
+        .run_success(&[
+            "plan",
+            "create",
+            "Phased Plan",
+            "--phase",
+            "Phase One",
+            "--phase",
+            "Phase Two",
+        ])
+        .trim()
+        .to_string();
+
+    // Create a ticket and add it to Phase One
+    let ticket_id = janus
+        .run_success(&["create", "Doomed Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&[
+        "plan",
+        "add-ticket",
+        &plan_id,
+        &ticket_id,
+        "--phase",
+        "Phase One",
+    ]);
+
+    // Delete the ticket file to create a dangling reference
+    janus.delete_ticket(&ticket_id);
+
+    // Removing the dangling ticket should still succeed
+    let output = janus.run_success(&["plan", "remove-ticket", &plan_id, &ticket_id]);
+    assert!(output.contains("Removed"));
+    assert!(output.contains(&ticket_id));
+
+    // Verify ticket is no longer in plan
+    let plan_content = janus.read_plan(&plan_id);
+    assert!(!plan_content.contains(&ticket_id));
+}
+
+#[test]
+fn test_plan_remove_dangling_ticket_invalid_id_format() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    // Try to remove a ticket with an invalid ID format (no hyphen)
+    let output = janus.run_failure(&["plan", "remove-ticket", &plan_id, "nohyphen"]);
+    assert!(output.contains("invalid ticket ID format"));
+}
+
+#[test]
+fn test_plan_remove_dangling_ticket_not_in_plan() {
+    let janus = JanusTest::new();
+
+    // Create a simple plan with a ticket
+    let plan_id = janus
+        .run_success(&["plan", "create", "Simple Plan"])
+        .trim()
+        .to_string();
+
+    let ticket_id = janus
+        .run_success(&["create", "Real Ticket"])
+        .trim()
+        .to_string();
+    janus.run_success(&["plan", "add-ticket", &plan_id, &ticket_id]);
+
+    // Try to remove a non-existent ticket that was never in the plan
+    // (valid ID format but doesn't exist and isn't in the plan)
+    let output = janus.run_failure(&["plan", "remove-ticket", &plan_id, "j-dead"]);
+    assert!(output.contains("not found in plan"));
+}
+
+#[test]
 fn test_plan_move_ticket() {
     let janus = JanusTest::new();
 
