@@ -393,9 +393,11 @@ fn test_yaml_many_aliases_to_single_anchor() {
     let parsed = result.expect("many aliases to one anchor should parse");
     assert!(parsed.frontmatter.contains_key("base"));
     assert!(parsed.frontmatter.contains_key("ref_0"));
-    assert!(parsed
-        .frontmatter
-        .contains_key(&format!("ref_{}", count - 1)));
+    assert!(
+        parsed
+            .frontmatter
+            .contains_key(&format!("ref_{}", count - 1))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -426,9 +428,11 @@ fn test_many_keys_in_mapping() {
     let parsed = result.expect("many keys should parse successfully");
     assert!(parsed.frontmatter.contains_key("id"));
     assert!(parsed.frontmatter.contains_key("key_00000"));
-    assert!(parsed
-        .frontmatter
-        .contains_key(&format!("key_{:05}", count - 1)));
+    assert!(
+        parsed
+            .frontmatter
+            .contains_key(&format!("key_{:05}", count - 1))
+    );
 }
 
 #[test]

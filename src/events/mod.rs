@@ -637,16 +637,20 @@ mod tests {
         assert_eq!(events[1].event_type, EventType::CacheRebuilt);
         assert_eq!(events[1].data["reason"], "corruption_recovery");
         assert_eq!(events[1].data["trigger"], "automatic_recovery");
-        assert!(!events[1]
-            .data
-            .as_object()
-            .unwrap()
-            .contains_key("duration_ms"));
-        assert!(!events[1]
-            .data
-            .as_object()
-            .unwrap()
-            .contains_key("ticket_count"));
+        assert!(
+            !events[1]
+                .data
+                .as_object()
+                .unwrap()
+                .contains_key("duration_ms")
+        );
+        assert!(
+            !events[1]
+                .data
+                .as_object()
+                .unwrap()
+                .contains_key("ticket_count")
+        );
         assert!(!events[1].data.as_object().unwrap().contains_key("details"));
     }
 

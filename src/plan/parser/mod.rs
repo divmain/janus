@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{parse_document, Arena, Options};
+use comrak::{Arena, Options, parse_document};
 use regex::Regex;
 use serde::Deserialize;
 
@@ -31,9 +31,9 @@ use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection, TicketsSect
 
 // Re-export public functions from submodules
 pub use import::{
-    is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
     ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME,
-    PHASE_HEADER_REGEX, PHASE_PATTERN,
+    PHASE_HEADER_REGEX, PHASE_PATTERN, is_completed_task, is_phase_header, is_section_alias,
+    parse_importable_plan,
 };
 pub use sections::parse_ticket_list;
 pub use serialize::serialize_plan;
@@ -860,11 +860,13 @@ No H1 heading, just content.
         let metadata = parse_plan_content(content).unwrap();
         assert!(metadata.title.is_none());
         // Content before first H2 is description
-        assert!(metadata
-            .description
-            .as_ref()
-            .unwrap()
-            .contains("No H1 heading"));
+        assert!(
+            metadata
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("No H1 heading")
+        );
     }
 
     #[test]
@@ -1321,11 +1323,13 @@ Implement the core synchronization logic.
             metadata.title,
             Some("SQLite Cache Implementation Plan".to_string())
         );
-        assert!(metadata
-            .description
-            .as_ref()
-            .unwrap()
-            .contains("SQLite-based caching layer"));
+        assert!(
+            metadata
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("SQLite-based caching layer")
+        );
 
         // Acceptance criteria
         assert_eq!(metadata.acceptance_criteria.len(), 3);
@@ -1979,16 +1983,22 @@ They contain useful context that must not be lost.
             phases[0].extra_subsections[0].heading,
             "Implementation Notes"
         );
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("custom notes"));
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("must not be lost"));
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("custom notes")
+        );
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("must not be lost")
+        );
         assert_eq!(phases[0].extra_subsections[1].heading, "Risk Assessment");
-        assert!(phases[0].extra_subsections[1]
-            .content
-            .contains("Performance under load"));
+        assert!(
+            phases[0].extra_subsections[1]
+                .content
+                .contains("Performance under load")
+        );
 
         // Subsection order tracks all H3s
         assert_eq!(
@@ -2031,12 +2041,16 @@ fn example() {
 
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "API Examples");
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("fn example()"));
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("should be preserved"));
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("fn example()")
+        );
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("should be preserved")
+        );
     }
 
     // ==================== Tickets Section H3 Subsection Tests ====================
@@ -2080,9 +2094,11 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(ts.extra_subsections[1]
-                .content
-                .contains("Timeline pressure"));
+            assert!(
+                ts.extra_subsections[1]
+                    .content
+                    .contains("Timeline pressure")
+            );
         } else {
             panic!("Expected PlanSection::Tickets");
         }
@@ -2164,19 +2180,25 @@ Run the full integration suite before merging.
             metadata.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(metadata.acceptance_criteria_extra[0]
-            .content
-            .contains("Detailed testing instructions"));
-        assert!(metadata.acceptance_criteria_extra[0]
-            .content
-            .contains("integration suite"));
+        assert!(
+            metadata.acceptance_criteria_extra[0]
+                .content
+                .contains("Detailed testing instructions")
+        );
+        assert!(
+            metadata.acceptance_criteria_extra[0]
+                .content
+                .contains("integration suite")
+        );
         assert_eq!(
             metadata.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(metadata.acceptance_criteria_extra[1]
-            .content
-            .contains("Deploy to staging"));
+        assert!(
+            metadata.acceptance_criteria_extra[1]
+                .content
+                .contains("Deploy to staging")
+        );
     }
 
     #[test]
@@ -2239,9 +2261,11 @@ created: 2024-01-01T00:00:00Z
             metadata.acceptance_criteria_extra[0].heading,
             "Example Responses"
         );
-        assert!(metadata.acceptance_criteria_extra[0]
-            .content
-            .contains("\"status\": \"ok\""));
+        assert!(
+            metadata.acceptance_criteria_extra[0]
+                .content
+                .contains("\"status\": \"ok\"")
+        );
     }
 
     // ==================== Table Round-Trip Tests ====================

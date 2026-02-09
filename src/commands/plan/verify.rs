@@ -26,7 +26,7 @@ pub fn cmd_plan_verify(output_json: bool) -> Result<(bool, Vec<(String, String)>
     let failures: Vec<(String, String)> = result.failed.clone();
 
     if output_json {
-        let json_output = json!({
+        CommandOutput::new(json!({
             "valid": failure_count == 0,
             "success_count": success_count,
             "failure_count": failure_count,
@@ -34,10 +34,8 @@ pub fn cmd_plan_verify(output_json: bool) -> Result<(bool, Vec<(String, String)>
                 "file": f,
                 "error": e,
             })).collect::<Vec<_>>(),
-        });
-        let _ = CommandOutput::new(json_output.clone())
-            .with_text(format!("{json_output}"))
-            .print(true);
+        }))
+        .print(true)?;
     } else {
         println!("\n{}", "Plan Verification".bold());
         println!("{}", "=================".bold());
