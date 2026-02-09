@@ -31,6 +31,22 @@ pub async fn cmd_plan_add_phase(
     let next_number = if existing_phases.is_empty() {
         1
     } else {
+        // Warn if any existing phases have non-numeric labels, since auto-numbering
+        // only considers numeric phases and could produce duplicates or surprising results.
+        let non_numeric: Vec<&str> = existing_phases
+            .iter()
+            .filter(|p| p.number.parse::<usize>().is_err())
+            .map(|p| p.number.as_str())
+            .collect();
+        if !non_numeric.is_empty() {
+            eprintln!(
+                "Warning: existing phases have non-numeric labels ({}); \
+                 auto-numbering only considers numeric phases and may produce \
+                 unexpected results",
+                non_numeric.join(", ")
+            );
+        }
+
         // Find the highest numeric phase number and add 1
         existing_phases
             .iter()
