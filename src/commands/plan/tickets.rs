@@ -82,7 +82,11 @@ pub async fn cmd_plan_add_ticket(
         // Add ticket to list (mutations invalidate tickets_raw automatically)
         if let Some(after_id) = after {
             if ts.insert_ticket_after(resolved_ticket_id.clone(), after_id) {
-                let pos = ts.tickets.iter().position(|t| t == &resolved_ticket_id).unwrap();
+                let pos = ts
+                    .tickets
+                    .iter()
+                    .position(|t| t == &resolved_ticket_id)
+                    .unwrap();
                 added_position = Some(pos);
             } else {
                 return Err(JanusError::TicketNotFound(after_id.to_string()));

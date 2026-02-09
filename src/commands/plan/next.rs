@@ -218,9 +218,11 @@ mod tests {
     // Helper function to create a simple plan with tickets
     fn make_simple_plan(tickets: Vec<&str>) -> PlanMetadata {
         let mut metadata = PlanMetadata::default();
-        metadata.sections.push(PlanSection::Tickets(
-            TicketsSection::new(tickets.iter().map(|s| s.to_string()).collect()),
-        ));
+        metadata
+            .sections
+            .push(PlanSection::Tickets(TicketsSection::new(
+                tickets.iter().map(|s| s.to_string()).collect(),
+            )));
         metadata
     }
 

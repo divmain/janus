@@ -303,13 +303,17 @@ pub async fn cmd_plan_import(
         acceptance_criteria_extra: Vec::new(),
         sections: Vec::new(),
         file_path: None,
+        extra_frontmatter: None,
     };
 
     // 9. Include implementation preamble as a free-form section if present
     if let Some(ref preamble) = plan.implementation_preamble {
-        metadata.sections.push(PlanSection::FreeForm(
-            FreeFormSection::new("Implementation Overview", preamble.clone()),
-        ));
+        metadata
+            .sections
+            .push(PlanSection::FreeForm(FreeFormSection::new(
+                "Implementation Overview",
+                preamble.clone(),
+            )));
     }
 
     // 10. Build sections with ticket IDs

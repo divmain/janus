@@ -1,5 +1,7 @@
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
 
 use crate::types::TicketStatus;
 
@@ -69,6 +71,12 @@ pub struct PlanMetadata {
     /// Path to the plan file on disk
     #[serde(skip)]
     pub file_path: Option<PathBuf>,
+
+    /// Unknown/extra YAML frontmatter keys preserved for round-trip fidelity.
+    /// External tools or future versions may add new fields; these are captured
+    /// during parsing and written back during serialization so no data is lost.
+    #[serde(skip)]
+    pub extra_frontmatter: Option<HashMap<String, serde_yaml_ng::Value>>,
 }
 
 impl PlanMetadata {
@@ -790,7 +798,7 @@ mod tests {
         let mut plan = PlanMetadata::default();
         plan.sections
             .push(PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string()
+                "j-a1b2".to_string(),
             ])));
 
         assert!(!plan.is_phased());

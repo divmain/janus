@@ -17,10 +17,10 @@ mod import;
 mod sections;
 mod serialize;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{parse_document, Arena, Options};
+use comrak::{Arena, Options, parse_document};
 use serde::Deserialize;
 
 use crate::error::{JanusError, Result};
@@ -29,21 +29,28 @@ use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection, TicketsSect
 
 // Re-export public functions from submodules
 pub use import::{
-    is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
     ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME,
-    PHASE_HEADER_REGEX, PHASE_PATTERN,
+    PHASE_HEADER_REGEX, PHASE_PATTERN, is_completed_task, is_phase_header, is_section_alias,
+    parse_importable_plan,
 };
 pub use sections::parse_ticket_list;
 pub use serialize::serialize_plan;
 
-/// Strict plan frontmatter struct for YAML deserialization with required fields.
+/// Tolerant plan frontmatter struct for YAML deserialization.
+///
+/// All known fields are optional at parse time to allow reading plans that may
+/// be missing identity fields (e.g., during migration or manual creation).
+/// Unknown fields are captured into `extra` for round-trip preservation, so
+/// that external tools or future versions adding new fields won't brick files.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct PlanFrontmatter {
-    id: String,
-    uuid: String,
+    id: Option<String>,
+    uuid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     created: Option<String>,
+    /// Unknown/extra YAML keys are captured here for round-trip preservation.
+    #[serde(flatten)]
+    extra: HashMap<String, serde_yaml_ng::Value>,
 }
 
 /// Parse a plan file's content into PlanMetadata
@@ -96,9 +103,14 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
         .map_err(|e| JanusError::InvalidFormat(format!("YAML parsing error: {e}")))?;
 
     let metadata = PlanMetadata {
-        id: Some(frontmatter.id),
-        uuid: Some(frontmatter.uuid),
+        id: frontmatter.id,
+        uuid: frontmatter.uuid,
         created: frontmatter.created,
+        extra_frontmatter: if frontmatter.extra.is_empty() {
+            None
+        } else {
+            Some(frontmatter.extra)
+        },
         ..Default::default()
     };
 
@@ -733,11 +745,13 @@ No H1 heading, just content.
         let metadata = parse_plan_content(content).unwrap();
         assert!(metadata.title.is_none());
         // Content before first H2 is description
-        assert!(metadata
-            .description
-            .as_ref()
-            .unwrap()
-            .contains("No H1 heading"));
+        assert!(
+            metadata
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("No H1 heading")
+        );
     }
 
     #[test]
@@ -1194,11 +1208,13 @@ Implement the core synchronization logic.
             metadata.title,
             Some("SQLite Cache Implementation Plan".to_string())
         );
-        assert!(metadata
-            .description
-            .as_ref()
-            .unwrap()
-            .contains("SQLite-based caching layer"));
+        assert!(
+            metadata
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("SQLite-based caching layer")
+        );
 
         // Acceptance criteria
         assert_eq!(metadata.acceptance_criteria.len(), 3);
@@ -1349,7 +1365,7 @@ Mixed line ending content.\r\n\
     }
 
     #[test]
-    fn test_parse_plan_missing_required_id_field() {
+    fn test_parse_plan_missing_id_field_succeeds() {
         let content = r#"---
 uuid: 550e8400-e29b-41d4-a716-446655440000
 created: 2024-01-01T00:00:00Z
@@ -1357,12 +1373,17 @@ created: 2024-01-01T00:00:00Z
 # Plan Without ID
 "#;
 
-        let result = parse_plan_content(content);
-        assert!(result.is_err());
+        let metadata = parse_plan_content(content).unwrap();
+        assert!(metadata.id.is_none());
+        assert_eq!(
+            metadata.uuid,
+            Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+        );
+        assert_eq!(metadata.title, Some("Plan Without ID".to_string()));
     }
 
     #[test]
-    fn test_parse_plan_missing_required_uuid_field() {
+    fn test_parse_plan_missing_uuid_field_succeeds() {
         let content = r#"---
 id: plan-test
 created: 2024-01-01T00:00:00Z
@@ -1370,22 +1391,119 @@ created: 2024-01-01T00:00:00Z
 # Plan Without UUID
 "#;
 
-        let result = parse_plan_content(content);
-        assert!(result.is_err());
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.id, Some("plan-test".to_string()));
+        assert!(metadata.uuid.is_none());
     }
 
     #[test]
-    fn test_parse_plan_unknown_field_rejected() {
+    fn test_parse_plan_unknown_field_preserved() {
         let content = r#"---
 id: plan-test
 uuid: 550e8400-e29b-41d4-a716-446655440000
-unknown_field: should_be_rejected
+custom_tool_field: some_value
 ---
 # Plan With Unknown Field
 "#;
 
-        let result = parse_plan_content(content);
-        assert!(result.is_err());
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.id, Some("plan-test".to_string()));
+        assert_eq!(
+            metadata.uuid,
+            Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+        );
+
+        // Unknown field is captured in extra_frontmatter
+        let extra = metadata.extra_frontmatter.as_ref().unwrap();
+        assert_eq!(
+            extra.get("custom_tool_field").and_then(|v| v.as_str()),
+            Some("some_value")
+        );
+    }
+
+    #[test]
+    fn test_parse_plan_unknown_fields_roundtrip() {
+        let content = r#"---
+id: plan-extra
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+custom_tool: external-tool-v2
+priority_override: 5
+---
+# Plan With Extra Fields
+
+## Tickets
+
+1. j-a1b2
+"#;
+
+        // Parse
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.id, Some("plan-extra".to_string()));
+
+        let extra = metadata.extra_frontmatter.as_ref().unwrap();
+        assert_eq!(extra.len(), 2);
+        assert_eq!(
+            extra.get("custom_tool").and_then(|v| v.as_str()),
+            Some("external-tool-v2")
+        );
+
+        // Serialize and re-parse to verify round-trip
+        let serialized = crate::plan::parser::serialize::serialize_plan(&metadata);
+        assert!(serialized.contains("custom_tool: external-tool-v2"));
+        assert!(serialized.contains("priority_override: 5"));
+
+        let reparsed = parse_plan_content(&serialized).unwrap();
+        assert_eq!(reparsed.id, metadata.id);
+        let reparsed_extra = reparsed.extra_frontmatter.as_ref().unwrap();
+        assert_eq!(
+            reparsed_extra.get("custom_tool").and_then(|v| v.as_str()),
+            Some("external-tool-v2")
+        );
+    }
+
+    #[test]
+    fn test_parse_plan_no_identity_fields() {
+        // A plan with no id, no uuid — just created timestamp
+        let content = r#"---
+created: 2024-01-01T00:00:00Z
+---
+# Bare Plan
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert!(metadata.id.is_none());
+        assert!(metadata.uuid.is_none());
+        assert_eq!(metadata.created, Some("2024-01-01T00:00:00Z".to_string()));
+        assert_eq!(metadata.title, Some("Bare Plan".to_string()));
+    }
+
+    #[test]
+    fn test_parse_plan_empty_frontmatter() {
+        // Completely empty frontmatter — all fields None
+        let content = "---\n---\n# Empty Frontmatter Plan\n";
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert!(metadata.id.is_none());
+        assert!(metadata.uuid.is_none());
+        assert!(metadata.created.is_none());
+        assert!(metadata.extra_frontmatter.is_none());
+        assert_eq!(metadata.title, Some("Empty Frontmatter Plan".to_string()));
+    }
+
+    #[test]
+    fn test_parse_plan_no_extra_fields_has_none() {
+        // Normal plan without extra fields should have extra_frontmatter = None
+        let content = r#"---
+id: plan-normal
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+---
+# Normal Plan
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert!(metadata.extra_frontmatter.is_none());
     }
 
     #[test]
@@ -1750,16 +1868,22 @@ They contain useful context that must not be lost.
             phases[0].extra_subsections[0].heading,
             "Implementation Notes"
         );
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("custom notes"));
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("must not be lost"));
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("custom notes")
+        );
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("must not be lost")
+        );
         assert_eq!(phases[0].extra_subsections[1].heading, "Risk Assessment");
-        assert!(phases[0].extra_subsections[1]
-            .content
-            .contains("Performance under load"));
+        assert!(
+            phases[0].extra_subsections[1]
+                .content
+                .contains("Performance under load")
+        );
 
         // Subsection order tracks all H3s
         assert_eq!(
@@ -1802,12 +1926,16 @@ fn example() {
 
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "API Examples");
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("fn example()"));
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("should be preserved"));
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("fn example()")
+        );
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("should be preserved")
+        );
     }
 
     // ==================== Tickets Section H3 Subsection Tests ====================
@@ -1851,9 +1979,11 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(ts.extra_subsections[1]
-                .content
-                .contains("Timeline pressure"));
+            assert!(
+                ts.extra_subsections[1]
+                    .content
+                    .contains("Timeline pressure")
+            );
         } else {
             panic!("Expected PlanSection::Tickets");
         }
@@ -1935,19 +2065,25 @@ Run the full integration suite before merging.
             metadata.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(metadata.acceptance_criteria_extra[0]
-            .content
-            .contains("Detailed testing instructions"));
-        assert!(metadata.acceptance_criteria_extra[0]
-            .content
-            .contains("integration suite"));
+        assert!(
+            metadata.acceptance_criteria_extra[0]
+                .content
+                .contains("Detailed testing instructions")
+        );
+        assert!(
+            metadata.acceptance_criteria_extra[0]
+                .content
+                .contains("integration suite")
+        );
         assert_eq!(
             metadata.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(metadata.acceptance_criteria_extra[1]
-            .content
-            .contains("Deploy to staging"));
+        assert!(
+            metadata.acceptance_criteria_extra[1]
+                .content
+                .contains("Deploy to staging")
+        );
     }
 
     #[test]
@@ -2010,9 +2146,11 @@ created: 2024-01-01T00:00:00Z
             metadata.acceptance_criteria_extra[0].heading,
             "Example Responses"
         );
-        assert!(metadata.acceptance_criteria_extra[0]
-            .content
-            .contains("\"status\": \"ok\""));
+        assert!(
+            metadata.acceptance_criteria_extra[0]
+                .content
+                .contains("\"status\": \"ok\"")
+        );
     }
 
     // ==================== Table Round-Trip Tests ====================

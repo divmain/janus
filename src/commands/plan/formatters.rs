@@ -11,7 +11,7 @@ use crate::commands::ticket_minimal_json_with_exists;
 use crate::display::format_status_colored;
 use crate::error::Result;
 use crate::plan::types::{Phase, PhaseStatus, PlanMetadata, PlanSection, PlanStatus};
-use crate::plan::{compute_all_phase_statuses, compute_plan_status, Plan};
+use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::types::TicketMetadata;
 
 pub struct RawFormatter;

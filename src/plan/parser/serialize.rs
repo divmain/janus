@@ -42,6 +42,17 @@ pub fn serialize_plan(metadata: &PlanMetadata) -> String {
     if let Some(ref created) = metadata.created {
         output.push_str(&format!("created: {created}\n"));
     }
+    // Write any extra/unknown frontmatter fields for round-trip preservation
+    if let Some(ref extra) = metadata.extra_frontmatter {
+        let mut keys: Vec<&String> = extra.keys().collect();
+        keys.sort(); // deterministic output order
+        for key in keys {
+            let value = &extra[key];
+            let yaml_str = serde_yaml_ng::to_string(value).unwrap_or_default();
+            let yaml_str = yaml_str.trim_end();
+            output.push_str(&format!("{key}: {yaml_str}\n"));
+        }
+    }
     output.push_str("---\n");
 
     // 2. Generate H1 title
@@ -327,6 +338,7 @@ mod tests {
                 "j-e5f6".to_string(),
             ]))],
             file_path: None,
+            extra_frontmatter: None,
         };
 
         let serialized = serialize_plan(&metadata);
@@ -371,6 +383,7 @@ mod tests {
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Phase(phase1), PlanSection::Phase(phase2)],
             file_path: None,
+            extra_frontmatter: None,
         };
 
         let serialized = serialize_plan(&metadata);
@@ -406,6 +419,7 @@ mod tests {
                 "### Motivation\n\nThis section explains why we're doing this.",
             ))],
             file_path: None,
+            extra_frontmatter: None,
         };
 
         // Add phase
@@ -1044,18 +1058,22 @@ This approach has limitations with large datasets.
         assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "Dependencies");
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("Node.js 18+"));
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("Node.js 18+")
+        );
 
         // Phase 2: Design Rationale, then Tickets, then Caveats
         assert_eq!(phases[1].tickets, vec!["j-c3d4", "j-e5f6"]);
         assert_eq!(phases[1].extra_subsections.len(), 2);
         assert_eq!(phases[1].extra_subsections[0].heading, "Design Rationale");
         assert_eq!(phases[1].extra_subsections[1].heading, "Caveats");
-        assert!(phases[1].extra_subsections[1]
-            .content
-            .contains("limitations"));
+        assert!(
+            phases[1].extra_subsections[1]
+                .content
+                .contains("limitations")
+        );
     }
 
     #[test]
@@ -1080,6 +1098,7 @@ This approach has limitations with large datasets.
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Phase(phase)],
             file_path: None,
+            extra_frontmatter: None,
         };
 
         let serialized = serialize_plan(&metadata);
@@ -1163,9 +1182,11 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(ts.extra_subsections[1]
-                .content
-                .contains("Timeline pressure"));
+            assert!(
+                ts.extra_subsections[1]
+                    .content
+                    .contains("Timeline pressure")
+            );
         } else {
             panic!("Expected PlanSection::Tickets after round-trip");
         }
@@ -1303,16 +1324,20 @@ Run the full integration suite before merging.
             reparsed.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(reparsed.acceptance_criteria_extra[0]
-            .content
-            .contains("Detailed testing instructions"));
+        assert!(
+            reparsed.acceptance_criteria_extra[0]
+                .content
+                .contains("Detailed testing instructions")
+        );
         assert_eq!(
             reparsed.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(reparsed.acceptance_criteria_extra[1]
-            .content
-            .contains("Deploy to staging"));
+        assert!(
+            reparsed.acceptance_criteria_extra[1]
+                .content
+                .contains("Deploy to staging")
+        );
     }
 
     #[test]
@@ -1620,9 +1645,10 @@ Example response:
             acceptance_criteria_raw: None,
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string()
+                "j-a1b2".to_string(),
             ]))],
             file_path: None,
+            extra_frontmatter: None,
         };
 
         let serialized = serialize_plan(&metadata);
@@ -1908,6 +1934,7 @@ Reliability requirements:
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Phase(phase)],
             file_path: None,
+            extra_frontmatter: None,
         };
 
         let serialized = serialize_plan(&metadata);
@@ -2074,6 +2101,7 @@ created: 2024-01-01T00:00:00Z
                 ])),
             ],
             file_path: None,
+            extra_frontmatter: None,
         };
 
         let serialized = serialize_plan(&metadata);
