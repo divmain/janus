@@ -475,18 +475,22 @@ mod tests {
     use std::env;
     use std::fs;
 
-    /// Helper to create a temporary test directory
-    fn setup_test_dir() -> tempfile::TempDir {
+    use crate::test_guards::CwdGuard;
+
+    /// Helper to create a temporary test directory.
+    /// Returns `(TempDir, CwdGuard)` — both must be held for the test's lifetime.
+    fn setup_test_dir() -> (tempfile::TempDir, CwdGuard) {
+        let cwd_guard = CwdGuard::new().unwrap();
         let temp_dir = tempfile::tempdir().unwrap();
         env::set_current_dir(temp_dir.path()).unwrap();
         fs::create_dir_all(".janus").unwrap();
-        temp_dir
+        (temp_dir, cwd_guard)
     }
 
     #[test]
     #[serial]
     fn test_log_and_read_events() {
-        let _temp = setup_test_dir();
+        let (_temp, _cwd_guard) = setup_test_dir();
 
         // Log some events
         log_event(Event::new(
@@ -514,7 +518,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_clear_events() {
-        let _temp = setup_test_dir();
+        let (_temp, _cwd_guard) = setup_test_dir();
 
         // Log an event
         log_event(Event::new(
@@ -536,7 +540,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_ndjson_format() {
-        let _temp = setup_test_dir();
+        let (_temp, _cwd_guard) = setup_test_dir();
 
         // Log two events
         log_event(Event::new(
@@ -568,7 +572,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_helper_functions() {
-        let _temp = setup_test_dir();
+        let (_temp, _cwd_guard) = setup_test_dir();
 
         log_ticket_created("j-test", "Test ticket", "task", 2, None);
         log_status_changed("j-test", "new", "complete", Some("Done!"));
@@ -592,7 +596,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_log_cache_rebuilt() {
-        let _temp = setup_test_dir();
+        let (_temp, _cwd_guard) = setup_test_dir();
 
         // Log a store rebuilt event with all fields
         log_cache_rebuilt(
@@ -633,27 +637,23 @@ mod tests {
         assert_eq!(events[1].event_type, EventType::CacheRebuilt);
         assert_eq!(events[1].data["reason"], "corruption_recovery");
         assert_eq!(events[1].data["trigger"], "automatic_recovery");
-        assert!(
-            !events[1]
-                .data
-                .as_object()
-                .unwrap()
-                .contains_key("duration_ms")
-        );
-        assert!(
-            !events[1]
-                .data
-                .as_object()
-                .unwrap()
-                .contains_key("ticket_count")
-        );
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("duration_ms"));
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("ticket_count"));
         assert!(!events[1].data.as_object().unwrap().contains_key("details"));
     }
 
     #[test]
     #[serial]
     fn test_spawned_from_included() {
-        let _temp = setup_test_dir();
+        let (_temp, _cwd_guard) = setup_test_dir();
 
         log_ticket_created("j-child", "Child ticket", "task", 2, Some("j-parent"));
 
@@ -665,7 +665,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_note_truncation() {
-        let _temp = setup_test_dir();
+        let (_temp, _cwd_guard) = setup_test_dir();
 
         let long_note = "a".repeat(200);
         log_note_added("j-test", &long_note);

@@ -3,6 +3,7 @@
 //! This module provides helpers for working with the `tests/fixtures/` directory,
 //! which contains pre-created Janus repositories for testing.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Get the path to a test fixture directory
@@ -34,9 +35,11 @@ pub fn clear_janus_root() {
     unsafe { std::env::remove_var("JANUS_ROOT") };
 }
 
-/// RAII guard that sets JANUS_ROOT and clears it on drop
+/// RAII guard that sets JANUS_ROOT and restores it on drop.
 ///
-/// Use this to ensure JANUS_ROOT is properly cleaned up even if a test panics.
+/// Snapshots the current value of JANUS_ROOT before setting it to the
+/// fixture path, and restores the original value (or removes it) on drop.
+/// This guarantees cleanup even if a test panics.
 ///
 /// # Example
 ///
@@ -47,10 +50,11 @@ pub fn clear_janus_root() {
 ///     let _guard = FixtureGuard::new("basic_board");
 ///     // Test code here - JANUS_ROOT points to basic_board fixture
 /// }
-/// // JANUS_ROOT is automatically cleared when _guard goes out of scope
+/// // JANUS_ROOT is automatically restored when _guard goes out of scope
 /// ```
 pub struct FixtureGuard {
     _name: String,
+    original: Option<OsString>,
 }
 
 impl FixtureGuard {
@@ -59,16 +63,23 @@ impl FixtureGuard {
     /// # Safety
     /// This modifies the process environment. Tests using this should be marked with `#[serial]`.
     pub fn new(name: &str) -> Self {
+        let original = std::env::var_os("JANUS_ROOT");
         use_fixture(name);
         Self {
             _name: name.to_string(),
+            original,
         }
     }
 }
 
 impl Drop for FixtureGuard {
     fn drop(&mut self) {
-        clear_janus_root();
+        // SAFETY: Drop runs during test teardown. Tests using FixtureGuard should be
+        // marked #[serial] to ensure single-threaded access to environment variables.
+        match &self.original {
+            Some(val) => unsafe { std::env::set_var("JANUS_ROOT", val) },
+            None => clear_janus_root(),
+        }
     }
 }
 

@@ -542,6 +542,8 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
+    use crate::test_guards::CwdGuard;
+
     fn setup_test_env() -> TempDir {
         let temp_dir = TempDir::new().unwrap();
         let janus_dir = temp_dir.path().join(".janus");
@@ -595,6 +597,7 @@ mod tests {
     fn test_run_pre_hooks_no_config() {
         // When there's no config file, hooks should succeed silently
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         let context = HookContext::new()
@@ -611,6 +614,7 @@ mod tests {
     #[serial]
     fn test_run_post_hooks_no_config() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         let context = HookContext::new()
@@ -627,6 +631,7 @@ mod tests {
     #[serial]
     fn test_hooks_disabled() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create config with hooks disabled
@@ -652,6 +657,7 @@ hooks:
     #[serial]
     fn test_hook_script_not_found() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create config pointing to non-existent script
@@ -676,6 +682,7 @@ hooks:
     #[serial]
     fn test_pre_hook_success() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a successful hook script
@@ -707,6 +714,7 @@ hooks:
     #[serial]
     fn test_pre_hook_failure() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a failing hook script
@@ -737,6 +745,7 @@ hooks:
     #[serial]
     fn test_post_hook_receives_env_vars() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a hook script that writes env vars to a file
@@ -788,6 +797,7 @@ hooks:
     #[serial]
     fn test_hook_timeout() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a hook script that sleeps
@@ -851,6 +861,7 @@ hooks:
     #[serial]
     fn test_pre_hook_failure_aborts_operation() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a failing hook script with specific exit code and error message
@@ -900,6 +911,7 @@ hooks:
     #[serial]
     fn test_post_hook_failure_continues() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a file to track that the hook ran
@@ -947,6 +959,7 @@ hooks:
     #[serial]
     fn test_pre_hook_timeout_with_exit_code() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a hook script that sleeps
@@ -986,6 +999,7 @@ hooks:
     #[serial]
     fn test_hook_script_not_found_error() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create config pointing to non-existent script
@@ -1032,6 +1046,7 @@ hooks:
     #[serial]
     fn test_hook_script_with_path_separator() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create config with script containing path separator
@@ -1058,6 +1073,7 @@ hooks:
     #[serial]
     fn test_hook_script_with_windows_path_separator() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create config with script containing Windows path separator
@@ -1079,6 +1095,7 @@ hooks:
     #[serial]
     fn test_hook_script_with_null_byte() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create config with script containing null byte
@@ -1105,6 +1122,7 @@ hooks:
     #[serial]
     fn test_post_hook_failure_logged() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a failing post-hook script
@@ -1155,6 +1173,7 @@ hooks:
     #[serial]
     fn test_multiple_post_hook_failures_logged() {
         let temp_dir = setup_test_env();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Create a failing post-hook script

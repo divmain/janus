@@ -411,6 +411,24 @@ use janus::remote::Config;
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
 
+/// RAII guard that restores the current working directory on drop.
+struct CwdGuard {
+    original: std::path::PathBuf,
+}
+
+impl CwdGuard {
+    fn new() -> std::io::Result<Self> {
+        let original = std::env::current_dir()?;
+        Ok(Self { original })
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original);
+    }
+}
+
 fn setup_test_env_hooks() -> TempDir {
     let temp_dir = TempDir::new().unwrap();
     let janus_dir = temp_dir.path().join(".janus");
@@ -422,6 +440,7 @@ fn setup_test_env_hooks() -> TempDir {
 #[test]
 #[serial]
 fn test_hook_list_no_config() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -433,6 +452,7 @@ fn test_hook_list_no_config() {
 #[test]
 #[serial]
 fn test_hook_list_with_config() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -455,6 +475,7 @@ hooks:
 #[test]
 #[serial]
 fn test_hook_list_json() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -475,6 +496,7 @@ hooks:
 #[test]
 #[serial]
 fn test_hook_enable() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -497,6 +519,7 @@ hooks:
 #[test]
 #[serial]
 fn test_hook_disable() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -515,6 +538,7 @@ fn test_hook_disable() {
 #[test]
 #[serial]
 fn test_hook_enable_json() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -525,6 +549,7 @@ fn test_hook_enable_json() {
 #[test]
 #[serial]
 fn test_hook_disable_json() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -535,6 +560,7 @@ fn test_hook_disable_json() {
 #[tokio::test]
 #[serial]
 async fn test_hook_run_no_script_configured() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -546,6 +572,7 @@ async fn test_hook_run_no_script_configured() {
 #[tokio::test]
 #[serial]
 async fn test_hook_run_script_not_found() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -566,6 +593,7 @@ hooks:
 #[tokio::test]
 #[serial]
 async fn test_hook_run_success() {
+    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
     std::env::set_current_dir(temp_dir.path()).unwrap();
 

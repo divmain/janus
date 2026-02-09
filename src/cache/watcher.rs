@@ -492,6 +492,7 @@ mod tests {
     use super::*;
     use crate::cache::TicketStore;
     use crate::cache::test_helpers::{make_plan_content, make_ticket_content};
+    use crate::test_guards::EnvGuard;
 
     /// Set up a temporary Janus directory structure.
     fn setup_test_dir() -> TempDir {
@@ -565,7 +566,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -585,8 +586,6 @@ mod tests {
             store.tickets().contains_key("j-new1"),
             "store should contain the new ticket"
         );
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[tokio::test]
@@ -595,7 +594,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         // Pre-populate a ticket file and store
         let ticket_path = janus_root.join("items").join("j-mod1.md");
@@ -625,8 +624,6 @@ mod tests {
             store.tickets().get("j-mod1").unwrap().title.as_deref(),
             Some("Updated Title")
         );
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[tokio::test]
@@ -635,7 +632,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         // Start the watcher FIRST on an empty store
         let store = leak_store(TicketStore::empty());
@@ -673,8 +670,6 @@ mod tests {
             !store.tickets().contains_key("j-del1"),
             "ticket should be removed from store"
         );
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[tokio::test]
@@ -683,7 +678,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -701,8 +696,6 @@ mod tests {
             store.plans().contains_key("plan-new1"),
             "store should contain the new plan"
         );
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[tokio::test]
@@ -711,7 +704,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = leak_store(TicketStore::empty());
         let (watcher, mut rx1) = StoreWatcher::start(store).expect("watcher should start");
@@ -727,8 +720,6 @@ mod tests {
 
         assert!(r1.is_ok(), "subscriber 1 should receive event");
         assert!(r2.is_ok(), "subscriber 2 should receive event");
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[tokio::test]
@@ -737,7 +728,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -772,8 +763,6 @@ mod tests {
             title.starts_with("Rapid Write"),
             "should have a title from one of the writes, got: {title}"
         );
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[tokio::test]
@@ -782,7 +771,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -800,8 +789,6 @@ mod tests {
             sleep(Duration::from_millis(50)).await;
         }
         assert_eq!(store.tickets().len(), 0, "non-md files should be ignored");
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -811,7 +798,7 @@ mod tests {
         let janus_root = tmp.path().join(".janus");
         // Don't create the directories
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = leak_store(TicketStore::empty());
         // The watcher should start without error even if directories don't exist
@@ -824,8 +811,6 @@ mod tests {
             result.is_ok(),
             "watcher should start gracefully with missing dirs"
         );
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -855,7 +840,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         // Reset the global WATCHER singleton for this test by using
         // StoreWatcher::start directly and calling the global start_watching.
@@ -901,7 +886,5 @@ mod tests {
                 "both stores should be rejected when WATCHER is bound to a third"
             );
         }
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 }

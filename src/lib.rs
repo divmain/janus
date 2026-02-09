@@ -26,6 +26,9 @@ pub mod utils;
 pub mod cache;
 pub mod embedding;
 
+#[cfg(test)]
+pub(crate) mod test_guards;
+
 pub use entity::Entity;
 pub use error::{JanusError, Result};
 pub use hooks::{

@@ -1,7 +1,7 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
 use crate::types::{
-    EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
+    tickets_items_dir, EntityType, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
 use crate::utils;
 use serde::Serialize;
@@ -302,12 +302,15 @@ mod tests {
     use serial_test::serial;
     use std::fs;
 
+    use crate::test_guards::CwdGuard;
+
     #[test]
     #[serial]
     fn test_builder_rejects_invalid_status() {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_rejects_invalid_status");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test")
@@ -326,6 +329,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_rejects_invalid_ticket_type");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test")
@@ -344,6 +348,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_rejects_invalid_priority");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test")
@@ -362,6 +367,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_accepts_valid_status");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test")
@@ -378,6 +384,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_accepts_valid_ticket_type");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test")
@@ -394,6 +401,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_accepts_valid_priority");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test")
@@ -410,6 +418,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_with_spawned_from");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test Spawned Ticket")
@@ -435,6 +444,7 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_builder_without_spawning_fields");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         let result = TicketBuilder::new("Test Regular Ticket")
@@ -459,6 +469,7 @@ mod tests {
             .path()
             .join("test_builder_spawned_from_with_depth_zero");
         fs::create_dir_all(&repo_path).unwrap();
+        let _cwd_guard = CwdGuard::new().unwrap();
         std::env::set_current_dir(&repo_path).unwrap();
 
         // Create a ticket spawned from a root ticket (depth 0)

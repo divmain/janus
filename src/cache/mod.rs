@@ -335,6 +335,7 @@ mod tests {
 
     use super::test_helpers::{make_plan_content, make_ticket_content};
     use super::*;
+    use crate::test_guards::EnvGuard;
     use crate::types::{PlanId, TicketId};
     use crate::types::{TicketPriority, TicketStatus, TicketType};
 
@@ -385,8 +386,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = TicketStore::init().expect("init should succeed");
 
@@ -407,8 +407,6 @@ mod tests {
         // Verify plan metadata
         let plan = store.plans.get("plan-x1y2").unwrap();
         assert_eq!(plan.title.as_deref(), Some("Test Plan"));
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -418,13 +416,11 @@ mod tests {
         let janus_root = tmp.path().join(".janus");
         // Don't create the directories
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = TicketStore::init().expect("init should succeed even with missing dirs");
         assert_eq!(store.tickets.len(), 0);
         assert_eq!(store.plans.len(), 0);
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -450,14 +446,12 @@ mod tests {
         )
         .unwrap();
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = TicketStore::init().expect("init should succeed despite parse errors");
         // Only the valid ticket should be loaded
         assert_eq!(store.tickets.len(), 1);
         assert!(store.tickets.contains_key("j-good"));
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -477,7 +471,7 @@ mod tests {
         )
         .unwrap();
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = TicketStore::init().expect("init should succeed");
 
@@ -495,8 +489,6 @@ mod tests {
         // The metadata ID should also reflect the filename stem
         let ticket = store.tickets.get("j-file").unwrap();
         assert_eq!(ticket.id.as_deref(), Some("j-file"));
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -612,7 +604,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
 
         let store = TicketStore::init().expect("init should succeed");
 
@@ -627,7 +619,5 @@ mod tests {
         assert!(plan.file_path.is_some());
         let file_path = plan.file_path.as_ref().unwrap();
         assert!(file_path.ends_with("plan-x1y2.md"));
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 }

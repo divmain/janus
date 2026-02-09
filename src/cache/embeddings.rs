@@ -244,6 +244,7 @@ mod tests {
 
     use super::*;
     use crate::cache::TicketStore;
+    use crate::test_guards::EnvGuard;
     use crate::types::TicketId;
     use crate::types::{TicketMetadata, TicketStatus};
 
@@ -314,7 +315,7 @@ mod tests {
         let items_dir = janus.join("items");
         std::fs::create_dir_all(&items_dir).unwrap();
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
 
         // Create a ticket file
         let ticket_path = items_dir.join("j-test.md");
@@ -355,8 +356,6 @@ status: new
 
         let loaded = store.embeddings().get("j-test").unwrap();
         assert_eq!(*loaded.value(), vector);
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -367,7 +366,7 @@ status: new
         let emb_dir = janus.join("embeddings");
         std::fs::create_dir_all(&emb_dir).unwrap();
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
 
         // Create some .bin files
         std::fs::write(emb_dir.join("valid1.bin"), b"data").unwrap();
@@ -387,8 +386,6 @@ status: new
         assert!(emb_dir.join("valid2.bin").exists());
         assert!(!emb_dir.join("orphan1.bin").exists());
         assert!(!emb_dir.join("orphan2.bin").exists());
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -398,12 +395,10 @@ status: new
         let janus = tmp.path().join(".janus");
         // Don't create the embeddings dir
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
 
         let pruned = TicketStore::prune_orphaned(&HashSet::new()).expect("prune should succeed");
         assert_eq!(pruned, 0);
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -447,7 +442,7 @@ status: new
         let janus = tmp.path().join(".janus");
         // Don't create the embeddings dir
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
 
         let store = TicketStore::empty();
         store.upsert_ticket(TicketMetadata {
@@ -459,8 +454,6 @@ status: new
         // Should not panic, just return without loading
         store.load_embeddings();
         assert_eq!(store.embeddings().len(), 0);
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -485,7 +478,7 @@ status: new
         let items_dir = janus.join("items");
         std::fs::create_dir_all(&items_dir).unwrap();
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
 
         // Create a ticket file
         let ticket_path = items_dir.join("j-dim.md");
@@ -519,8 +512,6 @@ status: new
         // load_embeddings should reject the wrong-dimension file
         store.load_embeddings();
         assert_eq!(store.embeddings().len(), 0);
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
@@ -531,7 +522,7 @@ status: new
         let items_dir = janus.join("items");
         std::fs::create_dir_all(&items_dir).unwrap();
 
-        unsafe { std::env::set_var("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
 
         // Create a ticket file
         let ticket_path = items_dir.join("j-nan.md");
@@ -601,7 +592,5 @@ status: new
         // load_embeddings should reject the embedding containing infinity
         store2.load_embeddings();
         assert_eq!(store2.embeddings().len(), 0);
-
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 }

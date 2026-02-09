@@ -73,7 +73,11 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
         .file_stem()
         .and_then(|s| {
             let id = s.to_string_lossy().into_owned();
-            if id.is_empty() { None } else { Some(id) }
+            if id.is_empty() {
+                None
+            } else {
+                Some(id)
+            }
         })
         .ok_or_else(|| {
             JanusError::InvalidFormat(format!(
@@ -423,6 +427,8 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
+    use crate::test_guards::CwdGuard;
+
     #[test]
     fn test_generate_unique_id_with_prefix_format() {
         let id = generate_unique_id_with_prefix("task").unwrap();
@@ -704,12 +710,10 @@ mod tests {
                 "Filename '{}' should be rejected as reserved",
                 name
             );
-            assert!(
-                result
-                    .unwrap_err()
-                    .to_string()
-                    .contains("reserved device name")
-            );
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("reserved device name"));
         }
     }
 
@@ -741,6 +745,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_generated_id_is_file_safe() {
+        let _cwd_guard = CwdGuard::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_generated_id_safe");
         std::fs::create_dir_all(&repo_path).unwrap();

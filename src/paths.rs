@@ -28,12 +28,12 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
+    use crate::test_guards::EnvGuard;
+
     #[test]
     #[serial]
     fn test_janus_root_default() {
-        // Clear JANUS_ROOT to test default behavior
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::remove_var("JANUS_ROOT") };
+        let _env_guard = unsafe { EnvGuard::remove("JANUS_ROOT") };
         let root = janus_root();
         assert_eq!(root, PathBuf::from(".janus"));
     }
@@ -41,18 +41,15 @@ mod tests {
     #[test]
     #[serial]
     fn test_janus_root_with_env_var() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::set_var("JANUS_ROOT", "/custom/path/.janus") };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", "/custom/path/.janus") };
         let root = janus_root();
         assert_eq!(root, PathBuf::from("/custom/path/.janus"));
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
     #[serial]
     fn test_tickets_items_dir_default() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::remove_var("JANUS_ROOT") };
+        let _env_guard = unsafe { EnvGuard::remove("JANUS_ROOT") };
         let dir = tickets_items_dir();
         assert_eq!(dir, PathBuf::from(".janus/items"));
     }
@@ -60,18 +57,15 @@ mod tests {
     #[test]
     #[serial]
     fn test_tickets_items_dir_with_env_var() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::set_var("JANUS_ROOT", "/custom/path/.janus") };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", "/custom/path/.janus") };
         let dir = tickets_items_dir();
         assert_eq!(dir, PathBuf::from("/custom/path/.janus/items"));
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 
     #[test]
     #[serial]
     fn test_plans_dir_default() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::remove_var("JANUS_ROOT") };
+        let _env_guard = unsafe { EnvGuard::remove("JANUS_ROOT") };
         let dir = plans_dir();
         assert_eq!(dir, PathBuf::from(".janus/plans"));
     }
@@ -79,10 +73,8 @@ mod tests {
     #[test]
     #[serial]
     fn test_plans_dir_with_env_var() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::set_var("JANUS_ROOT", "/custom/path/.janus") };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", "/custom/path/.janus") };
         let dir = plans_dir();
         assert_eq!(dir, PathBuf::from("/custom/path/.janus/plans"));
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 }

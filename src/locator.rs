@@ -29,11 +29,12 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
+    use crate::test_guards::EnvGuard;
+
     #[test]
     #[serial]
     fn test_ticket_path() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::remove_var("JANUS_ROOT") };
+        let _env_guard = unsafe { EnvGuard::remove("JANUS_ROOT") };
         let path = ticket_path("j-a1b2");
         assert!(path.to_string_lossy().contains(".janus/items"));
         assert!(path.to_string_lossy().contains("j-a1b2.md"));
@@ -42,8 +43,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_plan_path() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::remove_var("JANUS_ROOT") };
+        let _env_guard = unsafe { EnvGuard::remove("JANUS_ROOT") };
         let path = plan_path("plan-a1b2");
         assert!(path.to_string_lossy().contains(".janus/plans"));
         assert!(path.to_string_lossy().contains("plan-a1b2.md"));
@@ -52,11 +52,9 @@ mod tests {
     #[test]
     #[serial]
     fn test_ticket_path_with_env_var() {
-        // SAFETY: We use #[serial] to ensure single-threaded access
-        unsafe { std::env::set_var("JANUS_ROOT", "/custom/path/.janus") };
+        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", "/custom/path/.janus") };
         let path = ticket_path("j-test");
         assert!(path.to_string_lossy().contains("/custom/path/.janus/items"));
         assert!(path.to_string_lossy().contains("j-test.md"));
-        unsafe { std::env::remove_var("JANUS_ROOT") };
     }
 }
