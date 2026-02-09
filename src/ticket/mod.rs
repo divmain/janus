@@ -304,8 +304,8 @@ impl Ticket {
     /// when the ticket file has validation issues in unrelated fields.
     fn extract_array_field_tolerant(raw_content: &str, field: &str) -> Result<Vec<String>> {
         let (frontmatter_str, _body) = split_frontmatter(raw_content)?;
-        let mapping: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(&frontmatter_str)
-            .map_err(|e| {
+        let mapping: serde_yaml_ng::Mapping =
+            serde_yaml_ng::from_str(&frontmatter_str).map_err(|e| {
                 JanusError::InvalidFormat(format!(
                     "Failed to parse frontmatter YAML in tolerant mode: {e}"
                 ))

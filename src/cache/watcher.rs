@@ -457,10 +457,7 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
             return true;
         }
         Err(e) => {
-            eprintln!(
-                "Warning: failed to read plan file {}: {e}",
-                path.display()
-            );
+            eprintln!("Warning: failed to read plan file {}: {e}", path.display());
             return false;
         }
     };
@@ -477,10 +474,7 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
             true
         }
         Err(e) => {
-            eprintln!(
-                "Warning: failed to parse plan file {}: {e}",
-                path.display()
-            );
+            eprintln!("Warning: failed to parse plan file {}: {e}", path.display());
             false
         }
     }
