@@ -9,3 +9,5 @@ target/
 !tests/fixtures/**/.janus/
 # But exclude generated event logs
 **/.janus/events.ndjson
+# And also exclude generated embeddings for fixtures
+**/.janus/embeddings/
