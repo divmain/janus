@@ -150,9 +150,9 @@ pub fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
         "type": ticket.ticket_type.map(|t| t.to_string()),
         "priority": ticket.priority.map(|p| p.to_string()),
         "size": ticket.size.map(|s| s.to_string()),
-        "external-ref": ticket.external_ref,
+        "external_ref": ticket.external_ref,
         "parent": ticket.parent,
-        "filePath": ticket.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+        "file_path": ticket.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
         "remote": ticket.remote,
         "completion_summary": ticket.completion_summary,
     })
