@@ -18,9 +18,11 @@ mod sections;
 mod serialize;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, Options, parse_document};
+use comrak::{parse_document, Arena, Options};
+use regex::Regex;
 use serde::Deserialize;
 
 use crate::error::{JanusError, Result};
@@ -29,12 +31,26 @@ use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection, TicketsSect
 
 // Re-export public functions from submodules
 pub use import::{
+    is_completed_task, is_phase_header, is_section_alias, parse_importable_plan,
     ACCEPTANCE_CRITERIA_ALIASES, DESIGN_SECTION_NAME, IMPLEMENTATION_SECTION_NAME,
-    PHASE_HEADER_REGEX, PHASE_PATTERN, is_completed_task, is_phase_header, is_section_alias,
-    parse_importable_plan,
+    PHASE_HEADER_REGEX, PHASE_PATTERN,
 };
 pub use sections::parse_ticket_list;
 pub use serialize::serialize_plan;
+
+/// Regex pattern for matching phase headers in regular plan files.
+///
+/// Only matches "Phase" as the keyword. Headings like "Stage 1: Planning" or
+/// "Part 2: Setup" are treated as freeform sections in regular plan files.
+/// The broader pattern (stage, part, step) is intentionally limited to the
+/// import parser where the user has explicitly chosen to import a structured plan.
+const PLAN_FILE_PHASE_PATTERN: &str = r"(?i)^phase\s+(\d+[a-z]?)\s*[-:]?\s*(.*)$";
+
+/// Compiled regex for matching phase headers in regular plan files.
+/// Only matches "Phase N: Name" — not "Stage", "Part", or "Step".
+static PLAN_FILE_PHASE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(PLAN_FILE_PHASE_PATTERN).expect("plan file phase regex should be valid")
+});
 
 /// Tolerant plan frontmatter struct for YAML deserialization.
 ///
@@ -341,13 +357,17 @@ pub(crate) struct H3Section {
     pub content: String,
 }
 
-/// Try to parse a heading as a phase header
-/// Matches: "Phase 1: Name", "Phase 2a - Name", "Phase 10:", "Phase 1" (no separator)
+/// Try to parse a heading as a phase header in regular plan files.
+///
+/// Only matches "Phase N: Name" variants. Headings like "Stage 1: Planning"
+/// or "Part 2: Setup" are treated as freeform sections — the broader pattern
+/// is reserved for the import parser where the user has explicitly chosen to
+/// import a structured plan.
 fn try_parse_phase_header(heading: &str) -> Option<(String, String)> {
-    PHASE_HEADER_REGEX.captures(heading).map(|caps| {
-        let number = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
+    PLAN_FILE_PHASE_REGEX.captures(heading).map(|caps| {
+        let number = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
         let name = caps
-            .get(3)
+            .get(2)
             .map(|m| m.as_str().trim())
             .unwrap_or("")
             .to_string();
@@ -701,6 +721,99 @@ Initial setup.
 
         let result = try_parse_phase_header("Phase without number");
         assert!(result.is_none());
+
+        // Stage, Part, Step should NOT match in regular plan file parsing
+        let result = try_parse_phase_header("Stage 1: Planning");
+        assert!(
+            result.is_none(),
+            "Stage should not match in plan file parser"
+        );
+
+        let result = try_parse_phase_header("Part 2: Implementation");
+        assert!(
+            result.is_none(),
+            "Part should not match in plan file parser"
+        );
+
+        let result = try_parse_phase_header("Step 3: Testing");
+        assert!(
+            result.is_none(),
+            "Step should not match in plan file parser"
+        );
+    }
+
+    #[test]
+    fn test_stage_heading_is_freeform_in_plan_files() {
+        let content = r#"---
+id: plan-stage
+uuid: 550e8400-e29b-41d4-a716-446655440030
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Stage Headings
+
+## Stage 1: Planning
+
+This describes the planning stage.
+
+## Phase 1: Implementation
+
+### Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        // "Stage 1: Planning" should be treated as freeform
+        let freeform = metadata.free_form_sections();
+        assert_eq!(freeform.len(), 1);
+        assert_eq!(freeform[0].heading, "Stage 1: Planning");
+        assert!(freeform[0].content.contains("planning stage"));
+
+        // "Phase 1: Implementation" should still be recognized as a phase
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+        assert_eq!(phases[0].number, "1");
+        assert_eq!(phases[0].name, "Implementation");
+    }
+
+    #[test]
+    fn test_part_and_step_headings_are_freeform_in_plan_files() {
+        let content = r#"---
+id: plan-parts
+uuid: 550e8400-e29b-41d4-a716-446655440031
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Part and Step Headings
+
+## Part 1: Background
+
+Background information.
+
+## Step 2: Prerequisites
+
+Prerequisite steps.
+
+## Phase 1: Actual Phase
+
+### Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        // Part and Step should be freeform
+        let freeform = metadata.free_form_sections();
+        assert_eq!(freeform.len(), 2);
+        assert_eq!(freeform[0].heading, "Part 1: Background");
+        assert_eq!(freeform[1].heading, "Step 2: Prerequisites");
+
+        // Only Phase should be a phase
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+        assert_eq!(phases[0].number, "1");
+        assert_eq!(phases[0].name, "Actual Phase");
     }
 
     // ==================== Edge Case Tests ====================
@@ -747,13 +860,11 @@ No H1 heading, just content.
         let metadata = parse_plan_content(content).unwrap();
         assert!(metadata.title.is_none());
         // Content before first H2 is description
-        assert!(
-            metadata
-                .description
-                .as_ref()
-                .unwrap()
-                .contains("No H1 heading")
-        );
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("No H1 heading"));
     }
 
     #[test]
@@ -1210,13 +1321,11 @@ Implement the core synchronization logic.
             metadata.title,
             Some("SQLite Cache Implementation Plan".to_string())
         );
-        assert!(
-            metadata
-                .description
-                .as_ref()
-                .unwrap()
-                .contains("SQLite-based caching layer")
-        );
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("SQLite-based caching layer"));
 
         // Acceptance criteria
         assert_eq!(metadata.acceptance_criteria.len(), 3);
@@ -1870,22 +1979,16 @@ They contain useful context that must not be lost.
             phases[0].extra_subsections[0].heading,
             "Implementation Notes"
         );
-        assert!(
-            phases[0].extra_subsections[0]
-                .content
-                .contains("custom notes")
-        );
-        assert!(
-            phases[0].extra_subsections[0]
-                .content
-                .contains("must not be lost")
-        );
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("custom notes"));
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("must not be lost"));
         assert_eq!(phases[0].extra_subsections[1].heading, "Risk Assessment");
-        assert!(
-            phases[0].extra_subsections[1]
-                .content
-                .contains("Performance under load")
-        );
+        assert!(phases[0].extra_subsections[1]
+            .content
+            .contains("Performance under load"));
 
         // Subsection order tracks all H3s
         assert_eq!(
@@ -1928,16 +2031,12 @@ fn example() {
 
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "API Examples");
-        assert!(
-            phases[0].extra_subsections[0]
-                .content
-                .contains("fn example()")
-        );
-        assert!(
-            phases[0].extra_subsections[0]
-                .content
-                .contains("should be preserved")
-        );
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("fn example()"));
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("should be preserved"));
     }
 
     // ==================== Tickets Section H3 Subsection Tests ====================
@@ -1981,11 +2080,9 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(
-                ts.extra_subsections[1]
-                    .content
-                    .contains("Timeline pressure")
-            );
+            assert!(ts.extra_subsections[1]
+                .content
+                .contains("Timeline pressure"));
         } else {
             panic!("Expected PlanSection::Tickets");
         }
@@ -2067,25 +2164,19 @@ Run the full integration suite before merging.
             metadata.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(
-            metadata.acceptance_criteria_extra[0]
-                .content
-                .contains("Detailed testing instructions")
-        );
-        assert!(
-            metadata.acceptance_criteria_extra[0]
-                .content
-                .contains("integration suite")
-        );
+        assert!(metadata.acceptance_criteria_extra[0]
+            .content
+            .contains("Detailed testing instructions"));
+        assert!(metadata.acceptance_criteria_extra[0]
+            .content
+            .contains("integration suite"));
         assert_eq!(
             metadata.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(
-            metadata.acceptance_criteria_extra[1]
-                .content
-                .contains("Deploy to staging")
-        );
+        assert!(metadata.acceptance_criteria_extra[1]
+            .content
+            .contains("Deploy to staging"));
     }
 
     #[test]
@@ -2148,11 +2239,9 @@ created: 2024-01-01T00:00:00Z
             metadata.acceptance_criteria_extra[0].heading,
             "Example Responses"
         );
-        assert!(
-            metadata.acceptance_criteria_extra[0]
-                .content
-                .contains("\"status\": \"ok\"")
-        );
+        assert!(metadata.acceptance_criteria_extra[0]
+            .content
+            .contains("\"status\": \"ok\""));
     }
 
     // ==================== Table Round-Trip Tests ====================
