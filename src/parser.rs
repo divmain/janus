@@ -99,7 +99,7 @@ pub fn split_frontmatter_comrak(content: &str) -> Result<(String, String)> {
     }
 
     if content == "---\n---\n" || content.starts_with("---\n---\n") {
-        return Ok((String::new(), content[8..].trim_start().to_string()));
+        return Err(JanusError::EmptyFrontmatter);
     }
 
     Err(JanusError::InvalidFormat(
@@ -301,6 +301,10 @@ impl ParsedDocument {
 /// use `crate::ticket::parse_ticket` instead.
 pub fn parse_document(content: &str) -> Result<ParsedDocument> {
     let (frontmatter_raw, body) = split_frontmatter(content)?;
+
+    if frontmatter_raw.trim().is_empty() {
+        return Err(JanusError::EmptyFrontmatter);
+    }
 
     let frontmatter: HashMap<String, yaml::Value> = yaml::from_str(&frontmatter_raw)?;
 
@@ -714,10 +718,43 @@ Body.
     #[serial]
     fn test_empty_frontmatter_and_body() {
         let content = "---\n---\n";
-        let (frontmatter, body) = split_frontmatter(content).unwrap();
+        let result = split_frontmatter(content);
+        assert!(result.is_err());
+        match result {
+            Err(JanusError::EmptyFrontmatter) => {}
+            other => panic!("Expected EmptyFrontmatter error, got: {other:?}"),
+        }
+    }
 
-        assert_eq!(frontmatter, "");
-        assert_eq!(body, "");
+    #[test]
+    #[serial]
+    fn test_empty_frontmatter_with_body() {
+        let content = "---\n---\n# Title\n\nBody content";
+        let result = split_frontmatter(content);
+        assert!(result.is_err());
+        match result {
+            Err(JanusError::EmptyFrontmatter) => {}
+            other => panic!("Expected EmptyFrontmatter error, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_empty_frontmatter_error_message() {
+        let err = JanusError::EmptyFrontmatter;
+        let msg = err.to_string();
+        assert!(msg.contains("empty YAML frontmatter"));
+        assert!(msg.contains("Required fields"));
+    }
+
+    #[test]
+    fn test_parse_document_empty_frontmatter() {
+        let content = "---\n---\n# Title\n";
+        let result = parse_document(content);
+        assert!(result.is_err());
+        match result {
+            Err(JanusError::EmptyFrontmatter) => {}
+            other => panic!("Expected EmptyFrontmatter error, got: {other:?}"),
+        }
     }
 
     #[test]

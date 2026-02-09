@@ -70,9 +70,12 @@ fn test_unicode_characters_in_frontmatter() {
 #[serial]
 fn test_empty_frontmatter() {
     let content = "---\n---\n# Title\n\nBody";
-    let (frontmatter, body) = split_frontmatter(content).unwrap();
-    assert_eq!(frontmatter, "");
-    assert!(body.contains("# Title"));
+    let result = split_frontmatter(content);
+    assert!(result.is_err());
+    match result {
+        Err(JanusError::EmptyFrontmatter) => {}
+        other => panic!("Expected EmptyFrontmatter error, got: {other:?}"),
+    }
 }
 
 #[test]

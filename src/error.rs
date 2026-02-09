@@ -132,6 +132,9 @@ pub enum JanusError {
     #[error("cannot move ticket in a simple plan (no phases)")]
     CannotMoveInSimplePlan,
 
+    #[error("empty YAML frontmatter: the frontmatter block between '---' delimiters is empty. Required fields (e.g. id, status) must be provided")]
+    EmptyFrontmatter,
+
     #[error("invalid ticket format: {0}")]
     InvalidFormat(String),
 
