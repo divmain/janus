@@ -46,11 +46,10 @@ fn test_edit_non_tty() {
     let janus = JanusTest::new();
 
     let id = janus.run_success(&["create", "Test"]).trim().to_string();
-    // In non-TTY mode (like tests), it should fail with an error message
-    let stderr = janus.run_failure(&["edit", &id]);
-    assert!(stderr.contains("Cannot open editor in non-interactive mode"));
-    assert!(stderr.contains(&id));
-    assert!(stderr.contains(".janus"));
+    // In non-interactive mode (CI), edit should print the file path
+    let output = janus.run_success(&["edit", &id]);
+    assert!(output.contains("Edit ticket file:"));
+    assert!(output.contains(&id));
 }
 
 // ============================================================================

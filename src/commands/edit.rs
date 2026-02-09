@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
-use crate::error::{JanusError, Result};
+use crate::error::Result;
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, open_in_editor};
 
@@ -22,9 +22,11 @@ pub async fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
     if is_stdin_tty() {
         open_in_editor(&ticket.file_path)?;
     } else {
-        return Err(JanusError::InteractiveTerminalRequired(
-            ticket.file_path.clone(),
-        ));
+        // Non-interactive mode: just print the file path
+        println!(
+            "Edit ticket file: {}",
+            crate::utils::format_relative_path(&ticket.file_path)
+        );
     }
 
     Ok(())
