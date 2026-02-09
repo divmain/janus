@@ -6,13 +6,13 @@
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, Options, parse_document};
+use comrak::{parse_document, Arena, Options};
 use regex::Regex;
 
 use crate::error::{JanusError, Result};
 use crate::plan::types::{
-    ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask,
-    display_import_validation_error,
+    display_import_validation_error, ImportValidationError, ImportablePhase, ImportablePlan,
+    ImportableTask,
 };
 
 use super::{extract_text_content, render_node_to_markdown};
@@ -154,7 +154,7 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
         Some(t) => t,
         None => {
             errors.push(ImportValidationError {
-                line: None,
+                line: Some(1),
                 message: "Missing plan title (expected H1 heading)".to_string(),
                 hint: Some("Add \"# Your Plan Title\" at the start of the document".to_string()),
             });
@@ -169,7 +169,7 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
     let design = extract_h2_section_content(root, DESIGN_SECTION_NAME, &options);
     if design.is_none() {
         errors.push(ImportValidationError {
-            line: None,
+            line: find_last_heading_line(root),
             message: "Missing required \"## Design\" section".to_string(),
             hint: Some(
                 "Add a \"## Design\" section with design details, architecture, and reasoning"
@@ -182,10 +182,11 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
     let acceptance_criteria = extract_import_acceptance_criteria(root);
 
     // 5. Validate Implementation section exists
-    let has_implementation = has_h2_section(root, IMPLEMENTATION_SECTION_NAME);
+    let impl_section_line = find_h2_section_line(root, IMPLEMENTATION_SECTION_NAME);
+    let has_implementation = impl_section_line.is_some();
     if !has_implementation {
         errors.push(ImportValidationError {
-            line: None,
+            line: find_last_heading_line(root),
             message: "Missing required \"## Implementation\" section".to_string(),
             hint: Some(
                 "Add a \"## Implementation\" section containing \"### Phase N:\" subsections"
@@ -204,7 +205,7 @@ pub fn parse_importable_plan(content: &str) -> Result<ImportablePlan> {
     // 7. Validate at least one phase exists
     if has_implementation && phases.is_empty() {
         errors.push(ImportValidationError {
-            line: None,
+            line: impl_section_line,
             message: "Implementation section has no phases".to_string(),
             hint: Some("Add \"### Phase 1: Name\" subsections under ## Implementation".to_string()),
         });
@@ -335,20 +336,38 @@ fn extract_import_acceptance_criteria<'a>(root: &'a AstNode<'a>) -> Vec<String> 
     criteria
 }
 
-/// Check if a document has an H2 section with the given name (case-insensitive)
-fn has_h2_section<'a>(root: &'a AstNode<'a>, section_name: &str) -> bool {
+/// Find the line number of the last heading in the document.
+///
+/// Useful for reporting approximate locations of missing required sections,
+/// since a missing section would logically be expected after existing headings.
+fn find_last_heading_line<'a>(root: &'a AstNode<'a>) -> Option<usize> {
+    let mut last_line = None;
+    for node in root.children() {
+        if let NodeValue::Heading(_) = &node.data.borrow().value {
+            last_line = Some(node.data.borrow().sourcepos.start.line);
+        }
+    }
+    last_line
+}
+
+/// Check if a document has an H2 section with the given name (case-insensitive).
+///
+/// Returns the source line number of the section heading if found, `None` otherwise.
+fn find_h2_section_line<'a>(root: &'a AstNode<'a>, section_name: &str) -> Option<usize> {
     let section_lower = section_name.to_lowercase();
     for node in root.children() {
-        if let NodeValue::Heading(heading) = &node.data.borrow().value
+        let data = node.data.borrow();
+        if let NodeValue::Heading(heading) = &data.value
             && heading.level == 2
         {
+            drop(data);
             let text = extract_text_content(node);
             if text.trim().to_lowercase() == section_lower {
-                return true;
+                return Some(node.data.borrow().sourcepos.start.line);
             }
         }
     }
-    false
+    None
 }
 
 /// Extract the content of an H2 section by name (case-insensitive)
@@ -1066,12 +1085,11 @@ It has no explicit H4 task headers.
         let task = &phase.tasks[0];
         assert_eq!(task.title, "Implement Phase 1: Setup");
         assert!(task.body.is_some());
-        assert!(
-            task.body
-                .as_ref()
-                .unwrap()
-                .contains("sets up the infrastructure")
-        );
+        assert!(task
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("sets up the infrastructure"));
         assert!(!task.is_complete);
     }
 
@@ -1136,13 +1154,11 @@ Test the full workflow.
         assert_eq!(phase2.tasks.len(), 1, "Should have one fallback task");
         assert_eq!(phase2.tasks[0].title, "Implement Phase 2: Integration");
         assert!(phase2.tasks[0].body.is_some());
-        assert!(
-            phase2.tasks[0]
-                .body
-                .as_ref()
-                .unwrap()
-                .contains("no H4 tasks")
-        );
+        assert!(phase2.tasks[0]
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("no H4 tasks"));
 
         // Phase 3: Has explicit H4 tasks
         let phase3 = &plan.phases[2];
