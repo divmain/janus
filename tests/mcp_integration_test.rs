@@ -26,9 +26,7 @@ struct McpTestClient {
 impl McpTestClient {
     /// Start the MCP server process
     fn new(working_dir: &std::path::Path) -> Self {
-        let binary_path = concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus");
-
-        let mut child = Command::new(binary_path)
+        let mut child = Command::new(common::janus_binary())
             .args(["mcp"])
             .current_dir(working_dir)
             .stdin(Stdio::piped())
@@ -409,12 +407,10 @@ fn test_mcp_read_ticket_not_found() {
 
     // Should return an error
     assert!(response["error"].is_object());
-    assert!(
-        response["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("not found")
-    );
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
 }
 
 #[test]
@@ -768,12 +764,10 @@ fn test_mcp_read_plan_not_found() {
 
     // Should return an error
     assert!(response["error"].is_object());
-    assert!(
-        response["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("not found")
-    );
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
 }
 
 #[test]

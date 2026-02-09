@@ -917,7 +917,7 @@ fn test_help_shows_new_commands() {
 
 #[test]
 fn test_completions_bash() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "bash"])
         .output()
         .expect("Failed to execute command");
@@ -929,7 +929,7 @@ fn test_completions_bash() {
 
 #[test]
 fn test_completions_zsh() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "zsh"])
         .output()
         .expect("Failed to execute command");
@@ -941,7 +941,7 @@ fn test_completions_zsh() {
 
 #[test]
 fn test_completions_fish() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "fish"])
         .output()
         .expect("Failed to execute command");
@@ -953,7 +953,7 @@ fn test_completions_fish() {
 
 #[test]
 fn test_completions_invalid_shell() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "invalid"])
         .output()
         .expect("Failed to execute command");
@@ -4363,7 +4363,7 @@ fn test_plan_reorder_phases_no_phases() {
 
 #[test]
 fn test_remote_browse_help() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["remote", "browse", "--help"])
         .output()
         .expect("Failed to execute command");
@@ -4373,7 +4373,7 @@ fn test_remote_browse_help() {
 
 #[test]
 fn test_remote_adopt_help() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["remote", "adopt", "--help"])
         .output()
         .expect("Failed to execute command");
@@ -4385,7 +4385,7 @@ fn test_remote_adopt_help() {
 
 #[test]
 fn test_remote_push_help() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["remote", "push", "--help"])
         .output()
         .expect("Failed to execute command");
@@ -4395,7 +4395,7 @@ fn test_remote_push_help() {
 
 #[test]
 fn test_remote_link_help() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["remote", "link", "--help"])
         .output()
         .expect("Failed to execute command");
@@ -4407,7 +4407,7 @@ fn test_remote_link_help() {
 
 #[test]
 fn test_remote_sync_help() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["remote", "sync", "--help"])
         .output()
         .expect("Failed to execute command");
@@ -4417,7 +4417,7 @@ fn test_remote_sync_help() {
 
 #[test]
 fn test_remote_no_subcommand_non_pty() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["remote"])
         .stdin(std::process::Stdio::null())
         .output()
@@ -4443,7 +4443,7 @@ fn test_help_has_command_groups() {
     // Once that PR is merged and clap is updated, this test can be enabled and
     // the next_help_heading attributes can be added back to src/main.rs.
 
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["--help"])
         .output()
         .expect("Failed to execute command");

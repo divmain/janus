@@ -1,6 +1,8 @@
 use serial_test::serial;
 use std::process::Command;
 
+mod common;
+
 // ============================================================================
 // Completions command tests
 // ============================================================================
@@ -8,7 +10,7 @@ use std::process::Command;
 #[test]
 #[serial]
 fn test_completions_bash() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "bash"])
         .output()
         .expect("Failed to execute command");
@@ -21,7 +23,7 @@ fn test_completions_bash() {
 #[test]
 #[serial]
 fn test_completions_zsh() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "zsh"])
         .output()
         .expect("Failed to execute command");
@@ -34,7 +36,7 @@ fn test_completions_zsh() {
 #[test]
 #[serial]
 fn test_completions_fish() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "fish"])
         .output()
         .expect("Failed to execute command");
@@ -47,7 +49,7 @@ fn test_completions_fish() {
 #[test]
 #[serial]
 fn test_completions_invalid_shell() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["completions", "invalid"])
         .output()
         .expect("Failed to execute command");

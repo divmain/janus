@@ -9,40 +9,29 @@ use std::fs;
 use std::process::{Command, Output};
 use tempfile::TempDir;
 
+/// Returns the path to the janus binary built by `cargo test`.
+///
+/// Uses `CARGO_BIN_EXE_janus` which Cargo sets at compile time for integration
+/// tests, ensuring the correct binary is found regardless of build profile,
+/// target directory, or CI environment.
+pub fn janus_binary() -> &'static str {
+    env!("CARGO_BIN_EXE_janus")
+}
+
 /// Helper struct to run janus commands in an isolated temp directory
 pub struct JanusTest {
     pub temp_dir: TempDir,
-    #[allow(dead_code)]
-    binary_path: String,
 }
 
 impl JanusTest {
     pub fn new() -> Self {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
 
-        // Find the binary - check both debug and release
-        let binary_path = if cfg!(debug_assertions) {
-            concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus")
-        } else {
-            concat!(env!("CARGO_MANIFEST_DIR"), "/target/release/janus")
-        };
-
-        // If the above doesn't exist, try the alternative
-        let binary_path = if std::path::Path::new(binary_path).exists() {
-            binary_path.to_string()
-        } else {
-            // Fallback to debug
-            concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus").to_string()
-        };
-
-        JanusTest {
-            temp_dir,
-            binary_path,
-        }
+        JanusTest { temp_dir }
     }
 
     pub fn run(&self, args: &[&str]) -> Output {
-        Command::new(&self.binary_path)
+        Command::new(janus_binary())
             .args(args)
             .current_dir(self.temp_dir.path())
             .output()

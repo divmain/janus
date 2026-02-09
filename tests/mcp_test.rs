@@ -14,7 +14,7 @@ mod common;
 #[test]
 #[serial]
 fn test_mcp_version() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["mcp", "--version"])
         .output()
         .expect("Failed to execute command");
@@ -35,7 +35,7 @@ fn test_mcp_version() {
 #[serial]
 fn test_mcp_server_starts_and_responds_to_initialize() {
     // Start the MCP server
-    let mut child = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let mut child = Command::new(common::janus_binary())
         .args(["mcp"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -71,7 +71,7 @@ fn test_mcp_server_starts_and_responds_to_initialize() {
 #[test]
 #[serial]
 fn test_mcp_help() {
-    let output = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/debug/janus"))
+    let output = Command::new(common::janus_binary())
         .args(["mcp", "--help"])
         .output()
         .expect("Failed to execute command");
