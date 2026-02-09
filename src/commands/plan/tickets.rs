@@ -10,6 +10,28 @@ use crate::plan::types::PlanSection;
 use crate::ticket::Ticket;
 use crate::types::TicketId;
 
+/// Resolve a partial ticket ID against a list of ticket IDs in a plan.
+///
+/// Returns the full ID if exactly one ticket matches. Errors on no match or ambiguity.
+fn resolve_after_id(partial_id: &str, tickets: &[String]) -> Result<String> {
+    // Exact match first
+    if let Some(id) = tickets.iter().find(|t| t.as_str() == partial_id) {
+        return Ok(id.clone());
+    }
+
+    // Substring match
+    let matches: Vec<&String> = tickets.iter().filter(|t| t.contains(partial_id)).collect();
+
+    match matches.len() {
+        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        1 => Ok(matches[0].clone()),
+        _ => Err(JanusError::AmbiguousId(
+            partial_id.to_string(),
+            matches.into_iter().cloned().collect(),
+        )),
+    }
+}
+
 /// Add a ticket to a plan
 ///
 /// # Arguments
@@ -56,7 +78,8 @@ pub async fn cmd_plan_add_ticket(
 
         // Add ticket to phase
         if let Some(after_id) = after {
-            if !phase_obj.add_ticket_after(&resolved_ticket_id, after_id) {
+            let resolved_after = resolve_after_id(after_id, &phase_obj.tickets)?;
+            if !phase_obj.add_ticket_after(&resolved_ticket_id, &resolved_after) {
                 return Err(JanusError::TicketNotFound(after_id.to_string()));
             }
             added_position = phase_obj
@@ -82,7 +105,8 @@ pub async fn cmd_plan_add_ticket(
 
         // Add ticket to list (mutations invalidate tickets_raw automatically)
         if let Some(after_id) = after {
-            if ts.insert_ticket_after(resolved_ticket_id.clone(), after_id) {
+            let resolved_after = resolve_after_id(after_id, &ts.tickets)?;
+            if ts.insert_ticket_after(resolved_ticket_id.clone(), &resolved_after) {
                 let pos = ts
                     .tickets
                     .iter()
@@ -240,7 +264,8 @@ pub async fn cmd_plan_move_ticket(
         .ok_or_else(|| JanusError::PhaseNotFound(to_phase.to_string()))?;
 
     if let Some(after_id) = after {
-        if !target_phase.add_ticket_after(&resolved_id, after_id) {
+        let resolved_after = resolve_after_id(after_id, &target_phase.tickets)?;
+        if !target_phase.add_ticket_after(&resolved_id, &resolved_after) {
             return Err(JanusError::TicketNotFound(after_id.to_string()));
         }
     } else if let Some(pos) = position {
