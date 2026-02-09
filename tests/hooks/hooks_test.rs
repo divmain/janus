@@ -715,3 +715,275 @@ hooks:
     // Ensure the malicious script was NOT executed
     assert!(!stderr.contains("MALICIOUS CODE EXECUTED"));
 }
+
+// ============================================================================
+// Plan Import Hook Exactly-Once Semantics Tests
+// ============================================================================
+
+#[test]
+#[serial]
+fn test_plan_import_post_write_fires_exactly_once() {
+    let janus = JanusTest::new();
+
+    // Create a post_write hook that appends to a counter file each time it fires
+    let counter_file = janus.temp_dir.path().join("post_write_count.txt");
+    let script_content = format!(
+        r#"#!/bin/sh
+echo "POST_WRITE:$JANUS_ITEM_TYPE:$JANUS_ITEM_ID" >> "{}"
+exit 0
+"#,
+        counter_file.display()
+    );
+    janus.write_hook_script("post-write.sh", &script_content);
+
+    janus.write_config(
+        r#"
+hooks:
+  enabled: true
+  timeout: 30
+  scripts:
+    post_write: post-write.sh
+"#,
+    );
+
+    // Create a plan document to import
+    let plan_doc = r#"# Hook Test Plan
+
+Description.
+
+## Design
+
+Design details.
+
+## Implementation
+
+### Phase 1: Setup
+
+#### Task One
+
+First task.
+"#;
+    let plan_path = janus.temp_dir.path().join("hook_test_plan.md");
+    fs::write(&plan_path, plan_doc).expect("Failed to write plan file");
+
+    // Import the plan
+    let output = janus.run_success(&["plan", "import", plan_path.to_str().unwrap()]);
+    let plan_id = output.trim();
+    assert!(plan_id.starts_with("plan-"), "Should return a plan ID");
+
+    // Give hooks a moment to complete
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Read counter file and count how many times post_write fired for the plan
+    let counter_content = fs::read_to_string(&counter_file).expect("Counter file should exist");
+    let plan_post_write_count = counter_content
+        .lines()
+        .filter(|line| line.contains("POST_WRITE:plan:"))
+        .count();
+
+    assert_eq!(
+        plan_post_write_count, 1,
+        "PostWrite hook should fire exactly once for the plan import. \
+         Got {plan_post_write_count} firings. Content:\n{counter_content}"
+    );
+}
+
+#[test]
+#[serial]
+fn test_plan_import_plan_created_fires_exactly_once() {
+    let janus = JanusTest::new();
+
+    // Create a plan_created hook that appends to a counter file each time it fires
+    let counter_file = janus.temp_dir.path().join("plan_created_count.txt");
+    let script_content = format!(
+        r#"#!/bin/sh
+echo "PLAN_CREATED:$JANUS_ITEM_TYPE:$JANUS_ITEM_ID" >> "{}"
+exit 0
+"#,
+        counter_file.display()
+    );
+    janus.write_hook_script("plan-created.sh", &script_content);
+
+    janus.write_config(
+        r#"
+hooks:
+  enabled: true
+  timeout: 30
+  scripts:
+    plan_created: plan-created.sh
+"#,
+    );
+
+    // Create a plan document to import
+    let plan_doc = r#"# Created Hook Test Plan
+
+Description.
+
+## Design
+
+Design details.
+
+## Implementation
+
+### Phase 1: Setup
+
+#### Task One
+
+First task.
+"#;
+    let plan_path = janus.temp_dir.path().join("created_hook_plan.md");
+    fs::write(&plan_path, plan_doc).expect("Failed to write plan file");
+
+    // Import the plan
+    let output = janus.run_success(&["plan", "import", plan_path.to_str().unwrap()]);
+    let plan_id = output.trim();
+    assert!(plan_id.starts_with("plan-"), "Should return a plan ID");
+
+    // Give hooks a moment to complete
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Read counter file and count how many times plan_created fired
+    let counter_content = fs::read_to_string(&counter_file).expect("Counter file should exist");
+    let plan_created_count = counter_content
+        .lines()
+        .filter(|line| line.starts_with("PLAN_CREATED:"))
+        .count();
+
+    assert_eq!(
+        plan_created_count, 1,
+        "PlanCreated hook should fire exactly once for the plan import. \
+         Got {plan_created_count} firings. Content:\n{counter_content}"
+    );
+}
+
+#[test]
+#[serial]
+fn test_plan_import_does_not_fire_plan_updated() {
+    let janus = JanusTest::new();
+
+    // Create a plan_updated hook that writes to a marker file
+    let marker_file = janus.temp_dir.path().join("plan_updated_marker.txt");
+    let script_content = format!(
+        r#"#!/bin/sh
+echo "PLAN_UPDATED:$JANUS_ITEM_TYPE:$JANUS_ITEM_ID" >> "{}"
+exit 0
+"#,
+        marker_file.display()
+    );
+    janus.write_hook_script("plan-updated.sh", &script_content);
+
+    janus.write_config(
+        r#"
+hooks:
+  enabled: true
+  timeout: 30
+  scripts:
+    plan_updated: plan-updated.sh
+"#,
+    );
+
+    // Create a plan document to import
+    let plan_doc = r#"# Updated Hook Test Plan
+
+Description.
+
+## Design
+
+Design details.
+
+## Implementation
+
+### Phase 1: Setup
+
+#### Task One
+
+First task.
+"#;
+    let plan_path = janus.temp_dir.path().join("updated_hook_plan.md");
+    fs::write(&plan_path, plan_doc).expect("Failed to write plan file");
+
+    // Import the plan
+    let output = janus.run_success(&["plan", "import", plan_path.to_str().unwrap()]);
+    let plan_id = output.trim();
+    assert!(plan_id.starts_with("plan-"), "Should return a plan ID");
+
+    // Give hooks a moment to complete
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // PlanUpdated should NOT fire during import — it's a create, not an update
+    assert!(
+        !marker_file.exists(),
+        "PlanUpdated hook should NOT fire during plan import. \
+         Import creates a new plan, so only PlanCreated should fire. \
+         Marker file content: {:?}",
+        fs::read_to_string(&marker_file).ok()
+    );
+}
+
+#[test]
+#[serial]
+fn test_plan_import_pre_write_fires_exactly_once() {
+    let janus = JanusTest::new();
+
+    // Create a pre_write hook that appends to a counter file and succeeds
+    let counter_file = janus.temp_dir.path().join("pre_write_count.txt");
+    let script_content = format!(
+        r#"#!/bin/sh
+echo "PRE_WRITE:$JANUS_ITEM_TYPE:$JANUS_ITEM_ID" >> "{}"
+exit 0
+"#,
+        counter_file.display()
+    );
+    janus.write_hook_script("pre-write.sh", &script_content);
+
+    janus.write_config(
+        r#"
+hooks:
+  enabled: true
+  timeout: 30
+  scripts:
+    pre_write: pre-write.sh
+"#,
+    );
+
+    // Create a plan document to import
+    let plan_doc = r#"# Pre-Write Hook Test Plan
+
+Description.
+
+## Design
+
+Design details.
+
+## Implementation
+
+### Phase 1: Setup
+
+#### Task One
+
+First task.
+"#;
+    let plan_path = janus.temp_dir.path().join("pre_write_hook_plan.md");
+    fs::write(&plan_path, plan_doc).expect("Failed to write plan file");
+
+    // Import the plan
+    let output = janus.run_success(&["plan", "import", plan_path.to_str().unwrap()]);
+    let plan_id = output.trim();
+    assert!(plan_id.starts_with("plan-"), "Should return a plan ID");
+
+    // Give hooks a moment to complete
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Read counter file and count how many times pre_write fired for the plan
+    let counter_content = fs::read_to_string(&counter_file).expect("Counter file should exist");
+    let plan_pre_write_count = counter_content
+        .lines()
+        .filter(|line| line.contains("PRE_WRITE:plan:"))
+        .count();
+
+    assert_eq!(
+        plan_pre_write_count, 1,
+        "PreWrite hook should fire exactly once for the plan during import. \
+         Got {plan_pre_write_count} firings. Content:\n{counter_content}"
+    );
+}

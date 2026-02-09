@@ -329,19 +329,19 @@ pub async fn cmd_plan_import(
         metadata.sections.push(PlanSection::Phase(phase));
     }
 
-    // 10. Write plan
+    // 10. Write plan with exactly-once hook semantics:
+    //     PreWrite -> write -> PostWrite -> PlanCreated
     let plan_handle = Plan::with_id(&plan_id)?;
-
-    // Build hook context for plan creation
     let context = plan_handle.hook_context();
 
-    // Run pre-write hook (can abort)
+    // Pre-write hook can abort the import
     run_pre_hooks(HookEvent::PreWrite, &context)?;
 
-    // Write without internal hooks (we handle them here with PlanCreated instead of PlanUpdated)
-    plan_handle.write_metadata(&metadata)?;
+    // Write without internal hooks — we manage the full lifecycle here
+    // to emit PlanCreated (not PlanUpdated which write() would emit)
+    plan_handle.write_metadata_without_hooks(&metadata)?;
 
-    // Run post-write hooks (fire-and-forget)
+    // Post-write hooks (fire-and-forget)
     run_post_hooks(HookEvent::PostWrite, &context);
     run_post_hooks(HookEvent::PlanCreated, &context);
 
