@@ -84,7 +84,11 @@ static STORE: OnceCell<TicketStore> = OnceCell::const_new();
 /// unset, allowing subsequent calls to retry.
 pub async fn get_or_init_store() -> Result<&'static TicketStore> {
     STORE
-        .get_or_try_init(|| async { TicketStore::init() })
+        .get_or_try_init(|| async {
+            tokio::task::spawn_blocking(TicketStore::init)
+                .await
+                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))?
+        })
         .await
 }
 

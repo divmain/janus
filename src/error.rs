@@ -407,6 +407,9 @@ pub enum JanusError {
     #[error("embedding generation timed out after {seconds} seconds")]
     EmbeddingTimeout { seconds: u64 },
 
+    #[error("blocking task failed: {0}")]
+    BlockingTaskFailed(String),
+
     #[error("parse error: {0}")]
     ParseError(String),
 

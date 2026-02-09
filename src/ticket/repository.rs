@@ -66,7 +66,10 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
         }
         Err(_) => {
             // Fall back to disk reads if store initialization fails
-            Ok(get_all_tickets_from_disk())
+            let result = tokio::task::spawn_blocking(get_all_tickets_from_disk)
+                .await
+                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))?;
+            Ok(result)
         }
     }
 }
@@ -123,7 +126,9 @@ pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate
         Ok(store) => Ok(store.build_ticket_map()),
         Err(_) => {
             // Fall back to disk reads if store initialization fails
-            let result = get_all_tickets_from_disk();
+            let result = tokio::task::spawn_blocking(get_all_tickets_from_disk)
+                .await
+                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))?;
             let map = result
                 .items
                 .into_iter()

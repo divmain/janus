@@ -65,7 +65,10 @@ impl Ticket {
     /// Find a ticket by partial ID and read its metadata in one operation
     pub async fn find_and_read(partial_id: &str) -> Result<(Self, TicketMetadata)> {
         let ticket = Self::find(partial_id).await?;
-        let metadata = ticket.read()?;
+        let ticket_clone = ticket.clone();
+        let metadata = tokio::task::spawn_blocking(move || ticket_clone.read())
+            .await
+            .map_err(|e| JanusError::BlockingTaskFailed(e.to_string()))??;
         Ok((ticket, metadata))
     }
 
