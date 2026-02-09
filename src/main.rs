@@ -69,7 +69,7 @@ async fn main() -> ExitCode {
             spawn_context,
             size,
             json,
-        ),
+        ).await,
 
         Commands::Show { id, json } => cmd_show(&id, json).await,
         Commands::Edit { id, json } => cmd_edit(&id, json).await,

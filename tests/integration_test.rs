@@ -153,21 +153,41 @@ fn test_create_without_spawning_fields() {
 fn test_create_spawned_from_nonexistent_parent() {
     let janus = JanusTest::new();
 
-    // Create a ticket spawned from a non-existent parent
-    // This should still work but set depth to 1
+    // Create a ticket spawned from a non-existent parent should fail
+    let stderr = janus.run_failure(&["create", "Orphan ticket", "--spawned-from", "j-nonexistent"]);
+    assert!(
+        stderr.contains("not found"),
+        "Should fail with 'not found' when spawned-from references a nonexistent ticket, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_create_spawned_from_partial_id_resolves() {
+    let janus = JanusTest::new();
+
+    // Create a parent ticket
+    let parent_id = janus
+        .run_success(&["create", "Parent ticket"])
+        .trim()
+        .to_string();
+
+    // Use a partial ID (first few chars) to create a child
+    // The full ID is e.g. "j-a1b2", use enough to be unambiguous
+    let partial_id = &parent_id[..parent_id.len().min(4)];
     let child_id = janus
-        .run_success(&["create", "Orphan ticket", "--spawned-from", "j-nonexistent"])
+        .run_success(&["create", "Child via partial", "--spawned-from", partial_id])
         .trim()
         .to_string();
 
     let child_output = janus.run_success(&["show", &child_id]);
+    // The resolved spawned-from should be the full canonical parent ID, not the partial
     assert!(
-        child_output.contains("spawned-from: j-nonexistent"),
-        "Should still record spawned-from even if parent doesn't exist"
+        child_output.contains(&format!("spawned-from: {parent_id}")),
+        "Should resolve partial ID to canonical full ID in spawned-from, got: {child_output}"
     );
     assert!(
         child_output.contains("depth: 1"),
-        "Should default to depth 1 when parent not found"
+        "Child should have depth: 1"
     );
 }
 

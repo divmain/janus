@@ -3,21 +3,17 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::log_ticket_created;
-use crate::ticket::{TicketBuilder, parse_ticket};
+use crate::ticket::{Ticket, TicketBuilder, parse_ticket};
 use crate::types::{TicketPriority, TicketSize, TicketType, tickets_items_dir};
-use crate::utils::validate_filename;
 
-/// Compute the depth for a spawned ticket based on the parent's depth.
+/// Compute the depth for a spawned ticket based on the parent's resolved canonical ID.
 /// Returns None if no spawned_from is provided, or parent.depth + 1 otherwise.
-/// If spawned_from is provided but the parent can't be found or read, defaults to depth 1.
-fn compute_depth(spawned_from: Option<&str>) -> Option<u32> {
-    let spawned_from_id = spawned_from?;
-
-    // Validate the filename to prevent path traversal attacks
-    validate_filename(spawned_from_id).ok()?;
+/// If the parent ticket can't be read, prints a warning to stderr and defaults to depth 1.
+fn compute_depth(canonical_id: Option<&str>) -> Option<u32> {
+    let id = canonical_id?;
 
     // Try to find and read the parent ticket from disk
-    let parent_path = tickets_items_dir().join(format!("{spawned_from_id}.md"));
+    let parent_path = tickets_items_dir().join(format!("{id}.md"));
 
     if let Ok(content) = std::fs::read_to_string(&parent_path)
         && let Ok(parent_meta) = parse_ticket(&content)
@@ -26,13 +22,16 @@ fn compute_depth(spawned_from: Option<&str>) -> Option<u32> {
         return Some(parent_meta.depth.unwrap_or(0) + 1);
     }
 
-    // If we can't find the parent, still set depth to 1 (parent is implicitly depth 0)
+    // If we can't read the parent, warn and default to depth 1
+    eprintln!(
+        "Warning: could not read parent ticket '{id}' for depth calculation; defaulting to depth 1"
+    );
     Some(1)
 }
 
 /// Create a new ticket and print its ID
 #[allow(clippy::too_many_arguments)]
-pub fn cmd_create(
+pub async fn cmd_create(
     title: String,
     description: Option<String>,
     design: Option<String>,
@@ -52,8 +51,16 @@ pub fn cmd_create(
         return Err(JanusError::EmptyTitle);
     }
 
+    // Resolve spawned_from to canonical ticket ID if provided
+    let resolved_spawned_from = if let Some(ref partial_id) = spawned_from {
+        let ticket = Ticket::find(partial_id).await?;
+        Some(ticket.id)
+    } else {
+        None
+    };
+
     // Auto-compute depth if spawned_from is provided
-    let depth = compute_depth(spawned_from.as_deref());
+    let depth = compute_depth(resolved_spawned_from.as_deref());
 
     let (id, file_path) = TicketBuilder::new(&title)
         .description(description.as_deref())
@@ -64,7 +71,7 @@ pub fn cmd_create(
         .priority(priority.as_num().to_string())
         .external_ref(external_ref.as_deref())
         .parent(parent.as_deref())
-        .spawned_from(spawned_from.as_deref())
+        .spawned_from(resolved_spawned_from.as_deref())
         .spawn_context(spawn_context.as_deref())
         .depth(depth)
         .size(size)
@@ -77,7 +84,7 @@ pub fn cmd_create(
         &title,
         &ticket_type.to_string(),
         priority.as_num(),
-        spawned_from.as_deref(),
+        resolved_spawned_from.as_deref(),
     );
 
     CommandOutput::new(json!({
