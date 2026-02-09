@@ -1,7 +1,7 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
 use crate::types::{
-    EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
+    tickets_items_dir, EntityType, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
 use crate::utils;
 use serde::Serialize;
@@ -32,8 +32,7 @@ impl From<TicketPriority> for PriorityAsU8 {
 #[serde(rename_all = "kebab-case")]
 struct TicketFrontmatter {
     id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    uuid: Option<String>,
+    uuid: String,
     status: String,
     deps: Vec<String>,
     links: Vec<String>,
@@ -69,7 +68,6 @@ pub struct TicketBuilder {
     external_ref: Option<String>,
     parent: Option<String>,
     remote: Option<String>,
-    include_uuid: bool,
     uuid: Option<String>,
     created: Option<String>,
     run_hooks: bool,
@@ -94,7 +92,6 @@ impl TicketBuilder {
             external_ref: None,
             parent: None,
             remote: None,
-            include_uuid: true,
             uuid: None,
             created: None,
             run_hooks: true,
@@ -156,11 +153,6 @@ impl TicketBuilder {
         self
     }
 
-    pub fn include_uuid(mut self, include_uuid: bool) -> Self {
-        self.include_uuid = include_uuid;
-        self
-    }
-
     pub fn uuid(mut self, uuid: Option<impl Into<String>>) -> Self {
         self.uuid = uuid.map(|u| u.into());
         self
@@ -209,11 +201,7 @@ impl TicketBuilder {
         // Validate that the generated ID is safe to use as a filename
         utils::validate_filename(&id)?;
 
-        let uuid = if self.include_uuid {
-            Some(self.uuid.unwrap_or_else(utils::generate_uuid))
-        } else {
-            self.uuid
-        };
+        let uuid = self.uuid.unwrap_or_else(utils::generate_uuid);
         let now = self.created.unwrap_or_else(utils::iso_date);
         let status = self.status.unwrap_or_else(|| "new".to_string());
         let ticket_type = self.ticket_type.unwrap_or_else(|| "task".to_string());

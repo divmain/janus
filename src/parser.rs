@@ -207,6 +207,58 @@ impl ParsedDocument {
         }
     }
 
+    /// Remove a section from the document body (case-insensitive).
+    ///
+    /// Uses a deterministic line scanner to find the `## {section_name}` header
+    /// and remove all lines from the header up to (but not including) the next
+    /// H2 heading or end of document. Returns the updated body string.
+    ///
+    /// If the section does not exist, the body is returned unchanged.
+    pub fn remove_section(&self, section_name: &str) -> String {
+        let section_name_lower = section_name.to_lowercase();
+        let lines: Vec<&str> = self.body.split('\n').collect();
+
+        // Find the line index of the target section header
+        let header_idx = lines.iter().position(|line| {
+            let trimmed = line.trim_start();
+            if let Some(rest) = trimmed.strip_prefix("## ") {
+                rest.trim().to_lowercase() == section_name_lower
+            } else {
+                false
+            }
+        });
+
+        let Some(header_idx) = header_idx else {
+            // Section not found, return body unchanged
+            return self.body.clone();
+        };
+
+        // Find the end of the section: next H2 heading or end of document
+        let end_idx = lines[header_idx + 1..]
+            .iter()
+            .position(|line| {
+                let trimmed = line.trim_start();
+                trimmed.starts_with("## ")
+            })
+            .map(|rel| header_idx + 1 + rel)
+            .unwrap_or(lines.len());
+
+        // Build the result: lines before the section + lines after the section
+        let mut result_lines: Vec<&str> = Vec::with_capacity(lines.len());
+        result_lines.extend_from_slice(&lines[..header_idx]);
+        result_lines.extend_from_slice(&lines[end_idx..]);
+
+        // Clean up: collapse excessive blank lines at the join point
+        let mut result = result_lines.join("\n");
+
+        // Remove runs of more than 2 consecutive newlines (preserve paragraph breaks)
+        while result.contains("\n\n\n") {
+            result = result.replace("\n\n\n", "\n\n");
+        }
+
+        result
+    }
+
     /// Deserialize the frontmatter into a specific type.
     ///
     /// This uses the raw YAML string for proper type conversion via serde.
@@ -697,5 +749,183 @@ Body.
 
         assert!(frontmatter.contains("id: test-日本語"));
         assert!(frontmatter.contains("title: 标题"));
+    }
+
+    #[test]
+    fn test_remove_section_middle() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## First Section
+
+First content.
+
+## Middle Section
+
+Middle content.
+More middle content.
+
+## Last Section
+
+Last content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let result = doc.remove_section("Middle Section");
+
+        assert!(result.contains("## First Section"));
+        assert!(result.contains("First content."));
+        assert!(!result.contains("## Middle Section"));
+        assert!(!result.contains("Middle content."));
+        assert!(!result.contains("More middle content."));
+        assert!(result.contains("## Last Section"));
+        assert!(result.contains("Last content."));
+    }
+
+    #[test]
+    fn test_remove_section_last() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## First Section
+
+First content.
+
+## Last Section
+
+Last content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let result = doc.remove_section("Last Section");
+
+        assert!(result.contains("## First Section"));
+        assert!(result.contains("First content."));
+        assert!(!result.contains("## Last Section"));
+        assert!(!result.contains("Last content."));
+    }
+
+    #[test]
+    fn test_remove_section_first() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## First Section
+
+First content.
+
+## Second Section
+
+Second content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let result = doc.remove_section("First Section");
+
+        assert!(!result.contains("## First Section"));
+        assert!(!result.contains("First content."));
+        assert!(result.contains("## Second Section"));
+        assert!(result.contains("Second content."));
+    }
+
+    #[test]
+    fn test_remove_section_nonexistent() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## Existing Section
+
+Content here.
+"#;
+        let doc = parse_document(content).unwrap();
+        let result = doc.remove_section("Nonexistent Section");
+
+        assert!(result.contains("## Existing Section"));
+        assert!(result.contains("Content here."));
+        assert_eq!(result, doc.body);
+    }
+
+    #[test]
+    fn test_remove_section_case_insensitive() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## UPPERCASE SECTION
+
+Content to remove.
+
+## Other Section
+
+Keep this.
+"#;
+        let doc = parse_document(content).unwrap();
+        let result = doc.remove_section("uppercase section");
+
+        assert!(!result.contains("## UPPERCASE SECTION"));
+        assert!(!result.contains("Content to remove."));
+        assert!(result.contains("## Other Section"));
+        assert!(result.contains("Keep this."));
+    }
+
+    #[test]
+    fn test_remove_section_only_section() {
+        let content = r#"---
+id: test
+---
+# Title
+
+Some description.
+
+## Only Section
+
+Section content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let result = doc.remove_section("Only Section");
+
+        assert!(result.contains("# Title"));
+        assert!(result.contains("Some description."));
+        assert!(!result.contains("## Only Section"));
+        assert!(!result.contains("Section content."));
+    }
+
+    #[test]
+    fn test_remove_section_multiline_body() {
+        let content = r#"---
+id: test
+---
+# Title
+
+## Target Section
+
+Line 1 of content.
+Line 2 of content.
+
+A paragraph within the section.
+
+- Bullet 1
+- Bullet 2
+
+## Next Section
+
+Next content.
+"#;
+        let doc = parse_document(content).unwrap();
+        let result = doc.remove_section("Target Section");
+
+        assert!(!result.contains("## Target Section"));
+        assert!(!result.contains("Line 1 of content."));
+        assert!(!result.contains("Line 2 of content."));
+        assert!(!result.contains("A paragraph within the section."));
+        assert!(!result.contains("Bullet 1"));
+        assert!(result.contains("## Next Section"));
+        assert!(result.contains("Next content."));
     }
 }

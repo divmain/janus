@@ -357,9 +357,7 @@ impl Ticket {
             doc.update_section(section_name, new_content)
         } else {
             // Remove the section if content is None
-            let pattern = format!(r"(?ims)^##\s+{}\s*\n.*?", regex::escape(section_name));
-            let section_re = regex::Regex::new(&pattern).expect("section regex should be valid");
-            section_re.replace(&doc.body, "").to_string()
+            doc.remove_section(section_name)
         };
 
         let new_content = format!("---\n{}\n---\n{}", doc.frontmatter_raw, updated_body);
