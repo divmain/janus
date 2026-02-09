@@ -525,6 +525,104 @@ Description.
 }
 
 #[test]
+fn test_import_preserves_design_section() {
+    let janus = JanusTest::new();
+
+    // Create a plan with a detailed Design section
+    let plan_doc = r#"# Design Preservation Test Plan
+
+Overview of the plan.
+
+## Design
+
+### Architecture
+
+The system uses a modular, event-driven architecture with three layers:
+
+1. Data layer - handles persistence
+2. Service layer - business logic
+3. API layer - external interfaces
+
+### Key Decisions
+
+- Use async I/O for better throughput
+- Cache frequently accessed data
+
+## Acceptance Criteria
+
+- All tests pass
+- Design is preserved in the plan file
+
+## Implementation
+
+### Phase 1: Infrastructure
+
+#### Set up database
+
+Create the database schema.
+
+#### Configure async runtime
+
+Set up tokio runtime.
+"#;
+
+    let plan_path = janus.temp_dir.path().join("design_plan.md");
+    fs::write(&plan_path, plan_doc).expect("Failed to write plan file");
+
+    // Import the plan
+    let output = janus.run_success(&["plan", "import", plan_path.to_str().unwrap()]);
+    let plan_id = output.trim();
+
+    // Verify plan was created
+    assert!(janus.plan_exists(plan_id), "Plan file should exist");
+
+    // Read the plan content and verify Design section is preserved
+    let content = janus.read_plan(plan_id);
+    assert!(
+        content.contains("## Design"),
+        "Plan should contain a Design section heading"
+    );
+    assert!(
+        content.contains("Architecture"),
+        "Plan should preserve Architecture sub-heading from Design"
+    );
+    assert!(
+        content.contains("modular, event-driven architecture")
+            || content.contains("modular")
+                && content.contains("event-driven")
+                && content.contains("architecture"),
+        "Plan should preserve architecture description"
+    );
+    assert!(
+        content.contains("Key Decisions"),
+        "Plan should preserve Key Decisions sub-heading from Design"
+    );
+    assert!(
+        content.contains("async I/O"),
+        "Plan should preserve design decision content"
+    );
+
+    // Verify Design section appears before Phase sections
+    let design_pos = content
+        .find("## Design")
+        .expect("Design section should exist");
+    let phase_pos = content
+        .find("## Phase 1")
+        .expect("Phase section should exist");
+    assert!(
+        design_pos < phase_pos,
+        "Design section should come before Phase sections"
+    );
+
+    // Verify the plan is also visible via `plan show`
+    let show_output = janus.run_success(&["plan", "show", plan_id]);
+    assert!(
+        show_output.contains("Design"),
+        "Plan show output should display the Design section"
+    );
+}
+
+#[test]
 fn test_import_spec_command() {
     let janus = JanusTest::new();
 

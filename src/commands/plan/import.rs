@@ -309,7 +309,17 @@ pub async fn cmd_plan_import(
         extra_frontmatter: None,
     };
 
-    // 9. Include implementation preamble as a free-form section if present
+    // 9. Include design section as a free-form section if present
+    if let Some(ref design) = plan.design {
+        metadata
+            .sections
+            .push(PlanSection::FreeForm(FreeFormSection::new(
+                "Design",
+                design.clone(),
+            )));
+    }
+
+    // 10. Include implementation preamble as a free-form section if present
     if let Some(ref preamble) = plan.implementation_preamble {
         metadata
             .sections
@@ -319,7 +329,7 @@ pub async fn cmd_plan_import(
             )));
     }
 
-    // 10. Build sections with ticket IDs
+    // 11. Build sections with ticket IDs
     let mut ticket_idx = 0;
     for import_phase in &plan.phases {
         let mut phase = Phase::new(import_phase.number.clone(), import_phase.name.clone());
@@ -345,7 +355,7 @@ pub async fn cmd_plan_import(
         metadata.sections.push(PlanSection::Phase(phase));
     }
 
-    // 11. Write plan with exactly-once hook semantics:
+    // 12. Write plan with exactly-once hook semantics:
     //     PreWrite -> write -> PostWrite -> PlanCreated
     let plan_handle = Plan::with_id(&plan_id)?;
     let context = plan_handle.hook_context();
@@ -361,7 +371,7 @@ pub async fn cmd_plan_import(
     run_post_hooks(HookEvent::PostWrite, &context);
     run_post_hooks(HookEvent::PlanCreated, &context);
 
-    // 12. Output result
+    // 13. Output result
     let tickets_created: Vec<serde_json::Value> = created_ticket_ids
         .iter()
         .map(|id| json!({ "id": id }))

@@ -1059,22 +1059,18 @@ This approach has limitations with large datasets.
         assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "Dependencies");
-        assert!(
-            phases[0].extra_subsections[0]
-                .content
-                .contains("Node.js 18+")
-        );
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("Node.js 18+"));
 
         // Phase 2: Design Rationale, then Tickets, then Caveats
         assert_eq!(phases[1].tickets, vec!["j-c3d4", "j-e5f6"]);
         assert_eq!(phases[1].extra_subsections.len(), 2);
         assert_eq!(phases[1].extra_subsections[0].heading, "Design Rationale");
         assert_eq!(phases[1].extra_subsections[1].heading, "Caveats");
-        assert!(
-            phases[1].extra_subsections[1]
-                .content
-                .contains("limitations")
-        );
+        assert!(phases[1].extra_subsections[1]
+            .content
+            .contains("limitations"));
     }
 
     #[test]
@@ -1183,11 +1179,9 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(
-                ts.extra_subsections[1]
-                    .content
-                    .contains("Timeline pressure")
-            );
+            assert!(ts.extra_subsections[1]
+                .content
+                .contains("Timeline pressure"));
         } else {
             panic!("Expected PlanSection::Tickets after round-trip");
         }
@@ -1325,20 +1319,16 @@ Run the full integration suite before merging.
             reparsed.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(
-            reparsed.acceptance_criteria_extra[0]
-                .content
-                .contains("Detailed testing instructions")
-        );
+        assert!(reparsed.acceptance_criteria_extra[0]
+            .content
+            .contains("Detailed testing instructions"));
         assert_eq!(
             reparsed.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(
-            reparsed.acceptance_criteria_extra[1]
-                .content
-                .contains("Deploy to staging")
-        );
+        assert!(reparsed.acceptance_criteria_extra[1]
+            .content
+            .contains("Deploy to staging"));
     }
 
     #[test]
@@ -1646,7 +1636,7 @@ Example response:
             acceptance_criteria_raw: None,
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string(),
+                "j-a1b2".to_string()
             ]))],
             file_path: None,
             extra_frontmatter: None,
@@ -2076,6 +2066,110 @@ created: 2024-01-01T00:00:00Z
         } else {
             panic!("Expected PlanSection::Tickets after round-trip");
         }
+    }
+
+    #[test]
+    fn test_roundtrip_design_section_from_import() {
+        // Simulates what cmd_plan_import does: constructs PlanMetadata with a Design
+        // freeform section from the parsed ImportablePlan.design field, then verifies
+        // the design content survives serialize -> parse round-trip.
+        let design_content = "### Architecture\n\nThe system uses a modular design.\n\n### Key Decisions\n\n1. Decision one\n2. Decision two";
+
+        let mut phase = Phase::new("1", "Setup");
+        phase.tickets = vec!["j-a1b2".to_string()];
+
+        let metadata = PlanMetadata {
+            id: Some(PlanId::new_unchecked("plan-design-rt")),
+            uuid: Some("550e8400-e29b-41d4-a716-446655440999".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
+            title: Some("Plan with Design Section".to_string()),
+            description: Some("Overview of the plan.".to_string()),
+            acceptance_criteria: vec!["All tests pass".to_string()],
+            acceptance_criteria_raw: None,
+            acceptance_criteria_extra: vec![],
+            sections: vec![
+                PlanSection::FreeForm(FreeFormSection::new("Design", design_content)),
+                PlanSection::Phase(phase),
+            ],
+            file_path: None,
+            extra_frontmatter: None,
+        };
+
+        // Serialize
+        let serialized = serialize_plan(&metadata);
+
+        // Verify Design section present in serialized output
+        assert!(
+            serialized.contains("## Design"),
+            "Serialized output should contain Design section heading, got:\n{}",
+            serialized
+        );
+        assert!(
+            serialized.contains("Architecture"),
+            "Serialized output should contain Architecture content, got:\n{}",
+            serialized
+        );
+        assert!(
+            serialized.contains("Key Decisions"),
+            "Serialized output should contain Key Decisions content, got:\n{}",
+            serialized
+        );
+        assert!(
+            serialized.contains("Decision one"),
+            "Serialized output should contain decision content, got:\n{}",
+            serialized
+        );
+
+        // Verify ordering: Design before Phase
+        let design_pos = serialized.find("## Design").unwrap();
+        let phase_pos = serialized.find("## Phase 1").unwrap();
+        assert!(
+            design_pos < phase_pos,
+            "Design section should come before Phase section"
+        );
+
+        // Re-parse and verify round-trip
+        let reparsed = parse_plan_content(&serialized).unwrap();
+
+        assert_eq!(reparsed.id.as_deref(), Some("plan-design-rt"));
+        assert_eq!(reparsed.title, Some("Plan with Design Section".to_string()));
+        assert_eq!(
+            reparsed.description,
+            Some("Overview of the plan.".to_string())
+        );
+
+        // Design should be a freeform section
+        let freeform = reparsed.free_form_sections();
+        assert_eq!(
+            freeform.len(),
+            1,
+            "Should have exactly one freeform section"
+        );
+        assert_eq!(freeform[0].heading, "Design");
+        assert!(
+            freeform[0].content.contains("Architecture"),
+            "Design content should contain Architecture, got: {}",
+            freeform[0].content
+        );
+        assert!(
+            freeform[0].content.contains("Key Decisions"),
+            "Design content should contain Key Decisions, got: {}",
+            freeform[0].content
+        );
+        assert!(
+            freeform[0].content.contains("Decision one"),
+            "Design content should contain decision details, got: {}",
+            freeform[0].content
+        );
+
+        // Phases still intact
+        let phases = reparsed.phases();
+        assert_eq!(phases.len(), 1);
+        assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
+
+        // Acceptance criteria still intact
+        assert_eq!(reparsed.acceptance_criteria.len(), 1);
+        assert_eq!(reparsed.acceptance_criteria[0], "All tests pass");
     }
 
     #[test]
