@@ -3,6 +3,7 @@ mod locator;
 mod manipulator;
 mod parser;
 mod repository;
+mod validate;
 
 pub use crate::types::ArrayField;
 pub use crate::types::validate_field_name;
@@ -14,6 +15,8 @@ pub use repository::{
     TicketLoadResult, build_ticket_map, find_tickets, get_all_children_counts, get_all_tickets,
     get_all_tickets_from_disk, get_all_tickets_with_map, get_children_count, get_file_mtime,
 };
+
+pub use self::validate::enforce_filename_authority;
 
 use std::collections::{HashMap, HashSet};
 
@@ -75,9 +78,14 @@ impl Ticket {
     }
 
     /// Read and parse the ticket's metadata.
+    ///
+    /// Enforces the filename-stem-is-authoritative policy: if the frontmatter
+    /// `id` differs from the filename stem, a warning is emitted and the
+    /// filename stem is used.
     pub fn read(&self) -> Result<TicketMetadata> {
         let raw_content = self.read_content()?;
         let mut metadata = parse(&raw_content)?;
+        enforce_filename_authority(&mut metadata, &self.id);
         metadata.file_path = Some(self.file_path.clone());
         Ok(metadata)
     }

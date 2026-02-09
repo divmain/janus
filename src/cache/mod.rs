@@ -165,9 +165,22 @@ impl TicketStore {
                 match fs::read_to_string(&path) {
                     Ok(content) => match parser(&content) {
                         Ok(mut metadata) => {
-                            if metadata.id().is_none() {
-                                if let Some(stem) = path.file_stem() {
-                                    metadata.set_id(stem.to_string_lossy().to_string());
+                            if let Some(stem) = path.file_stem() {
+                                let stem_str = stem.to_string_lossy();
+                                match metadata.id() {
+                                    Some(frontmatter_id) if frontmatter_id != stem_str.as_ref() => {
+                                        eprintln!(
+                                            "Warning: {entity_name} file '{stem_str}' has frontmatter id '{frontmatter_id}' — \
+                                             using filename stem as authoritative ID",
+                                        );
+                                        metadata.set_id(stem_str.to_string());
+                                    }
+                                    None => {
+                                        metadata.set_id(stem_str.to_string());
+                                    }
+                                    Some(_) => {
+                                        // IDs match, no action needed
+                                    }
                                 }
                             }
                             metadata.set_file_path(path);
@@ -430,6 +443,45 @@ mod tests {
         // Only the valid ticket should be loaded
         assert_eq!(store.tickets.len(), 1);
         assert!(store.tickets.contains_key("j-good"));
+
+        unsafe { std::env::remove_var("JANUS_ROOT") };
+    }
+
+    #[test]
+    #[serial]
+    fn test_init_with_mismatched_id() {
+        let tmp = TempDir::new().expect("failed to create temp dir");
+        let janus_root = tmp.path().join(".janus");
+        let items_dir = janus_root.join("items");
+
+        fs::create_dir_all(&items_dir).unwrap();
+
+        // Write a ticket where the filename stem differs from the frontmatter id.
+        // Filename: j-file.md, frontmatter id: j-wrong
+        fs::write(
+            items_dir.join("j-file.md"),
+            make_ticket_content("j-wrong", "Mismatched Ticket"),
+        )
+        .unwrap();
+
+        unsafe { std::env::set_var("JANUS_ROOT", janus_root.to_str().unwrap()) };
+
+        let store = TicketStore::init().expect("init should succeed");
+
+        // The ticket should be stored under the filename stem, not the frontmatter id
+        assert_eq!(store.tickets.len(), 1);
+        assert!(
+            store.tickets.contains_key("j-file"),
+            "ticket should be keyed by filename stem"
+        );
+        assert!(
+            !store.tickets.contains_key("j-wrong"),
+            "frontmatter id should not be used as key"
+        );
+
+        // The metadata ID should also reflect the filename stem
+        let ticket = store.tickets.get("j-file").unwrap();
+        assert_eq!(ticket.id.as_deref(), Some("j-file"));
 
         unsafe { std::env::remove_var("JANUS_ROOT") };
     }

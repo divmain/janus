@@ -372,12 +372,8 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
 
     match parse_ticket(&content) {
         Ok(mut metadata) => {
-            if metadata.id.is_none() {
-                if let Some(stem) = path.file_stem() {
-                    metadata.id = Some(crate::types::TicketId::new_unchecked(
-                        stem.to_string_lossy(),
-                    ));
-                }
+            if let Some(stem) = path.file_stem() {
+                crate::ticket::enforce_filename_authority(&mut metadata, &stem.to_string_lossy());
             }
             metadata.file_path = Some(path.to_path_buf());
             // Capture the ID before upsert consumes ownership

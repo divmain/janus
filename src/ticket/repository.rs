@@ -5,6 +5,7 @@
 
 use crate::TicketMetadata;
 use crate::cache::get_or_init_store;
+use crate::ticket::enforce_filename_authority;
 use crate::ticket::parse_ticket;
 use crate::types::LoadResult;
 use crate::utils::DirScanner;
@@ -97,9 +98,8 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
         match fs::read_to_string(&file_path) {
             Ok(content_str) => match parse_ticket(&content_str) {
                 Ok(mut metadata) => {
-                    metadata.id = Some(crate::types::TicketId::new_unchecked(
-                        file.strip_suffix(".md").unwrap_or(&file),
-                    ));
+                    let stem = file.strip_suffix(".md").unwrap_or(&file);
+                    enforce_filename_authority(&mut metadata, stem);
                     metadata.file_path = Some(file_path);
                     result.add_ticket(metadata);
                 }
