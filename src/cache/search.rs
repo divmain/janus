@@ -19,18 +19,26 @@ impl TicketStore {
     /// 3. Sorts by similarity descending
     /// 4. Returns top-k results (up to `limit`)
     pub fn semantic_search(&self, query_embedding: &[f32], limit: usize) -> Vec<SearchResult> {
-        let mut results: Vec<SearchResult> = self
+        // Snapshot embedding data (ID + similarity score) into a local Vec first,
+        // so that all embeddings DashMap shard locks are released before we touch
+        // the tickets DashMap. This prevents AB/BA deadlocks between the two maps
+        // under concurrent access (e.g., watcher upserts + semantic search).
+        let scored: Vec<(String, f32)> = self
             .embeddings()
             .iter()
-            .filter_map(|entry| {
-                let ticket_id = entry.key();
-                let ticket_embedding = entry.value();
+            .map(|entry| {
+                let ticket_id = entry.key().clone();
+                let similarity = cosine_similarity(query_embedding, entry.value());
+                (ticket_id, similarity)
+            })
+            .collect();
 
-                let similarity = cosine_similarity(query_embedding, ticket_embedding);
-
-                // Look up the ticket metadata
+        // Now look up ticket metadata without holding any embeddings guards.
+        let mut results: Vec<SearchResult> = scored
+            .into_iter()
+            .filter_map(|(ticket_id, similarity)| {
                 self.tickets()
-                    .get(ticket_id)
+                    .get(&ticket_id)
                     .map(|ticket_ref| SearchResult {
                         ticket: ticket_ref.value().clone(),
                         similarity,
@@ -115,7 +123,7 @@ mod tests {
         let results = store.semantic_search(&query, 10);
 
         assert_eq!(results.len(), 3); // Only tickets with embeddings
-        // Most similar should be j-auth
+                                      // Most similar should be j-auth
         assert_eq!(results[0].ticket.id.as_deref(), Some("j-auth"));
         assert!(results[0].similarity > results[1].similarity);
     }

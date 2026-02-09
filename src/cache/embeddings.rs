@@ -69,19 +69,30 @@ impl TicketStore {
 
         let expected_bytes = EMBEDDING_DIMENSIONS * 4;
 
-        for entry in self.tickets().iter() {
-            let ticket = entry.value();
-            let file_path = match &ticket.file_path {
-                Some(fp) => fp,
-                None => continue,
-            };
+        // Snapshot the ticket data we need (id + file_path) into a local Vec,
+        // so that all tickets DashMap shard locks are released before we touch
+        // the embeddings DashMap. This prevents AB/BA deadlocks between the
+        // two maps under concurrent access.
+        let ticket_info: Vec<(String, std::path::PathBuf)> = self
+            .tickets()
+            .iter()
+            .filter_map(|entry| {
+                let ticket = entry.value();
+                let id = ticket.id.clone()?;
+                let file_path = ticket.file_path.clone()?;
+                Some((id, file_path))
+            })
+            .collect();
 
-            let mtime_ns = match file_mtime_ns(file_path) {
+        // Now iterate the snapshot and insert into embeddings without holding
+        // any tickets map guards.
+        for (id, file_path) in ticket_info {
+            let mtime_ns = match file_mtime_ns(&file_path) {
                 Some(ns) => ns,
                 None => continue,
             };
 
-            let key = Self::embedding_key(file_path, mtime_ns);
+            let key = Self::embedding_key(&file_path, mtime_ns);
             let bin_path = emb_dir.join(format!("{key}.bin"));
 
             if let Ok(data) = fs::read(&bin_path) {
@@ -102,9 +113,7 @@ impl TicketStore {
                         continue;
                     }
 
-                    if let Some(id) = &ticket.id {
-                        self.embeddings().insert(id.clone(), vector);
-                    }
+                    self.embeddings().insert(id, vector);
                 }
             }
         }
@@ -168,10 +177,19 @@ impl TicketStore {
     /// as a defensive measure against orphaned embeddings inflating the count.
     pub fn embedding_coverage(&self) -> (usize, usize) {
         let total = self.tickets().len();
-        let with_embeddings = self
+
+        // Snapshot embedding keys into a local Vec so that all embeddings
+        // DashMap shard locks are released before we touch the tickets DashMap.
+        // This prevents AB/BA deadlocks between the two maps.
+        let embedding_keys: Vec<String> = self
             .embeddings()
             .iter()
-            .filter(|entry| self.tickets().contains_key(entry.key()))
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        let with_embeddings = embedding_keys
+            .iter()
+            .filter(|id| self.tickets().contains_key(id.as_str()))
             .count();
         (with_embeddings, total)
     }
