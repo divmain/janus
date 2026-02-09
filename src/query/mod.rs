@@ -329,7 +329,7 @@ impl TicketQueryBuilder {
         // Build ticket map once from the provided tickets
         let ticket_map: HashMap<String, TicketMetadata> = tickets
             .iter()
-            .filter_map(|t| t.id.as_ref().map(|id| (id.clone(), t.clone())))
+            .filter_map(|t| t.id.as_ref().map(|id| (id.to_string(), t.clone())))
             .collect();
         let context = TicketFilterContext::new(ticket_map);
 

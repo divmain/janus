@@ -4,8 +4,8 @@ use iocraft::prelude::{KeyCode, State};
 
 use crate::tui::board::model::COLUMNS;
 
-use super::HandleResult;
 use super::context::BoardHandlerContext;
+use super::HandleResult;
 
 /// Handle column toggle keys (1-5)
 pub fn handle_toggle(ctx: &mut BoardHandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -57,7 +57,7 @@ fn handle_move_right(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let next_status = COLUMNS[col + 1];
-        ctx.handlers.update_status.clone()((id.clone(), next_status));
+        ctx.handlers.update_status.clone()((id.to_string(), next_status));
     }
 }
 
@@ -74,7 +74,7 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
         && let Some(id) = &ticket.id
     {
         let prev_status = COLUMNS[col - 1];
-        ctx.handlers.update_status.clone()((id.clone(), prev_status));
+        ctx.handlers.update_status.clone()((id.to_string(), prev_status));
     }
 }
 

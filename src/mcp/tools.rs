@@ -1439,6 +1439,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::types::{PlanId, TicketId};
 
     #[test]
     fn test_create_ticket_request_schema() {
@@ -1471,7 +1472,7 @@ mod tests {
         ticket_map.insert(
             "a".to_string(),
             TicketMetadata {
-                id: Some("a".to_string()),
+                id: Some(TicketId::new_unchecked("a")),
                 deps: vec!["b".to_string()],
                 ..Default::default()
             },
@@ -1479,7 +1480,7 @@ mod tests {
         ticket_map.insert(
             "b".to_string(),
             TicketMetadata {
-                id: Some("b".to_string()),
+                id: Some(TicketId::new_unchecked("b")),
                 deps: vec![],
                 ..Default::default()
             },
@@ -1502,7 +1503,7 @@ mod tests {
         ticket_map.insert(
             "a".to_string(),
             TicketMetadata {
-                id: Some("a".to_string()),
+                id: Some(TicketId::new_unchecked("a")),
                 deps: vec!["b".to_string()],
                 ..Default::default()
             },
@@ -1510,7 +1511,7 @@ mod tests {
         ticket_map.insert(
             "b".to_string(),
             TicketMetadata {
-                id: Some("b".to_string()),
+                id: Some(TicketId::new_unchecked("b")),
                 deps: vec!["c".to_string()],
                 ..Default::default()
             },
@@ -1518,7 +1519,7 @@ mod tests {
         ticket_map.insert(
             "c".to_string(),
             TicketMetadata {
-                id: Some("c".to_string()),
+                id: Some(TicketId::new_unchecked("c")),
                 deps: vec![],
                 ..Default::default()
             },
@@ -1535,7 +1536,7 @@ mod tests {
         ticket_map.insert(
             "a".to_string(),
             TicketMetadata {
-                id: Some("a".to_string()),
+                id: Some(TicketId::new_unchecked("a")),
                 deps: vec![],
                 ..Default::default()
             },
@@ -1543,7 +1544,7 @@ mod tests {
         ticket_map.insert(
             "b".to_string(),
             TicketMetadata {
-                id: Some("b".to_string()),
+                id: Some(TicketId::new_unchecked("b")),
                 deps: vec![],
                 ..Default::default()
             },
@@ -1586,7 +1587,7 @@ mod tests {
         use crate::types::{TicketPriority, TicketStatus, TicketType};
 
         let ticket1 = TicketMetadata {
-            id: Some("j-a1b2".to_string()),
+            id: Some(TicketId::new_unchecked("j-a1b2")),
             title: Some("Add authentication".to_string()),
             status: Some(TicketStatus::New),
             ticket_type: Some(TicketType::Feature),
@@ -1594,7 +1595,7 @@ mod tests {
             ..Default::default()
         };
         let ticket2 = TicketMetadata {
-            id: Some("j-c3d4".to_string()),
+            id: Some(TicketId::new_unchecked("j-c3d4")),
             title: Some("Fix login bug".to_string()),
             status: Some(TicketStatus::InProgress),
             ticket_type: Some(TicketType::Bug),
@@ -1627,7 +1628,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 title: Some("Configure OAuth provider".to_string()),
                 status: Some(TicketStatus::Complete),
                 ticket_type: Some(TicketType::Task),
@@ -1638,7 +1639,7 @@ mod tests {
         ticket_map.insert(
             "j-c3d4".to_string(),
             TicketMetadata {
-                id: Some("j-c3d4".to_string()),
+                id: Some(TicketId::new_unchecked("j-c3d4")),
                 title: Some("Add auth dependencies".to_string()),
                 status: Some(TicketStatus::InProgress),
                 ticket_type: Some(TicketType::Task),
@@ -1649,7 +1650,7 @@ mod tests {
         ticket_map.insert(
             "j-e5f6".to_string(),
             TicketMetadata {
-                id: Some("j-e5f6".to_string()),
+                id: Some(TicketId::new_unchecked("j-e5f6")),
                 title: Some("Implement logout".to_string()),
                 status: Some(TicketStatus::New),
                 ticket_type: Some(TicketType::Task),
@@ -1659,7 +1660,7 @@ mod tests {
         );
 
         let metadata = PlanMetadata {
-            id: Some("plan-a1b2".to_string()),
+            id: Some(PlanId::new_unchecked("plan-a1b2")),
             title: Some("Implement Authentication".to_string()),
             sections: vec![PlanSection::Tickets(
                 crate::plan::types::TicketsSection::new(vec![
@@ -1701,7 +1702,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 title: Some("Configure OAuth provider".to_string()),
                 status: Some(TicketStatus::Complete),
                 ticket_type: Some(TicketType::Task),
@@ -1712,7 +1713,7 @@ mod tests {
         ticket_map.insert(
             "j-c3d4".to_string(),
             TicketMetadata {
-                id: Some("j-c3d4".to_string()),
+                id: Some(TicketId::new_unchecked("j-c3d4")),
                 title: Some("Add auth dependencies".to_string()),
                 status: Some(TicketStatus::Complete),
                 ticket_type: Some(TicketType::Task),
@@ -1723,7 +1724,7 @@ mod tests {
         ticket_map.insert(
             "j-e5f6".to_string(),
             TicketMetadata {
-                id: Some("j-e5f6".to_string()),
+                id: Some(TicketId::new_unchecked("j-e5f6")),
                 title: Some("Create login endpoint".to_string()),
                 status: Some(TicketStatus::Complete),
                 ticket_type: Some(TicketType::Task),
@@ -1734,7 +1735,7 @@ mod tests {
         ticket_map.insert(
             "j-g7h8".to_string(),
             TicketMetadata {
-                id: Some("j-g7h8".to_string()),
+                id: Some(TicketId::new_unchecked("j-g7h8")),
                 title: Some("Add session management".to_string()),
                 status: Some(TicketStatus::InProgress),
                 ticket_type: Some(TicketType::Task),
@@ -1745,7 +1746,7 @@ mod tests {
         ticket_map.insert(
             "j-i9j0".to_string(),
             TicketMetadata {
-                id: Some("j-i9j0".to_string()),
+                id: Some(TicketId::new_unchecked("j-i9j0")),
                 title: Some("Implement logout".to_string()),
                 status: Some(TicketStatus::New),
                 ticket_type: Some(TicketType::Task),
@@ -1765,7 +1766,7 @@ mod tests {
         ];
 
         let metadata = PlanMetadata {
-            id: Some("plan-a1b2".to_string()),
+            id: Some(PlanId::new_unchecked("plan-a1b2")),
             title: Some("Implement Authentication".to_string()),
             sections: vec![PlanSection::Phase(phase1), PlanSection::Phase(phase2)],
             ..Default::default()
@@ -1803,7 +1804,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 title: Some("Test ticket".to_string()),
                 status: Some(TicketStatus::Complete),
                 ..Default::default()
@@ -1824,7 +1825,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 title: Some("Test ticket".to_string()),
                 status: Some(TicketStatus::InProgress),
                 ..Default::default()
@@ -1864,21 +1865,21 @@ mod tests {
         use crate::types::TicketStatus;
 
         let child1 = TicketMetadata {
-            id: Some("j-c3d4".to_string()),
+            id: Some(TicketId::new_unchecked("j-c3d4")),
             title: Some("Setup OAuth".to_string()),
             status: Some(TicketStatus::Complete),
             depth: Some(1),
             ..Default::default()
         };
         let child2 = TicketMetadata {
-            id: Some("j-e5f6".to_string()),
+            id: Some(TicketId::new_unchecked("j-e5f6")),
             title: Some("Add login flow".to_string()),
             status: Some(TicketStatus::InProgress),
             depth: Some(1),
             ..Default::default()
         };
         let child3 = TicketMetadata {
-            id: Some("j-g7h8".to_string()),
+            id: Some(TicketId::new_unchecked("j-g7h8")),
             title: Some("Add logout flow".to_string()),
             status: Some(TicketStatus::New),
             depth: Some(1),
@@ -1904,7 +1905,7 @@ mod tests {
         use crate::types::TicketStatus;
 
         let child1 = TicketMetadata {
-            id: Some("j-c3d4".to_string()),
+            id: Some(TicketId::new_unchecked("j-c3d4")),
             title: Some("Setup OAuth".to_string()),
             status: Some(TicketStatus::Complete),
             depth: Some(1),
@@ -1912,7 +1913,7 @@ mod tests {
             ..Default::default()
         };
         let child2 = TicketMetadata {
-            id: Some("j-e5f6".to_string()),
+            id: Some(TicketId::new_unchecked("j-e5f6")),
             title: Some("Add login flow".to_string()),
             status: Some(TicketStatus::InProgress),
             depth: Some(1),
@@ -1920,7 +1921,7 @@ mod tests {
             ..Default::default()
         };
         let child3 = TicketMetadata {
-            id: Some("j-g7h8".to_string()),
+            id: Some(TicketId::new_unchecked("j-g7h8")),
             title: Some("Add logout flow".to_string()),
             status: Some(TicketStatus::New),
             depth: Some(1),
@@ -1943,7 +1944,7 @@ mod tests {
         use crate::types::TicketStatus;
 
         let child1 = TicketMetadata {
-            id: Some("j-c3d4".to_string()),
+            id: Some(TicketId::new_unchecked("j-c3d4")),
             title: Some("Setup OAuth".to_string()),
             status: Some(TicketStatus::Complete),
             depth: Some(1),
@@ -1979,7 +1980,7 @@ mod tests {
         use crate::types::{TicketPriority, TicketSize, TicketStatus, TicketType};
 
         let ticket1 = TicketMetadata {
-            id: Some("j-a1b2".to_string()),
+            id: Some(TicketId::new_unchecked("j-a1b2")),
             title: Some("Add authentication".to_string()),
             status: Some(TicketStatus::New),
             ticket_type: Some(TicketType::Feature),
@@ -1988,7 +1989,7 @@ mod tests {
             ..Default::default()
         };
         let ticket2 = TicketMetadata {
-            id: Some("j-c3d4".to_string()),
+            id: Some(TicketId::new_unchecked("j-c3d4")),
             title: Some("Fix login bug".to_string()),
             status: Some(TicketStatus::InProgress),
             ticket_type: Some(TicketType::Bug),
@@ -1997,7 +1998,7 @@ mod tests {
             ..Default::default()
         };
         let ticket3 = TicketMetadata {
-            id: Some("j-e5f6".to_string()),
+            id: Some(TicketId::new_unchecked("j-e5f6")),
             title: Some("Update docs".to_string()),
             status: Some(TicketStatus::New),
             ticket_type: Some(TicketType::Task),
@@ -2021,7 +2022,7 @@ mod tests {
         use crate::types::{TicketSize, TicketStatus};
 
         let metadata = TicketMetadata {
-            id: Some("j-test".to_string()),
+            id: Some(TicketId::new_unchecked("j-test")),
             title: Some("Test ticket".to_string()),
             status: Some(TicketStatus::New),
             size: Some(TicketSize::Large),

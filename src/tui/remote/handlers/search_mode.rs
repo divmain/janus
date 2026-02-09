@@ -2,10 +2,10 @@
 
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
-use crate::tui::handlers::{SearchAction, handle_search_input};
+use crate::tui::handlers::{handle_search_input, SearchAction};
 
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle events when search box is focused
 #[allow(dead_code)]

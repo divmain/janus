@@ -2,7 +2,9 @@ use serde::Deserialize;
 
 use crate::error::Result;
 use crate::parser::{parse_document, ParsedDocument};
-use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
+use crate::types::{
+    CreatedAt, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType,
+};
 
 /// Strict frontmatter struct for YAML deserialization with required fields.
 #[derive(Debug, Deserialize)]
@@ -61,12 +63,12 @@ fn ticket_metadata_from_document(doc: ParsedDocument) -> Result<TicketMetadata> 
     let frontmatter: TicketFrontmatter = doc.deserialize_frontmatter()?;
 
     let metadata = TicketMetadata {
-        id: Some(frontmatter.id),
+        id: Some(TicketId::new_unchecked(frontmatter.id)),
         uuid: Some(frontmatter.uuid),
         status: frontmatter.status,
         deps: frontmatter.deps,
         links: frontmatter.links,
-        created: frontmatter.created,
+        created: frontmatter.created.map(CreatedAt::new_unchecked),
         ticket_type: frontmatter.ticket_type,
         priority: frontmatter.priority,
         size: frontmatter.size,
@@ -109,7 +111,7 @@ This is the description.
 "#;
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("test-1234".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("test-1234"));
         assert_eq!(metadata.status, Some(TicketStatus::New));
         assert_eq!(metadata.title, Some("Test Ticket".to_string()));
         assert_eq!(metadata.ticket_type, Some(TicketType::Task));
@@ -167,7 +169,7 @@ Performance results: Cold start ~22ms, subsequent lookups <5ms.
 "#;
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("j-a1b2".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("j-a1b2"));
         assert_eq!(metadata.status, Some(TicketStatus::Complete));
 
         let summary = metadata.completion_summary.unwrap();
@@ -266,7 +268,7 @@ Description.
 "#;
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("test-1234".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("test-1234"));
         assert!(metadata.external_ref.is_some());
         let ref_str = metadata.external_ref.unwrap();
         assert!(ref_str.contains("multi-line"));
@@ -292,7 +294,7 @@ YAML comments should be handled properly.
 "#;
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("test-5678".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("test-5678"));
         assert_eq!(metadata.status, Some(TicketStatus::Next));
         assert_eq!(metadata.priority, Some(TicketPriority::P1));
     }
@@ -315,7 +317,7 @@ Both deps and links should be empty vectors.
 "#;
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("test-9012".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("test-9012"));
         assert!(metadata.deps.is_empty());
         assert!(metadata.links.is_empty());
     }
@@ -338,7 +340,7 @@ This ticket uses Windows-style line endings.\r\n\
 ";
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("test-crlf".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("test-crlf"));
         assert_eq!(metadata.status, Some(TicketStatus::New));
         assert_eq!(metadata.title, Some("CRLF Ticket".to_string()));
         assert_eq!(metadata.ticket_type, Some(TicketType::Task));
@@ -366,7 +368,7 @@ Task completed with CRLF line endings.\r\n\
 ";
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("j-a1b2".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("j-a1b2"));
         assert_eq!(metadata.status, Some(TicketStatus::Complete));
         let summary = metadata.completion_summary.unwrap();
         assert_eq!(summary, "Task completed with CRLF line endings.");
@@ -390,7 +392,7 @@ This document has mixed line endings.\r\n\
 ";
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.id, Some("test-mixed".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("test-mixed"));
         assert_eq!(metadata.status, Some(TicketStatus::New));
         assert_eq!(metadata.title, Some("Mixed Line Endings".to_string()));
         assert_eq!(metadata.ticket_type, Some(TicketType::Task));

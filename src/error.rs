@@ -362,6 +362,17 @@ pub enum JanusError {
 
     #[error("parse error: {0}")]
     ParseError(String),
+
+    #[error(
+        "invalid ticket ID format '{0}': must be non-empty and match '<prefix>-<hash>' pattern"
+    )]
+    InvalidTicketIdFormat(String),
+
+    #[error("invalid plan ID format '{0}': must be non-empty and match 'plan-<hash>' pattern")]
+    InvalidPlanIdFormat(String),
+
+    #[error("invalid timestamp '{0}': must be a valid ISO 8601 / RFC 3339 timestamp")]
+    InvalidTimestamp(String),
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;

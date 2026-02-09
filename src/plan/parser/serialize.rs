@@ -315,15 +315,16 @@ fn serialize_freeform(freeform: &FreeFormSection) -> String {
 mod tests {
     use super::*;
     use crate::plan::parser::parse_plan_content;
+    use crate::types::{CreatedAt, PlanId};
 
     // ==================== Serialization Tests ====================
 
     #[test]
     fn test_serialize_simple_plan() {
         let metadata = PlanMetadata {
-            id: Some("plan-a1b2".to_string()),
+            id: Some(PlanId::new_unchecked("plan-a1b2")),
             uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
-            created: Some("2024-01-01T00:00:00Z".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
             title: Some("Simple Plan Title".to_string()),
             description: Some("This is the plan description.".to_string()),
             acceptance_criteria: vec![
@@ -373,9 +374,9 @@ mod tests {
         phase2.tickets = vec!["j-e5f6".to_string()];
 
         let metadata = PlanMetadata {
-            id: Some("plan-b2c3".to_string()),
+            id: Some(PlanId::new_unchecked("plan-b2c3")),
             uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
-            created: Some("2024-01-01T00:00:00Z".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
             title: Some("Phased Plan".to_string()),
             description: Some("Overview of the plan.".to_string()),
             acceptance_criteria: vec!["Performance targets met".to_string()],
@@ -406,9 +407,9 @@ mod tests {
     fn test_serialize_plan_with_freeform_sections() {
         // Add free-form section
         let mut metadata = PlanMetadata {
-            id: Some("plan-c3d4".to_string()),
+            id: Some(PlanId::new_unchecked("plan-c3d4")),
             uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
-            created: Some("2024-01-01T00:00:00Z".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
             title: Some("Plan with Free-form Content".to_string()),
             description: Some("Description.".to_string()),
             acceptance_criteria: vec![],
@@ -1058,22 +1059,18 @@ This approach has limitations with large datasets.
         assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "Dependencies");
-        assert!(
-            phases[0].extra_subsections[0]
-                .content
-                .contains("Node.js 18+")
-        );
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("Node.js 18+"));
 
         // Phase 2: Design Rationale, then Tickets, then Caveats
         assert_eq!(phases[1].tickets, vec!["j-c3d4", "j-e5f6"]);
         assert_eq!(phases[1].extra_subsections.len(), 2);
         assert_eq!(phases[1].extra_subsections[0].heading, "Design Rationale");
         assert_eq!(phases[1].extra_subsections[1].heading, "Caveats");
-        assert!(
-            phases[1].extra_subsections[1]
-                .content
-                .contains("limitations")
-        );
+        assert!(phases[1].extra_subsections[1]
+            .content
+            .contains("limitations"));
     }
 
     #[test]
@@ -1088,9 +1085,9 @@ This approach has limitations with large datasets.
         // subsection_order is empty (default)
 
         let metadata = PlanMetadata {
-            id: Some("plan-legacy".to_string()),
+            id: Some(PlanId::new_unchecked("plan-legacy")),
             uuid: Some("550e8400-e29b-41d4-a716-446655440503".to_string()),
-            created: Some("2024-01-01T00:00:00Z".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
             title: Some("Legacy Plan".to_string()),
             description: None,
             acceptance_criteria: vec![],
@@ -1182,11 +1179,9 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(
-                ts.extra_subsections[1]
-                    .content
-                    .contains("Timeline pressure")
-            );
+            assert!(ts.extra_subsections[1]
+                .content
+                .contains("Timeline pressure"));
         } else {
             panic!("Expected PlanSection::Tickets after round-trip");
         }
@@ -1324,20 +1319,16 @@ Run the full integration suite before merging.
             reparsed.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(
-            reparsed.acceptance_criteria_extra[0]
-                .content
-                .contains("Detailed testing instructions")
-        );
+        assert!(reparsed.acceptance_criteria_extra[0]
+            .content
+            .contains("Detailed testing instructions"));
         assert_eq!(
             reparsed.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(
-            reparsed.acceptance_criteria_extra[1]
-                .content
-                .contains("Deploy to staging")
-        );
+        assert!(reparsed.acceptance_criteria_extra[1]
+            .content
+            .contains("Deploy to staging"));
     }
 
     #[test]
@@ -1633,9 +1624,9 @@ Example response:
     fn test_serialize_programmatic_plan_without_raw_falls_back_to_list() {
         // Programmatically constructed plan — no raw content set
         let metadata = PlanMetadata {
-            id: Some("plan-prog".to_string()),
+            id: Some(PlanId::new_unchecked("plan-prog")),
             uuid: Some("550e8400-e29b-41d4-a716-446655440902".to_string()),
-            created: Some("2024-01-01T00:00:00Z".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
             title: Some("Programmatic Plan".to_string()),
             description: None,
             acceptance_criteria: vec![
@@ -1645,7 +1636,7 @@ Example response:
             acceptance_criteria_raw: None,
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string(),
+                "j-a1b2".to_string()
             ]))],
             file_path: None,
             extra_frontmatter: None,
@@ -1924,9 +1915,9 @@ Reliability requirements:
         phase.tickets = vec!["j-a1b2".to_string()];
 
         let metadata = PlanMetadata {
-            id: Some("plan-sc-prog".to_string()),
+            id: Some(PlanId::new_unchecked("plan-sc-prog")),
             uuid: Some("550e8400-e29b-41d4-a716-446655441003".to_string()),
-            created: Some("2024-01-01T00:00:00Z".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
             title: Some("Programmatic Plan".to_string()),
             description: None,
             acceptance_criteria: vec![],
@@ -2085,9 +2076,9 @@ created: 2024-01-01T00:00:00Z
         // tickets_raw is None by default
 
         let metadata = PlanMetadata {
-            id: Some("plan-tkt-prog".to_string()),
+            id: Some(PlanId::new_unchecked("plan-tkt-prog")),
             uuid: Some("550e8400-e29b-41d4-a716-446655442002".to_string()),
-            created: Some("2024-01-01T00:00:00Z".to_string()),
+            created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
             title: Some("Programmatic Ticket Plan".to_string()),
             description: None,
             acceptance_criteria: vec![],

@@ -212,11 +212,11 @@ pub fn TicketCard(props: &TicketCardProps) -> impl Into<AnyElement<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::TicketStatus;
+    use crate::types::{TicketId, TicketStatus};
 
     fn make_ticket(id: &str, title: &str, priority: TicketPriority) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             title: Some(title.to_string()),
             status: Some(TicketStatus::New),
             priority: Some(priority),

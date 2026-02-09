@@ -237,6 +237,7 @@ pub fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
 mod tests {
     use super::*;
     use crate::plan::types::{PlanSection, TicketsSection};
+    use crate::types::TicketId;
 
     #[test]
     fn test_compute_aggregate_status_all_complete() {
@@ -320,7 +321,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 status: Some(TicketStatus::Complete),
                 ..Default::default()
             },
@@ -328,7 +329,7 @@ mod tests {
         ticket_map.insert(
             "j-c3d4".to_string(),
             TicketMetadata {
-                id: Some("j-c3d4".to_string()),
+                id: Some(TicketId::new_unchecked("j-c3d4")),
                 status: Some(TicketStatus::InProgress),
                 ..Default::default()
             },
@@ -336,7 +337,7 @@ mod tests {
         ticket_map.insert(
             "j-e5f6".to_string(),
             TicketMetadata {
-                id: Some("j-e5f6".to_string()),
+                id: Some(TicketId::new_unchecked("j-e5f6")),
                 status: Some(TicketStatus::New),
                 ..Default::default()
             },
@@ -363,7 +364,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 status: Some(TicketStatus::Complete),
                 ..Default::default()
             },
@@ -371,7 +372,7 @@ mod tests {
         ticket_map.insert(
             "j-c3d4".to_string(),
             TicketMetadata {
-                id: Some("j-c3d4".to_string()),
+                id: Some(TicketId::new_unchecked("j-c3d4")),
                 status: Some(TicketStatus::Complete),
                 ..Default::default()
             },
@@ -403,7 +404,7 @@ mod tests {
         ticket_map.insert(
             "j-exists".to_string(),
             TicketMetadata {
-                id: Some("j-exists".to_string()),
+                id: Some(TicketId::new_unchecked("j-exists")),
                 status: Some(TicketStatus::Complete),
                 ..Default::default()
             },
@@ -420,7 +421,7 @@ mod tests {
     /// Helper to create a ticket metadata with a given status
     fn make_ticket(id: &str, status: TicketStatus) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             status: Some(status),
             ..Default::default()
         }

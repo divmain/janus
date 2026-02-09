@@ -78,7 +78,7 @@ impl TicketStore {
             .iter()
             .filter_map(|entry| {
                 let ticket = entry.value();
-                let id = ticket.id.clone()?;
+                let id = ticket.id.clone()?.to_string();
                 let file_path = ticket.file_path.clone()?;
                 Some((id, file_path))
             })
@@ -243,6 +243,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::types::TicketId;
     use crate::cache::TicketStore;
     use crate::types::{TicketMetadata, TicketStatus};
 
@@ -343,7 +344,7 @@ status: new
         // Load into store
         let store = TicketStore::empty();
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-test".to_string()),
+            id: Some(TicketId::new_unchecked("j-test")),
             file_path: Some(ticket_path),
             status: Some(TicketStatus::New),
             ..Default::default()
@@ -418,15 +419,15 @@ status: new
         let store = TicketStore::empty();
 
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-1".to_string()),
+            id: Some(TicketId::new_unchecked("j-1")),
             ..Default::default()
         });
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-2".to_string()),
+            id: Some(TicketId::new_unchecked("j-2")),
             ..Default::default()
         });
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-3".to_string()),
+            id: Some(TicketId::new_unchecked("j-3")),
             ..Default::default()
         });
 
@@ -450,7 +451,7 @@ status: new
 
         let store = TicketStore::empty();
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-1".to_string()),
+            id: Some(TicketId::new_unchecked("j-1")),
             file_path: Some(tmp.path().join("ticket.md")),
             ..Default::default()
         });
@@ -466,7 +467,7 @@ status: new
     fn test_load_embeddings_ticket_without_filepath() {
         let store = TicketStore::empty();
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-nofp".to_string()),
+            id: Some(TicketId::new_unchecked("j-nofp")),
             file_path: None,
             ..Default::default()
         });
@@ -509,7 +510,7 @@ status: new
 
         let store = TicketStore::empty();
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-dim".to_string()),
+            id: Some(TicketId::new_unchecked("j-dim")),
             file_path: Some(ticket_path),
             status: Some(TicketStatus::New),
             ..Default::default()
@@ -557,7 +558,7 @@ status: new
 
         let store = TicketStore::empty();
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-nan".to_string()),
+            id: Some(TicketId::new_unchecked("j-nan")),
             file_path: Some(ticket_path),
             status: Some(TicketStatus::New),
             ..Default::default()
@@ -591,7 +592,7 @@ status: new
 
         let store2 = TicketStore::empty();
         store2.upsert_ticket(TicketMetadata {
-            id: Some("j-inf".to_string()),
+            id: Some(TicketId::new_unchecked("j-inf")),
             file_path: Some(ticket_path2),
             status: Some(TicketStatus::New),
             ..Default::default()

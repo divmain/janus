@@ -57,7 +57,11 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
     };
 
     // Extract ticket properties
-    let id = ticket.id.clone().unwrap_or_else(|| "???".to_string());
+    let id = ticket
+        .id
+        .as_ref()
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "???".to_string());
     let title = ticket
         .title
         .clone()

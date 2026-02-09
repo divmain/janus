@@ -344,7 +344,7 @@ pub async fn build_plan_map() -> Result<HashMap<String, PlanMetadata>> {
     let map: HashMap<_, _> = result
         .items
         .into_iter()
-        .filter_map(|m| m.id.clone().map(|id| (id, m)))
+        .filter_map(|m| m.id.clone().map(|id| (id.to_string(), m)))
         .collect();
     Ok(map)
 }
@@ -355,7 +355,7 @@ pub async fn get_all_plans_with_map() -> Result<(PlanLoadResult, HashMap<String,
     let map: HashMap<_, _> = result
         .items
         .iter()
-        .filter_map(|m| m.id.clone().map(|id| (id, m.clone())))
+        .filter_map(|m| m.id.clone().map(|id| (id.to_string(), m.clone())))
         .collect();
     Ok((result, map))
 }
@@ -372,7 +372,9 @@ pub fn get_all_plans_from_disk() -> PlanLoadResult {
             Ok(content) => match parse_plan_content(&content) {
                 Ok(mut metadata) => {
                     if metadata.id.is_none() {
-                        metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
+                        metadata.id = Some(crate::types::PlanId::new_unchecked(
+                            file.strip_suffix(".md").unwrap_or(&file),
+                        ));
                     }
                     metadata.file_path = Some(file_path);
                     result.add_plan(metadata);
@@ -442,12 +444,12 @@ This is the description.
 "#;
 
         let metadata = parse_plan_content(content).unwrap();
-        assert_eq!(metadata.id, Some("plan-a1b2".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-a1b2"));
         assert_eq!(
             metadata.uuid,
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
         );
-        assert_eq!(metadata.created, Some("2024-01-01T00:00:00Z".to_string()));
+        assert_eq!(metadata.created.as_deref(), Some("2024-01-01T00:00:00Z"));
         assert_eq!(metadata.title, Some("Test Plan Title".to_string()));
     }
 

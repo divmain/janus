@@ -5,8 +5,8 @@ use std::collections::HashSet;
 
 use super::super::confirm_modal::ConfirmDialogState;
 use super::super::error_toast::Toast;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle local view specific operations
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -38,7 +38,7 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
         let tickets = ctx.view_data.local_tickets.read();
         if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index()) {
             if let Some(id) = &ticket.id {
-                vec![id.clone()]
+                vec![id.to_string()]
             } else {
                 vec![]
             }
@@ -59,7 +59,7 @@ fn handle_push(ctx: &mut HandlerContext<'_>) {
     let linked_ids: HashSet<String> = tickets_ref
         .iter()
         .filter(|t| t.remote.is_some())
-        .filter_map(|t| t.id.clone())
+        .filter_map(|t| t.id.as_ref().map(|id| id.to_string()))
         .collect();
     drop(tickets_ref);
 
@@ -112,7 +112,7 @@ fn handle_unlink(ctx: &mut HandlerContext<'_>) {
         let linked_ids: HashSet<String> = tickets_ref
             .iter()
             .filter(|t| t.remote.is_some())
-            .filter_map(|t| t.id.clone())
+            .filter_map(|t| t.id.as_ref().map(|id| id.to_string()))
             .collect();
         let linked: Vec<String> = selected_ids
             .into_iter()
@@ -127,7 +127,7 @@ fn handle_unlink(ctx: &mut HandlerContext<'_>) {
             && let Some(id) = &ticket.id
             && ticket.remote.is_some()
         {
-            vec![id.clone()]
+            vec![id.to_string()]
         } else {
             vec![]
         }
@@ -153,7 +153,7 @@ mod tests {
 
     fn create_test_ticket(id: &str, remote: Option<&str>) -> crate::types::TicketMetadata {
         crate::types::TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(crate::types::TicketId::new_unchecked(id)),
             remote: remote.map(|s| s.to_string()),
             status: Some(TicketStatus::New),
             ticket_type: Some(TicketType::Task),
@@ -176,7 +176,7 @@ mod tests {
         let linked_ids: HashSet<String> = tickets
             .iter()
             .filter(|t| t.remote.is_some())
-            .filter_map(|t| t.id.clone())
+            .filter_map(|t| t.id.as_deref().map(|s| s.to_string()))
             .collect();
 
         // VerifyHashSet contains only linked tickets
@@ -206,7 +206,7 @@ mod tests {
         let linked_ids: HashSet<String> = tickets
             .iter()
             .filter(|t| t.remote.is_some())
-            .filter_map(|t| t.id.clone())
+            .filter_map(|t| t.id.as_deref().map(|s| s.to_string()))
             .collect();
 
         // Filter selected IDs using HashSet
@@ -243,7 +243,7 @@ mod tests {
         let linked_ids: HashSet<String> = tickets
             .iter()
             .filter(|t| t.remote.is_some())
-            .filter_map(|t| t.id.clone())
+            .filter_map(|t| t.id.as_deref().map(|s| s.to_string()))
             .collect();
 
         let already_linked_hash: Vec<String> = selected_ids
@@ -258,7 +258,7 @@ mod tests {
             .filter(|id| {
                 tickets
                     .iter()
-                    .any(|t| t.id.as_ref() == Some(id) && t.remote.is_some())
+                    .any(|t| t.id.as_deref() == Some(id.as_str()) && t.remote.is_some())
             })
             .cloned()
             .collect();

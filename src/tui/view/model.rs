@@ -10,7 +10,7 @@ use crate::tui::components::{
     browser_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts, search_shortcuts,
 };
 use crate::tui::repository::InitResult;
-use crate::tui::search::{FilteredTicket, filter_tickets};
+use crate::tui::search::{filter_tickets, FilteredTicket};
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 
@@ -464,11 +464,11 @@ pub fn get_selected_ticket(state: &ViewState) -> Option<TicketMetadata> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{TicketPriority, TicketStatus, TicketType};
+    use crate::types::{TicketId, TicketPriority, TicketStatus, TicketType};
 
     fn make_ticket(id: &str, title: &str, status: TicketStatus) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             title: Some(title.to_string()),
             status: Some(status),
             priority: Some(TicketPriority::P2),
@@ -955,7 +955,7 @@ mod tests {
 
         let ticket = get_ticket_at(&state, 2);
         assert!(ticket.is_some());
-        assert_eq!(ticket.unwrap().id, Some("j-2".to_string()));
+        assert_eq!(ticket.unwrap().id.as_deref(), Some("j-2"));
 
         // Out of bounds
         assert!(get_ticket_at(&state, 10).is_none());
@@ -968,7 +968,7 @@ mod tests {
 
         let ticket = get_selected_ticket(&state);
         assert!(ticket.is_some());
-        assert_eq!(ticket.unwrap().id, Some("j-3".to_string()));
+        assert_eq!(ticket.unwrap().id.as_deref(), Some("j-3"));
     }
 
     // ========================================================================

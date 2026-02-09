@@ -9,8 +9,8 @@ use crate::ticket::get_all_tickets_from_disk;
 use super::super::error_toast::Toast;
 use super::super::operations;
 
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle remote view specific operations
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {

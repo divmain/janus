@@ -88,7 +88,7 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
 
     // Get initial values from props
     let initial_ticket = props.ticket.clone().unwrap_or_default();
-    let ticket_id = initial_ticket.id.clone();
+    let ticket_id = initial_ticket.id.as_ref().map(|id| id.to_string());
     let is_new = ticket_id.is_none();
 
     // State for form fields

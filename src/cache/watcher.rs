@@ -372,7 +372,8 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
         Ok(mut metadata) => {
             if metadata.id.is_none() {
                 if let Some(stem) = path.file_stem() {
-                    metadata.id = Some(stem.to_string_lossy().to_string());
+                    metadata.id =
+                        Some(crate::types::TicketId::new_unchecked(stem.to_string_lossy()));
                 }
             }
             metadata.file_path = Some(path.to_path_buf());
@@ -383,7 +384,7 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
             // the embedding was computed from the old content. The user can
             // run `janus cache rebuild` to regenerate embeddings.
             if let Some(id) = &ticket_id {
-                store.embeddings().remove(id);
+                store.embeddings().remove(id.as_ref());
             }
             true
         }
@@ -411,7 +412,8 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
         Ok(mut metadata) => {
             if metadata.id.is_none() {
                 if let Some(stem) = path.file_stem() {
-                    metadata.id = Some(stem.to_string_lossy().to_string());
+                    metadata.id =
+                        Some(crate::types::PlanId::new_unchecked(stem.to_string_lossy()));
                 }
             }
             metadata.file_path = Some(path.to_path_buf());

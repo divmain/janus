@@ -3,8 +3,8 @@
 use iocraft::prelude::KeyCode;
 
 use super::super::error_toast::Toast;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle filter modal events
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {

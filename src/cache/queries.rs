@@ -169,14 +169,16 @@ impl TicketStore {
 mod tests {
     use crate::cache::TicketStore;
     use crate::plan::types::{PlanMetadata, PlanSection, TicketsSection};
-    use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
+    use crate::types::{
+        PlanId, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType,
+    };
 
     /// Helper to create a test store with some tickets pre-loaded.
     fn test_store() -> TicketStore {
         let store = TicketStore::empty();
 
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-a1b2".to_string()),
+            id: Some(TicketId::new_unchecked("j-a1b2")),
             title: Some("Implement cache initialization".to_string()),
             status: Some(TicketStatus::New),
             ticket_type: Some(TicketType::Task),
@@ -188,7 +190,7 @@ mod tests {
         });
 
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-c3d4".to_string()),
+            id: Some(TicketId::new_unchecked("j-c3d4")),
             title: Some("Fix login bug".to_string()),
             status: Some(TicketStatus::InProgress),
             ticket_type: Some(TicketType::Bug),
@@ -200,7 +202,7 @@ mod tests {
         });
 
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-e5f6".to_string()),
+            id: Some(TicketId::new_unchecked("j-e5f6")),
             title: Some("Add feature flags".to_string()),
             status: Some(TicketStatus::Complete),
             ticket_type: Some(TicketType::Feature),
@@ -211,7 +213,7 @@ mod tests {
         });
 
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-g7h8".to_string()),
+            id: Some(TicketId::new_unchecked("j-g7h8")),
             title: Some("Refactor database layer".to_string()),
             status: Some(TicketStatus::New),
             ticket_type: Some(TicketType::Chore),
@@ -228,7 +230,7 @@ mod tests {
         let store = test_store();
 
         store.upsert_plan(PlanMetadata {
-            id: Some("plan-a1b2".to_string()),
+            id: Some(PlanId::new_unchecked("plan-a1b2")),
             title: Some("Cache Implementation".to_string()),
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
                 "j-a1b2".to_string(),
@@ -238,10 +240,10 @@ mod tests {
         });
 
         store.upsert_plan(PlanMetadata {
-            id: Some("plan-c3d4".to_string()),
+            id: Some(PlanId::new_unchecked("plan-c3d4")),
             title: Some("Feature Rollout".to_string()),
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-e5f6".to_string(),
+                "j-e5f6".to_string()
             ]))],
             ..Default::default()
         });

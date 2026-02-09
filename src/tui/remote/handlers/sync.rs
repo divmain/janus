@@ -6,8 +6,8 @@ use iocraft::prelude::KeyCode;
 
 use super::super::error_toast::Toast;
 use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle sync preview mode events
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -108,7 +108,7 @@ pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
                     .as_ref()
                     .is_some_and(|r| selected_remote.contains(r))
             })
-            .filter_map(|t| t.id.clone())
+            .filter_map(|t| t.id.as_ref().map(|id| id.to_string()))
             .collect()
     };
 
@@ -120,7 +120,7 @@ pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
             .filter(|id| {
                 tickets
                     .iter()
-                    .any(|t| t.id.as_ref() == Some(id) && t.remote.is_some())
+                    .any(|t| t.id.as_deref() == Some(id.as_str()) && t.remote.is_some())
             })
             .collect::<Vec<_>>()
     } else {
@@ -129,7 +129,7 @@ pub fn handle_start_sync(ctx: &mut HandlerContext<'_>) {
         if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index()) {
             if ticket.remote.is_some() {
                 if let Some(id) = &ticket.id {
-                    vec![id.clone()]
+                    vec![id.to_string()]
                 } else {
                     vec![]
                 }

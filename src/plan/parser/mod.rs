@@ -103,9 +103,11 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
         .map_err(|e| JanusError::InvalidFormat(format!("YAML parsing error: {e}")))?;
 
     let metadata = PlanMetadata {
-        id: frontmatter.id,
+        id: frontmatter.id.map(crate::types::PlanId::new_unchecked),
         uuid: frontmatter.uuid,
-        created: frontmatter.created,
+        created: frontmatter
+            .created
+            .map(crate::types::CreatedAt::new_unchecked),
         extra_frontmatter: if frontmatter.extra.is_empty() {
             None
         } else {
@@ -495,12 +497,12 @@ This is the plan description.
 
         let metadata = parse_plan_content(content).unwrap();
 
-        assert_eq!(metadata.id, Some("plan-a1b2".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-a1b2"));
         assert_eq!(
             metadata.uuid,
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
         );
-        assert_eq!(metadata.created, Some("2024-01-01T00:00:00Z".to_string()));
+        assert_eq!(metadata.created.as_deref(), Some("2024-01-01T00:00:00Z"));
         assert_eq!(metadata.title, Some("Simple Plan Title".to_string()));
         assert_eq!(
             metadata.description,
@@ -720,7 +722,7 @@ uuid: 550e8400-e29b-41d4-a716-446655440000
 "#;
 
         let metadata = parse_plan_content(content).unwrap();
-        assert_eq!(metadata.id, Some("plan-min".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-min"));
         assert_eq!(metadata.title, Some("Minimal Plan".to_string()));
         assert!(metadata.description.is_none());
         assert!(metadata.acceptance_criteria.is_empty());
@@ -1091,9 +1093,9 @@ More details.
     fn test_parse_yaml_frontmatter() {
         let yaml = "id: plan-test\nuuid: abc-123\ncreated: 2024-01-01";
         let metadata = parse_yaml_frontmatter(yaml).unwrap();
-        assert_eq!(metadata.id, Some("plan-test".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-test"));
         assert_eq!(metadata.uuid, Some("abc-123".to_string()));
-        assert_eq!(metadata.created, Some("2024-01-01".to_string()));
+        assert_eq!(metadata.created.as_deref(), Some("2024-01-01"));
     }
 
     // ==================== Integration Tests ====================
@@ -1194,12 +1196,12 @@ Implement the core synchronization logic.
         let metadata = parse_plan_content(content).unwrap();
 
         // Frontmatter
-        assert_eq!(metadata.id, Some("plan-cache".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-cache"));
         assert_eq!(
             metadata.uuid,
             Some("7c9e6679-7425-40de-944b-e07fc1f90ae7".to_string())
         );
-        assert_eq!(metadata.created, Some("2024-01-15T10:30:00Z".to_string()));
+        assert_eq!(metadata.created.as_deref(), Some("2024-01-15T10:30:00Z"));
 
         // Title and description
         assert_eq!(
@@ -1289,7 +1291,7 @@ A plan with Windows-style line endings.\r\n\
 ";
 
         let metadata = parse_plan_content(content).unwrap();
-        assert_eq!(metadata.id, Some("plan-crlf".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-crlf"));
         assert_eq!(metadata.title, Some("CRLF Plan".to_string()));
         assert_eq!(metadata.acceptance_criteria.len(), 2);
         assert!(metadata.is_simple());
@@ -1354,7 +1356,7 @@ Mixed line ending content.\r\n\
 ";
 
         let metadata = parse_plan_content(content).unwrap();
-        assert_eq!(metadata.id, Some("plan-mixed".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-mixed"));
         assert_eq!(metadata.title, Some("Mixed Line Endings".to_string()));
         let tickets = metadata.all_tickets();
         assert_eq!(tickets, vec!["j-a1b2", "j-c3d4", "j-e5f6"]);
@@ -1388,7 +1390,7 @@ created: 2024-01-01T00:00:00Z
 "#;
 
         let metadata = parse_plan_content(content).unwrap();
-        assert_eq!(metadata.id, Some("plan-test".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-test"));
         assert!(metadata.uuid.is_none());
     }
 
@@ -1403,7 +1405,7 @@ custom_tool_field: some_value
 "#;
 
         let metadata = parse_plan_content(content).unwrap();
-        assert_eq!(metadata.id, Some("plan-test".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-test"));
         assert_eq!(
             metadata.uuid,
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
@@ -1435,7 +1437,7 @@ priority_override: 5
 
         // Parse
         let metadata = parse_plan_content(content).unwrap();
-        assert_eq!(metadata.id, Some("plan-extra".to_string()));
+        assert_eq!(metadata.id.as_deref(), Some("plan-extra"));
 
         let extra = metadata.extra_frontmatter.as_ref().unwrap();
         assert_eq!(extra.len(), 2);
@@ -1470,7 +1472,7 @@ created: 2024-01-01T00:00:00Z
         let metadata = parse_plan_content(content).unwrap();
         assert!(metadata.id.is_none());
         assert!(metadata.uuid.is_none());
-        assert_eq!(metadata.created, Some("2024-01-01T00:00:00Z".to_string()));
+        assert_eq!(metadata.created.as_deref(), Some("2024-01-01T00:00:00Z"));
         assert_eq!(metadata.title, Some("Bare Plan".to_string()));
     }
 

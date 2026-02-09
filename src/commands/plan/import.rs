@@ -45,7 +45,10 @@ async fn check_duplicate_plan_title(title: &str) -> Result<()> {
         if let Some(ref existing_title) = plan.title
             && existing_title.eq_ignore_ascii_case(title)
         {
-            let plan_id = plan.id.unwrap_or_else(|| "unknown".to_string());
+            let plan_id = plan
+                .id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
             return Err(JanusError::DuplicatePlanTitle(title.to_string(), plan_id));
         }
     }
@@ -293,9 +296,9 @@ pub async fn cmd_plan_import(
     let now = iso_date();
 
     let mut metadata = PlanMetadata {
-        id: Some(plan_id.clone()),
+        id: Some(crate::types::PlanId::new_unchecked(plan_id.clone())),
         uuid: Some(uuid.clone()),
-        created: Some(now.clone()),
+        created: Some(crate::types::CreatedAt::new_unchecked(now.clone())),
         title: Some(plan.title.clone()),
         description: plan.description.clone(),
         acceptance_criteria: plan.acceptance_criteria.clone(),

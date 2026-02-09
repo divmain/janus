@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::TicketStatus;
+use crate::types::{CreatedAt, PlanId, TicketStatus};
 
 pub struct Progress {
     pub completed: usize,
@@ -29,7 +29,7 @@ impl Progress {
 pub struct PlanMetadata {
     /// Plan ID (e.g., "plan-a1b2")
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+    pub id: Option<PlanId>,
 
     /// Durable UUID v4 for disambiguation
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,7 +41,7 @@ pub struct PlanMetadata {
 
     /// Creation timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub created: Option<String>,
+    pub created: Option<CreatedAt>,
 
     /// Description: content between title (H1) and first H2 section
     #[serde(skip)]
@@ -198,9 +198,9 @@ impl PlanMetadata {
         })
     }
 
-    /// Get the item ID
+    /// Get the item ID as a string slice
     pub fn id(&self) -> Option<&str> {
-        self.id.as_deref()
+        self.id.as_ref().map(|id| id.as_ref())
     }
 
     /// Get the item UUID
@@ -798,7 +798,7 @@ mod tests {
         let mut plan = PlanMetadata::default();
         plan.sections
             .push(PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string(),
+                "j-a1b2".to_string()
             ])));
 
         assert!(!plan.is_phased());

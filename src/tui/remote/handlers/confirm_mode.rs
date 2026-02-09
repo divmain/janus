@@ -2,8 +2,8 @@
 
 use iocraft::prelude::KeyCode;
 
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 use crate::tui::remote::confirm_modal::ConfirmAction;
 use crate::tui::remote::error_toast::Toast;
 

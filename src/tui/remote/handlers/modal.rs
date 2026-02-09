@@ -2,8 +2,8 @@
 
 use iocraft::prelude::KeyCode;
 
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 use crate::tui::remote::help_modal::help_content_line_count;
 
 /// Handle modal keys (Esc for dismissal, j/k for scroll)

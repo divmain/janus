@@ -10,7 +10,7 @@ use crate::tui::components::{
     board_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts,
 };
 use crate::tui::repository::InitResult;
-use crate::tui::search::{FilteredTicket, filter_tickets};
+use crate::tui::search::{filter_tickets, FilteredTicket};
 use crate::types::{TicketMetadata, TicketStatus};
 
 // Column configuration constants
@@ -659,12 +659,12 @@ pub fn get_ticket_at(state: &BoardState, column: usize, row: usize) -> Option<Ti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{TicketPriority, TicketType};
+    use crate::types::{TicketId, TicketPriority, TicketType};
     use std::sync::Arc;
 
     fn make_ticket(id: &str, title: &str, status: TicketStatus) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             title: Some(title.to_string()),
             status: Some(status),
             priority: Some(TicketPriority::P2),
@@ -988,7 +988,7 @@ mod tests {
         let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
         let selected = view_model.selected_ticket.unwrap();
-        assert_eq!(selected.id, Some("j-2".to_string()));
+        assert_eq!(selected.id.as_deref(), Some("j-2"));
     }
 
     #[test]
@@ -1054,10 +1054,10 @@ mod tests {
         };
 
         let ticket = get_ticket_at(&state, 0, 1).unwrap();
-        assert_eq!(ticket.id, Some("j-2".to_string()));
+        assert_eq!(ticket.id.as_deref(), Some("j-2"));
 
         let ticket = get_ticket_at(&state, 2, 0).unwrap();
-        assert_eq!(ticket.id, Some("j-3".to_string()));
+        assert_eq!(ticket.id.as_deref(), Some("j-3"));
     }
 
     #[test]

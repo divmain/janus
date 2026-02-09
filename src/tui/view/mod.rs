@@ -692,7 +692,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 && let Some(ft) = filtered.get(selected_index.get())
                 && let Some(id) = &ft.ticket.id
             {
-                let id = id.clone();
+                let id = id.to_string();
                 let mark_handler = mark_triaged_handler.clone();
                 buttons.push(
                     element! {
@@ -756,7 +756,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             if let Some(ft) = filtered.get(selected_index.get())
                 && let Some(id) = &ft.ticket.id
             {
-                let id = id.clone();
+                let id = id.to_string();
                 let cycle_handler = cycle_status_handler.clone();
                 buttons.push(
                     element! {

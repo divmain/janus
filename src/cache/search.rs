@@ -61,7 +61,7 @@ impl TicketStore {
 #[cfg(test)]
 mod tests {
     use crate::cache::TicketStore;
-    use crate::types::{TicketMetadata, TicketStatus};
+    use crate::types::{TicketId, TicketMetadata, TicketStatus};
 
     /// Helper to create a store with tickets and mock embeddings.
     fn test_store_with_embeddings() -> TicketStore {
@@ -69,7 +69,7 @@ mod tests {
 
         // Ticket 1: "authentication" direction
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-auth".to_string()),
+            id: Some(TicketId::new_unchecked("j-auth")),
             title: Some("Implement authentication".to_string()),
             status: Some(TicketStatus::New),
             ..Default::default()
@@ -81,7 +81,7 @@ mod tests {
 
         // Ticket 2: "database" direction
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-db".to_string()),
+            id: Some(TicketId::new_unchecked("j-db")),
             title: Some("Set up database".to_string()),
             status: Some(TicketStatus::InProgress),
             ..Default::default()
@@ -93,7 +93,7 @@ mod tests {
 
         // Ticket 3: "ui" direction
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-ui".to_string()),
+            id: Some(TicketId::new_unchecked("j-ui")),
             title: Some("Build user interface".to_string()),
             status: Some(TicketStatus::New),
             ..Default::default()
@@ -105,7 +105,7 @@ mod tests {
 
         // Ticket 4: no embedding
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-noembedding".to_string()),
+            id: Some(TicketId::new_unchecked("j-noembedding")),
             title: Some("Ticket without embedding".to_string()),
             status: Some(TicketStatus::New),
             ..Default::default()
@@ -123,7 +123,7 @@ mod tests {
         let results = store.semantic_search(&query, 10);
 
         assert_eq!(results.len(), 3); // Only tickets with embeddings
-        // Most similar should be j-auth
+                                      // Most similar should be j-auth
         assert_eq!(results[0].ticket.id.as_deref(), Some("j-auth"));
         assert!(results[0].similarity > results[1].similarity);
     }

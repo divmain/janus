@@ -27,10 +27,10 @@ pub trait EntityMetadata: Send + 'static {
 
 impl EntityMetadata for TicketMetadata {
     fn id(&self) -> Option<&str> {
-        self.id.as_deref()
+        self.id.as_ref().map(|id| id.as_ref())
     }
     fn set_id(&mut self, id: String) {
-        self.id = Some(id);
+        self.id = Some(crate::types::TicketId::new_unchecked(id));
     }
     fn file_path(&self) -> Option<&PathBuf> {
         self.file_path.as_ref()
@@ -42,10 +42,10 @@ impl EntityMetadata for TicketMetadata {
 
 impl EntityMetadata for PlanMetadata {
     fn id(&self) -> Option<&str> {
-        self.id.as_deref()
+        self.id.as_ref().map(|id| id.as_ref())
     }
     fn set_id(&mut self, id: String) {
-        self.id = Some(id);
+        self.id = Some(crate::types::PlanId::new_unchecked(id));
     }
     fn file_path(&self) -> Option<&PathBuf> {
         self.file_path.as_ref()
@@ -197,7 +197,7 @@ impl TicketStore {
     fn load_tickets_from_dir(&self, dir: &Path) {
         self.load_entities_from_dir(dir, "ticket", parse_ticket, |metadata: TicketMetadata| {
             if let Some(id) = metadata.id.clone() {
-                self.tickets.insert(id, metadata);
+                self.tickets.insert(id.to_string(), metadata);
             }
         });
     }
@@ -206,7 +206,7 @@ impl TicketStore {
     fn load_plans_from_dir(&self, dir: &Path) {
         self.load_entities_from_dir(dir, "plan", parse_plan_content, |metadata: PlanMetadata| {
             if let Some(id) = metadata.id.clone() {
-                self.plans.insert(id, metadata);
+                self.plans.insert(id.to_string(), metadata);
             }
         });
     }
@@ -214,7 +214,7 @@ impl TicketStore {
     /// Insert or update a ticket in the store.
     pub fn upsert_ticket(&self, metadata: TicketMetadata) {
         if let Some(id) = metadata.id.clone() {
-            self.tickets.insert(id, metadata);
+            self.tickets.insert(id.to_string(), metadata);
         }
     }
 
@@ -230,7 +230,7 @@ impl TicketStore {
     /// Insert or update a plan in the store.
     pub fn upsert_plan(&self, metadata: PlanMetadata) {
         if let Some(id) = metadata.id.clone() {
-            self.plans.insert(id, metadata);
+            self.plans.insert(id.to_string(), metadata);
         }
     }
 
@@ -309,6 +309,7 @@ mod tests {
 
     use super::test_helpers::{make_plan_content, make_ticket_content};
     use super::*;
+    use crate::types::{PlanId, TicketId};
     use crate::types::{TicketPriority, TicketStatus, TicketType};
 
     /// Set up a temporary Janus directory with ticket and plan files.
@@ -438,7 +439,7 @@ mod tests {
         let store = TicketStore::empty();
 
         let metadata = TicketMetadata {
-            id: Some("j-new1".to_string()),
+            id: Some(TicketId::new_unchecked("j-new1")),
             title: Some("New Ticket".to_string()),
             status: Some(TicketStatus::New),
             ..Default::default()
@@ -454,7 +455,7 @@ mod tests {
 
         // Update it
         let updated = TicketMetadata {
-            id: Some("j-new1".to_string()),
+            id: Some(TicketId::new_unchecked("j-new1")),
             title: Some("Updated Ticket".to_string()),
             status: Some(TicketStatus::InProgress),
             ..Default::default()
@@ -473,7 +474,7 @@ mod tests {
         let store = TicketStore::empty();
 
         store.upsert_ticket(TicketMetadata {
-            id: Some("j-rm1".to_string()),
+            id: Some(TicketId::new_unchecked("j-rm1")),
             ..Default::default()
         });
         assert_eq!(store.tickets.len(), 1);
@@ -490,7 +491,7 @@ mod tests {
         let store = TicketStore::empty();
 
         let metadata = PlanMetadata {
-            id: Some("plan-new1".to_string()),
+            id: Some(PlanId::new_unchecked("plan-new1")),
             title: Some("New Plan".to_string()),
             ..Default::default()
         };
@@ -505,7 +506,7 @@ mod tests {
         let store = TicketStore::empty();
 
         store.upsert_plan(PlanMetadata {
-            id: Some("plan-rm1".to_string()),
+            id: Some(PlanId::new_unchecked("plan-rm1")),
             ..Default::default()
         });
         assert_eq!(store.plans.len(), 1);

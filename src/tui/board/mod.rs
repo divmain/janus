@@ -695,6 +695,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TicketId;
     use std::sync::Arc;
 
     #[test]
@@ -717,7 +718,7 @@ mod tests {
         let tickets = vec![
             FilteredTicket {
                 ticket: Arc::new(TicketMetadata {
-                    id: Some("j-a1b2".to_string()),
+                    id: Some(TicketId::new_unchecked("j-a1b2")),
                     status: Some(TicketStatus::New),
                     priority: Some(TicketPriority::P2),
                     ticket_type: Some(TicketType::Task),
@@ -729,7 +730,7 @@ mod tests {
             },
             FilteredTicket {
                 ticket: Arc::new(TicketMetadata {
-                    id: Some("j-c3d4".to_string()),
+                    id: Some(TicketId::new_unchecked("j-c3d4")),
                     status: Some(TicketStatus::InProgress),
                     priority: Some(TicketPriority::P1),
                     ticket_type: Some(TicketType::Bug),
@@ -743,10 +744,10 @@ mod tests {
 
         let new_tickets = get_column_tickets(&tickets, TicketStatus::New);
         assert_eq!(new_tickets.len(), 1);
-        assert_eq!(new_tickets[0].ticket.id, Some("j-a1b2".to_string()));
+        assert_eq!(new_tickets[0].ticket.id.as_deref(), Some("j-a1b2"));
 
         let wip_tickets = get_column_tickets(&tickets, TicketStatus::InProgress);
         assert_eq!(wip_tickets.len(), 1);
-        assert_eq!(wip_tickets[0].ticket.id, Some("j-c3d4".to_string()));
+        assert_eq!(wip_tickets[0].ticket.id.as_deref(), Some("j-c3d4"));
     }
 }

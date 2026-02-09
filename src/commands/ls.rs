@@ -276,10 +276,11 @@ mod tests {
 
     use super::*;
     use crate::query::{SpawningFilter, TicketFilter, TicketFilterContext};
+    use crate::types::TicketId;
 
     fn make_ticket(id: &str, spawned_from: Option<&str>, depth: Option<u32>) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             spawned_from: spawned_from.map(|s| s.to_string()),
             depth,
             ..Default::default()

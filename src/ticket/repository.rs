@@ -97,7 +97,9 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
         match fs::read_to_string(&file_path) {
             Ok(content_str) => match parse_ticket(&content_str) {
                 Ok(mut metadata) => {
-                    metadata.id = Some(file.strip_suffix(".md").unwrap_or(&file).to_string());
+                    metadata.id = Some(crate::types::TicketId::new_unchecked(
+                        file.strip_suffix(".md").unwrap_or(&file),
+                    ));
                     metadata.file_path = Some(file_path);
                     result.add_ticket(metadata);
                 }
@@ -125,7 +127,7 @@ pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate
             let map = result
                 .items
                 .into_iter()
-                .filter_map(|m| m.id.clone().map(|id| (id, m)))
+                .filter_map(|m| m.id.clone().map(|id| (id.to_string(), m)))
                 .collect();
             Ok(map)
         }
@@ -139,7 +141,7 @@ pub async fn get_all_tickets_with_map()
     let map: HashMap<_, _> = result
         .items
         .iter()
-        .filter_map(|m| m.id.clone().map(|id| (id, m.clone())))
+        .filter_map(|m| m.id.clone().map(|id| (id.to_string(), m.clone())))
         .collect();
     Ok((result.items, map))
 }

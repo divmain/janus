@@ -131,6 +131,7 @@ pub async fn get_plan_tickets(plan_id: &str) -> Result<HashSet<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TicketId;
 
     #[test]
     fn test_get_reachable_tickets_basic() {
@@ -138,7 +139,7 @@ mod tests {
         ticket_map.insert(
             "j-a".to_string(),
             TicketMetadata {
-                id: Some("j-a".to_string()),
+                id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
                 spawned_from: None,
                 ..Default::default()
@@ -147,7 +148,7 @@ mod tests {
         ticket_map.insert(
             "j-b".to_string(),
             TicketMetadata {
-                id: Some("j-b".to_string()),
+                id: Some(TicketId::new_unchecked("j-b")),
                 deps: vec![],
                 spawned_from: None,
                 ..Default::default()
@@ -166,7 +167,7 @@ mod tests {
         ticket_map.insert(
             "j-parent".to_string(),
             TicketMetadata {
-                id: Some("j-parent".to_string()),
+                id: Some(TicketId::new_unchecked("j-parent")),
                 deps: vec![],
                 spawned_from: None,
                 ..Default::default()
@@ -175,7 +176,7 @@ mod tests {
         ticket_map.insert(
             "j-child".to_string(),
             TicketMetadata {
-                id: Some("j-child".to_string()),
+                id: Some(TicketId::new_unchecked("j-child")),
                 deps: vec![],
                 spawned_from: Some("j-parent".to_string()),
                 ..Default::default()
@@ -195,7 +196,7 @@ mod tests {
         ticket_map.insert(
             "j-a".to_string(),
             TicketMetadata {
-                id: Some("j-a".to_string()),
+                id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
                 spawned_from: None,
                 ..Default::default()
@@ -204,7 +205,7 @@ mod tests {
         ticket_map.insert(
             "j-b".to_string(),
             TicketMetadata {
-                id: Some("j-b".to_string()),
+                id: Some(TicketId::new_unchecked("j-b")),
                 deps: vec!["j-a".to_string()],
                 spawned_from: None,
                 ..Default::default()

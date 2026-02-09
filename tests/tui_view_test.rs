@@ -10,7 +10,7 @@
 
 mod common;
 
-use common::mock_data::{TicketBuilder, mock_ticket, mock_tickets};
+use common::mock_data::{mock_ticket, mock_tickets, TicketBuilder};
 use janus::tui::repository::InitResult;
 use janus::tui::state::Pane;
 use janus::tui::view::model::*;
@@ -91,7 +91,7 @@ fn test_view_model_with_tickets() {
             vm.total_all_tickets,
             vm.list.tickets.len(),
             vm.list.selected_index,
-            vm.detail.ticket.as_ref().and_then(|t| t.id.clone()),
+            vm.detail.ticket.as_ref().and_then(|t| t.id.as_deref()),
         )
     );
 }
@@ -157,7 +157,7 @@ fn test_view_model_selected_ticket() {
     };
     let vm = compute_view_model(&state, 20);
 
-    let selected_id = vm.detail.ticket.as_ref().and_then(|t| t.id.clone());
+    let selected_id = vm.detail.ticket.as_ref().and_then(|t| t.id.as_deref());
     insta::assert_debug_snapshot!("selected_ticket", selected_id);
 }
 
@@ -638,8 +638,8 @@ fn test_view_with_rich_ticket_data() {
 
     // Verify the ticket is selected
     assert_eq!(
-        vm.detail.ticket.as_ref().and_then(|t| t.id.clone()),
-        Some("j-rich1".to_string())
+        vm.detail.ticket.as_ref().and_then(|t| t.id.as_deref()),
+        Some("j-rich1")
     );
     assert_eq!(vm.list.tickets.len(), 1);
 }
@@ -659,12 +659,12 @@ fn test_get_ticket_at_helper() {
     // Get first ticket
     let ticket = get_ticket_at(&state, 0);
     assert!(ticket.is_some());
-    assert_eq!(ticket.unwrap().id, Some("j-1".to_string()));
+    assert_eq!(ticket.unwrap().id.as_deref(), Some("j-1"));
 
     // Get second ticket
     let ticket = get_ticket_at(&state, 1);
     assert!(ticket.is_some());
-    assert_eq!(ticket.unwrap().id, Some("j-2".to_string()));
+    assert_eq!(ticket.unwrap().id.as_deref(), Some("j-2"));
 
     // Out of bounds returns None
     assert!(get_ticket_at(&state, 10).is_none());
@@ -685,7 +685,7 @@ fn test_get_selected_ticket_helper() {
 
     let ticket = get_selected_ticket(&state);
     assert!(ticket.is_some());
-    assert_eq!(ticket.unwrap().id, Some("j-2".to_string()));
+    assert_eq!(ticket.unwrap().id.as_deref(), Some("j-2"));
 }
 
 #[test]

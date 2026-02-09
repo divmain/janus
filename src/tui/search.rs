@@ -271,7 +271,10 @@ pub fn merge_search_results(
     use std::collections::HashSet;
 
     // Collect IDs from fuzzy results to avoid duplicates
-    let fuzzy_ids: HashSet<String> = fuzzy.iter().filter_map(|t| t.ticket.id.clone()).collect();
+    let fuzzy_ids: HashSet<String> = fuzzy
+        .iter()
+        .filter_map(|t| t.ticket.id.as_ref().map(|id| id.to_string()))
+        .collect();
 
     // Convert semantic results to FilteredTickets, excluding duplicates
     let semantic_tickets: Vec<FilteredTicket> = semantic
@@ -280,7 +283,7 @@ pub fn merge_search_results(
             r.ticket
                 .id
                 .as_ref()
-                .map(|id| !fuzzy_ids.contains(id))
+                .map(|id| !fuzzy_ids.contains(id.as_ref()))
                 .unwrap_or(false)
         })
         .map(|r| r.into())
@@ -348,11 +351,12 @@ pub fn compute_title_highlights(tickets: &[TicketMetadata], query: &str) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TicketId;
     use crate::types::{TicketPriority, TicketStatus, TicketType};
 
     fn make_ticket(id: &str, title: &str, priority: u8) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             title: Some(title.to_string()),
             status: Some(TicketStatus::New),
             priority: Some(match priority {
@@ -387,7 +391,7 @@ mod tests {
 
         let results = filter_tickets(&tickets, "bug");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].ticket.id, Some("j-a1b2".to_string()));
+        assert_eq!(results[0].ticket.id.as_deref(), Some("j-a1b2"));
     }
 
     #[test]
@@ -400,7 +404,7 @@ mod tests {
 
         let results = filter_tickets(&tickets, "p0");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].ticket.id, Some("j-a1b2".to_string()));
+        assert_eq!(results[0].ticket.id.as_deref(), Some("j-a1b2"));
     }
 
     #[test]
@@ -413,7 +417,7 @@ mod tests {
 
         let results = filter_tickets(&tickets, "p0 fix");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].ticket.id, Some("j-a1b2".to_string()));
+        assert_eq!(results[0].ticket.id.as_deref(), Some("j-a1b2"));
     }
 
     #[test]
@@ -425,7 +429,7 @@ mod tests {
 
         let results = filter_tickets(&tickets, "a1b2");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].ticket.id, Some("j-a1b2".to_string()));
+        assert_eq!(results[0].ticket.id.as_deref(), Some("j-a1b2"));
     }
 
     #[test]
@@ -533,7 +537,7 @@ mod tests {
         // Create fuzzy results
         let fuzzy = vec![FilteredTicket {
             ticket: Arc::new(TicketMetadata {
-                id: Some("ticket-1".to_string()),
+                id: Some(TicketId::new_unchecked("ticket-1")),
                 title: Some("First Ticket".to_string()),
                 ..Default::default()
             }),
@@ -546,7 +550,7 @@ mod tests {
         let semantic = vec![
             crate::cache::search::SearchResult {
                 ticket: TicketMetadata {
-                    id: Some("ticket-1".to_string()), // Duplicate
+                    id: Some(TicketId::new_unchecked("ticket-1")), // Duplicate
                     title: Some("First Ticket".to_string()),
                     ..Default::default()
                 },
@@ -554,7 +558,7 @@ mod tests {
             },
             crate::cache::search::SearchResult {
                 ticket: TicketMetadata {
-                    id: Some("ticket-2".to_string()), // New
+                    id: Some(TicketId::new_unchecked("ticket-2")), // New
                     title: Some("Second Ticket".to_string()),
                     ..Default::default()
                 },

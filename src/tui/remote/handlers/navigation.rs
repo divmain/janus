@@ -5,8 +5,8 @@ use iocraft::prelude::KeyCode;
 use crate::tui::navigation;
 
 use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle navigation keys
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode, shift_held: bool) -> HandleResult {
@@ -289,10 +289,10 @@ fn select_local_at_index(ctx: &mut HandlerContext<'_>, idx: usize) {
     if let Some(ticket) = tickets.get(idx)
         && let Some(id) = &ticket.id
     {
-        let id = id.clone();
+        let id_str = id.to_string();
         drop(tickets);
         let mut ids = ctx.view_data.local_nav.selected_ids();
-        ids.insert(id);
+        ids.insert(id_str);
         ctx.view_data.local_nav.set_selected_ids(ids);
     }
 }

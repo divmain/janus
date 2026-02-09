@@ -615,6 +615,7 @@ fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TicketId;
 
     #[test]
     fn test_list_all_resources() {
@@ -652,7 +653,7 @@ mod tests {
     #[test]
     fn test_ticket_to_json() {
         let ticket = TicketMetadata {
-            id: Some("j-test".to_string()),
+            id: Some(TicketId::new_unchecked("j-test")),
             title: Some("Test Ticket".to_string()),
             status: Some(TicketStatus::New),
             deps: vec!["j-dep1".to_string()],

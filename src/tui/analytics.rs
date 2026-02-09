@@ -83,7 +83,7 @@ impl StatusCounts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{TicketPriority, TicketType};
+    use crate::types::{TicketId, TicketPriority, TicketType};
 
     fn create_test_ticket(
         id: &str,
@@ -91,7 +91,7 @@ mod tests {
         priority: TicketPriority,
     ) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             status: Some(status),
             priority: Some(priority),
             ticket_type: Some(TicketType::Task),
@@ -152,8 +152,8 @@ mod tests {
 
         TicketAnalytics::sort_by_priority(&mut tickets);
 
-        assert_eq!(tickets[0].id, Some("j-a1b2".to_string())); // P0
-        assert_eq!(tickets[1].id, Some("j-e5f6".to_string())); // P1
-        assert_eq!(tickets[2].id, Some("j-c3d4".to_string())); // P2
+        assert_eq!(tickets[0].id.as_deref(), Some("j-a1b2")); // P0
+        assert_eq!(tickets[1].id.as_deref(), Some("j-e5f6")); // P1
+        assert_eq!(tickets[2].id.as_deref(), Some("j-c3d4")); // P2
     }
 }

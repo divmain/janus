@@ -47,6 +47,7 @@ pub fn build_edges(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TicketId;
 
     #[test]
     fn test_build_edges_deps_only() {
@@ -58,7 +59,7 @@ mod tests {
         ticket_map.insert(
             "j-a".to_string(),
             TicketMetadata {
-                id: Some("j-a".to_string()),
+                id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
                 spawned_from: Some("j-b".to_string()),
                 ..Default::default()
@@ -67,7 +68,7 @@ mod tests {
         ticket_map.insert(
             "j-b".to_string(),
             TicketMetadata {
-                id: Some("j-b".to_string()),
+                id: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
         );
@@ -87,7 +88,7 @@ mod tests {
         ticket_map.insert(
             "j-a".to_string(),
             TicketMetadata {
-                id: Some("j-a".to_string()),
+                id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
                 spawned_from: Some("j-b".to_string()),
                 ..Default::default()
@@ -96,7 +97,7 @@ mod tests {
         ticket_map.insert(
             "j-b".to_string(),
             TicketMetadata {
-                id: Some("j-b".to_string()),
+                id: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
         );
@@ -116,7 +117,7 @@ mod tests {
         ticket_map.insert(
             "j-a".to_string(),
             TicketMetadata {
-                id: Some("j-a".to_string()),
+                id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
                 spawned_from: Some("j-b".to_string()),
                 ..Default::default()
@@ -125,7 +126,7 @@ mod tests {
         ticket_map.insert(
             "j-b".to_string(),
             TicketMetadata {
-                id: Some("j-b".to_string()),
+                id: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
         );
@@ -143,7 +144,7 @@ mod tests {
         ticket_map.insert(
             "j-a".to_string(),
             TicketMetadata {
-                id: Some("j-a".to_string()),
+                id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
                 spawned_from: Some("j-c".to_string()),
                 ..Default::default()

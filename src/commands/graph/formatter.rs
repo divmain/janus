@@ -133,6 +133,7 @@ fn escape_mermaid(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TicketId;
 
     #[test]
     fn test_truncate_title() {
@@ -179,7 +180,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 title: Some("Test Ticket".to_string()),
                 ..Default::default()
             },
@@ -249,7 +250,7 @@ mod tests {
         ticket_map.insert(
             "j-a1b2".to_string(),
             TicketMetadata {
-                id: Some("j-a1b2".to_string()),
+                id: Some(TicketId::new_unchecked("j-a1b2")),
                 title: Some("Test Ticket".to_string()),
                 ..Default::default()
             },

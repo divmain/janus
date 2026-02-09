@@ -3,8 +3,8 @@
 use iocraft::prelude::KeyCode;
 
 use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle Space key for toggling selection
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -26,13 +26,13 @@ fn toggle_local_selection(ctx: &mut HandlerContext<'_>) {
     if let Some(ticket) = tickets.get(ctx.view_data.local_nav.selected_index())
         && let Some(id) = &ticket.id
     {
-        let id = id.clone();
+        let id_str = id.to_string();
         drop(tickets);
         let mut ids = ctx.view_data.local_nav.selected_ids();
-        if ids.contains(&id) {
-            ids.remove(&id);
+        if ids.contains(&id_str) {
+            ids.remove(&id_str);
         } else {
-            ids.insert(id);
+            ids.insert(id_str);
         }
         ctx.view_data.local_nav.set_selected_ids(ids);
     }

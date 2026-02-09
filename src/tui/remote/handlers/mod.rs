@@ -356,7 +356,7 @@ fn handle_select_all(ctx: &mut HandlerContext<'_>) {
         let mut ids = ctx.view_data.local_nav.selected_ids();
         for ticket in tickets.iter() {
             if let Some(id) = &ticket.id {
-                ids.insert(id.clone());
+                ids.insert(id.to_string());
             }
         }
         drop(tickets);

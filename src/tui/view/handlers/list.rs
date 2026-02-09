@@ -8,8 +8,8 @@ use iocraft::prelude::{KeyCode, KeyModifiers};
 use crate::tui::edit::extract_body_for_edit;
 use crate::tui::state::Pane;
 
-use super::HandleResult;
 use super::context::ViewHandlerContext;
+use super::HandleResult;
 
 /// Handle events when list pane is active
 pub fn handle_list(
@@ -185,7 +185,7 @@ fn handle_cycle_status(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        ctx.handlers.cycle_status.clone()(id.clone());
+        ctx.handlers.cycle_status.clone()(id.to_string());
     }
 }
 
@@ -224,7 +224,7 @@ fn handle_mark_triaged(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
     {
-        ctx.handlers.mark_triaged.clone()((id.clone(), true));
+        ctx.handlers.mark_triaged.clone()((id.to_string(), true));
     }
 }
 
@@ -236,7 +236,7 @@ fn handle_copy_ticket_id(ctx: &mut ViewHandlerContext<'_>) {
         .get(ctx.data.list_nav.selected_index.get())
         && let Some(id) = &ft.ticket.id
         && clipboard_rs::ClipboardContext::new()
-            .and_then(|ctx| ctx.set_text(id.clone()))
+            .and_then(|ctx| ctx.set_text(id.to_string()))
             .is_err()
     {
         // Silently fail if clipboard operations don't work

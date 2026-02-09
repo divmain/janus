@@ -5,8 +5,8 @@ use iocraft::prelude::KeyCode;
 use super::super::error_toast::Toast;
 use super::super::link_mode::{LinkModeState, LinkSource};
 use super::super::state::ViewMode;
-use super::HandleResult;
 use super::context::HandlerContext;
+use super::HandleResult;
 
 /// Handle link mode completion (when link mode is active and 'l' is pressed)
 pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
@@ -55,7 +55,7 @@ pub fn handle_link_mode(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleRe
                         ticket_id, source_issue.id
                     ))));
                     ctx.handlers.link_handler.clone()(LinkSource {
-                        ticket_id: ticket_id.clone(),
+                        ticket_id: ticket_id.to_string(),
                         remote_issue: source_issue,
                     });
                 }
@@ -81,11 +81,11 @@ pub fn handle_link_start(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleR
             && let Some(id) = &ticket.id
         {
             let title = ticket.title.as_deref().unwrap_or("").to_string();
-            let id_clone = id.clone();
+            let id_string = id.to_string();
             drop(tickets);
             ctx.modals
                 .link_mode
-                .set(Some(LinkModeState::new(ViewMode::Local, id_clone, title)));
+                .set(Some(LinkModeState::new(ViewMode::Local, id_string, title)));
             ctx.view_state.set_active_view(ViewMode::Remote);
         }
     } else {

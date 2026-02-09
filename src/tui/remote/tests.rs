@@ -7,12 +7,12 @@ use iocraft::prelude::{KeyCode, KeyModifiers};
 use crate::remote::{RemoteIssue, RemoteStatus};
 use crate::tui::navigation;
 use crate::tui::remote::filter::{filter_local_tickets, filter_remote_issues};
-use crate::tui::remote::handlers::keymap::{ModalStateSnapshot, RemoteAction, key_to_action};
-use crate::tui::remote::shortcuts::{ModalVisibility, compute_shortcuts};
+use crate::tui::remote::handlers::keymap::{key_to_action, ModalStateSnapshot, RemoteAction};
+use crate::tui::remote::shortcuts::{compute_shortcuts, ModalVisibility};
 use crate::tui::remote::state::{
     ModalVisibilityData, NavigationData, SearchUiData, ViewDisplayData, ViewMode,
 };
-use crate::types::{TicketMetadata, TicketStatus, TicketType};
+use crate::types::{TicketId, TicketMetadata, TicketStatus, TicketType};
 
 // ============================================================================
 // Helpers
@@ -20,7 +20,7 @@ use crate::types::{TicketMetadata, TicketStatus, TicketType};
 
 fn mock_ticket(id: &str, title: &str) -> TicketMetadata {
     TicketMetadata {
-        id: Some(id.to_string()),
+        id: Some(TicketId::new_unchecked(id)),
         title: Some(title.to_string()),
         status: Some(TicketStatus::New),
         ticket_type: Some(TicketType::Task),

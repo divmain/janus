@@ -588,7 +588,7 @@ pub fn get_linked_ticket_ids(tickets: &[TicketMetadata]) -> HashSet<String> {
     tickets
         .iter()
         .filter(|t| t.remote.is_some())
-        .filter_map(|t| t.id.clone())
+        .filter_map(|t| t.id.as_ref().map(|id| id.to_string()))
         .collect()
 }
 

@@ -7,8 +7,8 @@ use iocraft::prelude::{KeyCode, KeyModifiers};
 
 use crate::tui::edit::extract_body_for_edit;
 
-use super::HandleResult;
 use super::context::BoardHandlerContext;
+use super::HandleResult;
 
 /// Handle action keys
 pub fn handle(
@@ -77,7 +77,7 @@ fn handle_copy_ticket_id(ctx: &mut BoardHandlerContext<'_>) {
     if let Some(ticket) = ctx.get_ticket_at(col, row)
         && let Some(id) = &ticket.id
         && clipboard_rs::ClipboardContext::new()
-            .and_then(|ctx| ctx.set_text(id.clone()))
+            .and_then(|ctx| ctx.set_text(id.to_string()))
             .is_err()
     {
         // Silently fail if clipboard operations don't work

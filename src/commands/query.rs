@@ -21,7 +21,7 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
         let mut json_val = ticket_to_json(t);
         // Add children_count from the pre-fetched map (O(1) lookup)
         if let Some(id) = &t.id {
-            let count = children_counts.get(id).copied().unwrap_or(0);
+            let count = children_counts.get(id.as_ref()).copied().unwrap_or(0);
             if let serde_json::Value::Object(ref mut map) = json_val {
                 map.insert("children_count".to_string(), json!(count));
             }

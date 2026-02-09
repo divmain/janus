@@ -204,11 +204,12 @@ pub fn get_next_items_simple(
 mod tests {
     use super::*;
     use crate::plan::types::{Phase, PlanSection, TicketsSection};
+    use crate::types::TicketId;
 
     // Helper function to create test ticket metadata
     fn make_ticket(id: &str, status: TicketStatus) -> TicketMetadata {
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(TicketId::new_unchecked(id)),
             status: Some(status),
             title: Some(format!("Title for {id}")),
             ..Default::default()

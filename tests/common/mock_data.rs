@@ -4,7 +4,7 @@
 //! needing to read from disk.
 
 use janus::remote::{RemoteIssue, RemoteStatus};
-use janus::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
+use janus::types::{CreatedAt, TicketId, TicketMetadata, TicketPriority, TicketStatus, TicketType};
 
 /// Builder for creating test tickets
 pub struct TicketBuilder {
@@ -16,11 +16,11 @@ impl TicketBuilder {
     pub fn new(id: &str) -> Self {
         Self {
             metadata: TicketMetadata {
-                id: Some(id.to_string()),
+                id: Some(TicketId::new_unchecked(id)),
                 status: Some(TicketStatus::New),
                 ticket_type: Some(TicketType::Task),
                 priority: Some(TicketPriority::P2),
-                created: Some("2024-01-01T00:00:00Z".to_string()),
+                created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
                 ..Default::default()
             },
         }
@@ -211,7 +211,7 @@ mod tests {
     #[test]
     fn test_ticket_builder_basic() {
         let ticket = TicketBuilder::new("j-test").build();
-        assert_eq!(ticket.id, Some("j-test".to_string()));
+        assert_eq!(ticket.id.as_deref(), Some("j-test"));
         assert_eq!(ticket.status, Some(TicketStatus::New));
     }
 
@@ -226,7 +226,7 @@ mod tests {
             .parent("j-parent")
             .build();
 
-        assert_eq!(ticket.id, Some("j-test".to_string()));
+        assert_eq!(ticket.id.as_deref(), Some("j-test"));
         assert_eq!(ticket.title, Some("Test Title".to_string()));
         assert_eq!(ticket.status, Some(TicketStatus::InProgress));
         assert_eq!(ticket.ticket_type, Some(TicketType::Bug));
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn test_mock_ticket() {
         let ticket = mock_ticket("j-123", TicketStatus::Complete);
-        assert_eq!(ticket.id, Some("j-123".to_string()));
+        assert_eq!(ticket.id.as_deref(), Some("j-123"));
         assert_eq!(ticket.status, Some(TicketStatus::Complete));
         assert!(ticket.title.unwrap().contains("j-123"));
     }
@@ -309,7 +309,7 @@ mod tests {
             .remote("linear:acme/ENG-123")
             .build();
 
-        assert_eq!(ticket.id, Some("j-linked".to_string()));
+        assert_eq!(ticket.id.as_deref(), Some("j-linked"));
         assert_eq!(ticket.remote, Some("linear:acme/ENG-123".to_string()));
     }
 
@@ -317,7 +317,7 @@ mod tests {
     fn test_mock_linked_ticket() {
         let ticket =
             mock_linked_ticket("j-lnk1", "github:owner/repo/456", TicketStatus::InProgress);
-        assert_eq!(ticket.id, Some("j-lnk1".to_string()));
+        assert_eq!(ticket.id.as_deref(), Some("j-lnk1"));
         assert_eq!(ticket.remote, Some("github:owner/repo/456".to_string()));
         assert_eq!(ticket.status, Some(TicketStatus::InProgress));
         assert!(ticket.title.unwrap().contains("j-lnk1"));

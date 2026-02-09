@@ -5,10 +5,10 @@ use serde_json::json;
 use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::events::log_plan_created;
-use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookEvent};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection, TicketsSection};
-use crate::plan::{Plan, ensure_plans_dir, generate_plan_id};
+use crate::plan::{ensure_plans_dir, generate_plan_id, Plan};
 
 use crate::utils::{generate_uuid, iso_date};
 
@@ -27,9 +27,9 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
 
     // Build the plan metadata
     let mut metadata = PlanMetadata {
-        id: Some(id.clone()),
+        id: Some(crate::types::PlanId::new_unchecked(id.clone())),
         uuid: Some(uuid.clone()),
-        created: Some(now.clone()),
+        created: Some(crate::types::CreatedAt::new_unchecked(now.clone())),
         title: Some(title.to_string()),
         description: None,
         acceptance_criteria: Vec::new(),

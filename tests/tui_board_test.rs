@@ -10,7 +10,7 @@
 
 mod common;
 
-use common::mock_data::{TicketBuilder, mock_tickets};
+use common::mock_data::{mock_tickets, TicketBuilder};
 use janus::tui::board::model::*;
 use janus::tui::repository::InitResult;
 use janus::types::{TicketPriority, TicketStatus, TicketType};
@@ -290,8 +290,8 @@ fn test_board_with_rich_ticket_data() {
 
     // Verify selected ticket has the right ID
     assert_eq!(
-        vm.selected_ticket.as_ref().and_then(|t| t.id.clone()),
-        Some("j-rich1".to_string())
+        vm.selected_ticket.as_ref().and_then(|t| t.id.as_deref()),
+        Some("j-rich1")
     );
 }
 
@@ -311,17 +311,17 @@ fn test_get_ticket_at_helper() {
     // Get first ticket in New column
     let ticket = get_ticket_at(&state, 0, 0);
     assert!(ticket.is_some());
-    assert_eq!(ticket.unwrap().id, Some("j-1".to_string()));
+    assert_eq!(ticket.unwrap().id.as_deref(), Some("j-1"));
 
     // Get second ticket in New column
     let ticket = get_ticket_at(&state, 0, 1);
     assert!(ticket.is_some());
-    assert_eq!(ticket.unwrap().id, Some("j-2".to_string()));
+    assert_eq!(ticket.unwrap().id.as_deref(), Some("j-2"));
 
     // Get ticket in InProgress column (index 2)
     let ticket = get_ticket_at(&state, 2, 0);
     assert!(ticket.is_some());
-    assert_eq!(ticket.unwrap().id, Some("j-3".to_string()));
+    assert_eq!(ticket.unwrap().id.as_deref(), Some("j-3"));
 
     // Out of bounds returns None
     assert!(get_ticket_at(&state, 0, 10).is_none());

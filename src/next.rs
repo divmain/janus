@@ -94,7 +94,11 @@ impl<'a> NextWorkFinder<'a> {
                 break;
             }
 
-            let ticket_id = ticket.id.clone().unwrap_or_default();
+            let ticket_id = ticket
+                .id
+                .as_ref()
+                .map(|id| id.to_string())
+                .unwrap_or_default();
 
             // Skip if already visited (might have been added as a dependency of another blocked ticket)
             if visited.contains(&ticket_id) {
@@ -153,7 +157,11 @@ impl<'a> NextWorkFinder<'a> {
                 break;
             }
 
-            let ticket_id = ticket.id.clone().unwrap_or_default();
+            let ticket_id = ticket
+                .id
+                .as_ref()
+                .map(|id| id.to_string())
+                .unwrap_or_default();
 
             if visited.contains(&ticket_id) {
                 continue;
@@ -201,7 +209,14 @@ impl<'a> NextWorkFinder<'a> {
     /// A ready ticket has depth 0, a ticket depending on a ready ticket has depth 1, etc.
     fn dependency_depth(&self, ticket: &TicketMetadata) -> usize {
         let mut max_depth = 0;
-        let mut stack = vec![(ticket.id.clone().unwrap_or_default(), 0)];
+        let mut stack = vec![(
+            ticket
+                .id
+                .as_ref()
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+            0,
+        )];
         let mut visited = HashSet::new();
 
         while let Some((current_id, current_depth)) = stack.pop() {
@@ -237,7 +252,11 @@ impl<'a> NextWorkFinder<'a> {
         visited: &HashSet<String>,
     ) -> Vec<(String, String)> {
         let mut result = Vec::new();
-        let mut stack = vec![ticket.id.clone().unwrap_or_default()];
+        let mut stack = vec![ticket
+            .id
+            .as_ref()
+            .map(|id| id.to_string())
+            .unwrap_or_default()];
         let mut local_visited = HashSet::new();
 
         while let Some(current_id) = stack.pop() {
@@ -374,13 +393,13 @@ mod tests {
         };
 
         TicketMetadata {
-            id: Some(id.to_string()),
+            id: Some(crate::types::TicketId::new_unchecked(id)),
             uuid: None,
             title: Some(format!("Ticket {id}")),
             status: Some(status),
             deps: deps.iter().map(|s| s.to_string()).collect(),
             links: Vec::new(),
-            created: Some(created.to_string()),
+            created: Some(crate::types::CreatedAt::new_unchecked(created)),
             ticket_type: Some(crate::types::TicketType::Task),
             priority: Some(ticket_priority),
             size: None,
