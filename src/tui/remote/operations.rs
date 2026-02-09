@@ -538,11 +538,9 @@ pub fn create_sync_changes(
         });
     }
 
-    let local_status = ticket.status.ok_or_else(|| {
-        JanusError::Other(format!(
-            "Ticket '{}' is missing status field and may be corrupted",
-            ticket.id.as_deref().unwrap_or("unknown")
-        ))
+    let local_status = ticket.status.ok_or_else(|| JanusError::CorruptedTicket {
+        id: ticket.id.as_deref().unwrap_or("unknown").to_string(),
+        field: "status".to_string(),
     })?;
     let remote_status = issue.status.to_ticket_status();
     if local_status != remote_status {
@@ -893,7 +891,7 @@ pub async fn fetch_remote_issue_for_ticket(
     let remote_str = metadata
         .remote
         .as_ref()
-        .ok_or_else(|| JanusError::Other("Ticket is not linked to a remote issue".to_string()))?;
+        .ok_or_else(|| JanusError::NotLinked)?;
 
     let remote_ref = RemoteRef::parse(remote_str, Some(&config))?;
 
@@ -930,11 +928,9 @@ pub fn build_sync_changes(
     }
 
     // Compare status
-    let local_status = ticket.status.ok_or_else(|| {
-        JanusError::Other(format!(
-            "Ticket '{}' is missing status field and may be corrupted",
-            ticket.id.as_deref().unwrap_or("unknown")
-        ))
+    let local_status = ticket.status.ok_or_else(|| JanusError::CorruptedTicket {
+        id: ticket.id.as_deref().unwrap_or("unknown").to_string(),
+        field: "status".to_string(),
     })?;
     let remote_status = issue.status.to_ticket_status();
     if local_status != remote_status {
@@ -983,10 +979,7 @@ pub async fn apply_sync_change_to_local(ticket_id: &str, change: &SyncChange) ->
             ticket.update_field("priority", &change.remote_value)?;
         }
         _ => {
-            return Err(JanusError::Other(format!(
-                "Unknown field: {}",
-                change.field_name
-            )));
+            return Err(JanusError::UnsupportedSyncField(change.field_name.clone()));
         }
     }
 
@@ -1032,10 +1025,7 @@ pub async fn apply_sync_change_to_remote(
             }
         }
         _ => {
-            return Err(JanusError::Other(format!(
-                "Cannot sync field '{}' to remote",
-                change.field_name
-            )));
+            return Err(JanusError::UnsupportedSyncField(change.field_name.clone()));
         }
     };
 

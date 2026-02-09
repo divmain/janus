@@ -243,8 +243,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::types::TicketId;
     use crate::cache::TicketStore;
+    use crate::types::TicketId;
     use crate::types::{TicketMetadata, TicketStatus};
 
     #[test]

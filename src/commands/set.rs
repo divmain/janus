@@ -87,7 +87,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
 
     // Validate field name
     if !SUPPORTED_FIELDS.contains(&field) {
-        return Err(JanusError::Other(format!(
+        return Err(JanusError::InvalidInput(format!(
             "invalid field '{}'. Must be one of: {}",
             field,
             SUPPORTED_FIELDS.join(", ")

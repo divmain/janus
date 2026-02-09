@@ -5,8 +5,8 @@ use std::collections::HashSet;
 
 use super::super::confirm_modal::ConfirmDialogState;
 use super::super::error_toast::Toast;
-use super::context::HandlerContext;
 use super::HandleResult;
+use super::context::HandlerContext;
 
 /// Handle local view specific operations
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {

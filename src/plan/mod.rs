@@ -422,7 +422,7 @@ pub fn generate_plan_id() -> Result<String> {
         }
     }
 
-    Err(JanusError::Other(format!(
+    Err(JanusError::IdGenerationFailed(format!(
         "Failed to generate unique plan ID after trying hash lengths 4-8 with {RETRIES_PER_LENGTH} retries each"
     )))
 }

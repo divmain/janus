@@ -87,7 +87,9 @@ impl StoreWatcher {
                 },
                 notify::Config::default(),
             )
-            .map_err(|e| JanusError::Other(format!("failed to create filesystem watcher: {e}")))?
+            .map_err(|e| {
+                JanusError::WatcherError(format!("failed to create filesystem watcher: {e}"))
+            })?
         };
 
         // Watch the .janus/ root directory recursively. This automatically
@@ -372,8 +374,9 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
         Ok(mut metadata) => {
             if metadata.id.is_none() {
                 if let Some(stem) = path.file_stem() {
-                    metadata.id =
-                        Some(crate::types::TicketId::new_unchecked(stem.to_string_lossy()));
+                    metadata.id = Some(crate::types::TicketId::new_unchecked(
+                        stem.to_string_lossy(),
+                    ));
                 }
             }
             metadata.file_path = Some(path.to_path_buf());
@@ -412,8 +415,7 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
         Ok(mut metadata) => {
             if metadata.id.is_none() {
                 if let Some(stem) = path.file_stem() {
-                    metadata.id =
-                        Some(crate::types::PlanId::new_unchecked(stem.to_string_lossy()));
+                    metadata.id = Some(crate::types::PlanId::new_unchecked(stem.to_string_lossy()));
                 }
             }
             metadata.file_path = Some(path.to_path_buf());

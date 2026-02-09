@@ -8,8 +8,8 @@ use iocraft::prelude::{KeyCode, KeyModifiers};
 use crate::tui::edit::extract_body_for_edit;
 use crate::tui::state::Pane;
 
-use super::context::ViewHandlerContext;
 use super::HandleResult;
+use super::context::ViewHandlerContext;
 
 /// Handle events when list pane is active
 pub fn handle_list(

@@ -18,7 +18,7 @@ pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result
 
     if !force {
         if output_json || !is_stdin_tty() {
-            return Err(crate::error::JanusError::Other(
+            return Err(crate::error::JanusError::ConfirmationRequired(
                 "Plan deletion requires --force flag in non-interactive contexts. Use --force to confirm deletion.".to_string()
             ));
         }

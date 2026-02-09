@@ -10,7 +10,7 @@
 
 mod common;
 
-use common::mock_data::{mock_ticket, mock_tickets, TicketBuilder};
+use common::mock_data::{TicketBuilder, mock_ticket, mock_tickets};
 use janus::tui::repository::InitResult;
 use janus::tui::state::Pane;
 use janus::tui::view::model::*;

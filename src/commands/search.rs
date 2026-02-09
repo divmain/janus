@@ -37,7 +37,7 @@ pub async fn cmd_search(
 ) -> Result<()> {
     // Validate query is not empty
     if query.trim().is_empty() {
-        return Err(JanusError::Other(
+        return Err(JanusError::InvalidInput(
             "Search query cannot be empty".to_string(),
         ));
     }
@@ -63,10 +63,7 @@ pub async fn cmd_search(
     }
 
     if with_embedding == 0 {
-        return Err(JanusError::Other(
-            "No ticket embeddings available. Run 'janus cache rebuild' to generate embeddings."
-                .to_string(),
-        ));
+        return Err(JanusError::EmbeddingsNotAvailable);
     }
 
     if with_embedding < total {

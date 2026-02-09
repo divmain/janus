@@ -27,7 +27,7 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
             }
         }
         let json_str = serde_json::to_string(&json_val)
-            .map_err(|e| JanusError::Other(format!("JSON serialization failed: {e}")))?;
+            .map_err(|e| JanusError::InternalError(format!("JSON serialization failed: {e}")))?;
         json_lines.push(json_str);
     }
     let output = json_lines.join("\n");

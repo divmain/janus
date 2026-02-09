@@ -29,7 +29,7 @@ fn handle_validation_result<T>(result: Result<(bool, T)>, error_msg: &str) -> Re
             if valid {
                 Ok(())
             } else {
-                Err(JanusError::Other(error_msg.to_string()))
+                Err(JanusError::InvalidInput(error_msg.to_string()))
             }
         }
         Err(e) => Err(e),

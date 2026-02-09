@@ -97,7 +97,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
     if let Some(ref plan_id) = opts.next_in_plan {
         // --phase cannot be used with --next-in-plan
         if opts.phase.is_some() {
-            return Err(JanusError::Other(
+            return Err(JanusError::ConflictingFlags(
                 "--phase cannot be used with --next-in-plan".to_string(),
             ));
         }

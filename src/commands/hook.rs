@@ -465,7 +465,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
         .hooks
         .get_script(hook_event.as_str())
         .ok_or_else(|| {
-            JanusError::Other(format!(
+            JanusError::Config(format!(
                 "No hook configured for event '{event}'. Configure it in .janus/config.yaml"
             ))
         })?;
@@ -506,9 +506,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
                 .with_item_id(&plan.id)
                 .with_file_path(&plan.file_path);
         } else {
-            return Err(JanusError::Other(format!(
-                "Could not find ticket or plan with ID '{item_id}'"
-            )));
+            return Err(JanusError::ItemNotFound(item_id.to_string()));
         }
     }
 

@@ -17,9 +17,7 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()
 
     // Check for self-dependency
     if ticket.id == dep_ticket.id {
-        return Err(JanusError::Other(
-            "A ticket cannot depend on itself.".to_string(),
-        ));
+        return Err(JanusError::SelfDependency);
     }
 
     // Check for circular dependencies before adding

@@ -1059,18 +1059,22 @@ This approach has limitations with large datasets.
         assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "Dependencies");
-        assert!(phases[0].extra_subsections[0]
-            .content
-            .contains("Node.js 18+"));
+        assert!(
+            phases[0].extra_subsections[0]
+                .content
+                .contains("Node.js 18+")
+        );
 
         // Phase 2: Design Rationale, then Tickets, then Caveats
         assert_eq!(phases[1].tickets, vec!["j-c3d4", "j-e5f6"]);
         assert_eq!(phases[1].extra_subsections.len(), 2);
         assert_eq!(phases[1].extra_subsections[0].heading, "Design Rationale");
         assert_eq!(phases[1].extra_subsections[1].heading, "Caveats");
-        assert!(phases[1].extra_subsections[1]
-            .content
-            .contains("limitations"));
+        assert!(
+            phases[1].extra_subsections[1]
+                .content
+                .contains("limitations")
+        );
     }
 
     #[test]
@@ -1179,9 +1183,11 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(ts.extra_subsections[1]
-                .content
-                .contains("Timeline pressure"));
+            assert!(
+                ts.extra_subsections[1]
+                    .content
+                    .contains("Timeline pressure")
+            );
         } else {
             panic!("Expected PlanSection::Tickets after round-trip");
         }
@@ -1319,16 +1325,20 @@ Run the full integration suite before merging.
             reparsed.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(reparsed.acceptance_criteria_extra[0]
-            .content
-            .contains("Detailed testing instructions"));
+        assert!(
+            reparsed.acceptance_criteria_extra[0]
+                .content
+                .contains("Detailed testing instructions")
+        );
         assert_eq!(
             reparsed.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(reparsed.acceptance_criteria_extra[1]
-            .content
-            .contains("Deploy to staging"));
+        assert!(
+            reparsed.acceptance_criteria_extra[1]
+                .content
+                .contains("Deploy to staging")
+        );
     }
 
     #[test]
@@ -1636,7 +1646,7 @@ Example response:
             acceptance_criteria_raw: None,
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string()
+                "j-a1b2".to_string(),
             ]))],
             file_path: None,
             extra_frontmatter: None,

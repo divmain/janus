@@ -306,7 +306,7 @@ pub fn generate_unique_id_with_prefix(prefix: &str) -> Result<String> {
         }
     }
 
-    Err(JanusError::Other(format!(
+    Err(JanusError::IdGenerationFailed(format!(
         "Failed to generate unique ID after trying hash lengths 4-8 with {RETRIES_PER_LENGTH} retries each"
     )))
 }

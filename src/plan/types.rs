@@ -798,7 +798,7 @@ mod tests {
         let mut plan = PlanMetadata::default();
         plan.sections
             .push(PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string()
+                "j-a1b2".to_string(),
             ])));
 
         assert!(!plan.is_phased());

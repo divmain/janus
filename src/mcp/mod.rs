@@ -193,13 +193,13 @@ pub async fn cmd_mcp() -> Result<()> {
     let service = server
         .serve(stdio())
         .await
-        .map_err(|e| crate::error::JanusError::Other(format!("Failed to start MCP server: {e}")))?;
+        .map_err(|e| crate::error::JanusError::McpServerError(format!("Failed to start: {e}")))?;
 
     // Wait for the service to complete
     service
         .waiting()
         .await
-        .map_err(|e| crate::error::JanusError::Other(format!("MCP server error: {e}")))?;
+        .map_err(|e| crate::error::JanusError::McpServerError(format!("{e}")))?;
 
     Ok(())
 }

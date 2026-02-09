@@ -10,7 +10,7 @@ use crate::tui::components::{
     browser_shortcuts, compute_empty_state, edit_shortcuts, empty_shortcuts, search_shortcuts,
 };
 use crate::tui::repository::InitResult;
-use crate::tui::search::{filter_tickets, FilteredTicket};
+use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 

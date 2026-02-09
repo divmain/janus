@@ -252,11 +252,13 @@ impl<'a> NextWorkFinder<'a> {
         visited: &HashSet<String>,
     ) -> Vec<(String, String)> {
         let mut result = Vec::new();
-        let mut stack = vec![ticket
-            .id
-            .as_ref()
-            .map(|id| id.to_string())
-            .unwrap_or_default()];
+        let mut stack = vec![
+            ticket
+                .id
+                .as_ref()
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+        ];
         let mut local_visited = HashSet::new();
 
         while let Some(current_id) = stack.pop() {

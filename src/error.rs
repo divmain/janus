@@ -132,7 +132,9 @@ pub enum JanusError {
     #[error("cannot move ticket in a simple plan (no phases)")]
     CannotMoveInSimplePlan,
 
-    #[error("empty YAML frontmatter: the frontmatter block between '---' delimiters is empty. Required fields (e.g. id, status) must be provided")]
+    #[error(
+        "empty YAML frontmatter: the frontmatter block between '---' delimiters is empty. Required fields (e.g. id, status) must be provided"
+    )]
     EmptyFrontmatter,
 
     #[error("invalid ticket format: {0}")]
@@ -347,6 +349,51 @@ pub enum JanusError {
 
     #[error("closing a ticket requires either --summary <TEXT> or --no-summary")]
     SummaryRequired,
+
+    #[error("cannot {operation} immutable field '{field}'")]
+    ImmutableField { field: String, operation: String },
+
+    #[error("{0}")]
+    ConflictingFlags(String),
+
+    #[error("{0}")]
+    IdGenerationFailed(String),
+
+    #[error("ticket '{id}' is missing required field '{field}' (file may be corrupted)")]
+    CorruptedTicket { id: String, field: String },
+
+    #[error("TUI error: {0}")]
+    TuiError(String),
+
+    #[error("MCP server error: {0}")]
+    McpServerError(String),
+
+    #[error("filesystem watcher error: {0}")]
+    WatcherError(String),
+
+    #[error("{0}")]
+    ConfirmationRequired(String),
+
+    #[error("a ticket cannot depend on itself")]
+    SelfDependency,
+
+    #[error("EOF on stdin")]
+    EofOnStdin,
+
+    #[error("Invalid graph format '{0}'. Must be 'dot' or 'mermaid'")]
+    InvalidGraphFormat(String),
+
+    #[error("unsupported sync field: {0}")]
+    UnsupportedSyncField(String),
+
+    #[error("could not find ticket or plan with ID '{0}'")]
+    ItemNotFound(String),
+
+    #[error("{0}")]
+    InvalidInput(String),
+
+    #[error("internal error: {0}")]
+    InternalError(String),
 
     #[error("{0}")]
     Other(String),

@@ -232,8 +232,9 @@ impl TicketBuilder {
             size: self.size.map(|s| s.to_string()),
         };
 
-        let yaml_content = serde_yaml_ng::to_string(&frontmatter_data)
-            .map_err(|e| JanusError::Other(format!("Failed to serialize frontmatter: {e}")))?;
+        let yaml_content = serde_yaml_ng::to_string(&frontmatter_data).map_err(|e| {
+            JanusError::InternalError(format!("Failed to serialize frontmatter: {e}"))
+        })?;
         let frontmatter = format!("---\n{yaml_content}---");
 
         let mut sections = vec![format!("# {}", self.title)];

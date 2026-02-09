@@ -17,9 +17,7 @@ impl std::str::FromStr for GraphFormat {
         match s.to_lowercase().as_str() {
             "dot" => Ok(GraphFormat::Dot),
             "mermaid" => Ok(GraphFormat::Mermaid),
-            _ => Err(JanusError::Other(format!(
-                "Invalid graph format '{s}'. Must be 'dot' or 'mermaid'"
-            ))),
+            _ => Err(JanusError::InvalidGraphFormat(s.to_string())),
         }
     }
 }

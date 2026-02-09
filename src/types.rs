@@ -698,11 +698,7 @@ impl TicketMetadata {
     pub fn compute_depth(&self) -> u32 {
         self.depth.unwrap_or_else(|| {
             // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if self.spawned_from.is_none() {
-                0
-            } else {
-                1
-            }
+            if self.spawned_from.is_none() { 0 } else { 1 }
         })
     }
 
@@ -758,9 +754,10 @@ pub fn validate_field_name(field: &str, operation: &str) -> crate::error::Result
     let parsed = field.parse::<TicketField>()?;
 
     if parsed.is_immutable() {
-        return Err(JanusError::Other(format!(
-            "cannot {operation} immutable field '{parsed}'"
-        )));
+        return Err(JanusError::ImmutableField {
+            field: parsed.to_string(),
+            operation: operation.to_string(),
+        });
     }
 
     Ok(())
@@ -1048,10 +1045,11 @@ status: new
         let result = validate_field_name("id", "update");
         assert!(result.is_err());
         match result.unwrap_err() {
-            JanusError::Other(msg) => {
-                assert!(msg.contains("cannot update immutable field 'id'"));
+            JanusError::ImmutableField { field, operation } => {
+                assert_eq!(field, "id");
+                assert_eq!(operation, "update");
             }
-            _ => panic!("Expected Other error for immutable field"),
+            other => panic!("Expected ImmutableField error, got: {other:?}"),
         }
     }
 
@@ -1060,10 +1058,11 @@ status: new
         let result = validate_field_name("uuid", "update");
         assert!(result.is_err());
         match result.unwrap_err() {
-            JanusError::Other(msg) => {
-                assert!(msg.contains("cannot update immutable field 'uuid'"));
+            JanusError::ImmutableField { field, operation } => {
+                assert_eq!(field, "uuid");
+                assert_eq!(operation, "update");
             }
-            _ => panic!("Expected Other error for immutable field"),
+            other => panic!("Expected ImmutableField error, got: {other:?}"),
         }
     }
 
@@ -1072,10 +1071,11 @@ status: new
         let result = validate_field_name("id", "remove");
         assert!(result.is_err());
         match result.unwrap_err() {
-            JanusError::Other(msg) => {
-                assert!(msg.contains("cannot remove immutable field 'id'"));
+            JanusError::ImmutableField { field, operation } => {
+                assert_eq!(field, "id");
+                assert_eq!(operation, "remove");
             }
-            _ => panic!("Expected Other error for immutable field"),
+            other => panic!("Expected ImmutableField error, got: {other:?}"),
         }
     }
 

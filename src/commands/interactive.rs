@@ -63,7 +63,7 @@ pub fn select_option(prompt: &str, options: &[&str], default: Option<usize>) -> 
         let bytes_read = io::stdin().read_line(&mut input)?;
 
         if bytes_read == 0 {
-            return Err(JanusError::Other("EOF on stdin".into()));
+            return Err(JanusError::EofOnStdin);
         }
 
         let input = input.trim();
@@ -157,7 +157,7 @@ pub fn prompt_choice(
         let bytes_read = io::stdin().read_line(&mut input)?;
 
         if bytes_read == 0 {
-            return Err(JanusError::Other("EOF on stdin".into()));
+            return Err(JanusError::EofOnStdin);
         }
 
         let input = input.trim().to_lowercase();
