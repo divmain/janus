@@ -2,8 +2,28 @@ use std::collections::HashMap;
 
 use crate::cache::TicketStore;
 use crate::plan::types::PlanMetadata;
-use crate::types::{TicketMetadata, TicketSize};
+use crate::types::{TicketMetadata, TicketSize, TicketSummary};
 use crate::utils::{parse_priority_filter, strip_priority_shorthand};
+
+/// Case-insensitive substring match without allocating a new lowercase string.
+///
+/// Compares by converting both sides to lowercase char-by-char. This avoids
+/// the allocation that `haystack.to_lowercase().contains(&needle)` would incur
+/// for every field on every ticket during search.
+fn contains_case_insensitive(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    // Fast path: if needle is longer than haystack, no match is possible
+    if needle.len() > haystack.len() {
+        return false;
+    }
+    let needle_lower: Vec<char> = needle.chars().flat_map(|c| c.to_lowercase()).collect();
+    let haystack_chars: Vec<char> = haystack.chars().flat_map(|c| c.to_lowercase()).collect();
+    haystack_chars
+        .windows(needle_lower.len())
+        .any(|window| window == needle_lower.as_slice())
+}
 
 impl TicketStore {
     /// Get all tickets as a Vec, sorted by id for deterministic ordering.
@@ -89,23 +109,23 @@ impl TicketStore {
                     return true;
                 }
 
-                // Case-insensitive substring matching on relevant fields
-                let id_match = r.key().to_lowercase().contains(&text_query);
+                // Case-insensitive substring matching without per-field allocations
+                let id_match = contains_case_insensitive(r.key(), &text_query);
 
                 let title_match = ticket
                     .title
                     .as_ref()
-                    .is_some_and(|t| t.to_lowercase().contains(&text_query));
+                    .is_some_and(|t| contains_case_insensitive(t, &text_query));
 
                 let body_match = ticket
                     .body
                     .as_ref()
-                    .is_some_and(|b| b.to_lowercase().contains(&text_query));
+                    .is_some_and(|b| contains_case_insensitive(b, &text_query));
 
                 let type_match = ticket
                     .ticket_type
                     .as_ref()
-                    .is_some_and(|t| t.to_string().to_lowercase().contains(&text_query));
+                    .is_some_and(|t| contains_case_insensitive(&t.to_string(), &text_query));
 
                 id_match || title_match || body_match || type_match
             })
@@ -133,6 +153,113 @@ impl TicketStore {
                 .cmp(b.id.as_deref().unwrap_or(""))
         });
         results
+    }
+
+    // -------------------------------------------------------------------------
+    // Lightweight summary APIs — avoid cloning the full body/file_path
+    // -------------------------------------------------------------------------
+
+    /// Get all tickets as lightweight summaries, sorted by id.
+    ///
+    /// This is cheaper than `get_all_tickets()` because it skips cloning
+    /// the potentially large `body` and `file_path` fields.
+    pub fn get_all_ticket_summaries(&self) -> Vec<TicketSummary> {
+        let mut results: Vec<TicketSummary> = self
+            .tickets()
+            .iter()
+            .map(|r| TicketSummary::from(r.value()))
+            .collect();
+        results.sort_by(|a, b| {
+            a.id.as_deref()
+                .unwrap_or("")
+                .cmp(b.id.as_deref().unwrap_or(""))
+        });
+        results
+    }
+
+    /// Search tickets by text query and return lightweight summaries.
+    ///
+    /// Uses case-insensitive substring matching on: ticket_id, title, body, ticket_type.
+    /// Supports priority shorthand (e.g., "p0 fix" filters to priority 0 and searches "fix").
+    ///
+    /// Unlike `search_tickets`, this avoids cloning the full body and uses
+    /// allocation-free case-insensitive matching via `contains_case_insensitive`.
+    pub fn search_ticket_summaries(&self, query: &str) -> Vec<TicketSummary> {
+        let priority_filter = parse_priority_filter(query);
+        let text_query = strip_priority_shorthand(query).to_lowercase();
+
+        let mut results: Vec<TicketSummary> = self
+            .tickets()
+            .iter()
+            .filter(|r| {
+                let ticket = r.value();
+
+                // Apply priority filter if present
+                if let Some(priority_num) = priority_filter {
+                    let ticket_priority = ticket.priority.map(|p| p.as_num()).unwrap_or(2);
+                    if ticket_priority != priority_num {
+                        return false;
+                    }
+                }
+
+                // If no text query remains after stripping priority, match all
+                if text_query.is_empty() {
+                    return true;
+                }
+
+                // Case-insensitive substring matching without per-field allocations
+                let id_match = contains_case_insensitive(r.key(), &text_query);
+
+                let title_match = ticket
+                    .title
+                    .as_ref()
+                    .is_some_and(|t| contains_case_insensitive(t, &text_query));
+
+                let body_match = ticket
+                    .body
+                    .as_ref()
+                    .is_some_and(|b| contains_case_insensitive(b, &text_query));
+
+                let type_match = ticket
+                    .ticket_type
+                    .as_ref()
+                    .is_some_and(|t| contains_case_insensitive(&t.to_string(), &text_query));
+
+                id_match || title_match || body_match || type_match
+            })
+            .map(|r| TicketSummary::from(r.value()))
+            .collect();
+        results.sort_by(|a, b| {
+            a.id.as_deref()
+                .unwrap_or("")
+                .cmp(b.id.as_deref().unwrap_or(""))
+        });
+        results
+    }
+
+    /// Get ticket summaries filtered by size, sorted by id.
+    pub fn get_ticket_summaries_by_size(&self, sizes: &[TicketSize]) -> Vec<TicketSummary> {
+        let mut results: Vec<TicketSummary> = self
+            .tickets()
+            .iter()
+            .filter(|r| r.value().size.as_ref().is_some_and(|s| sizes.contains(s)))
+            .map(|r| TicketSummary::from(r.value()))
+            .collect();
+        results.sort_by(|a, b| {
+            a.id.as_deref()
+                .unwrap_or("")
+                .cmp(b.id.as_deref().unwrap_or(""))
+        });
+        results
+    }
+
+    /// Get all ticket IDs, sorted for deterministic ordering.
+    ///
+    /// This is the cheapest query — only clones the ID strings.
+    pub fn get_all_ticket_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.tickets().iter().map(|r| r.key().clone()).collect();
+        ids.sort();
+        ids
     }
 
     /// Get all plans as a Vec, sorted by id for deterministic ordering.
@@ -243,7 +370,7 @@ mod tests {
             id: Some(PlanId::new_unchecked("plan-c3d4")),
             title: Some("Feature Rollout".to_string()),
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-e5f6".to_string(),
+                "j-e5f6".to_string()
             ]))],
             ..Default::default()
         });
@@ -517,5 +644,225 @@ mod tests {
         let matches = store.find_plan_by_partial_id("3d4");
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0], "plan-c3d4");
+    }
+
+    // -------------------------------------------------------------------------
+    // Lightweight summary API tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_get_all_ticket_summaries() {
+        let store = test_store();
+        let summaries = store.get_all_ticket_summaries();
+        assert_eq!(summaries.len(), 4);
+
+        // Verify summaries are sorted by ID
+        let ids: Vec<_> = summaries.iter().map(|s| s.id.as_deref().unwrap()).collect();
+        assert_eq!(ids, vec!["j-a1b2", "j-c3d4", "j-e5f6", "j-g7h8"]);
+
+        // Verify summary fields are populated correctly
+        let first = &summaries[0];
+        assert_eq!(first.id.as_deref(), Some("j-a1b2"));
+        assert_eq!(
+            first.title.as_deref(),
+            Some("Implement cache initialization")
+        );
+        assert_eq!(first.status, Some(TicketStatus::New));
+        assert_eq!(first.ticket_type, Some(TicketType::Task));
+        assert_eq!(first.priority, Some(TicketPriority::P0));
+        assert_eq!(first.size, Some(TicketSize::Medium));
+    }
+
+    #[test]
+    fn test_get_all_ticket_summaries_preserves_spawned_from() {
+        let store = test_store();
+        let summaries = store.get_all_ticket_summaries();
+
+        let child = summaries
+            .iter()
+            .find(|s| s.id.as_deref() == Some("j-c3d4"))
+            .unwrap();
+        assert_eq!(child.spawned_from.as_deref(), Some("j-a1b2"));
+
+        let root = summaries
+            .iter()
+            .find(|s| s.id.as_deref() == Some("j-g7h8"))
+            .unwrap();
+        assert!(root.spawned_from.is_none());
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_by_title() {
+        let store = test_store();
+        let results = store.search_ticket_summaries("cache");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-a1b2"));
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_by_id() {
+        let store = test_store();
+        let results = store.search_ticket_summaries("j-a1b2");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-a1b2"));
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_by_body() {
+        let store = test_store();
+        let results = store.search_ticket_summaries("cannot log in");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-c3d4"));
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_by_type() {
+        let store = test_store();
+        let results = store.search_ticket_summaries("bug");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-c3d4"));
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_case_insensitive() {
+        let store = test_store();
+        let results = store.search_ticket_summaries("CACHE");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-a1b2"));
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_priority_filter() {
+        let store = test_store();
+
+        let results = store.search_ticket_summaries("p0");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-a1b2"));
+
+        let results = store.search_ticket_summaries("p1");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-c3d4"));
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_priority_with_text() {
+        let store = test_store();
+
+        let results = store.search_ticket_summaries("p0 cache");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id.as_deref(), Some("j-a1b2"));
+
+        let results = store.search_ticket_summaries("p0 login");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_no_match() {
+        let store = test_store();
+        let results = store.search_ticket_summaries("zzz_nonexistent_zzz");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_ticket_summaries_empty_query() {
+        let store = test_store();
+        let results = store.search_ticket_summaries("");
+        assert_eq!(results.len(), 4);
+    }
+
+    #[test]
+    fn test_get_ticket_summaries_by_size() {
+        let store = test_store();
+
+        let small = store.get_ticket_summaries_by_size(&[TicketSize::Small]);
+        assert_eq!(small.len(), 1);
+        assert_eq!(small[0].id.as_deref(), Some("j-c3d4"));
+
+        let small_and_medium =
+            store.get_ticket_summaries_by_size(&[TicketSize::Small, TicketSize::Medium]);
+        assert_eq!(small_and_medium.len(), 2);
+
+        let none = store.get_ticket_summaries_by_size(&[]);
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn test_get_all_ticket_ids() {
+        let store = test_store();
+        let ids = store.get_all_ticket_ids();
+        assert_eq!(ids.len(), 4);
+        assert_eq!(ids, vec!["j-a1b2", "j-c3d4", "j-e5f6", "j-g7h8"]);
+    }
+
+    #[test]
+    fn test_get_all_ticket_ids_empty_store() {
+        let store = TicketStore::empty();
+        let ids = store.get_all_ticket_ids();
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_contains_case_insensitive() {
+        use super::contains_case_insensitive;
+
+        // Basic matching
+        assert!(contains_case_insensitive("Hello World", "hello"));
+        assert!(contains_case_insensitive("Hello World", "WORLD"));
+        assert!(contains_case_insensitive("Hello World", "lo Wo"));
+
+        // Empty needle always matches
+        assert!(contains_case_insensitive("anything", ""));
+        assert!(contains_case_insensitive("", ""));
+
+        // Needle longer than haystack
+        assert!(!contains_case_insensitive("hi", "hello"));
+
+        // No match
+        assert!(!contains_case_insensitive("Hello World", "xyz"));
+
+        // Exact match
+        assert!(contains_case_insensitive("test", "test"));
+        assert!(contains_case_insensitive("test", "TEST"));
+
+        // Unicode case folding
+        assert!(contains_case_insensitive("Straße", "straße"));
+    }
+
+    #[test]
+    fn test_summary_priority_num() {
+        let store = test_store();
+        let summaries = store.get_all_ticket_summaries();
+
+        let p0 = summaries
+            .iter()
+            .find(|s| s.id.as_deref() == Some("j-a1b2"))
+            .unwrap();
+        assert_eq!(p0.priority_num(), 0);
+
+        let p1 = summaries
+            .iter()
+            .find(|s| s.id.as_deref() == Some("j-c3d4"))
+            .unwrap();
+        assert_eq!(p1.priority_num(), 1);
+    }
+
+    #[test]
+    fn test_summary_compute_depth() {
+        let store = test_store();
+        let summaries = store.get_all_ticket_summaries();
+
+        // Root ticket (no spawned_from) should have depth 0
+        let root = summaries
+            .iter()
+            .find(|s| s.id.as_deref() == Some("j-a1b2"))
+            .unwrap();
+        assert_eq!(root.compute_depth(), 0);
+
+        // Child ticket (has spawned_from but no explicit depth) should have depth 1
+        let child = summaries
+            .iter()
+            .find(|s| s.id.as_deref() == Some("j-c3d4"))
+            .unwrap();
+        assert_eq!(child.compute_depth(), 1);
     }
 }

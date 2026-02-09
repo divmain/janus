@@ -48,5 +48,5 @@ pub use ticket::{
 };
 pub use types::{
     ArrayField, CreatedAt, EntityType, PlanId, TicketId, TicketMetadata, TicketPriority,
-    TicketStatus, TicketType, janus_root, plans_dir, tickets_items_dir,
+    TicketStatus, TicketSummary, TicketType, janus_root, plans_dir, tickets_items_dir,
 };

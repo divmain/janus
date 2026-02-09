@@ -698,7 +698,11 @@ impl TicketMetadata {
     pub fn compute_depth(&self) -> u32 {
         self.depth.unwrap_or_else(|| {
             // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if self.spawned_from.is_none() { 0 } else { 1 }
+            if self.spawned_from.is_none() {
+                0
+            } else {
+                1
+            }
         })
     }
 
@@ -740,6 +744,83 @@ impl TicketMetadata {
         }
 
         ctx
+    }
+}
+
+/// Lightweight ticket summary without the full markdown body.
+///
+/// Contains all metadata fields needed for listing, filtering, and display
+/// but omits the potentially large `body` field and `file_path` to reduce
+/// clone overhead in query and search operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TicketSummary {
+    pub id: Option<TicketId>,
+    pub uuid: Option<String>,
+    pub status: Option<TicketStatus>,
+    pub deps: Vec<String>,
+    pub links: Vec<String>,
+    pub created: Option<CreatedAt>,
+    pub ticket_type: Option<TicketType>,
+    pub priority: Option<TicketPriority>,
+    pub size: Option<TicketSize>,
+    pub external_ref: Option<String>,
+    pub remote: Option<String>,
+    pub parent: Option<String>,
+    pub spawned_from: Option<String>,
+    pub spawn_context: Option<String>,
+    pub depth: Option<u32>,
+    pub triaged: Option<bool>,
+    pub title: Option<String>,
+    pub completion_summary: Option<String>,
+}
+
+impl TicketSummary {
+    /// Get the item ID as a string slice
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_ref().map(|id| id.as_ref())
+    }
+
+    /// Get the item title
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    /// Get priority as a number for sorting (defaults to DEFAULT_PRIORITY)
+    pub fn priority_num(&self) -> u8 {
+        self.priority
+            .map(|p| p.as_num())
+            .unwrap_or(DEFAULT_PRIORITY)
+    }
+
+    /// Compute the effective depth of this ticket.
+    pub fn compute_depth(&self) -> u32 {
+        self.depth
+            .unwrap_or_else(|| if self.spawned_from.is_none() { 0 } else { 1 })
+    }
+}
+
+impl From<&TicketMetadata> for TicketSummary {
+    fn from(meta: &TicketMetadata) -> Self {
+        TicketSummary {
+            id: meta.id.clone(),
+            uuid: meta.uuid.clone(),
+            status: meta.status,
+            deps: meta.deps.clone(),
+            links: meta.links.clone(),
+            created: meta.created.clone(),
+            ticket_type: meta.ticket_type,
+            priority: meta.priority,
+            size: meta.size,
+            external_ref: meta.external_ref.clone(),
+            remote: meta.remote.clone(),
+            parent: meta.parent.clone(),
+            spawned_from: meta.spawned_from.clone(),
+            spawn_context: meta.spawn_context.clone(),
+            depth: meta.depth,
+            triaged: meta.triaged,
+            title: meta.title.clone(),
+            completion_summary: meta.completion_summary.clone(),
+        }
     }
 }
 
