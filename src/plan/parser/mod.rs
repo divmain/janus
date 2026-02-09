@@ -18,11 +18,9 @@ mod sections;
 mod serialize;
 
 use std::collections::HashSet;
-use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::{Arena, Options, parse_document};
-use regex::Regex;
 use serde::Deserialize;
 
 use crate::error::{JanusError, Result};
@@ -37,11 +35,6 @@ pub use import::{
 };
 pub use sections::parse_ticket_list;
 pub use serialize::serialize_plan;
-
-static LIST_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^[\s]*[-*+][\s]+(.+)$|^[\s]*\d+\.[\s]+(.+)$")
-        .expect("item list regex should be valid")
-});
 
 /// Strict plan frontmatter struct for YAML deserialization with required fields.
 #[derive(Debug, Deserialize)]
@@ -355,21 +348,49 @@ pub(crate) fn render_node_to_markdown<'a>(node: &'a AstNode<'a>, options: &Optio
     String::from_utf8_lossy(&output).to_string()
 }
 
-/// Parse a bullet or numbered list into string items (used by sections module)
+/// Parse a bullet or numbered list into string items using comrak AST.
+///
+/// This correctly handles:
+/// - Bullet lists (`-`, `*`, `+`)
+/// - Numbered lists (`1.`, `2.`)
+/// - Task list markers (`- [ ]`, `- [x]`) — the marker is stripped, text preserved
+/// - Multiline list items (full text content is extracted)
+/// - Code blocks containing list-like text (ignored, since they don't produce list nodes)
 pub fn parse_list_items(content: &str) -> Vec<String> {
+    let arena = Arena::new();
+    let options = comrak_options_with_tasklist();
+    let root = parse_document(&arena, content, &options);
+
+    extract_list_items_from_ast(root)
+}
+
+/// Create comrak Options with task list extension enabled.
+pub(crate) fn comrak_options_with_tasklist() -> Options<'static> {
+    let mut options = Options::default();
+    options.extension.tasklist = true;
+    options
+}
+
+/// Extract list items from a comrak AST node tree.
+///
+/// Walks top-level `NodeValue::List` nodes and collects text from each
+/// `NodeValue::Item` or `NodeValue::TaskItem` child.
+fn extract_list_items_from_ast<'a>(root: &'a AstNode<'a>) -> Vec<String> {
     let mut items = Vec::new();
 
-    for caps in LIST_ITEM_RE.captures_iter(content) {
-        // Try bullet point match first, then numbered
-        let item = caps
-            .get(1)
-            .or_else(|| caps.get(2))
-            .map(|m| m.as_str().trim().to_string());
-
-        if let Some(text) = item
-            && !text.is_empty()
-        {
-            items.push(text);
+    for node in root.children() {
+        if let NodeValue::List(_) = &node.data.borrow().value {
+            for child in node.children() {
+                match &child.data.borrow().value {
+                    NodeValue::Item(_) | NodeValue::TaskItem(_) => {
+                        let text = extract_text_content(child).trim().to_string();
+                        if !text.is_empty() {
+                            items.push(text);
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -1314,5 +1335,182 @@ unknown_field: should_be_rejected
 
         let result = parse_plan_content(content);
         assert!(result.is_err());
+    }
+
+    // ==================== AST-Based List Parsing Regression Tests ====================
+
+    #[test]
+    fn test_parse_plan_task_list_tickets() {
+        // Task list markers (- [ ] and - [x]) should be recognized as ticket IDs
+        let content = r#"---
+id: plan-task
+uuid: 550e8400-e29b-41d4-a716-446655440020
+created: 2024-01-01T00:00:00Z
+---
+# Task List Plan
+
+## Tickets
+
+- [ ] j-a1b2
+- [x] j-c3d4
+- [ ] j-e5f6
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert!(metadata.is_simple());
+        let tickets = metadata.all_tickets();
+        assert_eq!(tickets, vec!["j-a1b2", "j-c3d4", "j-e5f6"]);
+    }
+
+    #[test]
+    fn test_parse_plan_task_list_acceptance_criteria() {
+        // Task list markers in acceptance criteria should extract the text
+        let content = r#"---
+id: plan-taskcrit
+uuid: 550e8400-e29b-41d4-a716-446655440021
+created: 2024-01-01T00:00:00Z
+---
+# Task List Criteria Plan
+
+## Acceptance Criteria
+
+- [ ] All tests pass
+- [x] Documentation complete
+- [ ] Performance targets met
+
+## Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.acceptance_criteria.len(), 3);
+        assert_eq!(metadata.acceptance_criteria[0], "All tests pass");
+        assert_eq!(metadata.acceptance_criteria[1], "Documentation complete");
+        assert_eq!(metadata.acceptance_criteria[2], "Performance targets met");
+    }
+
+    #[test]
+    fn test_parse_plan_code_block_with_list_like_content() {
+        // List-like text inside code blocks must NOT be parsed as tickets or criteria
+        let content = r#"---
+id: plan-codeblock
+uuid: 550e8400-e29b-41d4-a716-446655440022
+created: 2024-01-01T00:00:00Z
+---
+# Code Block Immunity Plan
+
+## Acceptance Criteria
+
+- Real criterion 1
+- Real criterion 2
+
+## Phase 1: Setup
+
+Here's an example ticket list format:
+
+```markdown
+- j-fake1 This is in a code block
+- j-fake2 Also in a code block
+1. j-fake3 Numbered inside code block
+```
+
+### Tickets
+
+1. j-real1
+2. j-real2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        // Acceptance criteria should only have the real ones
+        assert_eq!(metadata.acceptance_criteria.len(), 2);
+        assert_eq!(metadata.acceptance_criteria[0], "Real criterion 1");
+        assert_eq!(metadata.acceptance_criteria[1], "Real criterion 2");
+
+        // Tickets should only have the real ones, not those inside code blocks
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+        assert_eq!(phases[0].tickets, vec!["j-real1", "j-real2"]);
+    }
+
+    #[test]
+    fn test_parse_plan_phased_with_task_list_tickets() {
+        // Phased plan using task list markers for tickets
+        let content = r#"---
+id: plan-phased-task
+uuid: 550e8400-e29b-41d4-a716-446655440023
+created: 2024-01-01T00:00:00Z
+---
+# Phased Task List Plan
+
+## Phase 1: Infrastructure
+
+### Success Criteria
+
+- [ ] Database tables created
+- [x] Helper functions work
+
+### Tickets
+
+- [ ] j-a1b2
+- [x] j-c3d4
+
+## Phase 2: Implementation
+
+### Tickets
+
+- [ ] j-e5f6 - Implement core logic
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert!(metadata.is_phased());
+
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 2);
+
+        // Phase 1 success criteria should include task list text
+        assert_eq!(phases[0].success_criteria.len(), 2);
+        assert_eq!(phases[0].success_criteria[0], "Database tables created");
+        assert_eq!(phases[0].success_criteria[1], "Helper functions work");
+
+        // Phase 1 tickets
+        assert_eq!(phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+
+        // Phase 2 tickets (with description after ID)
+        assert_eq!(phases[1].tickets, vec!["j-e5f6"]);
+    }
+
+    #[test]
+    fn test_parse_plan_multiline_acceptance_criteria() {
+        // Multiline list items should be fully captured
+        let content = r#"---
+id: plan-multiline
+uuid: 550e8400-e29b-41d4-a716-446655440024
+created: 2024-01-01T00:00:00Z
+---
+# Multiline List Items Plan
+
+## Acceptance Criteria
+
+- First criterion with
+  continuation on next line
+- Second criterion
+- Third criterion spanning
+  multiple lines of text
+
+## Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+        assert_eq!(metadata.acceptance_criteria.len(), 3);
+        // Multiline items should have their continuation text included
+        assert!(metadata.acceptance_criteria[0].contains("First criterion"));
+        assert!(metadata.acceptance_criteria[0].contains("continuation"));
+        assert_eq!(metadata.acceptance_criteria[1], "Second criterion");
+        assert!(metadata.acceptance_criteria[2].contains("Third criterion"));
+        assert!(metadata.acceptance_criteria[2].contains("multiple lines"));
     }
 }
