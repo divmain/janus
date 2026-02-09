@@ -163,7 +163,16 @@ impl TicketStore {
             }
         };
 
-        for entry in entries.flatten() {
+        for entry in entries.filter_map(|entry| match entry {
+            Ok(e) => Some(e),
+            Err(e) => {
+                eprintln!(
+                    "Warning: failed to read directory entry in {}: {e}",
+                    dir.display()
+                );
+                None
+            }
+        }) {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "md") {
                 match fs::read_to_string(&path) {

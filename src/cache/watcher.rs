@@ -80,9 +80,12 @@ impl StoreWatcher {
         let watcher = {
             let tx = bridge_tx;
             notify::RecommendedWatcher::new(
-                move |res: std::result::Result<notify::Event, notify::Error>| {
-                    if let Ok(event) = res {
+                move |res: std::result::Result<notify::Event, notify::Error>| match res {
+                    Ok(event) => {
                         let _ = tx.send(event);
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: filesystem watcher error: {e}");
                     }
                 },
                 notify::Config::default(),
@@ -367,7 +370,13 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
             }
             return true;
         }
-        Err(_) => return false,
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to read ticket file {}: {e}",
+                path.display()
+            );
+            return false;
+        }
     };
 
     match parse_ticket(&content) {
@@ -387,7 +396,13 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
             }
             true
         }
-        Err(_) => false,
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to parse ticket file {}: {e}",
+                path.display()
+            );
+            false
+        }
     }
 }
 
@@ -404,7 +419,13 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
             }
             return true;
         }
-        Err(_) => return false,
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to read plan file {}: {e}",
+                path.display()
+            );
+            return false;
+        }
     };
 
     match parse_plan_content(&content) {
@@ -418,7 +439,13 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
             store.upsert_plan(metadata);
             true
         }
-        Err(_) => false,
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to parse plan file {}: {e}",
+                path.display()
+            );
+            false
+        }
     }
 }
 
