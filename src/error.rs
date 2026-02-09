@@ -338,6 +338,9 @@ pub enum JanusError {
     #[error("reordered list must contain the same tickets")]
     ReorderTicketMismatch,
 
+    #[error("reordered list must contain the same phases")]
+    ReorderPhaseMismatch,
+
     #[error("Cannot open editor in non-interactive mode: {0}")]
     InteractiveTerminalRequired(std::path::PathBuf),
 
@@ -545,6 +548,17 @@ mod tests {
         assert!(msg.contains("plan-alpha"));
         assert!(msg.contains("plan-beta"));
         assert!(msg.contains("ambiguous plan ID"));
+    }
+
+    #[test]
+    fn test_reorder_phase_mismatch_error_message() {
+        let error = JanusError::ReorderPhaseMismatch;
+        let msg = error.to_string();
+        assert!(msg.contains("phases"));
+        assert!(
+            !msg.contains("tickets"),
+            "phase mismatch error should not mention tickets"
+        );
     }
 
     #[test]

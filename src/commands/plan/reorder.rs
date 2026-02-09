@@ -54,7 +54,7 @@ fn parse_and_validate_phase_order(
 
     // Validate set equality - no phases dropped or added
     if original_set != new_set {
-        return Err(JanusError::ReorderTicketMismatch);
+        return Err(JanusError::ReorderPhaseMismatch);
     }
 
     Ok(new_phase_order)
@@ -563,5 +563,15 @@ mod tests {
         let original = vec![("1".to_string(), "Infrastructure".to_string())];
         let result = parse_and_validate_phase_order(order, &original);
         assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, JanusError::ReorderPhaseMismatch),
+            "expected ReorderPhaseMismatch, got: {err:?}"
+        );
+        assert!(
+            err.to_string().contains("phases"),
+            "error message should mention 'phases', got: {}",
+            err
+        );
     }
 }
