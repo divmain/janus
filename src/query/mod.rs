@@ -59,13 +59,13 @@ pub trait TicketFilter: Send + Sync {
 
 /// Filter tickets by status
 pub struct StatusFilter {
-    target_status: String,
+    target_status: TicketStatus,
 }
 
 impl StatusFilter {
-    pub fn new(status: &str) -> Self {
+    pub fn new(status: TicketStatus) -> Self {
         Self {
-            target_status: status.to_string(),
+            target_status: status,
         }
     }
 }
@@ -73,13 +73,13 @@ impl StatusFilter {
 impl TicketFilter for StatusFilter {
     fn matches(&self, ticket: &TicketMetadata, _context: &TicketFilterContext) -> bool {
         let ticket_status = match ticket.status {
-            Some(status) => status.to_string(),
+            Some(status) => status,
             None => {
                 eprintln!(
                     "Warning: ticket '{}' has missing status field, treating as 'new'",
                     ticket.id.as_deref().unwrap_or("unknown")
                 );
-                TicketStatus::New.to_string()
+                TicketStatus::New
             }
         };
         ticket_status == self.target_status
@@ -366,5 +366,89 @@ impl TicketQueryBuilder {
 impl Default for TicketQueryBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::collections::{HashMap, HashSet};
+
+    use super::*;
+    use crate::types::TicketId;
+
+    fn make_ticket_with_status(id: &str, status: TicketStatus) -> TicketMetadata {
+        TicketMetadata {
+            id: Some(TicketId::new_unchecked(id)),
+            status: Some(status),
+            ..Default::default()
+        }
+    }
+
+    fn empty_context() -> TicketFilterContext {
+        TicketFilterContext {
+            ticket_map: HashMap::new(),
+            warned_dangling: RefCell::new(HashSet::new()),
+        }
+    }
+
+    #[test]
+    fn test_status_filter_matches_correct_status() {
+        let context = empty_context();
+        let ticket = make_ticket_with_status("t-1", TicketStatus::New);
+        let filter = StatusFilter::new(TicketStatus::New);
+        assert!(filter.matches(&ticket, &context));
+    }
+
+    #[test]
+    fn test_status_filter_rejects_wrong_status() {
+        let context = empty_context();
+        let ticket = make_ticket_with_status("t-1", TicketStatus::New);
+        let filter = StatusFilter::new(TicketStatus::Complete);
+        assert!(!filter.matches(&ticket, &context));
+    }
+
+    #[test]
+    fn test_status_filter_all_variants() {
+        let context = empty_context();
+        let statuses = [
+            TicketStatus::New,
+            TicketStatus::Next,
+            TicketStatus::InProgress,
+            TicketStatus::Complete,
+            TicketStatus::Cancelled,
+        ];
+
+        for status in statuses {
+            let ticket = make_ticket_with_status("t-1", status);
+            let filter = StatusFilter::new(status);
+            assert!(
+                filter.matches(&ticket, &context),
+                "StatusFilter({status}) should match ticket with status {status}"
+            );
+
+            // Should not match other statuses
+            for other in statuses {
+                if other != status {
+                    let other_filter = StatusFilter::new(other);
+                    assert!(
+                        !other_filter.matches(&ticket, &context),
+                        "StatusFilter({other}) should NOT match ticket with status {status}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_invalid_status_string_parse_fails() {
+        // These should all fail to parse - verifying that invalid strings
+        // cannot silently become valid statuses
+        assert!("typo".parse::<TicketStatus>().is_err());
+        assert!("open".parse::<TicketStatus>().is_err());
+        assert!("done".parse::<TicketStatus>().is_err());
+        assert!("closed".parse::<TicketStatus>().is_err());
+        assert!("".parse::<TicketStatus>().is_err());
+        assert!("in-progress".parse::<TicketStatus>().is_err()); // hyphen instead of underscore
     }
 }

@@ -12,7 +12,7 @@ use crate::query::{
     StatusFilter, TicketQueryBuilder, TriagedFilter,
 };
 use crate::ticket::{Ticket, build_ticket_map, get_all_tickets_with_map};
-use crate::types::{TicketMetadata, TicketSize};
+use crate::types::{TicketMetadata, TicketSize, TicketStatus};
 
 /// Options for the `ls` command, bundling all filter and display parameters.
 pub struct LsOptions {
@@ -20,13 +20,13 @@ pub struct LsOptions {
     pub filter_blocked: bool,
     pub filter_closed: bool,
     pub filter_active: bool,
-    pub status_filter: Option<String>,
+    pub status_filter: Option<TicketStatus>,
     pub spawned_from: Option<String>,
     pub depth: Option<u32>,
     pub max_depth: Option<u32>,
     pub next_in_plan: Option<String>,
     pub phase: Option<u32>,
-    pub triaged: Option<String>,
+    pub triaged: Option<bool>,
     pub size_filter: Option<Vec<TicketSize>>,
     pub limit: Option<usize>,
     pub sort_by: String,
@@ -53,6 +53,28 @@ impl LsOptions {
             sort_by: "priority".to_string(),
             output_json: false,
         }
+    }
+
+    /// Builder method to set status filter from a string.
+    /// Returns an error if the string is not a valid status.
+    pub fn with_status_str(mut self, status: &str) -> crate::error::Result<Self> {
+        self.status_filter = Some(status.parse::<TicketStatus>()?);
+        Ok(self)
+    }
+
+    /// Builder method to set triaged filter from a string.
+    /// Returns an error if the string is not "true" or "false" (case-insensitive).
+    pub fn with_triaged_str(mut self, triaged: &str) -> crate::error::Result<Self> {
+        match triaged.to_lowercase().as_str() {
+            "true" => self.triaged = Some(true),
+            "false" => self.triaged = Some(false),
+            _ => {
+                return Err(JanusError::InvalidInput(format!(
+                    "invalid triaged value '{triaged}': must be 'true' or 'false'"
+                )));
+            }
+        }
+        Ok(self)
     }
 
     /// Returns true if any status-based filter flags are set (--ready, --blocked, --closed, --active)
@@ -127,8 +149,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
     }
 
     // Add triaged filter if specified
-    if let Some(ref triaged_value) = opts.triaged {
-        let filter_value = triaged_value == "true";
+    if let Some(filter_value) = opts.triaged {
         builder = builder.with_filter(Box::new(TriagedFilter::new(filter_value)));
     }
 
@@ -138,7 +159,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
     }
 
     // Add status-based filters
-    if let Some(ref status) = opts.status_filter {
+    if let Some(status) = opts.status_filter {
         // --status flag is mutually exclusive with --ready, --blocked, --closed
         builder = builder.with_filter(Box::new(StatusFilter::new(status)));
     } else if opts.has_status_flags() {
@@ -200,18 +221,38 @@ pub async fn cmd_ls(
     sort_by: &str,
     output_json: bool,
 ) -> Result<()> {
+    // Parse and validate status filter
+    let parsed_status = match status_filter {
+        Some(s) => Some(s.parse::<TicketStatus>()?),
+        None => None,
+    };
+
+    // Parse and validate triaged filter
+    let parsed_triaged = match triaged {
+        Some(s) => match s.to_lowercase().as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => {
+                return Err(JanusError::InvalidInput(format!(
+                    "invalid triaged value '{s}': must be 'true' or 'false'"
+                )));
+            }
+        },
+        None => None,
+    };
+
     let opts = LsOptions {
         filter_ready,
         filter_blocked,
         filter_closed,
         filter_active,
-        status_filter: status_filter.map(|s| s.to_string()),
+        status_filter: parsed_status,
         spawned_from: spawned_from.map(|s| s.to_string()),
         depth,
         max_depth,
         next_in_plan: next_in_plan.map(|s| s.to_string()),
         phase,
-        triaged: triaged.map(|s| s.to_string()),
+        triaged: parsed_triaged,
         size_filter,
         limit,
         sort_by: sort_by.to_string(),
@@ -374,5 +415,83 @@ mod tests {
         // Should not match: spawned_from matches but depth doesn't
         let filter_wrong_depth = SpawningFilter::new(Some("parent-1"), Some(2), None);
         assert!(!filter_wrong_depth.matches(&child, &context));
+    }
+
+    #[test]
+    fn test_with_status_str_valid() {
+        let opts = LsOptions::new().with_status_str("new").unwrap();
+        assert_eq!(opts.status_filter, Some(TicketStatus::New));
+
+        let opts = LsOptions::new().with_status_str("in_progress").unwrap();
+        assert_eq!(opts.status_filter, Some(TicketStatus::InProgress));
+
+        let opts = LsOptions::new().with_status_str("complete").unwrap();
+        assert_eq!(opts.status_filter, Some(TicketStatus::Complete));
+
+        let opts = LsOptions::new().with_status_str("cancelled").unwrap();
+        assert_eq!(opts.status_filter, Some(TicketStatus::Cancelled));
+
+        let opts = LsOptions::new().with_status_str("next").unwrap();
+        assert_eq!(opts.status_filter, Some(TicketStatus::Next));
+    }
+
+    #[test]
+    fn test_with_status_str_case_insensitive() {
+        let opts = LsOptions::new().with_status_str("NEW").unwrap();
+        assert_eq!(opts.status_filter, Some(TicketStatus::New));
+
+        let opts = LsOptions::new().with_status_str("In_Progress").unwrap();
+        assert_eq!(opts.status_filter, Some(TicketStatus::InProgress));
+    }
+
+    #[test]
+    fn test_with_status_str_invalid_rejects() {
+        let result = LsOptions::new().with_status_str("typo");
+        assert!(result.is_err());
+
+        let result = LsOptions::new().with_status_str("open");
+        assert!(result.is_err());
+
+        let result = LsOptions::new().with_status_str("done");
+        assert!(result.is_err());
+
+        let result = LsOptions::new().with_status_str("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_with_triaged_str_valid() {
+        let opts = LsOptions::new().with_triaged_str("true").unwrap();
+        assert_eq!(opts.triaged, Some(true));
+
+        let opts = LsOptions::new().with_triaged_str("false").unwrap();
+        assert_eq!(opts.triaged, Some(false));
+    }
+
+    #[test]
+    fn test_with_triaged_str_case_insensitive() {
+        let opts = LsOptions::new().with_triaged_str("TRUE").unwrap();
+        assert_eq!(opts.triaged, Some(true));
+
+        let opts = LsOptions::new().with_triaged_str("False").unwrap();
+        assert_eq!(opts.triaged, Some(false));
+    }
+
+    #[test]
+    fn test_with_triaged_str_invalid_rejects() {
+        let result = LsOptions::new().with_triaged_str("yes");
+        assert!(result.is_err());
+
+        let result = LsOptions::new().with_triaged_str("1");
+        assert!(result.is_err());
+
+        let result = LsOptions::new().with_triaged_str("no");
+        assert!(result.is_err());
+
+        let result = LsOptions::new().with_triaged_str("");
+        assert!(result.is_err());
+
+        let result = LsOptions::new().with_triaged_str("tru");
+        assert!(result.is_err());
     }
 }

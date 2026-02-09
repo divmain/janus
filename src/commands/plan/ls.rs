@@ -16,13 +16,12 @@ use crate::types::TicketStatus;
 /// # Arguments
 /// * `status_filter` - Optional status to filter by
 /// * `output_json` - If true, output as JSON
-pub async fn cmd_plan_ls(status_filter: Option<&str>, output_json: bool) -> Result<()> {
+pub async fn cmd_plan_ls(status_filter: Option<TicketStatus>, output_json: bool) -> Result<()> {
     let result = get_all_plans().await?;
     let plans = result.items;
     let ticket_map = build_ticket_map().await?;
 
-    // Parse the status filter if provided
-    let filter_status: Option<TicketStatus> = status_filter.and_then(|s| s.parse().ok());
+    let filter_status = status_filter;
 
     // Collect filtered plans with their statuses
     let mut filtered_plans: Vec<(

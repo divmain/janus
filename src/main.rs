@@ -7,18 +7,17 @@ use janus::cli::{
 };
 use janus::cli::{Cli, Commands};
 use janus::commands::cmd_search;
-#[allow(deprecated)]
 use janus::commands::{
     cmd_add_note, cmd_adopt, cmd_board, cmd_cache_prune, cmd_cache_rebuild, cmd_cache_status,
     cmd_close, cmd_config_get, cmd_config_set, cmd_config_show, cmd_create, cmd_dep_add,
     cmd_dep_remove, cmd_dep_tree, cmd_doctor, cmd_edit, cmd_graph, cmd_hook_disable,
     cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add,
-    cmd_link_remove, cmd_ls, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create,
-    cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket,
-    cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename,
-    cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_plan_verify, cmd_push, cmd_query,
-    cmd_remote_browse, cmd_remote_link, cmd_reopen, cmd_set, cmd_show, cmd_show_import_spec,
-    cmd_start, cmd_status, cmd_sync, cmd_view,
+    cmd_link_remove, cmd_ls_with_options, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket,
+    cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls,
+    cmd_plan_move_ticket, cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket,
+    cmd_plan_rename, cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_plan_verify, cmd_push,
+    cmd_query, cmd_remote_browse, cmd_remote_link, cmd_reopen, cmd_set, cmd_show,
+    cmd_show_import_spec, cmd_start, cmd_status, cmd_sync, cmd_view, LsOptions,
 };
 use janus::error::{JanusError, Result};
 
@@ -128,25 +127,24 @@ async fn main() -> ExitCode {
             json,
         } =>
         {
-            #[allow(deprecated)]
-            cmd_ls(
-                ready,
-                blocked,
-                closed,
-                active,
-                status.as_deref(),
-                spawned_from.as_deref(),
+            let opts = LsOptions {
+                filter_ready: ready,
+                filter_blocked: blocked,
+                filter_closed: closed,
+                filter_active: active,
+                status_filter: status,
+                spawned_from,
                 depth,
                 max_depth,
-                next_in_plan.as_deref(),
+                next_in_plan,
                 phase,
-                triaged.as_deref(),
-                size,
+                triaged,
+                size_filter: size,
                 limit,
-                sort_by.as_str(),
-                json,
-            )
-            .await
+                sort_by,
+                output_json: json,
+            };
+            cmd_ls_with_options(opts).await
         }
 
         Commands::Query { filter } => cmd_query(filter.as_deref()).await,
@@ -215,7 +213,7 @@ async fn main() -> ExitCode {
                 json,
             } => cmd_plan_show(&id, raw, tickets_only, phases_only, &verbose_phases, json).await,
             PlanAction::Edit { id, json } => cmd_plan_edit(&id, json).await,
-            PlanAction::Ls { status, json } => cmd_plan_ls(status.as_deref(), json).await,
+            PlanAction::Ls { status, json } => cmd_plan_ls(status, json).await,
             PlanAction::AddTicket {
                 plan_id,
                 ticket_id,

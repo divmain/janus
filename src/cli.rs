@@ -4,7 +4,7 @@ use std::io;
 use std::str::FromStr;
 
 use crate::types::{
-    DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES,
+    TicketPriority, TicketSize, TicketStatus, TicketType, DEFAULT_PRIORITY_STR, VALID_PRIORITIES,
     VALID_SIZES, VALID_STATUSES, VALID_TYPES,
 };
 
@@ -222,8 +222,8 @@ pub enum Commands {
         active: bool,
 
         /// Filter by specific status (mutually exclusive with --ready, --blocked, --closed, --active)
-        #[arg(long, conflicts_with_all = ["ready", "blocked", "closed", "active"])]
-        status: Option<String>,
+        #[arg(long, conflicts_with_all = ["ready", "blocked", "closed", "active"], value_parser = parse_status)]
+        status: Option<TicketStatus>,
 
         /// Show tickets spawned from a specific parent (direct children only)
         #[arg(long)]
@@ -246,8 +246,8 @@ pub enum Commands {
         phase: Option<u32>,
 
         /// Filter by triaged status (true or false)
-        #[arg(long)]
-        triaged: Option<String>,
+        #[arg(long, value_parser = parse_bool_strict)]
+        triaged: Option<bool>,
 
         /// Filter by size (can specify multiple: --size small,medium)
         #[arg(long, value_delimiter = ',', value_parser = parse_size)]
@@ -671,8 +671,8 @@ pub enum PlanAction {
     /// List all plans
     Ls {
         /// Filter by computed status
-        #[arg(long)]
-        status: Option<String>,
+        #[arg(long, value_parser = parse_status)]
+        status: Option<TicketStatus>,
 
         /// Output as JSON
         #[arg(long)]
@@ -967,6 +967,16 @@ fn parse_ticket_id(s: &str) -> Result<String, String> {
     Ok(s.to_string())
 }
 
+fn parse_bool_strict(s: &str) -> Result<bool, String> {
+    match s.to_lowercase().as_str() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!(
+            "Invalid boolean value '{s}'. Must be 'true' or 'false'"
+        )),
+    }
+}
+
 fn parse_size(s: &str) -> Result<TicketSize, String> {
     let mut valid_values = VALID_SIZES.to_vec();
     valid_values.extend(["xs", "s", "m", "l", "xl"]);
@@ -981,4 +991,85 @@ fn parse_size(s: &str) -> Result<TicketSize, String> {
 pub fn generate_completions(shell: Shell) {
     let mut cmd = Cli::command();
     clap_complete::generate(shell, &mut cmd, "janus", &mut io::stdout());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_bool_strict_accepts_true() {
+        assert_eq!(parse_bool_strict("true").unwrap(), true);
+        assert_eq!(parse_bool_strict("True").unwrap(), true);
+        assert_eq!(parse_bool_strict("TRUE").unwrap(), true);
+    }
+
+    #[test]
+    fn test_parse_bool_strict_accepts_false() {
+        assert_eq!(parse_bool_strict("false").unwrap(), false);
+        assert_eq!(parse_bool_strict("False").unwrap(), false);
+        assert_eq!(parse_bool_strict("FALSE").unwrap(), false);
+    }
+
+    #[test]
+    fn test_parse_bool_strict_rejects_invalid() {
+        assert!(parse_bool_strict("yes").is_err());
+        assert!(parse_bool_strict("no").is_err());
+        assert!(parse_bool_strict("1").is_err());
+        assert!(parse_bool_strict("0").is_err());
+        assert!(parse_bool_strict("").is_err());
+        assert!(parse_bool_strict("tru").is_err());
+        assert!(parse_bool_strict("fals").is_err());
+    }
+
+    #[test]
+    fn test_parse_bool_strict_error_message() {
+        let err = parse_bool_strict("yes").unwrap_err();
+        assert!(
+            err.contains("yes"),
+            "Error should contain the invalid value"
+        );
+        assert!(
+            err.contains("true") && err.contains("false"),
+            "Error should list valid values"
+        );
+    }
+
+    #[test]
+    fn test_parse_status_valid() {
+        assert_eq!(parse_status("new").unwrap(), TicketStatus::New);
+        assert_eq!(parse_status("next").unwrap(), TicketStatus::Next);
+        assert_eq!(
+            parse_status("in_progress").unwrap(),
+            TicketStatus::InProgress
+        );
+        assert_eq!(parse_status("complete").unwrap(), TicketStatus::Complete);
+        assert_eq!(parse_status("cancelled").unwrap(), TicketStatus::Cancelled);
+    }
+
+    #[test]
+    fn test_parse_status_case_insensitive() {
+        assert_eq!(parse_status("NEW").unwrap(), TicketStatus::New);
+        assert_eq!(
+            parse_status("IN_PROGRESS").unwrap(),
+            TicketStatus::InProgress
+        );
+    }
+
+    #[test]
+    fn test_parse_status_invalid_rejected() {
+        assert!(parse_status("typo").is_err());
+        assert!(parse_status("open").is_err());
+        assert!(parse_status("done").is_err());
+        assert!(parse_status("").is_err());
+    }
+
+    #[test]
+    fn test_parse_status_error_message_lists_valid_values() {
+        let err = parse_status("typo").unwrap_err();
+        assert!(
+            err.contains("new") && err.contains("in_progress") && err.contains("complete"),
+            "Error should list valid status values, got: {err}"
+        );
+    }
 }

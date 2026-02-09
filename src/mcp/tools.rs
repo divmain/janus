@@ -901,7 +901,14 @@ impl JanusTools {
 
         // Add status filter
         if let Some(ref status_filter) = request.status {
-            query_builder = query_builder.with_filter(Box::new(StatusFilter::new(status_filter)));
+            let parsed_status = TicketStatus::from_str(status_filter).map_err(|_| {
+                format!(
+                    "Invalid status '{}'. Must be one of: {}",
+                    status_filter,
+                    crate::types::VALID_STATUSES.join(", ")
+                )
+            })?;
+            query_builder = query_builder.with_filter(Box::new(StatusFilter::new(parsed_status)));
         }
 
         // Add type filter
