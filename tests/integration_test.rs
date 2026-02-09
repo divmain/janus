@@ -719,6 +719,17 @@ fn test_add_note_whitespace_only() {
     assert!(stderr.contains("empty"));
 }
 
+#[test]
+fn test_add_note_no_args_rejects_empty() {
+    let janus = JanusTest::new();
+
+    let id = janus.run_success(&["create", "Test"]).trim().to_string();
+    // No note text argument and piped empty stdin should be rejected
+    let stderr = janus.run_failure(&["add-note", &id]);
+
+    assert!(stderr.contains("empty"));
+}
+
 // ============================================================================
 // Edit command tests
 // ============================================================================

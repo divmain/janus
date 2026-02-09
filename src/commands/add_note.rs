@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::ticket::Ticket;
 use crate::utils::{is_stdin_tty, iso_date, read_stdin};
 
@@ -15,8 +15,13 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
     } else if !is_stdin_tty() {
         read_stdin()?
     } else {
-        String::new()
+        return Err(JanusError::EmptyNote);
     };
+
+    // Validate that note content is not empty or whitespace-only
+    if note.trim().is_empty() {
+        return Err(JanusError::EmptyNote);
+    }
 
     // Use the shared add_note method on Ticket
     ticket.add_note(&note)?;
