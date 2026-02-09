@@ -27,6 +27,7 @@ use crate::hooks::{
     run_pre_hooks_async,
 };
 use crate::parser::parse_document;
+use crate::parser::split_frontmatter;
 use crate::ticket::locator::TicketLocator;
 use crate::ticket::manipulator::{
     remove_field as remove_field_from_content, update_field as update_field_in_content,
@@ -36,6 +37,7 @@ use crate::types::EntityType;
 use crate::types::TicketMetadata;
 use crate::utils::extract_id_from_path;
 use serde_json;
+use serde_yaml_ng;
 use std::path::PathBuf;
 use tokio::fs as tokio_fs;
 
@@ -206,10 +208,24 @@ impl Ticket {
 
     /// Check if a value exists in an array field (deps or links).
     pub fn has_in_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        let field_enum: ArrayField = field.parse()?;
+        let _field_enum: ArrayField = field.parse()?;
         let raw_content = self.read_content()?;
-        let metadata = parse(&raw_content)?;
-        let current_array = Self::get_array_field(&metadata, field_enum)?;
+
+        // Try strict parse first, fall back to tolerant path
+        let current_array = match parse(&raw_content) {
+            Ok(metadata) => {
+                let field_enum: ArrayField = field.parse()?;
+                Self::get_array_field(&metadata, field_enum)?.clone()
+            }
+            Err(_) => {
+                eprintln!(
+                    "Warning: ticket '{}' has validation issues; using tolerant read for field '{}'",
+                    self.id, field
+                );
+                Self::extract_array_field_tolerant(&raw_content, field)?
+            }
+        };
+
         Ok(current_array.contains(&value.to_string()))
     }
 
@@ -224,16 +240,29 @@ impl Ticket {
     where
         F: FnOnce(&Vec<String>) -> Vec<String>,
     {
-        let field_enum: ArrayField = field.parse()?;
+        let _field_enum: ArrayField = field.parse()?;
         let raw_content = self.read_content()?;
-        let metadata = parse(&raw_content)?;
-        let current_array = Self::get_array_field(&metadata, field_enum)?;
 
-        if !should_mutate(current_array) {
+        // Try strict parse first, fall back to tolerant path
+        let current_array = match parse(&raw_content) {
+            Ok(metadata) => {
+                let field_enum: ArrayField = field.parse()?;
+                Self::get_array_field(&metadata, field_enum)?.clone()
+            }
+            Err(_) => {
+                eprintln!(
+                    "Warning: ticket '{}' has validation issues; using tolerant edit for field '{}'",
+                    self.id, field
+                );
+                Self::extract_array_field_tolerant(&raw_content, field)?
+            }
+        };
+
+        if !should_mutate(&current_array) {
             return Ok(false);
         }
 
-        let new_array = mutate(current_array);
+        let new_array = mutate(&current_array);
         let json_value = if new_array.is_empty() {
             "[]".to_string()
         } else {
@@ -261,6 +290,43 @@ impl Ticket {
         match field {
             ArrayField::Deps => Ok(&metadata.deps),
             ArrayField::Links => Ok(&metadata.links),
+        }
+    }
+
+    /// Tolerant extraction of an array field from raw ticket content.
+    ///
+    /// When the strict ticket parser fails (e.g., due to unknown fields, missing
+    /// required fields, or invalid values in other fields), this function falls back
+    /// to splitting the file into frontmatter and body, parsing only the YAML as a
+    /// generic mapping, and extracting the targeted array field.
+    ///
+    /// This allows array field operations (add/remove deps, links) to succeed even
+    /// when the ticket file has validation issues in unrelated fields.
+    fn extract_array_field_tolerant(raw_content: &str, field: &str) -> Result<Vec<String>> {
+        let (frontmatter_str, _body) = split_frontmatter(raw_content)?;
+        let mapping: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(&frontmatter_str)
+            .map_err(|e| {
+                JanusError::InvalidFormat(format!(
+                    "Failed to parse frontmatter YAML in tolerant mode: {e}"
+                ))
+            })?;
+
+        let key = serde_yaml_ng::Value::String(field.to_string());
+        match mapping.get(&key) {
+            Some(serde_yaml_ng::Value::Sequence(seq)) => {
+                let mut result = Vec::new();
+                for item in seq {
+                    match item {
+                        serde_yaml_ng::Value::String(s) => result.push(s.clone()),
+                        other => result.push(format!("{other:?}")),
+                    }
+                }
+                Ok(result)
+            }
+            Some(serde_yaml_ng::Value::Null) | None => Ok(Vec::new()),
+            Some(other) => Err(JanusError::InvalidFormat(format!(
+                "field '{field}' is not an array, found: {other:?}"
+            ))),
         }
     }
 
@@ -610,6 +676,396 @@ pub fn check_circular_dependency(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ==================== Tolerant Edit Path Tests ====================
+
+    #[test]
+    fn test_tolerant_extract_array_field_with_unknown_fields() {
+        // Ticket with an unknown field that would fail strict parsing (deny_unknown_fields)
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: ["dep-1", "dep-2"]
+links: []
+unknown_field: should_cause_strict_parse_failure
+---
+# Test Ticket
+
+Description.
+"#;
+
+        // Strict parse should fail
+        assert!(parse(content).is_err());
+
+        // Tolerant extraction should succeed
+        let deps = Ticket::extract_array_field_tolerant(content, "deps").unwrap();
+        assert_eq!(deps, vec!["dep-1", "dep-2"]);
+
+        let links = Ticket::extract_array_field_tolerant(content, "links").unwrap();
+        assert!(links.is_empty());
+    }
+
+    #[test]
+    fn test_tolerant_extract_array_field_missing_required_fields() {
+        // Ticket missing required `uuid` field
+        let content = r#"---
+id: test-1234
+status: new
+deps: ["existing-dep"]
+links: ["link-1"]
+---
+# Test Ticket
+"#;
+
+        // Strict parse should fail (missing uuid)
+        assert!(parse(content).is_err());
+
+        // Tolerant extraction should succeed
+        let deps = Ticket::extract_array_field_tolerant(content, "deps").unwrap();
+        assert_eq!(deps, vec!["existing-dep"]);
+
+        let links = Ticket::extract_array_field_tolerant(content, "links").unwrap();
+        assert_eq!(links, vec!["link-1"]);
+    }
+
+    #[test]
+    fn test_tolerant_extract_array_field_invalid_enum_value() {
+        // Ticket with an invalid status value
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: invalid_status_value
+deps: []
+links: ["link-a"]
+---
+# Test Ticket
+"#;
+
+        // Strict parse should fail (invalid status)
+        assert!(parse(content).is_err());
+
+        // Tolerant extraction should succeed
+        let deps = Ticket::extract_array_field_tolerant(content, "deps").unwrap();
+        assert!(deps.is_empty());
+
+        let links = Ticket::extract_array_field_tolerant(content, "links").unwrap();
+        assert_eq!(links, vec!["link-a"]);
+    }
+
+    #[test]
+    fn test_tolerant_extract_array_field_null_value() {
+        // Field exists but is null (e.g., `deps:` with no value)
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps:
+links:
+---
+# Test Ticket
+"#;
+
+        // This may or may not pass strict parsing depending on serde defaults,
+        // but tolerant extraction should handle null gracefully
+        let deps = Ticket::extract_array_field_tolerant(content, "deps").unwrap();
+        assert!(deps.is_empty());
+
+        let links = Ticket::extract_array_field_tolerant(content, "links").unwrap();
+        assert!(links.is_empty());
+    }
+
+    #[test]
+    fn test_tolerant_extract_array_field_missing_field() {
+        // The array field itself doesn't exist in the frontmatter
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+---
+# Test Ticket
+"#;
+
+        let deps = Ticket::extract_array_field_tolerant(content, "deps").unwrap();
+        assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_tolerant_extract_array_field_non_array_errors() {
+        // Field exists but is not an array
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: "not-an-array"
+---
+# Test Ticket
+"#;
+
+        let result = Ticket::extract_array_field_tolerant(content, "deps");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tolerant_extract_preserves_body_verbatim() {
+        // Ensure the tolerant path doesn't corrupt the body when used with update_field_in_content
+        let content = r#"---
+id: test-1234
+status: new
+deps: ["old-dep"]
+unknown_extra: true
+---
+# My Special Title
+
+Body with **markdown** and special --- chars.
+
+## Notes
+
+Some notes here.
+"#;
+
+        // Strict parse should fail (missing uuid, unknown field)
+        assert!(parse(content).is_err());
+
+        // But FrontmatterEditor (used by update_field_in_content) should work
+        let updated = update_field_in_content(content, "deps", r#"["old-dep","new-dep"]"#).unwrap();
+
+        // Body should be preserved verbatim
+        assert!(updated.contains("# My Special Title"));
+        assert!(updated.contains("Body with **markdown** and special --- chars."));
+        assert!(updated.contains("## Notes"));
+        assert!(updated.contains("Some notes here."));
+    }
+
+    #[test]
+    fn test_tolerant_file_based_update_field() {
+        // Test that update_field works on a ticket with validation issues
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test-1234.md");
+
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: []
+links: []
+unknown_field: causes_strict_failure
+---
+# Test Ticket
+
+Description.
+"#;
+        std::fs::write(&file_path, content).unwrap();
+
+        let ticket = Ticket {
+            file_path: file_path.clone(),
+            id: "test-1234".to_string(),
+        };
+
+        // Strict read should fail
+        assert!(ticket.read().is_err());
+
+        // update_field should still work (it uses FrontmatterEditor, not strict parse)
+        ticket.update_field("status", "complete").unwrap();
+
+        let updated = std::fs::read_to_string(&file_path).unwrap();
+        assert!(updated.contains("status: complete"));
+        assert!(updated.contains("id: test-1234"));
+        assert!(updated.contains("# Test Ticket"));
+    }
+
+    #[test]
+    fn test_tolerant_file_based_add_to_array_field() {
+        // Test that add_to_array_field works on a ticket with validation issues
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test-1234.md");
+
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: ["existing-dep"]
+links: []
+unknown_field: causes_strict_failure
+---
+# Test Ticket
+
+Description.
+"#;
+        std::fs::write(&file_path, content).unwrap();
+
+        let ticket = Ticket {
+            file_path: file_path.clone(),
+            id: "test-1234".to_string(),
+        };
+
+        // Strict read should fail
+        assert!(ticket.read().is_err());
+
+        // add_to_array_field should succeed via tolerant path
+        let added = ticket.add_to_array_field("deps", "new-dep").unwrap();
+        assert!(added);
+
+        let updated = std::fs::read_to_string(&file_path).unwrap();
+        assert!(updated.contains("existing-dep"));
+        assert!(updated.contains("new-dep"));
+        assert!(updated.contains("# Test Ticket"));
+    }
+
+    #[test]
+    fn test_tolerant_file_based_remove_from_array_field() {
+        // Test that remove_from_array_field works on a ticket with validation issues
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test-1234.md");
+
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: ["dep-to-remove", "dep-to-keep"]
+links: []
+unknown_field: causes_strict_failure
+---
+# Test Ticket
+
+Description.
+"#;
+        std::fs::write(&file_path, content).unwrap();
+
+        let ticket = Ticket {
+            file_path: file_path.clone(),
+            id: "test-1234".to_string(),
+        };
+
+        // Strict read should fail
+        assert!(ticket.read().is_err());
+
+        // remove_from_array_field should succeed via tolerant path
+        let removed = ticket
+            .remove_from_array_field("deps", "dep-to-remove")
+            .unwrap();
+        assert!(removed);
+
+        let updated = std::fs::read_to_string(&file_path).unwrap();
+        assert!(!updated.contains("dep-to-remove"));
+        assert!(updated.contains("dep-to-keep"));
+    }
+
+    #[test]
+    fn test_tolerant_file_based_has_in_array_field() {
+        // Test that has_in_array_field works on a ticket with validation issues
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test-1234.md");
+
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: ["existing-dep"]
+links: []
+unknown_field: causes_strict_failure
+---
+# Test Ticket
+"#;
+        std::fs::write(&file_path, content).unwrap();
+
+        let ticket = Ticket {
+            file_path: file_path.clone(),
+            id: "test-1234".to_string(),
+        };
+
+        // Strict read should fail
+        assert!(ticket.read().is_err());
+
+        // has_in_array_field should succeed via tolerant path
+        assert!(ticket.has_in_array_field("deps", "existing-dep").unwrap());
+        assert!(!ticket.has_in_array_field("deps", "nonexistent").unwrap());
+    }
+
+    #[test]
+    fn test_tolerant_add_does_not_duplicate() {
+        // When value already exists, add should return false even in tolerant mode
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test-1234.md");
+
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: ["already-there"]
+links: []
+unknown_field: causes_strict_failure
+---
+# Test Ticket
+"#;
+        std::fs::write(&file_path, content).unwrap();
+
+        let ticket = Ticket {
+            file_path: file_path.clone(),
+            id: "test-1234".to_string(),
+        };
+
+        let added = ticket.add_to_array_field("deps", "already-there").unwrap();
+        assert!(!added);
+    }
+
+    #[test]
+    fn test_tolerant_remove_nonexistent_returns_false() {
+        // When value doesn't exist, remove should return false even in tolerant mode
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test-1234.md");
+
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: ["some-dep"]
+links: []
+unknown_field: causes_strict_failure
+---
+# Test Ticket
+"#;
+        std::fs::write(&file_path, content).unwrap();
+
+        let ticket = Ticket {
+            file_path: file_path.clone(),
+            id: "test-1234".to_string(),
+        };
+
+        let removed = ticket
+            .remove_from_array_field("deps", "nonexistent")
+            .unwrap();
+        assert!(!removed);
+    }
+
+    #[test]
+    fn test_strict_path_still_used_when_valid() {
+        // Ensure that when strict parsing succeeds, we use the strict path (no warning)
+        let content = r#"---
+id: test-1234
+uuid: 550e8400-e29b-41d4-a716-446655440000
+status: new
+deps: ["dep-1"]
+links: []
+created: 2024-01-01T00:00:00Z
+type: task
+priority: 2
+---
+# Valid Ticket
+
+Description.
+"#;
+
+        // Strict parse should succeed
+        let metadata = parse(content).unwrap();
+        assert_eq!(metadata.deps, vec!["dep-1"]);
+
+        // Tolerant extraction should also work (same result)
+        let deps = Ticket::extract_array_field_tolerant(content, "deps").unwrap();
+        assert_eq!(deps, vec!["dep-1"]);
+    }
+
+    // ==================== Existing Tests ====================
 
     #[test]
     fn test_resolve_exact_match() {
