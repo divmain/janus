@@ -4,6 +4,7 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::display::TicketFormatter;
 use crate::error::Result;
+use crate::status::is_dependency_satisfied;
 use crate::ticket::{Ticket, build_ticket_map, get_children_count};
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -27,18 +28,19 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
             children.push(other);
         }
 
-        // Check if this ticket is blocked by the current ticket
-        if other.deps.contains(&ticket.id) && other.status != Some(TicketStatus::Complete) {
+        // Check if this ticket is blocking another ticket
+        // (other depends on us, and we are not yet terminal)
+        if other.deps.contains(&ticket.id) && !metadata.status.is_some_and(|s| s.is_terminal()) {
             blocking.push(other);
         }
     }
 
-    // Find blockers (deps that are not complete)
+    // Find blockers (deps that are not satisfied per canonical definition)
     for dep_id in &metadata.deps {
-        if let Some(dep) = ticket_map.get(dep_id)
-            && dep.status != Some(TicketStatus::Complete)
-        {
-            blockers.push(dep);
+        if !is_dependency_satisfied(dep_id, &ticket_map) {
+            if let Some(dep) = ticket_map.get(dep_id) {
+                blockers.push(dep);
+            }
         }
     }
 

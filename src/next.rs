@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::Result;
+use crate::status::all_deps_satisfied;
 use crate::types::{TicketMetadata, TicketStatus};
 
 /// Reason why a ticket is included in the next work queue
@@ -290,7 +291,7 @@ impl<'a> NextWorkFinder<'a> {
                         }
                         // If dep is Complete, Cancelled, or InProgress, skip it
                     }
-                    // Orphan dependency - treat as complete, skip
+                    // Orphan dependency - nothing to traverse or add
                 }
             }
         }
@@ -309,7 +310,7 @@ impl<'a> NextWorkFinder<'a> {
         result
     }
 
-    /// Check if a ticket is ready (all dependencies are complete AND ticket is workable)
+    /// Check if a ticket is ready (all dependencies are satisfied AND ticket is workable)
     fn is_ready(&self, ticket: &TicketMetadata) -> bool {
         // Ticket must have workable status (New or Next)
         let is_workable = matches!(
@@ -321,15 +322,8 @@ impl<'a> NextWorkFinder<'a> {
             return false;
         }
 
-        // All dependencies must be complete
-        ticket.deps.iter().all(|dep_id| {
-            if let Some(dep) = self.ticket_map.get(dep_id) {
-                matches!(dep.status, Some(TicketStatus::Complete))
-            } else {
-                // Orphan dependency - treat as complete
-                true
-            }
-        })
+        // All dependencies must be satisfied (terminal status; orphans block)
+        all_deps_satisfied(ticket, self.ticket_map)
     }
 
     /// Detect if a ticket is part of a circular dependency
@@ -737,7 +731,7 @@ mod tests {
     }
 
     #[test]
-    fn test_orphan_dep_treated_as_complete() {
+    fn test_orphan_dep_treated_as_blocking() {
         let mut map = HashMap::new();
         // Ticket depends on non-existent ticket
         map.insert(
@@ -754,9 +748,43 @@ mod tests {
         let finder = NextWorkFinder::new(&map);
         let result = finder.get_next_work(10).unwrap();
 
-        // Should be treated as ready since orphan dep is considered complete
+        // Orphan dep should be treated as blocking (safer default)
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].ticket_id, "j-orphan");
+        assert_eq!(result[0].reason, InclusionReason::TargetBlocked);
+    }
+
+    #[test]
+    fn test_cancelled_dep_treated_as_satisfied() {
+        let mut map = HashMap::new();
+        // Ticket depends on a cancelled ticket — should be ready
+        map.insert(
+            "j-dep".to_string(),
+            create_test_ticket(
+                "j-dep",
+                TicketStatus::Cancelled,
+                2,
+                vec![],
+                "2024-01-01T00:00:00Z",
+            ),
+        );
+        map.insert(
+            "j-ticket".to_string(),
+            create_test_ticket(
+                "j-ticket",
+                TicketStatus::New,
+                2,
+                vec!["j-dep"],
+                "2024-01-01T00:00:00Z",
+            ),
+        );
+
+        let finder = NextWorkFinder::new(&map);
+        let result = finder.get_next_work(10).unwrap();
+
+        // Cancelled dep should be treated as satisfied, so j-ticket is ready
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].ticket_id, "j-ticket");
         assert_eq!(result[0].reason, InclusionReason::Ready);
     }
 

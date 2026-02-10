@@ -30,6 +30,7 @@ use crate::commands::graph::{RelationshipFilter, build_edges, generate_dot};
 use crate::commands::{get_next_items_phased, get_next_items_simple};
 
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
+use crate::status::{all_deps_satisfied, has_unsatisfied_dep, is_dependency_satisfied};
 use crate::ticket::{Ticket, build_ticket_map, get_all_tickets_with_map};
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -276,12 +277,8 @@ async fn read_ready_tickets() -> Result<ReadResourceResult, ResourceError> {
             if !matches!(t.status, Some(TicketStatus::New) | Some(TicketStatus::Next)) {
                 return false;
             }
-            // All deps must be terminal (complete or cancelled)
-            t.deps.iter().all(|dep_id| {
-                ticket_map
-                    .get(dep_id)
-                    .is_some_and(|dep| dep.status.is_some_and(|s| s.is_terminal()))
-            })
+            // All deps must be satisfied (terminal status; orphans block)
+            all_deps_satisfied(t, &ticket_map)
         })
         .map(ticket_to_json)
         .collect();
@@ -318,12 +315,8 @@ async fn read_blocked_tickets() -> Result<ReadResourceResult, ResourceError> {
             if t.deps.is_empty() {
                 return false;
             }
-            // At least one dep must be incomplete (not terminal)
-            t.deps.iter().any(|dep_id| {
-                ticket_map
-                    .get(dep_id)
-                    .is_none_or(|dep| !dep.status.is_some_and(|s| s.is_terminal()))
-            })
+            // At least one dep must be unsatisfied
+            has_unsatisfied_dep(t, &ticket_map)
         })
         .map(|t| {
             let mut json = ticket_to_json(t);
@@ -331,11 +324,7 @@ async fn read_blocked_tickets() -> Result<ReadResourceResult, ResourceError> {
             let blocking_deps: Vec<serde_json::Value> = t
                 .deps
                 .iter()
-                .filter(|dep_id| {
-                    ticket_map
-                        .get(*dep_id)
-                        .is_none_or(|dep| !dep.status.is_some_and(|s| s.is_terminal()))
-                })
+                .filter(|dep_id| !is_dependency_satisfied(dep_id, &ticket_map))
                 .map(|dep_id| {
                     let dep = ticket_map.get(dep_id);
                     json!({

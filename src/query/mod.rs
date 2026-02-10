@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use crate::error::Result;
+use crate::status::{all_deps_satisfied, has_unsatisfied_dep};
 use crate::ticket::build_ticket_map;
 use crate::types::{TicketMetadata, TicketSize, TicketStatus};
 
@@ -195,7 +196,7 @@ impl TicketFilter for TriagedFilter {
     }
 }
 
-/// Filter tickets that are "ready" (New/Next status with all deps complete)
+/// Filter tickets that are "ready" (New/Next status with all deps satisfied)
 pub struct ReadyFilter;
 
 impl TicketFilter for ReadyFilter {
@@ -207,22 +208,20 @@ impl TicketFilter for ReadyFilter {
             return false;
         }
 
-        // All deps must be terminal (complete or cancelled)
+        // Warn about dangling deps before the shared check
         let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
-        ticket.deps.iter().all(|dep_id| {
-            context
-                .ticket_map
-                .get(dep_id)
-                .map(|dep| dep.status.is_some_and(|s| s.is_terminal()))
-                .unwrap_or_else(|| {
-                    context.warn_dangling(ticket_id, dep_id);
-                    false
-                })
-        })
+        for dep_id in &ticket.deps {
+            if !context.ticket_map.contains_key(dep_id) {
+                context.warn_dangling(ticket_id, dep_id);
+            }
+        }
+
+        // All deps must be satisfied (terminal status; orphans block)
+        all_deps_satisfied(ticket, &context.ticket_map)
     }
 }
 
-/// Filter tickets that are "blocked" (New/Next status with incomplete deps)
+/// Filter tickets that are "blocked" (New/Next status with unsatisfied deps)
 pub struct BlockedFilter;
 
 impl TicketFilter for BlockedFilter {
@@ -239,18 +238,16 @@ impl TicketFilter for BlockedFilter {
             return false;
         }
 
-        // Check if any dep is incomplete (not terminal)
+        // Warn about dangling deps before the shared check
         let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
-        ticket.deps.iter().any(|dep_id| {
-            context
-                .ticket_map
-                .get(dep_id)
-                .map(|dep| !dep.status.is_some_and(|s| s.is_terminal()))
-                .unwrap_or_else(|| {
-                    context.warn_dangling(ticket_id, dep_id);
-                    true
-                })
-        })
+        for dep_id in &ticket.deps {
+            if !context.ticket_map.contains_key(dep_id) {
+                context.warn_dangling(ticket_id, dep_id);
+            }
+        }
+
+        // Check if any dep is unsatisfied (not terminal, or orphan)
+        has_unsatisfied_dep(ticket, &context.ticket_map)
     }
 }
 

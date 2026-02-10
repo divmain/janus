@@ -54,6 +54,7 @@ use crate::next::NextWorkFinder;
 use crate::plan::parser::serialize_plan;
 use crate::plan::{Plan, compute_plan_status};
 use crate::remote::config::Config;
+use crate::status::is_dependency_satisfied;
 use crate::ticket::{
     Ticket, TicketBuilder, build_ticket_map, check_circular_dependency, get_all_tickets_with_map,
 };
@@ -998,17 +999,19 @@ impl JanusTools {
             }
 
             // Check if other ticket is blocked by current ticket
-            if other.deps.contains(&ticket.id) && !other.status.is_some_and(|s| s.is_terminal()) {
+            // (other depends on us, and we are not yet terminal)
+            if other.deps.contains(&ticket.id) && !metadata.status.is_some_and(|s| s.is_terminal())
+            {
                 blocking.push(other);
             }
         }
 
-        // Find blockers (deps that are not terminal)
+        // Find blockers (deps that are not satisfied per canonical definition)
         for dep_id in &metadata.deps {
-            if let Some(dep) = ticket_map.get(dep_id)
-                && !dep.status.is_some_and(|s| s.is_terminal())
-            {
-                blockers.push(dep);
+            if !is_dependency_satisfied(dep_id, &ticket_map) {
+                if let Some(dep) = ticket_map.get(dep_id) {
+                    blockers.push(dep);
+                }
             }
         }
 

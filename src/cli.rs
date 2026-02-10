@@ -4,7 +4,7 @@ use std::io;
 use std::str::FromStr;
 
 use crate::types::{
-    TicketPriority, TicketSize, TicketStatus, TicketType, DEFAULT_PRIORITY_STR, VALID_PRIORITIES,
+    DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES,
     VALID_SIZES, VALID_STATUSES, VALID_TYPES,
 };
 
@@ -1002,9 +1002,7 @@ impl Commands {
 
             Commands::Dep { action } => match action {
                 DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json).await,
-                DepAction::Remove { id, dep_id, json } => {
-                    cmd_dep_remove(&id, &dep_id, json).await
-                }
+                DepAction::Remove { id, dep_id, json } => cmd_dep_remove(&id, &dep_id, json).await,
                 DepAction::Tree { id, full, json } => cmd_dep_tree(&id, full, json).await,
             },
 
@@ -1056,9 +1054,7 @@ impl Commands {
             Commands::Board => cmd_board().await,
 
             Commands::Remote { action } => match action {
-                RemoteAction::Browse { provider } => {
-                    cmd_remote_browse(provider.as_deref()).await
-                }
+                RemoteAction::Browse { provider } => cmd_remote_browse(provider.as_deref()).await,
                 RemoteAction::Adopt {
                     remote_ref,
                     prefix,
@@ -1117,8 +1113,7 @@ impl Commands {
                     verbose_phases,
                     json,
                 } => {
-                    cmd_plan_show(&id, raw, tickets_only, phases_only, &verbose_phases, json)
-                        .await
+                    cmd_plan_show(&id, raw, tickets_only, phases_only, &verbose_phases, json).await
                 }
                 PlanAction::Edit { id, json } => cmd_plan_edit(&id, json).await,
                 PlanAction::Ls { status, json } => cmd_plan_ls(status, json).await,
@@ -1179,18 +1174,14 @@ impl Commands {
                     force,
                     migrate,
                     json,
-                } => {
-                    cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), json).await
-                }
+                } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), json).await,
                 PlanAction::Reorder {
                     plan_id,
                     phase,
                     reorder_phases,
                     json,
                 } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases, json).await,
-                PlanAction::Delete { id, force, json } => {
-                    cmd_plan_delete(&id, force, json).await
-                }
+                PlanAction::Delete { id, force, json } => cmd_plan_delete(&id, force, json).await,
                 PlanAction::Rename {
                     id,
                     new_title,

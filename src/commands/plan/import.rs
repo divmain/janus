@@ -131,7 +131,10 @@ fn format_import_summary(plan: &ImportablePlan) -> String {
             complete_count
         ));
     } else {
-        out.push_str(&format!("  - {} tickets (status: new)\n", plan.task_count()));
+        out.push_str(&format!(
+            "  - {} tickets (status: new)\n",
+            plan.task_count()
+        ));
     }
 
     if !plan.acceptance_criteria.is_empty() {

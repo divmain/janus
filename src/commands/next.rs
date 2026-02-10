@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::error::Result;
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
+use crate::status::is_dependency_satisfied;
 use crate::ticket::build_ticket_map;
 
 /// JSON output structure for a work item
@@ -87,18 +88,13 @@ fn work_item_to_json(
 
     let blocks = item.blocks.clone();
 
-    // For blocked tickets, include the list of incomplete dependencies
+    // For blocked tickets, include the list of unsatisfied dependencies
     let blocked_by = if matches!(item.reason, InclusionReason::TargetBlocked) {
         let deps: Vec<String> = item
             .metadata
             .deps
             .iter()
-            .filter(|dep_id| {
-                ticket_map
-                    .get(*dep_id)
-                    .map(|dep| !matches!(dep.status, Some(crate::types::TicketStatus::Complete)))
-                    .unwrap_or(false)
-            })
+            .filter(|dep_id| !is_dependency_satisfied(dep_id, ticket_map))
             .cloned()
             .collect();
         if deps.is_empty() { None } else { Some(deps) }
