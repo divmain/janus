@@ -138,8 +138,15 @@ impl Ticket {
     }
 
     /// Update a field in the ticket's frontmatter.
+    ///
+    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
+    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
+    /// the same ticket simultaneously.
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
         validate_field_name(field, "update")?;
+
+        // Hold an exclusive lock for the entire read-modify-write cycle.
+        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
 
         let raw_content = self.read_content()?;
 
@@ -159,8 +166,15 @@ impl Ticket {
     }
 
     /// Remove a field from the ticket's frontmatter.
+    ///
+    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
+    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
+    /// the same ticket simultaneously.
     pub fn remove_field(&self, field: &str) -> Result<()> {
         validate_field_name(field, "remove")?;
+
+        // Hold an exclusive lock for the entire read-modify-write cycle.
+        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
 
         let raw_content = self.read_content()?;
 
@@ -230,6 +244,11 @@ impl Ticket {
     }
 
     /// Generic helper for mutating array fields (deps, links).
+    ///
+    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
+    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
+    /// the same ticket simultaneously. This is especially important for array fields
+    /// where losing a dependency link has semantic consequences.
     fn mutate_array_field<F>(
         &self,
         field: &str,
@@ -241,6 +260,10 @@ impl Ticket {
         F: FnOnce(&Vec<String>) -> Vec<String>,
     {
         let _field_enum: ArrayField = field.parse()?;
+
+        // Hold an exclusive lock for the entire read-modify-write cycle.
+        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
+
         let raw_content = self.read_content()?;
 
         // Try strict parse first, fall back to tolerant path
@@ -335,6 +358,10 @@ impl Ticket {
     /// Adds the note text under a "## Notes" section. If the section doesn't exist,
     /// it will be created. The note is prefixed with a timestamp.
     ///
+    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
+    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
+    /// the same ticket simultaneously.
+    ///
     /// # Errors
     ///
     /// Returns `JanusError::EmptyNote` if the note text is empty or only whitespace.
@@ -345,6 +372,9 @@ impl Ticket {
         }
 
         let timestamp = crate::utils::iso_date();
+
+        // Hold an exclusive lock for the entire read-modify-write cycle.
+        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
 
         let content = self.read_content()?;
         let mut new_content = content;
