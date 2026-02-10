@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use dashmap::mapref::multiple::RefMulti;
+
 use crate::cache::TicketStore;
 use crate::plan::types::PlanMetadata;
 use crate::types::{TicketMetadata, TicketSize, TicketSummary};
@@ -25,16 +27,64 @@ fn contains_case_insensitive(haystack: &str, needle: &str) -> bool {
         .any(|window| window == needle_lower.as_slice())
 }
 
+/// Sort a slice by an optional string ID field, using `""` for `None`.
+///
+/// This eliminates the repeated `sort_by(|a, b| a.id.as_deref().unwrap_or("").cmp(...))` closure
+/// that otherwise appears across many query methods.
+fn sort_by_id<T>(results: &mut [T], id_fn: impl Fn(&T) -> Option<&str>) {
+    results.sort_by(|a, b| id_fn(a).unwrap_or("").cmp(id_fn(b).unwrap_or("")));
+}
+
+/// Check whether a ticket matches a text search query with optional priority filter.
+///
+/// This is the shared predicate used by both `search_tickets` and
+/// `search_ticket_summaries` to avoid duplicating ~25 lines of filter logic.
+fn matches_search_query(
+    key: &str,
+    ticket: &TicketMetadata,
+    text_query: &str,
+    priority_filter: Option<u8>,
+) -> bool {
+    // Apply priority filter if present
+    if let Some(priority_num) = priority_filter {
+        let ticket_priority = ticket.priority.map(|p| p.as_num()).unwrap_or(2); // default P2
+        if ticket_priority != priority_num {
+            return false;
+        }
+    }
+
+    // If no text query remains after stripping priority, match all
+    if text_query.is_empty() {
+        return true;
+    }
+
+    // Case-insensitive substring matching without per-field allocations
+    let id_match = contains_case_insensitive(key, text_query);
+
+    let title_match = ticket
+        .title
+        .as_ref()
+        .is_some_and(|t| contains_case_insensitive(t, text_query));
+
+    let body_match = ticket
+        .body
+        .as_ref()
+        .is_some_and(|b| contains_case_insensitive(b, text_query));
+
+    let type_match = ticket
+        .ticket_type
+        .as_ref()
+        .is_some_and(|t| contains_case_insensitive(&t.to_string(), text_query));
+
+    id_match || title_match || body_match || type_match
+}
+
 impl TicketStore {
     /// Get all tickets as a Vec, sorted by id for deterministic ordering.
     pub fn get_all_tickets(&self) -> Vec<TicketMetadata> {
         let mut results: Vec<TicketMetadata> =
             self.tickets().iter().map(|r| r.value().clone()).collect();
-        results.sort_by(|a, b| {
-            a.id.as_deref()
-                .unwrap_or("")
-                .cmp(b.id.as_deref().unwrap_or(""))
-        });
+        sort_by_id(&mut results, |t| t.id.as_deref());
         results
     }
 
@@ -82,76 +132,57 @@ impl TicketStore {
         counts
     }
 
+    /// Return DashMap references for tickets matching a text search query.
+    ///
+    /// This is the shared filter used by both `search_tickets` and
+    /// `search_ticket_summaries`; callers choose the final `.map()` to
+    /// produce either `TicketMetadata` or `TicketSummary`.
+    fn filter_tickets_by_query(&self, query: &str) -> Vec<RefMulti<'_, String, TicketMetadata>> {
+        let priority_filter = parse_priority_filter(query);
+        let text_query = strip_priority_shorthand(query).to_lowercase();
+
+        self.tickets()
+            .iter()
+            .filter(|r| matches_search_query(r.key(), r.value(), &text_query, priority_filter))
+            .collect()
+    }
+
+    /// Return DashMap references for tickets matching a size filter.
+    ///
+    /// Shared filter used by both `get_tickets_by_size` and
+    /// `get_ticket_summaries_by_size`.
+    fn filter_tickets_by_size(
+        &self,
+        sizes: &[TicketSize],
+    ) -> Vec<RefMulti<'_, String, TicketMetadata>> {
+        self.tickets()
+            .iter()
+            .filter(|r| r.value().size.as_ref().is_some_and(|s| sizes.contains(s)))
+            .collect()
+    }
+
     /// Search tickets by text query with optional priority filter.
     ///
     /// Uses case-insensitive substring matching on: ticket_id, title, body, ticket_type.
     /// Supports priority shorthand (e.g., "p0 fix" filters to priority 0 and searches "fix").
     pub fn search_tickets(&self, query: &str) -> Vec<TicketMetadata> {
-        let priority_filter = parse_priority_filter(query);
-        let text_query = strip_priority_shorthand(query).to_lowercase();
-
         let mut results: Vec<TicketMetadata> = self
-            .tickets()
-            .iter()
-            .filter(|r| {
-                let ticket = r.value();
-
-                // Apply priority filter if present
-                if let Some(priority_num) = priority_filter {
-                    let ticket_priority = ticket.priority.map(|p| p.as_num()).unwrap_or(2); // default P2
-                    if ticket_priority != priority_num {
-                        return false;
-                    }
-                }
-
-                // If no text query remains after stripping priority, match all
-                if text_query.is_empty() {
-                    return true;
-                }
-
-                // Case-insensitive substring matching without per-field allocations
-                let id_match = contains_case_insensitive(r.key(), &text_query);
-
-                let title_match = ticket
-                    .title
-                    .as_ref()
-                    .is_some_and(|t| contains_case_insensitive(t, &text_query));
-
-                let body_match = ticket
-                    .body
-                    .as_ref()
-                    .is_some_and(|b| contains_case_insensitive(b, &text_query));
-
-                let type_match = ticket
-                    .ticket_type
-                    .as_ref()
-                    .is_some_and(|t| contains_case_insensitive(&t.to_string(), &text_query));
-
-                id_match || title_match || body_match || type_match
-            })
+            .filter_tickets_by_query(query)
+            .into_iter()
             .map(|r| r.value().clone())
             .collect();
-        results.sort_by(|a, b| {
-            a.id.as_deref()
-                .unwrap_or("")
-                .cmp(b.id.as_deref().unwrap_or(""))
-        });
+        sort_by_id(&mut results, |t| t.id.as_deref());
         results
     }
 
     /// Get tickets filtered by size, sorted by id for deterministic ordering.
     pub fn get_tickets_by_size(&self, sizes: &[TicketSize]) -> Vec<TicketMetadata> {
         let mut results: Vec<TicketMetadata> = self
-            .tickets()
-            .iter()
-            .filter(|r| r.value().size.as_ref().is_some_and(|s| sizes.contains(s)))
+            .filter_tickets_by_size(sizes)
+            .into_iter()
             .map(|r| r.value().clone())
             .collect();
-        results.sort_by(|a, b| {
-            a.id.as_deref()
-                .unwrap_or("")
-                .cmp(b.id.as_deref().unwrap_or(""))
-        });
+        sort_by_id(&mut results, |t| t.id.as_deref());
         results
     }
 
@@ -169,11 +200,7 @@ impl TicketStore {
             .iter()
             .map(|r| TicketSummary::from(r.value()))
             .collect();
-        results.sort_by(|a, b| {
-            a.id.as_deref()
-                .unwrap_or("")
-                .cmp(b.id.as_deref().unwrap_or(""))
-        });
+        sort_by_id(&mut results, |t| t.id.as_deref());
         results
     }
 
@@ -185,71 +212,23 @@ impl TicketStore {
     /// Unlike `search_tickets`, this avoids cloning the full body and uses
     /// allocation-free case-insensitive matching via `contains_case_insensitive`.
     pub fn search_ticket_summaries(&self, query: &str) -> Vec<TicketSummary> {
-        let priority_filter = parse_priority_filter(query);
-        let text_query = strip_priority_shorthand(query).to_lowercase();
-
         let mut results: Vec<TicketSummary> = self
-            .tickets()
-            .iter()
-            .filter(|r| {
-                let ticket = r.value();
-
-                // Apply priority filter if present
-                if let Some(priority_num) = priority_filter {
-                    let ticket_priority = ticket.priority.map(|p| p.as_num()).unwrap_or(2);
-                    if ticket_priority != priority_num {
-                        return false;
-                    }
-                }
-
-                // If no text query remains after stripping priority, match all
-                if text_query.is_empty() {
-                    return true;
-                }
-
-                // Case-insensitive substring matching without per-field allocations
-                let id_match = contains_case_insensitive(r.key(), &text_query);
-
-                let title_match = ticket
-                    .title
-                    .as_ref()
-                    .is_some_and(|t| contains_case_insensitive(t, &text_query));
-
-                let body_match = ticket
-                    .body
-                    .as_ref()
-                    .is_some_and(|b| contains_case_insensitive(b, &text_query));
-
-                let type_match = ticket
-                    .ticket_type
-                    .as_ref()
-                    .is_some_and(|t| contains_case_insensitive(&t.to_string(), &text_query));
-
-                id_match || title_match || body_match || type_match
-            })
+            .filter_tickets_by_query(query)
+            .into_iter()
             .map(|r| TicketSummary::from(r.value()))
             .collect();
-        results.sort_by(|a, b| {
-            a.id.as_deref()
-                .unwrap_or("")
-                .cmp(b.id.as_deref().unwrap_or(""))
-        });
+        sort_by_id(&mut results, |t| t.id.as_deref());
         results
     }
 
     /// Get ticket summaries filtered by size, sorted by id.
     pub fn get_ticket_summaries_by_size(&self, sizes: &[TicketSize]) -> Vec<TicketSummary> {
         let mut results: Vec<TicketSummary> = self
-            .tickets()
-            .iter()
-            .filter(|r| r.value().size.as_ref().is_some_and(|s| sizes.contains(s)))
+            .filter_tickets_by_size(sizes)
+            .into_iter()
             .map(|r| TicketSummary::from(r.value()))
             .collect();
-        results.sort_by(|a, b| {
-            a.id.as_deref()
-                .unwrap_or("")
-                .cmp(b.id.as_deref().unwrap_or(""))
-        });
+        sort_by_id(&mut results, |t| t.id.as_deref());
         results
     }
 
@@ -266,11 +245,7 @@ impl TicketStore {
     pub fn get_all_plans(&self) -> Vec<PlanMetadata> {
         let mut results: Vec<PlanMetadata> =
             self.plans().iter().map(|r| r.value().clone()).collect();
-        results.sort_by(|a, b| {
-            a.id.as_deref()
-                .unwrap_or("")
-                .cmp(b.id.as_deref().unwrap_or(""))
-        });
+        sort_by_id(&mut results, |p| p.id.as_deref());
         results
     }
 
