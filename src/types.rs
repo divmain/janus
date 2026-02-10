@@ -7,7 +7,6 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use crate::error::JanusError;
-use crate::hooks::HookContext;
 
 // Re-export path functions from the paths module
 pub use crate::paths::{janus_root, plans_dir, tickets_items_dir};
@@ -733,21 +732,6 @@ impl TicketMetadata {
     /// Get the item type
     pub fn item_type(&self) -> EntityType {
         EntityType::Ticket
-    }
-
-    /// Build a hook context from this metadata
-    pub fn hook_context(&self) -> HookContext {
-        let mut ctx = HookContext::new().with_item_type(self.item_type());
-
-        if let Some(id) = self.id() {
-            ctx = ctx.with_item_id(id);
-        }
-
-        if let Some(fp) = self.file_path() {
-            ctx = ctx.with_file_path(fp);
-        }
-
-        ctx
     }
 }
 
