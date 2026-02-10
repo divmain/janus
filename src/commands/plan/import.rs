@@ -14,7 +14,7 @@ use crate::plan::{
     ImportablePlan, Plan, ensure_plans_dir, generate_plan_id, get_all_plans, parse_importable_plan,
 };
 
-use crate::types::TicketType;
+use crate::types::{TicketPriority, TicketType};
 use crate::utils::{generate_uuid, iso_date};
 
 /// The Plan Format Specification document.
@@ -159,9 +159,9 @@ fn create_ticket_from_task(
     let (id, _file_path) = crate::ticket::TicketBuilder::new(&task.title)
         .description(task.body.as_deref())
         .prefix(prefix)
-        .ticket_type(ticket_type.to_string())
+        .ticket_type_enum(ticket_type)
         .status(status)
-        .priority("2")
+        .priority_enum(TicketPriority::default())
         .run_hooks(true)
         .build()?;
 
@@ -182,8 +182,8 @@ fn create_verification_ticket(
     let (id, _file_path) = crate::ticket::TicketBuilder::new("Verify Acceptance Criteria")
         .description(Some(body))
         .prefix(prefix)
-        .ticket_type(ticket_type.to_string())
-        .priority("2")
+        .ticket_type_enum(ticket_type)
+        .priority_enum(TicketPriority::default())
         .run_hooks(true)
         .build()?;
 

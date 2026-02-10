@@ -58,7 +58,7 @@ use crate::status::is_dependency_satisfied;
 use crate::ticket::{
     Ticket, TicketBuilder, build_ticket_map, check_circular_dependency, get_all_tickets_with_map,
 };
-use crate::types::{TicketMetadata, TicketSize, TicketStatus, TicketType};
+use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
 
 use super::format::{
@@ -633,16 +633,14 @@ impl JanusTools {
             .run_hooks(true);
 
         if let Some(ref t) = request.ticket_type {
-            // Validate ticket type
-            TicketType::from_str(t).map_err(|_| format!("Invalid ticket type: {t}"))?;
-            builder = builder.ticket_type(t);
+            let tt = TicketType::from_str(t).map_err(|_| format!("Invalid ticket type: {t}"))?;
+            builder = builder.ticket_type_enum(tt);
         }
 
         if let Some(p) = request.priority {
-            if p > 4 {
-                return Err(format!("Priority must be 0-4, got {p}"));
-            }
-            builder = builder.priority(p.to_string());
+            let pp = TicketPriority::from_str(&p.to_string())
+                .map_err(|_| format!("Priority must be 0-4, got {p}"))?;
+            builder = builder.priority_enum(pp);
         }
 
         // Parse and set size if provided

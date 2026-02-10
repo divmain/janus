@@ -15,6 +15,7 @@ use crate::remote::config::Config;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef, create_provider};
 use crate::ticket::extract_body;
 use crate::ticket::{Ticket, TicketBuilder};
+use crate::types::TicketType;
 
 pub async fn cmd_adopt(
     remote_ref_str: &str,
@@ -75,8 +76,8 @@ fn create_ticket_from_remote(
     let (id, _file_path) = TicketBuilder::new(&remote_issue.title)
         .description(body)
         .prefix(prefix)
-        .ticket_type("task")
-        .status(status.to_string())
+        .ticket_type_enum(TicketType::Task)
+        .status_enum(status)
         .priority(priority.to_string())
         .remote(Some(remote_ref.to_string()))
         .run_hooks(false)

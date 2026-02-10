@@ -128,13 +128,28 @@ impl TicketBuilder {
         self
     }
 
+    pub fn ticket_type_enum(mut self, ticket_type: TicketType) -> Self {
+        self.ticket_type = Some(ticket_type.to_string());
+        self
+    }
+
     pub fn status(mut self, status: impl Into<String>) -> Self {
         self.status = Some(status.into());
         self
     }
 
+    pub fn status_enum(mut self, status: TicketStatus) -> Self {
+        self.status = Some(status.to_string());
+        self
+    }
+
     pub fn priority(mut self, priority: impl Into<String>) -> Self {
         self.priority = Some(priority.into());
+        self
+    }
+
+    pub fn priority_enum(mut self, priority: TicketPriority) -> Self {
+        self.priority = Some(priority.to_string());
         self
     }
 

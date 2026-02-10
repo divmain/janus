@@ -4,7 +4,7 @@ use crate::error::{JanusError, Result};
 use crate::remote::config::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef};
 use crate::ticket::TicketBuilder;
-use crate::types::TicketMetadata;
+use crate::types::{TicketMetadata, TicketType};
 use std::collections::HashSet;
 use thiserror::Error;
 use url::Url;
@@ -497,8 +497,8 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
 
     let (id, _path) = TicketBuilder::new(&sanitized_title)
         .description(body)
-        .status(status.to_string())
-        .ticket_type("task")
+        .status_enum(status)
+        .ticket_type_enum(TicketType::Task)
         .priority(priority.to_string())
         .remote(Some(remote_ref.to_string()))
         .run_hooks(false)

@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::error::Result;
-use crate::parser::{parse_document, ParsedDocument};
+use crate::parser::{ParsedDocument, parse_document};
 use crate::types::{
     CreatedAt, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
