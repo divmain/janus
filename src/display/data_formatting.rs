@@ -20,11 +20,7 @@ pub struct FormatOptions {
 /// assert_eq!(format_date_for_display("short"), "short");
 /// ```
 pub fn format_date_for_display(date_str: &str) -> String {
-    if date_str.len() >= 10 {
-        date_str[..10].to_string()
-    } else {
-        date_str.to_string()
-    }
+    date_str.get(..10).unwrap_or(date_str).to_string()
 }
 
 /// Format dependencies for display
