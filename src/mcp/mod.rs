@@ -37,6 +37,7 @@
 //! | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
 
 pub mod format;
+pub mod requests;
 pub mod resources;
 pub mod tools;
 pub mod types;
