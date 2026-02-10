@@ -73,28 +73,15 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
         .map(super::ticket_minimal_json)
         .collect();
 
-    let json_output = json!({
-        "id": metadata.id,
-        "uuid": metadata.uuid,
-        "title": metadata.title,
-        "status": metadata.status.map(|s| s.to_string()),
-        "type": metadata.ticket_type.map(|t| t.to_string()),
-        "priority": metadata.priority.map(|p| p.as_num()),
-        "size": metadata.size.map(|s| s.to_string()),
-        "created": metadata.created,
-        "deps": metadata.deps,
-        "links": metadata.links,
-        "parent": metadata.parent,
-        "external_ref": metadata.external_ref,
-        "remote": metadata.remote,
-        "file_path": metadata.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
-        "completion_summary": metadata.completion_summary,
-        "blockers": blockers_json,
-        "blocking": blocking_json,
-        "children": children_json,
-        "linked": linked_json,
-        "children_count": spawned_count,
-    });
+    // Use ticket_to_json as base and merge enrichment fields
+    let mut json_output = super::ticket_to_json(&metadata);
+    if let Some(obj) = json_output.as_object_mut() {
+        obj.insert("blockers".to_string(), json!(blockers_json));
+        obj.insert("blocking".to_string(), json!(blocking_json));
+        obj.insert("children".to_string(), json!(children_json));
+        obj.insert("linked".to_string(), json!(linked_json));
+        obj.insert("children_count".to_string(), json!(spawned_count));
+    }
 
     // Build text output
     let text_output = {
