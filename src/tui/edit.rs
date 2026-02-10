@@ -507,8 +507,10 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
                     // Footer with Save and Cancel buttons
                     View(
                         width: 100pct,
-                        height: 3,
-                        padding: 1,
+                        padding_left: 1,
+                        padding_right: 1,
+                        padding_top: 1,
+                        padding_bottom: 1,
                         border_edges: Edges::Top,
                         border_style: BorderStyle::Single,
                         border_color: theme.border,
