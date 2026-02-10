@@ -48,5 +48,10 @@ pub fn format_ticket_bullet(ticket: &TicketMetadata) -> String {
     let id = ticket.id.as_deref().unwrap_or("???");
     let status = ticket.status.unwrap_or_default();
     let title = ticket.title.as_deref().unwrap_or("");
-    format!("- {} [{}] {}", id.cyan(), status, title)
+    format!(
+        "- {} {} {}",
+        id.cyan(),
+        super::format_status_colored(status),
+        title
+    )
 }
