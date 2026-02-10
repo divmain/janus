@@ -60,33 +60,29 @@ pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
     println!("Progress: {} tickets", plan_status.progress_string());
 
     // If phased, show breakdown by phase
-    if metadata.is_phased() {
-        let phase_statuses = compute_all_phase_statuses(&metadata, &ticket_map);
+    if metadata.is_phased() && !phase_statuses.is_empty() {
+        println!();
+        println!("Phases:");
 
-        if !phase_statuses.is_empty() {
-            println!();
-            println!("Phases:");
+        // Find max lengths for alignment
+        let max_name_len = phase_statuses
+            .iter()
+            .map(|ps| ps.phase_name.len())
+            .max()
+            .unwrap_or(0)
+            .max(12);
 
-            // Find max lengths for alignment
-            let max_name_len = phase_statuses
-                .iter()
-                .map(|ps| ps.phase_name.len())
-                .max()
-                .unwrap_or(0)
-                .max(12);
-
-            for ps in &phase_statuses {
-                let status_badge = format_status_colored(ps.status);
-                let progress = format!("({}/{})", ps.completed_count, ps.total_count);
-                println!(
-                    "  {}. {} {:width$} {}",
-                    ps.phase_number,
-                    status_badge,
-                    ps.phase_name,
-                    progress.dimmed(),
-                    width = max_name_len
-                );
-            }
+        for ps in &phase_statuses {
+            let status_badge = format_status_colored(ps.status);
+            let progress = format!("({}/{})", ps.completed_count, ps.total_count);
+            println!(
+                "  {}. {} {:width$} {}",
+                ps.phase_number,
+                status_badge,
+                ps.phase_name,
+                progress.dimmed(),
+                width = max_name_len
+            );
         }
     }
 
