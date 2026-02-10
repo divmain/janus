@@ -2,14 +2,12 @@
 mod common;
 
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Remote sync command tests (without actual API calls)
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_adopt_invalid_ref() {
     let janus = JanusTest::new();
 
@@ -18,7 +16,6 @@ fn test_adopt_invalid_ref() {
 }
 
 #[test]
-#[serial]
 fn test_adopt_with_reserved_prefix_fails() {
     let janus = JanusTest::new();
 
@@ -36,7 +33,6 @@ fn test_adopt_with_reserved_prefix_fails() {
 }
 
 #[test]
-#[serial]
 fn test_adopt_with_invalid_prefix_characters_fails() {
     let janus = JanusTest::new();
 
@@ -54,7 +50,6 @@ fn test_adopt_with_invalid_prefix_characters_fails() {
 }
 
 #[test]
-#[serial]
 fn test_push_not_configured() {
     let janus = JanusTest::new();
 
@@ -68,7 +63,6 @@ fn test_push_not_configured() {
 }
 
 #[test]
-#[serial]
 fn test_remote_link_invalid_ref() {
     let janus = JanusTest::new();
 
@@ -78,7 +72,6 @@ fn test_remote_link_invalid_ref() {
 }
 
 #[test]
-#[serial]
 fn test_sync_not_linked() {
     let janus = JanusTest::new();
 
@@ -88,7 +81,6 @@ fn test_sync_not_linked() {
 }
 
 #[test]
-#[serial]
 fn test_help_shows_new_commands() {
     let janus = JanusTest::new();
 

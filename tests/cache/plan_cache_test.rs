@@ -2,14 +2,12 @@
 mod common;
 
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================
 // Plan cache integration tests
 // ============================================================
 
 #[test]
-#[serial]
 fn test_plan_cache_finding_by_partial_id() {
     let janus = JanusTest::new();
 
@@ -52,7 +50,6 @@ Description for beta.
 }
 
 #[test]
-#[serial]
 fn test_plan_cache_get_all_plans() {
     let janus = JanusTest::new();
 
@@ -101,7 +98,6 @@ created: 2024-01-01T00:00:00Z
 }
 
 #[test]
-#[serial]
 fn test_plan_cache_fallback_when_missing() {
     let janus = JanusTest::new();
 
@@ -129,7 +125,6 @@ This plan should be found even without cache.
 }
 
 #[test]
-#[serial]
 fn test_plan_cache_consistency_with_ticket_cache() {
     let janus = JanusTest::new();
 
@@ -173,7 +168,6 @@ created: 2024-01-01T00:00:00Z
 }
 
 #[test]
-#[serial]
 fn test_plan_cache_status_uses_cached_plans() {
     let janus = JanusTest::new();
 
@@ -219,7 +213,6 @@ created: 2024-01-01T00:00:00Z
 }
 
 #[test]
-#[serial]
 fn test_plan_cache_ambiguous_partial_id() {
     let janus = JanusTest::new();
 
@@ -255,7 +248,6 @@ created: 2024-01-01T00:00:00Z
 }
 
 #[test]
-#[serial]
 fn test_plan_cache_not_found() {
     let janus = JanusTest::new();
 

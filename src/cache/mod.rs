@@ -83,6 +83,9 @@ static STORE: OnceCell<TicketStore> = OnceCell::const_new();
 /// Subsequent calls return the existing store without re-reading.
 /// If initialization fails, the error is propagated and the `OnceCell` remains
 /// unset, allowing subsequent calls to retry.
+///
+/// Set `JANUS_SKIP_EMBEDDINGS=1` to skip eager embedding generation (useful for
+/// tests and environments where semantic search is not needed).
 pub async fn get_or_init_store() -> Result<&'static TicketStore> {
     STORE
         .get_or_try_init(|| async {
@@ -91,19 +94,26 @@ pub async fn get_or_init_store() -> Result<&'static TicketStore> {
                 .await
                 .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))??;
 
-            // Step 2: Ensure all tickets have embeddings (BLOCKING)
-            // This runs synchronously during store initialization
-            match store.ensure_all_embeddings().await {
-                Ok((generated, total)) => {
-                    if generated > 0 {
-                        // User-facing message for startup
-                        eprintln!("Generated embeddings for {generated}/{total} tickets");
+            // Step 2: Ensure all tickets have embeddings (unless skipped)
+            // JANUS_SKIP_EMBEDDINGS=1 disables this for tests and environments
+            // where semantic search is not needed.
+            let skip = std::env::var("JANUS_SKIP_EMBEDDINGS")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+
+            if !skip {
+                match store.ensure_all_embeddings().await {
+                    Ok((generated, total)) => {
+                        if generated > 0 {
+                            // User-facing message for startup
+                            eprintln!("Generated embeddings for {generated}/{total} tickets");
+                        }
                     }
-                }
-                Err(e) => {
-                    // Silent error - just log in debug mode
-                    #[cfg(debug_assertions)]
-                    eprintln!("Warning: Failed to generate embeddings: {e}");
+                    Err(e) => {
+                        // Silent error - just log in debug mode
+                        #[cfg(debug_assertions)]
+                        eprintln!("Warning: Failed to generate embeddings: {e}");
+                    }
                 }
             }
 

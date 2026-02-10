@@ -5,10 +5,8 @@
 
 use janus::error::JanusError;
 use janus::parser::split_frontmatter;
-use serial_test::serial;
 
 #[test]
-#[serial]
 fn test_only_opening_delimiter() {
     let content = "---\nid: test\n# No closing delimiter\nBody here.";
     let result = split_frontmatter(content);
@@ -22,7 +20,6 @@ fn test_only_opening_delimiter() {
 }
 
 #[test]
-#[serial]
 fn test_only_closing_delimiter() {
     let content = "---\nid: test\n---\nMore content with ---\n---\n";
     let result = split_frontmatter(content);
@@ -35,7 +32,6 @@ fn test_only_closing_delimiter() {
 }
 
 #[test]
-#[serial]
 fn test_malformed_yaml_indentation() {
     // This is technically valid YAML (indentation is flexible)
     let content = "---\nid: test\n  nested:\n    value\n---\n# Title\n";
@@ -44,7 +40,6 @@ fn test_malformed_yaml_indentation() {
 }
 
 #[test]
-#[serial]
 fn test_invalid_yaml_syntax() {
     // Invalid YAML: colon in value without quotes
     let content = "---\nid: test:value with colon\nstatus: new\n---\n# Title\n";
@@ -55,7 +50,6 @@ fn test_invalid_yaml_syntax() {
 }
 
 #[test]
-#[serial]
 fn test_unicode_characters_in_frontmatter() {
     let content = "---\ntitle: 标题\nauthor: 作者\ndesc: 日本語\n---\n# Title\n";
     let result = split_frontmatter(content);
@@ -67,7 +61,6 @@ fn test_unicode_characters_in_frontmatter() {
 }
 
 #[test]
-#[serial]
 fn test_empty_frontmatter() {
     let content = "---\n---\n# Title\n\nBody";
     let result = split_frontmatter(content);
@@ -79,7 +72,6 @@ fn test_empty_frontmatter() {
 }
 
 #[test]
-#[serial]
 fn test_empty_body() {
     let content = "---\nid: test\n---\n";
     let (frontmatter, body) = split_frontmatter(content).unwrap();
@@ -88,7 +80,6 @@ fn test_empty_body() {
 }
 
 #[test]
-#[serial]
 fn test_whitespace_before_delimiter() {
     let content = "  \n  ---\nid: test\n---\n# Title\n";
     let result = split_frontmatter(content);
@@ -97,7 +88,6 @@ fn test_whitespace_before_delimiter() {
 }
 
 #[test]
-#[serial]
 fn test_multiple_frontmatter_blocks() {
     // Only first frontmatter block should be parsed
     let content = "---\nid: first\n---\n---\nid: second\n---\n# Title\n";
@@ -109,7 +99,6 @@ fn test_multiple_frontmatter_blocks() {
 }
 
 #[test]
-#[serial]
 fn test_very_large_frontmatter() {
     // Create a large frontmatter with many fields
     let mut frontmatter_lines = vec!["---".to_string()];
@@ -128,7 +117,6 @@ fn test_very_large_frontmatter() {
 }
 
 #[test]
-#[serial]
 fn test_frontmatter_with_special_yaml_types() {
     let content = r#"---
 timestamp: 2024-01-01T00:00:00Z
@@ -151,7 +139,6 @@ nested_map:
 }
 
 #[test]
-#[serial]
 fn test_frontmatter_with_anchors_and_aliases() {
     let content = r#"---
 defaults: &defaults
@@ -175,7 +162,6 @@ task2:
 }
 
 #[test]
-#[serial]
 fn test_frontmatter_with_multiline_dashes_only() {
     let content = r#"---
 comment: >-
@@ -193,7 +179,6 @@ comment: >-
 }
 
 #[test]
-#[serial]
 fn test_completely_empty_file() {
     let content = "";
     let result = split_frontmatter(content);
@@ -201,7 +186,6 @@ fn test_completely_empty_file() {
 }
 
 #[test]
-#[serial]
 fn test_only_whitespace() {
     let content = "   \n   \n";
     let result = split_frontmatter(content);
@@ -209,7 +193,6 @@ fn test_only_whitespace() {
 }
 
 #[test]
-#[serial]
 fn test_alternative_delimiters_not_recognized() {
     let content = "+++\nid: test\n+++\n# Title\n";
     let result = split_frontmatter(content);
@@ -218,7 +201,6 @@ fn test_alternative_delimiters_not_recognized() {
 }
 
 #[test]
-#[serial]
 fn test_toml_style_frontmatter_fails() {
     let content = "+++\ntitle = \"test\"\n+++\n# Title\n";
     let result = split_frontmatter(content);
@@ -226,7 +208,6 @@ fn test_toml_style_frontmatter_fails() {
 }
 
 #[test]
-#[serial]
 fn test_json_style_frontmatter_fails() {
     let content = "{\n\"id\": \"test\"\n}\n# Title\n";
     let result = split_frontmatter(content);
@@ -234,7 +215,6 @@ fn test_json_style_frontmatter_fails() {
 }
 
 #[test]
-#[serial]
 fn test_frontmatter_with_tabs_instead_of_spaces() {
     // YAML spec allows tabs as part of values, but indentation should be spaces
     let content = "---\nid: test\nkey:\tvalue\n---\n# Title\n";
@@ -244,7 +224,6 @@ fn test_frontmatter_with_tabs_instead_of_spaces() {
 }
 
 #[test]
-#[serial]
 fn test_frontmatter_with_escaped_special_chars() {
     let content = r#"---
 quote: "This has \"quotes\" inside"
@@ -262,7 +241,6 @@ escaped_newline: "Line 1\nLine 2"
 }
 
 #[test]
-#[serial]
 fn test_mixed_endings_content() {
     let content = "---\r\nid: test\n---\r\n# Title\r\n";
     let (frontmatter, body) = split_frontmatter(content).unwrap();
@@ -271,7 +249,6 @@ fn test_mixed_endings_content() {
 }
 
 #[test]
-#[serial]
 fn test_carriage_return_only() {
     let content = "---\rid: test\r---\r# Title\r";
     let (frontmatter, body) = split_frontmatter(content).unwrap();

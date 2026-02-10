@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Graph command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_graph_empty_dot() {
     let janus = JanusTest::new();
 
@@ -18,7 +16,6 @@ fn test_graph_empty_dot() {
 }
 
 #[test]
-#[serial]
 fn test_graph_empty_mermaid() {
     let janus = JanusTest::new();
 
@@ -27,7 +24,6 @@ fn test_graph_empty_mermaid() {
 }
 
 #[test]
-#[serial]
 fn test_graph_with_tickets_dot() {
     let janus = JanusTest::new();
 
@@ -49,7 +45,6 @@ fn test_graph_with_tickets_dot() {
 }
 
 #[test]
-#[serial]
 fn test_graph_with_tickets_mermaid() {
     let janus = JanusTest::new();
 
@@ -72,7 +67,6 @@ fn test_graph_with_tickets_mermaid() {
 }
 
 #[test]
-#[serial]
 fn test_graph_with_dependency_dot() {
     let janus = JanusTest::new();
 
@@ -94,7 +88,6 @@ fn test_graph_with_dependency_dot() {
 }
 
 #[test]
-#[serial]
 fn test_graph_with_dependency_mermaid() {
     let janus = JanusTest::new();
 
@@ -117,7 +110,6 @@ fn test_graph_with_dependency_mermaid() {
 }
 
 #[test]
-#[serial]
 fn test_graph_with_spawning_dot() {
     let janus = JanusTest::new();
 
@@ -137,7 +129,6 @@ fn test_graph_with_spawning_dot() {
 }
 
 #[test]
-#[serial]
 fn test_graph_with_spawning_mermaid() {
     let janus = JanusTest::new();
 
@@ -157,7 +148,6 @@ fn test_graph_with_spawning_mermaid() {
 }
 
 #[test]
-#[serial]
 fn test_graph_deps_only() {
     let janus = JanusTest::new();
 
@@ -185,7 +175,6 @@ fn test_graph_deps_only() {
 }
 
 #[test]
-#[serial]
 fn test_graph_spawn_only() {
     let janus = JanusTest::new();
 
@@ -213,7 +202,6 @@ fn test_graph_spawn_only() {
 }
 
 #[test]
-#[serial]
 fn test_graph_root_option() {
     let janus = JanusTest::new();
 
@@ -241,7 +229,6 @@ fn test_graph_root_option() {
 }
 
 #[test]
-#[serial]
 fn test_graph_json_output() {
     let janus = JanusTest::new();
 
@@ -279,7 +266,6 @@ fn test_graph_json_output() {
 }
 
 #[test]
-#[serial]
 fn test_graph_plan_option() {
     let janus = JanusTest::new();
 
@@ -312,7 +298,6 @@ fn test_graph_plan_option() {
 }
 
 #[test]
-#[serial]
 fn test_graph_invalid_format() {
     let janus = JanusTest::new();
 
@@ -324,7 +309,6 @@ fn test_graph_invalid_format() {
 }
 
 #[test]
-#[serial]
 fn test_graph_root_not_found() {
     let janus = JanusTest::new();
 
@@ -336,7 +320,6 @@ fn test_graph_root_not_found() {
 }
 
 #[test]
-#[serial]
 fn test_graph_plan_not_found() {
     let janus = JanusTest::new();
 

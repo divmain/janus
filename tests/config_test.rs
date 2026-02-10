@@ -2,7 +2,6 @@
 mod common;
 
 use common::JanusTest;
-use serial_test::serial;
 use std::fs;
 
 // ============================================================================
@@ -10,7 +9,6 @@ use std::fs;
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_config_show_empty() {
     let janus = JanusTest::new();
 
@@ -20,7 +18,6 @@ fn test_config_show_empty() {
 }
 
 #[test]
-#[serial]
 fn test_config_set_default_remote() {
     let janus = JanusTest::new();
 
@@ -31,7 +28,6 @@ fn test_config_set_default_remote() {
 }
 
 #[test]
-#[serial]
 fn test_config_set_linear_default_remote() {
     let janus = JanusTest::new();
 
@@ -42,7 +38,6 @@ fn test_config_set_linear_default_remote() {
 }
 
 #[test]
-#[serial]
 fn test_config_get_not_set() {
     let janus = JanusTest::new();
 
@@ -51,7 +46,6 @@ fn test_config_get_not_set() {
 }
 
 #[test]
-#[serial]
 fn test_config_set_invalid_key() {
     let janus = JanusTest::new();
 
@@ -60,7 +54,6 @@ fn test_config_set_invalid_key() {
 }
 
 #[test]
-#[serial]
 fn test_config_set_invalid_default_remote_format() {
     let janus = JanusTest::new();
 
@@ -69,7 +62,6 @@ fn test_config_set_invalid_default_remote_format() {
 }
 
 #[test]
-#[serial]
 fn test_config_file_created() {
     let janus = JanusTest::new();
 
@@ -84,7 +76,6 @@ fn test_config_file_created() {
 }
 
 #[test]
-#[serial]
 fn test_config_rejects_underscore_keys() {
     let janus = JanusTest::new();
 

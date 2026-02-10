@@ -412,7 +412,6 @@ pub fn extract_title_range(content: &str) -> Option<Range<usize>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     // ==================== Generic Document Parsing Tests ====================
 
@@ -746,7 +745,6 @@ Body with --- multiple dashes --- here.
     }
 
     #[test]
-    #[serial]
     fn test_frontmatter_with_yaml_comments_containing_dashes() {
         let content = r#"---
 # This is a YAML comment with dashes ---
@@ -767,7 +765,6 @@ Body content.
     }
 
     #[test]
-    #[serial]
     fn test_frontmatter_with_multiline_string_containing_dashes() {
         let content = r#"---
 id: test
@@ -788,7 +785,6 @@ Body.
     }
 
     #[test]
-    #[serial]
     fn test_frontmatter_with_block_scalar_containing_dashes() {
         let content = r#"---
 id: test
@@ -809,7 +805,6 @@ Body.
     }
 
     #[test]
-    #[serial]
     fn test_empty_frontmatter_and_body() {
         let content = "---\n---\n";
         let result = split_frontmatter(content);
@@ -821,7 +816,6 @@ Body.
     }
 
     #[test]
-    #[serial]
     fn test_empty_frontmatter_with_body() {
         let content = "---\n---\n# Title\n\nBody content";
         let result = split_frontmatter(content);
@@ -852,7 +846,6 @@ Body.
     }
 
     #[test]
-    #[serial]
     fn test_body_preserves_dashes_pattern() {
         let content = r#"---
 id: test
@@ -869,7 +862,6 @@ and they should be preserved.
     }
 
     #[test]
-    #[serial]
     fn test_complex_yaml_with_nested_structures() {
         let content = r#"---
 id: test
@@ -899,7 +891,6 @@ Body.
     }
 
     #[test]
-    #[serial]
     fn test_frontmatter_with_unicode() {
         let content = "---\nid: test-日本語\ntitle: 标题\n---\n# Title\n";
         let (frontmatter, _body) = split_frontmatter(content).unwrap();

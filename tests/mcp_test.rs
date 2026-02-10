@@ -1,6 +1,5 @@
 //! Integration tests for MCP server functionality.
 
-use serial_test::serial;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -12,7 +11,6 @@ mod common;
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_version() {
     let output = Command::new(common::janus_binary())
         .args(["mcp", "--version"])
@@ -32,11 +30,11 @@ fn test_mcp_version() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_server_starts_and_responds_to_initialize() {
     // Start the MCP server
     let mut child = Command::new(common::janus_binary())
         .args(["mcp"])
+        .env("JANUS_SKIP_EMBEDDINGS", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -69,7 +67,6 @@ fn test_mcp_server_starts_and_responds_to_initialize() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_help() {
     let output = Command::new(common::janus_binary())
         .args(["mcp", "--help"])

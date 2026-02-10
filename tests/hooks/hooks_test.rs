@@ -13,7 +13,6 @@ use std::os::unix::fs::symlink;
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_hook_pre_write_aborts_ticket_create() {
     let janus = JanusTest::new();
 
@@ -40,7 +39,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_post_write_runs_after_ticket_create() {
     let janus = JanusTest::new();
 
@@ -98,7 +96,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_ticket_created_event_fires() {
     let janus = JanusTest::new();
 
@@ -142,7 +139,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_pre_write_aborts_plan_create() {
     let janus = JanusTest::new();
 
@@ -172,7 +168,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_plan_created_event_fires() {
     let janus = JanusTest::new();
 
@@ -220,7 +215,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_pre_delete_aborts_plan_delete() {
     let janus = JanusTest::new();
 
@@ -259,7 +253,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_plan_deleted_event_fires() {
     let janus = JanusTest::new();
 
@@ -314,7 +307,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_ticket_updated_on_status_change() {
     let janus = JanusTest::new();
 
@@ -375,7 +367,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_disabled_does_not_run() {
     let janus = JanusTest::new();
 
@@ -638,7 +629,6 @@ async fn test_invalid_hook_event_error_message() {
 }
 
 #[test]
-#[serial]
 #[cfg(unix)]
 fn test_hook_symlink_escape_blocked() {
     let janus = JanusTest::new();
@@ -688,7 +678,6 @@ hooks:
 }
 
 #[test]
-#[serial]
 #[cfg(unix)]
 fn test_hook_run_symlink_escape_blocked() {
     let janus = JanusTest::new();
@@ -752,7 +741,6 @@ hooks:
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_plan_import_post_write_fires_exactly_once() {
     let janus = JanusTest::new();
 
@@ -820,7 +808,6 @@ First task.
 }
 
 #[test]
-#[serial]
 fn test_plan_import_plan_created_fires_exactly_once() {
     let janus = JanusTest::new();
 
@@ -888,7 +875,6 @@ First task.
 }
 
 #[test]
-#[serial]
 fn test_plan_import_does_not_fire_plan_updated() {
     let janus = JanusTest::new();
 
@@ -952,7 +938,6 @@ First task.
 }
 
 #[test]
-#[serial]
 fn test_plan_import_pre_write_fires_exactly_once() {
     let janus = JanusTest::new();
 

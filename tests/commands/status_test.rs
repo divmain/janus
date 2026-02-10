@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Status command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_status_start() {
     let janus = JanusTest::new();
 
@@ -24,7 +22,6 @@ fn test_status_start() {
 }
 
 #[test]
-#[serial]
 fn test_status_close_no_summary() {
     let janus = JanusTest::new();
 
@@ -38,7 +35,6 @@ fn test_status_close_no_summary() {
 }
 
 #[test]
-#[serial]
 fn test_status_close_with_summary() {
     let janus = JanusTest::new();
 
@@ -52,7 +48,6 @@ fn test_status_close_with_summary() {
 }
 
 #[test]
-#[serial]
 fn test_status_close_cancel_with_summary() {
     let janus = JanusTest::new();
 
@@ -72,7 +67,6 @@ fn test_status_close_cancel_with_summary() {
 }
 
 #[test]
-#[serial]
 fn test_status_close_requires_summary_flag() {
     let janus = JanusTest::new();
 
@@ -84,7 +78,6 @@ fn test_status_close_requires_summary_flag() {
 }
 
 #[test]
-#[serial]
 fn test_status_close_summary_and_no_summary_conflict() {
     let janus = JanusTest::new();
 
@@ -99,7 +92,6 @@ fn test_status_close_summary_and_no_summary_conflict() {
 }
 
 #[test]
-#[serial]
 fn test_status_reopen() {
     let janus = JanusTest::new();
 
@@ -112,7 +104,6 @@ fn test_status_reopen() {
 }
 
 #[test]
-#[serial]
 fn test_status_cancelled() {
     let janus = JanusTest::new();
 
@@ -124,7 +115,6 @@ fn test_status_cancelled() {
 }
 
 #[test]
-#[serial]
 fn test_status_next() {
     let janus = JanusTest::new();
 
@@ -136,7 +126,6 @@ fn test_status_next() {
 }
 
 #[test]
-#[serial]
 fn test_status_in_progress() {
     let janus = JanusTest::new();
 
@@ -148,7 +137,6 @@ fn test_status_in_progress() {
 }
 
 #[test]
-#[serial]
 fn test_start_sets_in_progress() {
     let janus = JanusTest::new();
 
@@ -160,7 +148,6 @@ fn test_start_sets_in_progress() {
 }
 
 #[test]
-#[serial]
 fn test_status_invalid() {
     let janus = JanusTest::new();
 

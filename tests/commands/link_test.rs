@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Link command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_link_add() {
     let janus = JanusTest::new();
 
@@ -32,7 +30,6 @@ fn test_link_add() {
 }
 
 #[test]
-#[serial]
 fn test_link_add_multiple() {
     let janus = JanusTest::new();
 
@@ -55,7 +52,6 @@ fn test_link_add_multiple() {
 }
 
 #[test]
-#[serial]
 fn test_link_add_duplicate() {
     let janus = JanusTest::new();
 
@@ -74,7 +70,6 @@ fn test_link_add_duplicate() {
 }
 
 #[test]
-#[serial]
 fn test_link_remove() {
     let janus = JanusTest::new();
 
@@ -98,7 +93,6 @@ fn test_link_remove() {
 }
 
 #[test]
-#[serial]
 fn test_link_remove_not_found() {
     let janus = JanusTest::new();
 
@@ -122,7 +116,6 @@ fn test_link_remove_not_found() {
 }
 
 #[test]
-#[serial]
 fn test_link_self_link_rejected() {
     let janus = JanusTest::new();
 

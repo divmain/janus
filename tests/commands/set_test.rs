@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Set command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_set_priority() {
     let janus = JanusTest::new();
 
@@ -25,7 +23,6 @@ fn test_set_priority() {
 }
 
 #[test]
-#[serial]
 fn test_set_priority_all_values() {
     let janus = JanusTest::new();
 
@@ -44,7 +41,6 @@ fn test_set_priority_all_values() {
 }
 
 #[test]
-#[serial]
 fn test_set_priority_invalid() {
     let janus = JanusTest::new();
 
@@ -55,7 +51,6 @@ fn test_set_priority_invalid() {
 }
 
 #[test]
-#[serial]
 fn test_set_type() {
     let janus = JanusTest::new();
 
@@ -72,7 +67,6 @@ fn test_set_type() {
 }
 
 #[test]
-#[serial]
 fn test_set_type_all_values() {
     let janus = JanusTest::new();
 
@@ -90,7 +84,6 @@ fn test_set_type_all_values() {
 }
 
 #[test]
-#[serial]
 fn test_set_type_invalid() {
     let janus = JanusTest::new();
 
@@ -101,7 +94,6 @@ fn test_set_type_invalid() {
 }
 
 #[test]
-#[serial]
 fn test_set_parent() {
     let janus = JanusTest::new();
 
@@ -125,7 +117,6 @@ fn test_set_parent() {
 }
 
 #[test]
-#[serial]
 fn test_set_parent_clear() {
     let janus = JanusTest::new();
 
@@ -151,7 +142,6 @@ fn test_set_parent_clear() {
 }
 
 #[test]
-#[serial]
 fn test_set_parent_nonexistent() {
     let janus = JanusTest::new();
 
@@ -164,7 +154,6 @@ fn test_set_parent_nonexistent() {
 }
 
 #[test]
-#[serial]
 fn test_set_invalid_field() {
     let janus = JanusTest::new();
 
@@ -175,7 +164,6 @@ fn test_set_invalid_field() {
 }
 
 #[test]
-#[serial]
 fn test_set_json_output() {
     let janus = JanusTest::new();
 
@@ -191,7 +179,6 @@ fn test_set_json_output() {
 }
 
 #[test]
-#[serial]
 fn test_set_ticket_not_found() {
     let janus = JanusTest::new();
 
@@ -203,7 +190,6 @@ fn test_set_ticket_not_found() {
 }
 
 #[test]
-#[serial]
 fn test_set_design() {
     let janus = JanusTest::new();
 
@@ -220,7 +206,6 @@ fn test_set_design() {
 }
 
 #[test]
-#[serial]
 fn test_set_design_clear() {
     let janus = JanusTest::new();
 
@@ -250,7 +235,6 @@ fn test_set_design_clear() {
 }
 
 #[test]
-#[serial]
 fn test_set_acceptance() {
     let janus = JanusTest::new();
 
@@ -267,7 +251,6 @@ fn test_set_acceptance() {
 }
 
 #[test]
-#[serial]
 fn test_set_acceptance_clear() {
     let janus = JanusTest::new();
 
@@ -297,7 +280,6 @@ fn test_set_acceptance_clear() {
 }
 
 #[test]
-#[serial]
 fn test_set_description() {
     let janus = JanusTest::new();
 
@@ -314,7 +296,6 @@ fn test_set_description() {
 }
 
 #[test]
-#[serial]
 fn test_set_description_clear() {
     let janus = JanusTest::new();
 

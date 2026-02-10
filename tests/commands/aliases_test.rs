@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Alias tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_create_alias() {
     let janus = JanusTest::new();
 
@@ -18,7 +16,6 @@ fn test_create_alias() {
 }
 
 #[test]
-#[serial]
 fn test_show_alias() {
     let janus = JanusTest::new();
 
@@ -32,7 +29,6 @@ fn test_show_alias() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_ready_sorted_by_priority() {
     let janus = JanusTest::new();
 
@@ -68,7 +64,6 @@ fn test_ready_sorted_by_priority() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_help() {
     let janus = JanusTest::new();
 

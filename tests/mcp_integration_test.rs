@@ -4,7 +4,6 @@
 //! (like an AI coding agent). They test the full JSON-RPC flow: send a request,
 //! parse the response.
 
-use serial_test::serial;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -29,6 +28,7 @@ impl McpTestClient {
         let mut child = Command::new(common::janus_binary())
             .args(["mcp"])
             .current_dir(working_dir)
+            .env("JANUS_SKIP_EMBEDDINGS", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -111,7 +111,6 @@ impl Drop for McpTestClient {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_initialize() {
     let janus = common::JanusTest::new();
     let mut client = McpTestClient::new(janus.temp_dir.path());
@@ -130,7 +129,6 @@ fn test_mcp_initialize() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_tools_list() {
     let janus = common::JanusTest::new();
     let mut client = McpTestClient::new(janus.temp_dir.path());
@@ -170,7 +168,6 @@ fn test_mcp_tools_list() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_resources_list() {
     let janus = common::JanusTest::new();
     let mut client = McpTestClient::new(janus.temp_dir.path());
@@ -207,7 +204,6 @@ fn test_mcp_resources_list() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_resource_templates_list() {
     let janus = common::JanusTest::new();
     let mut client = McpTestClient::new(janus.temp_dir.path());
@@ -241,7 +237,6 @@ fn test_mcp_resource_templates_list() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_read_tickets_ready() {
     let janus = common::JanusTest::new();
 
@@ -284,7 +279,6 @@ fn test_mcp_read_tickets_ready() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_tickets_blocked() {
     let janus = common::JanusTest::new();
 
@@ -323,7 +317,6 @@ fn test_mcp_read_tickets_blocked() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_tickets_in_progress() {
     let janus = common::JanusTest::new();
 
@@ -357,7 +350,6 @@ fn test_mcp_read_tickets_in_progress() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_ticket_by_id() {
     let janus = common::JanusTest::new();
 
@@ -389,7 +381,6 @@ fn test_mcp_read_ticket_by_id() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_ticket_not_found() {
     let janus = common::JanusTest::new();
 
@@ -407,16 +398,13 @@ fn test_mcp_read_ticket_not_found() {
 
     // Should return an error
     assert!(response["error"].is_object());
-    assert!(
-        response["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("not found")
-    );
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_spawned_from() {
     let janus = common::JanusTest::new();
 
@@ -461,7 +449,6 @@ fn test_mcp_read_spawned_from() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_call_create_ticket() {
     let janus = common::JanusTest::new();
 
@@ -505,7 +492,6 @@ fn test_mcp_call_create_ticket() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_call_list_tickets() {
     let janus = common::JanusTest::new();
 
@@ -550,7 +536,6 @@ fn test_mcp_call_list_tickets() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_call_update_status() {
     let janus = common::JanusTest::new();
 
@@ -590,7 +575,6 @@ fn test_mcp_call_update_status() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_call_add_note() {
     let janus = common::JanusTest::new();
 
@@ -632,7 +616,6 @@ fn test_mcp_call_add_note() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_error_response_format() {
     let janus = common::JanusTest::new();
 
@@ -665,7 +648,6 @@ fn test_mcp_error_response_format() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_mcp_read_plan() {
     let janus = common::JanusTest::new();
 
@@ -708,7 +690,6 @@ fn test_mcp_read_plan() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_plan_next() {
     let janus = common::JanusTest::new();
 
@@ -748,7 +729,6 @@ fn test_mcp_read_plan_next() {
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_plan_not_found() {
     let janus = common::JanusTest::new();
 
@@ -766,16 +746,13 @@ fn test_mcp_read_plan_not_found() {
 
     // Should return an error
     assert!(response["error"].is_object());
-    assert!(
-        response["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("not found")
-    );
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
 }
 
 #[test]
-#[serial]
 fn test_mcp_read_unknown_resource() {
     let janus = common::JanusTest::new();
 

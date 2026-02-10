@@ -34,6 +34,7 @@ impl JanusTest {
         Command::new(janus_binary())
             .args(args)
             .current_dir(self.temp_dir.path())
+            .env("JANUS_SKIP_EMBEDDINGS", "1")
             .output()
             .expect("Failed to execute janus command")
     }

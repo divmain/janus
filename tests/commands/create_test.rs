@@ -1,7 +1,6 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Create command tests
@@ -12,7 +11,6 @@ use serial_test::serial;
 // and were causing ~16 duplicate assertions.
 
 #[test]
-#[serial]
 fn test_create_with_hyphen_prefix() {
     let janus = JanusTest::new();
 
@@ -27,7 +25,6 @@ fn test_create_with_hyphen_prefix() {
 }
 
 #[test]
-#[serial]
 fn test_create_with_underscore_prefix() {
     let janus = JanusTest::new();
 
@@ -42,7 +39,6 @@ fn test_create_with_underscore_prefix() {
 }
 
 #[test]
-#[serial]
 fn test_create_multiple_tickets_same_prefix() {
     let janus = JanusTest::new();
 
@@ -59,7 +55,6 @@ fn test_create_multiple_tickets_same_prefix() {
 }
 
 #[test]
-#[serial]
 fn test_create_tickets_different_prefixes() {
     let janus = JanusTest::new();
 
@@ -80,7 +75,6 @@ fn test_create_tickets_different_prefixes() {
 }
 
 #[test]
-#[serial]
 fn test_create_with_reserved_prefix_fails() {
     let janus = JanusTest::new();
 
@@ -96,7 +90,6 @@ fn test_create_with_reserved_prefix_fails() {
 }
 
 #[test]
-#[serial]
 fn test_create_with_invalid_prefix_characters_fails() {
     let janus = JanusTest::new();
 

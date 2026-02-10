@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Show command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_show_basic() {
     let janus = JanusTest::new();
 
@@ -24,7 +22,6 @@ fn test_show_basic() {
 }
 
 #[test]
-#[serial]
 fn test_show_partial_id() {
     let janus = JanusTest::new();
 
@@ -40,7 +37,6 @@ fn test_show_partial_id() {
 }
 
 #[test]
-#[serial]
 fn test_show_with_blockers() {
     let janus = JanusTest::new();
 
@@ -60,7 +56,6 @@ fn test_show_with_blockers() {
 }
 
 #[test]
-#[serial]
 fn test_show_with_blocking() {
     let janus = JanusTest::new();
 
@@ -80,7 +75,6 @@ fn test_show_with_blocking() {
 }
 
 #[test]
-#[serial]
 fn test_show_with_children() {
     let janus = JanusTest::new();
 
@@ -96,7 +90,6 @@ fn test_show_with_children() {
 }
 
 #[test]
-#[serial]
 fn test_show_with_links() {
     let janus = JanusTest::new();
 
@@ -116,7 +109,6 @@ fn test_show_with_links() {
 }
 
 #[test]
-#[serial]
 fn test_show_not_found() {
     let janus = JanusTest::new();
     let stderr = janus.run_failure(&["show", "nonexistent"]);
@@ -130,7 +122,6 @@ fn test_show_not_found() {
 }
 
 #[test]
-#[serial]
 fn test_show_children_count_displayed() {
     let janus = JanusTest::new();
 
@@ -151,7 +142,6 @@ fn test_show_children_count_displayed() {
 }
 
 #[test]
-#[serial]
 fn test_show_children_count_not_displayed_when_zero() {
     let janus = JanusTest::new();
 
@@ -170,7 +160,6 @@ fn test_show_children_count_not_displayed_when_zero() {
 }
 
 #[test]
-#[serial]
 fn test_show_children_count_in_json() {
     let janus = JanusTest::new();
 

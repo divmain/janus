@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Dependency command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_dep_add() {
     let janus = JanusTest::new();
 
@@ -33,7 +31,6 @@ fn test_dep_add() {
 }
 
 #[test]
-#[serial]
 fn test_dep_add_duplicate() {
     let janus = JanusTest::new();
 
@@ -52,7 +49,6 @@ fn test_dep_add_duplicate() {
 }
 
 #[test]
-#[serial]
 fn test_dep_remove() {
     let janus = JanusTest::new();
 
@@ -77,7 +73,6 @@ fn test_dep_remove() {
 }
 
 #[test]
-#[serial]
 fn test_dep_remove_not_found() {
     let janus = JanusTest::new();
 
@@ -98,7 +93,6 @@ fn test_dep_remove_not_found() {
 }
 
 #[test]
-#[serial]
 fn test_dep_tree() {
     let janus = JanusTest::new();
 
@@ -124,7 +118,6 @@ fn test_dep_tree() {
 }
 
 #[test]
-#[serial]
 fn test_dep_tree_full() {
     let janus = JanusTest::new();
 
@@ -149,7 +142,6 @@ fn test_dep_tree_full() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_dep_add_direct_circular() {
     let janus = JanusTest::new();
 
@@ -180,7 +172,6 @@ fn test_dep_add_direct_circular() {
 }
 
 #[test]
-#[serial]
 fn test_dep_add_transitive_circular_3_level() {
     let janus = JanusTest::new();
 
@@ -218,7 +209,6 @@ fn test_dep_add_transitive_circular_3_level() {
 }
 
 #[test]
-#[serial]
 fn test_dep_add_transitive_circular_4_level() {
     let janus = JanusTest::new();
 
@@ -259,7 +249,6 @@ fn test_dep_add_transitive_circular_4_level() {
 }
 
 #[test]
-#[serial]
 fn test_dep_add_valid_non_circular_chain() {
     let janus = JanusTest::new();
 
@@ -304,7 +293,6 @@ fn test_dep_add_valid_non_circular_chain() {
 }
 
 #[test]
-#[serial]
 fn test_dep_add_valid_diamond_dependency() {
     let janus = JanusTest::new();
 
@@ -343,7 +331,6 @@ fn test_dep_add_valid_diamond_dependency() {
 }
 
 #[test]
-#[serial]
 fn test_dep_add_circular_in_middle_of_chain() {
     let janus = JanusTest::new();
 

@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // List command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_ls_empty() {
     let janus = JanusTest::new();
     let output = janus.run_success(&["ls"]);
@@ -16,7 +14,6 @@ fn test_ls_empty() {
 }
 
 #[test]
-#[serial]
 fn test_ls_basic() {
     let janus = JanusTest::new();
 
@@ -37,7 +34,6 @@ fn test_ls_basic() {
 }
 
 #[test]
-#[serial]
 fn test_ls_status_filter() {
     let janus = JanusTest::new();
 
@@ -61,7 +57,6 @@ fn test_ls_status_filter() {
 }
 
 #[test]
-#[serial]
 fn test_ready_after_dep_closed() {
     let janus = JanusTest::new();
 
@@ -90,7 +85,6 @@ fn test_ready_after_dep_closed() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_ls_ready_flag() {
     let janus = JanusTest::new();
 
@@ -117,7 +111,6 @@ fn test_ls_ready_flag() {
 }
 
 #[test]
-#[serial]
 fn test_ls_blocked_flag() {
     let janus = JanusTest::new();
 
@@ -148,7 +141,6 @@ fn test_ls_blocked_flag() {
 }
 
 #[test]
-#[serial]
 fn test_ls_closed_flag() {
     let janus = JanusTest::new();
 
@@ -163,7 +155,6 @@ fn test_ls_closed_flag() {
 }
 
 #[test]
-#[serial]
 fn test_ls_closed_with_limit() {
     let janus = JanusTest::new();
 
@@ -187,7 +178,6 @@ fn test_ls_closed_with_limit() {
 }
 
 #[test]
-#[serial]
 fn test_ls_ready_and_blocked_flags() {
     let janus = JanusTest::new();
 
@@ -207,7 +197,6 @@ fn test_ls_ready_and_blocked_flags() {
 }
 
 #[test]
-#[serial]
 fn test_ls_default_excludes_closed() {
     let janus = JanusTest::new();
 
@@ -227,7 +216,6 @@ fn test_ls_default_excludes_closed() {
 }
 
 #[test]
-#[serial]
 fn test_ls_status_conflicts_with_filters() {
     let janus = JanusTest::new();
 
@@ -245,7 +233,6 @@ fn test_ls_status_conflicts_with_filters() {
 }
 
 #[test]
-#[serial]
 fn test_removed_ls_commands_fail() {
     let janus = JanusTest::new();
 
@@ -262,7 +249,6 @@ fn test_removed_ls_commands_fail() {
 }
 
 #[test]
-#[serial]
 fn test_ls_limit_without_closed() {
     let janus = JanusTest::new();
 
@@ -281,7 +267,6 @@ fn test_ls_limit_without_closed() {
 }
 
 #[test]
-#[serial]
 fn test_ls_unlimited_without_limit_flag() {
     let janus = JanusTest::new();
 
@@ -300,7 +285,6 @@ fn test_ls_unlimited_without_limit_flag() {
 }
 
 #[test]
-#[serial]
 fn test_ls_limit_with_ready_flag() {
     let janus = JanusTest::new();
 
@@ -318,7 +302,6 @@ fn test_ls_limit_with_ready_flag() {
 }
 
 #[test]
-#[serial]
 fn test_ls_limit_with_blocked_flag() {
     let janus = JanusTest::new();
 
@@ -341,7 +324,6 @@ fn test_ls_limit_with_blocked_flag() {
 }
 
 #[test]
-#[serial]
 fn test_ls_closed_default_limit() {
     let janus = JanusTest::new();
 
@@ -364,7 +346,6 @@ fn test_ls_closed_default_limit() {
 }
 
 #[test]
-#[serial]
 fn test_ls_closed_custom_limit() {
     let janus = JanusTest::new();
 
@@ -387,7 +368,6 @@ fn test_ls_closed_custom_limit() {
 }
 
 #[test]
-#[serial]
 fn test_ls_closed_with_status_filter() {
     let janus = JanusTest::new();
 
@@ -413,7 +393,6 @@ fn test_ls_closed_with_status_filter() {
 }
 
 #[test]
-#[serial]
 fn test_ls_all_three_filters_union() {
     let janus = JanusTest::new();
 
@@ -440,7 +419,6 @@ fn test_ls_all_three_filters_union() {
 }
 
 #[test]
-#[serial]
 fn test_ls_json_output_works() {
     let janus = JanusTest::new();
 

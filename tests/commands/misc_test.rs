@@ -1,14 +1,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 use common::JanusTest;
-use serial_test::serial;
 
 // ============================================================================
 // Add-note command tests
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_add_note() {
     let janus = JanusTest::new();
 
@@ -23,7 +21,6 @@ fn test_add_note() {
 }
 
 #[test]
-#[serial]
 fn test_add_note_multiple() {
     let janus = JanusTest::new();
 
@@ -41,7 +38,6 @@ fn test_add_note_multiple() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_edit_non_tty() {
     let janus = JanusTest::new();
 
@@ -57,7 +53,6 @@ fn test_edit_non_tty() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_query_basic() {
     let janus = JanusTest::new();
 
@@ -73,7 +68,6 @@ fn test_query_basic() {
 }
 
 #[test]
-#[serial]
 fn test_query_json_format() {
     let janus = JanusTest::new();
 
@@ -91,7 +85,6 @@ fn test_query_json_format() {
 }
 
 #[test]
-#[serial]
 fn test_query_includes_children_count() {
     let janus = JanusTest::new();
 
@@ -121,7 +114,6 @@ fn test_query_includes_children_count() {
 }
 
 #[test]
-#[serial]
 fn test_query_children_count_zero_for_leaf_tickets() {
     let janus = JanusTest::new();
 
@@ -154,7 +146,6 @@ fn test_query_children_count_zero_for_leaf_tickets() {
 // ============================================================================
 
 #[test]
-#[serial]
 fn test_ticket_not_found() {
     let janus = JanusTest::new();
 
@@ -166,7 +157,6 @@ fn test_ticket_not_found() {
 }
 
 #[test]
-#[serial]
 fn test_ambiguous_id() {
     let janus = JanusTest::new();
 
@@ -191,7 +181,6 @@ fn test_ambiguous_id() {
 }
 
 #[test]
-#[serial]
 fn test_dep_add_nonexistent() {
     let janus = JanusTest::new();
 

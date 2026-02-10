@@ -17,7 +17,6 @@ use std::time::{Duration, Instant};
 
 use janus::parser::{parse_document, split_frontmatter};
 use janus::types::TicketMetadata;
-use serial_test::serial;
 
 // ---------------------------------------------------------------------------
 // Helper: wrap YAML content in a valid frontmatter document
@@ -31,7 +30,6 @@ fn make_document(yaml: &str) -> String {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_deeply_nested_yaml_mapping() {
     // Build a YAML mapping nested 128 levels deep:
     //   level0:
@@ -80,7 +78,6 @@ fn test_deeply_nested_yaml_mapping() {
 }
 
 #[test]
-#[serial]
 fn test_deeply_nested_yaml_sequence() {
     // Build a YAML sequence nested 128 levels deep:
     //   outer:
@@ -129,7 +126,6 @@ fn test_deeply_nested_yaml_sequence() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_large_sequence_in_frontmatter() {
     // Create a YAML sequence with 10,000 items
     let count = 10_000;
@@ -156,7 +152,6 @@ fn test_large_sequence_in_frontmatter() {
 }
 
 #[test]
-#[serial]
 fn test_large_sequence_deserialized_into_ticket_metadata() {
     // The deps/links fields are Vec<String>, so a large deps array exercises the typed path
     let count = 5_000;
@@ -188,7 +183,6 @@ fn test_large_sequence_deserialized_into_ticket_metadata() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_large_scalar_literal_block() {
     // A literal block scalar with ~500KB of content
     let line = "x".repeat(100);
@@ -214,7 +208,6 @@ fn test_large_scalar_literal_block() {
 }
 
 #[test]
-#[serial]
 fn test_large_scalar_single_line() {
     // A single quoted scalar that is ~1MB
     let big_value = "a".repeat(1_000_000);
@@ -236,7 +229,6 @@ fn test_large_scalar_single_line() {
 }
 
 #[test]
-#[serial]
 fn test_large_scalar_folded_block() {
     // A folded block scalar (>) with many short lines (~200KB)
     let line_count = 4_000;
@@ -265,7 +257,6 @@ fn test_large_scalar_folded_block() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_yaml_anchor_alias_basic() {
     // Basic anchor/alias usage — should parse cleanly
     let yaml = r#"id: j-test
@@ -288,7 +279,6 @@ task2:
 }
 
 #[test]
-#[serial]
 fn test_yaml_billion_laughs_style() {
     // Classic "billion laughs" pattern using YAML anchors.
     // Each level doubles the previous, creating exponential expansion:
@@ -339,7 +329,6 @@ fn test_yaml_billion_laughs_style() {
 }
 
 #[test]
-#[serial]
 fn test_yaml_self_referencing_alias() {
     // A self-referencing alias should not cause infinite recursion
     // Note: this is technically invalid YAML (forward reference or self-ref),
@@ -370,7 +359,6 @@ fn test_yaml_self_referencing_alias() {
 }
 
 #[test]
-#[serial]
 fn test_yaml_many_aliases_to_single_anchor() {
     // Many aliases referencing the same anchor — exercises alias resolution
     let count = 1_000;
@@ -393,11 +381,9 @@ fn test_yaml_many_aliases_to_single_anchor() {
     let parsed = result.expect("many aliases to one anchor should parse");
     assert!(parsed.frontmatter.contains_key("base"));
     assert!(parsed.frontmatter.contains_key("ref_0"));
-    assert!(
-        parsed
-            .frontmatter
-            .contains_key(&format!("ref_{}", count - 1))
-    );
+    assert!(parsed
+        .frontmatter
+        .contains_key(&format!("ref_{}", count - 1)));
 }
 
 // ---------------------------------------------------------------------------
@@ -405,7 +391,6 @@ fn test_yaml_many_aliases_to_single_anchor() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_many_keys_in_mapping() {
     // A mapping with 10,000 unique keys
     let count = 10_000;
@@ -428,15 +413,12 @@ fn test_many_keys_in_mapping() {
     let parsed = result.expect("many keys should parse successfully");
     assert!(parsed.frontmatter.contains_key("id"));
     assert!(parsed.frontmatter.contains_key("key_00000"));
-    assert!(
-        parsed
-            .frontmatter
-            .contains_key(&format!("key_{:05}", count - 1))
-    );
+    assert!(parsed
+        .frontmatter
+        .contains_key(&format!("key_{:05}", count - 1)));
 }
 
 #[test]
-#[serial]
 fn test_many_keys_deserialized_into_ticket_metadata() {
     // TicketMetadata uses #[serde(deny_unknown_fields)] is NOT set,
     // so extra keys should be silently ignored during deserialization.
@@ -468,7 +450,6 @@ fn test_many_keys_deserialized_into_ticket_metadata() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_duplicate_keys_in_yaml() {
     // YAML spec says duplicate keys are undefined behavior; serde_yaml_ng
     // typically takes the last value. We just verify no crash.
@@ -497,7 +478,6 @@ status: complete"#;
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_wrong_types_for_ticket_fields() {
     // Provide wrong types: array where string expected, mapping where number expected
     let yaml = r#"id:
@@ -526,7 +506,6 @@ deps: "not an array""#;
 }
 
 #[test]
-#[serial]
 fn test_null_values_for_optional_fields() {
     // All optional fields set to null — should deserialize to None
     let yaml = r#"id: j-test
@@ -559,7 +538,6 @@ triaged: ~"#;
 }
 
 #[test]
-#[serial]
 fn test_empty_string_values() {
     // Empty strings for string fields
     let yaml = r#"id: ""
@@ -584,7 +562,6 @@ type: """#;
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_frontmatter_with_many_dashes_in_body() {
     // Body contains many lines of "---" to try to confuse the splitter
     let mut content = String::from("---\nid: j-test\n---\n");
@@ -607,7 +584,6 @@ fn test_frontmatter_with_many_dashes_in_body() {
 }
 
 #[test]
-#[serial]
 fn test_very_long_key_names() {
     // Keys with very long names (~10KB each)
     let long_key = "k".repeat(10_000);
@@ -635,7 +611,6 @@ fn test_very_long_key_names() {
 }
 
 #[test]
-#[serial]
 fn test_deeply_nested_inline_json_style() {
     // YAML supports JSON-style inline notation: {a: {b: {c: {d: ...}}}}
     let depth = 200;
@@ -678,7 +653,6 @@ fn test_deeply_nested_inline_json_style() {
 }
 
 #[test]
-#[serial]
 fn test_flow_sequence_with_many_items() {
     // Inline flow sequence: [item0, item1, item2, ..., item9999]
     let count = 10_000;
@@ -705,7 +679,6 @@ fn test_flow_sequence_with_many_items() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[serial]
 fn test_yaml_type_coercion_edge_cases() {
     // YAML has surprising type coercion: "yes" → bool, "1.0" → float, etc.
     // Verify these don't crash the TicketMetadata deserialization.
@@ -730,7 +703,6 @@ remote: "1.0""#;
 }
 
 #[test]
-#[serial]
 fn test_yaml_unquoted_boolean_coercion() {
     // Unquoted "yes"/"no"/"on"/"off" are booleans in YAML 1.1
     // serde_yaml_ng follows YAML 1.2 which doesn't coerce these, but let's verify
