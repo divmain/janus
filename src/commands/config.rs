@@ -30,8 +30,11 @@ fn validate_config_key(key: &str) -> Result<&str> {
 
 /// Mask a sensitive value by showing only the first 2 and last 2 characters
 fn mask_sensitive_value(value: &str) -> String {
-    if value.len() > 4 {
-        format!("{}...{}", &value[..2], &value[value.len() - 2..])
+    let char_count = value.chars().count();
+    if char_count > 4 {
+        let first: String = value.chars().take(2).collect();
+        let last: String = value.chars().skip(char_count - 2).collect();
+        format!("{first}...{last}")
     } else {
         "****".to_string()
     }
@@ -315,4 +318,58 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mask_sensitive_value_ascii() {
+        assert_eq!(mask_sensitive_value("abcdef"), "ab...ef");
+        assert_eq!(mask_sensitive_value("12345678"), "12...78");
+    }
+
+    #[test]
+    fn test_mask_sensitive_value_short() {
+        assert_eq!(mask_sensitive_value("abcd"), "****");
+        assert_eq!(mask_sensitive_value("abc"), "****");
+        assert_eq!(mask_sensitive_value("ab"), "****");
+        assert_eq!(mask_sensitive_value("a"), "****");
+        assert_eq!(mask_sensitive_value(""), "****");
+    }
+
+    #[test]
+    fn test_mask_sensitive_value_exactly_five_chars() {
+        assert_eq!(mask_sensitive_value("abcde"), "ab...de");
+    }
+
+    #[test]
+    fn test_mask_sensitive_value_multibyte_utf8() {
+        // Each emoji is 4 bytes in UTF-8
+        // "🔑🔒🔓🔐🗝" = 5 chars, well over 4 bytes
+        assert_eq!(mask_sensitive_value("🔑🔒🔓🔐🗝"), "🔑🔒...🔐🗝");
+
+        // Mix of ASCII and multi-byte: "aé🔑cd" = 5 chars
+        assert_eq!(mask_sensitive_value("aé🔑cd"), "aé...cd");
+
+        // Multi-byte chars at the boundaries: "émañ日本語ok" = 9 chars
+        assert_eq!(mask_sensitive_value("émañ日本語ok"), "ém...ok");
+
+        // All multi-byte, short (4 chars) → masked
+        assert_eq!(mask_sensitive_value("éàöü"), "****");
+    }
+
+    #[test]
+    fn test_mask_sensitive_value_two_byte_chars() {
+        // "ñéàöüî" = 6 chars, each 2 bytes in UTF-8
+        assert_eq!(mask_sensitive_value("ñéàöüî"), "ñé...üî");
+    }
+
+    #[test]
+    fn test_mask_sensitive_value_three_byte_chars() {
+        // CJK characters are 3 bytes each
+        // "日本語中文" = 5 chars
+        assert_eq!(mask_sensitive_value("日本語中文"), "日本...中文");
+    }
 }
