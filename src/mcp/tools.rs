@@ -1705,5 +1705,4 @@ mod tests {
         assert!("invalid".parse::<TicketSize>().is_err());
         assert!("tiny".parse::<TicketSize>().is_err());
     }
-
 }
