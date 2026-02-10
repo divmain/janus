@@ -113,7 +113,7 @@ pub fn get_next_items_phased(
 
         // Find next actionable tickets in this phase
         let mut next_tickets = Vec::new();
-        for ticket_id in &phase.tickets {
+        for ticket_id in &phase.ticket_list.tickets {
             let ticket_meta = ticket_map.get(ticket_id).cloned();
             let status = ticket_meta
                 .as_ref()
@@ -200,7 +200,7 @@ pub fn get_next_items_simple(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::types::{Phase, PlanSection, TicketsSection};
+    use crate::plan::types::{Phase, PlanSection, TicketList, TicketsSection};
     use crate::types::TicketId;
 
     // Helper function to create test ticket metadata
@@ -233,7 +233,10 @@ mod tests {
                 name: name.to_string(),
                 description: None,
                 success_criteria: vec![],
-                tickets: tickets.iter().map(|s| s.to_string()).collect(),
+                ticket_list: TicketList {
+                    tickets: tickets.iter().map(|s| s.to_string()).collect(),
+                    tickets_raw: None,
+                },
                 ..Default::default()
             };
             metadata.sections.push(PlanSection::Phase(phase));

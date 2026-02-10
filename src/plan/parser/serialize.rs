@@ -214,9 +214,9 @@ fn serialize_phase_success_criteria(output: &mut String, phase: &Phase) {
 
 /// Serialize tickets subsection for a phase.
 fn serialize_phase_tickets(output: &mut String, phase: &Phase) {
-    if phase.tickets_raw.is_some() || !phase.tickets.is_empty() {
+    if phase.ticket_list.tickets_raw.is_some() || !phase.ticket_list.tickets.is_empty() {
         output.push_str("\n### Tickets\n\n");
-        if let Some(ref raw) = phase.tickets_raw {
+        if let Some(ref raw) = phase.ticket_list.tickets_raw {
             // Use raw content verbatim for round-trip fidelity — preserves
             // ticket descriptions (e.g., "1. j-a1b2 - Add cache dependencies")
             output.push_str(raw);
@@ -225,7 +225,7 @@ fn serialize_phase_tickets(output: &mut String, phase: &Phase) {
             }
         } else {
             // Fallback: generate numbered list from ticket IDs (programmatically constructed phases)
-            for (i, ticket) in phase.tickets.iter().enumerate() {
+            for (i, ticket) in phase.ticket_list.tickets.iter().enumerate() {
                 output.push_str(&format!("{}. {}\n", i + 1, ticket));
             }
         }
@@ -264,7 +264,7 @@ fn serialize_tickets_section(ts: &TicketsSection) -> String {
     let mut output = String::new();
 
     output.push_str("## Tickets\n\n");
-    if let Some(ref raw) = ts.tickets_raw {
+    if let Some(ref raw) = ts.ticket_list.tickets_raw {
         // Use raw content verbatim for round-trip fidelity — preserves
         // ticket descriptions (e.g., "1. j-a1b2 - Add cache dependencies")
         output.push_str(raw);
@@ -273,7 +273,7 @@ fn serialize_tickets_section(ts: &TicketsSection) -> String {
         }
     } else {
         // Fallback: generate numbered list from ticket IDs (programmatically constructed plans)
-        for (i, ticket) in ts.tickets.iter().enumerate() {
+        for (i, ticket) in ts.ticket_list.tickets.iter().enumerate() {
             output.push_str(&format!("{}. {}\n", i + 1, ticket));
         }
     }
@@ -315,6 +315,7 @@ fn serialize_freeform(freeform: &FreeFormSection) -> String {
 mod tests {
     use super::*;
     use crate::plan::parser::parse_plan_content;
+    use crate::plan::types::TicketList;
     use crate::types::{CreatedAt, PlanId};
 
     // ==================== Serialization Tests ====================
@@ -368,10 +369,10 @@ mod tests {
             "Database tables created".to_string(),
             "Helper functions work".to_string(),
         ];
-        phase1.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
+        phase1.ticket_list.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
 
         let mut phase2 = Phase::new("2", "Implementation");
-        phase2.tickets = vec!["j-e5f6".to_string()];
+        phase2.ticket_list.tickets = vec!["j-e5f6".to_string()];
 
         let metadata = PlanMetadata {
             id: Some(PlanId::new_unchecked("plan-b2c3")),
@@ -426,7 +427,7 @@ mod tests {
         // Add phase
         let phase = Phase::new("1", "Setup");
         let mut phase = phase;
-        phase.tickets = vec!["j-a1b2".to_string()];
+        phase.ticket_list.tickets = vec!["j-a1b2".to_string()];
         metadata.sections.push(PlanSection::Phase(phase));
 
         // Add another free-form section
@@ -466,7 +467,8 @@ mod tests {
         let mut phase = Phase::new("2a", "Sub-task");
         phase.description = Some("This is a description.".to_string());
         phase.success_criteria = vec!["Criterion one".to_string(), "Criterion two".to_string()];
-        phase.tickets = vec!["j-t1".to_string(), "j-t2".to_string(), "j-t3".to_string()];
+        phase.ticket_list.tickets =
+            vec!["j-t1".to_string(), "j-t2".to_string(), "j-t3".to_string()];
 
         let serialized = serialize_phase(&phase);
 
@@ -616,7 +618,7 @@ Implement the core logic.
             assert_eq!(new.number, orig.number);
             assert_eq!(new.name, orig.name);
             assert_eq!(new.success_criteria, orig.success_criteria);
-            assert_eq!(new.tickets, orig.tickets);
+            assert_eq!(new.ticket_list.tickets, orig.ticket_list.tickets);
         }
     }
 
@@ -757,7 +759,7 @@ Last section.
                     assert_eq!(o.name, n.name);
                 }
                 (PlanSection::Tickets(o), PlanSection::Tickets(n)) => {
-                    assert_eq!(o.tickets, n.tickets);
+                    assert_eq!(o.ticket_list.tickets, n.ticket_list.tickets);
                 }
                 _ => panic!("Section type mismatch"),
             }
@@ -850,7 +852,7 @@ Implement sync logic.
         for (orig, new) in metadata.phases().iter().zip(reparsed.phases().iter()) {
             assert_eq!(new.number, orig.number);
             assert_eq!(new.name, orig.name);
-            assert_eq!(new.tickets, orig.tickets);
+            assert_eq!(new.ticket_list.tickets, orig.ticket_list.tickets);
         }
 
         // Free-form sections
@@ -956,7 +958,10 @@ They should survive a round-trip without data loss.
         let new_phases = reparsed.phases();
         assert_eq!(new_phases.len(), 1);
         assert_eq!(new_phases[0].success_criteria, phases[0].success_criteria);
-        assert_eq!(new_phases[0].tickets, phases[0].tickets);
+        assert_eq!(
+            new_phases[0].ticket_list.tickets,
+            phases[0].ticket_list.tickets
+        );
         assert_eq!(new_phases[0].extra_subsections.len(), 2);
         assert_eq!(
             new_phases[0].extra_subsections[0].heading,
@@ -998,7 +1003,7 @@ Background research phase.
         let phases = metadata.phases();
         assert_eq!(phases[0].extra_subsections.len(), 2);
         assert!(phases[0].success_criteria.is_empty());
-        assert!(phases[0].tickets.is_empty());
+        assert!(phases[0].ticket_list.tickets.is_empty());
 
         let serialized = serialize_plan(&metadata);
         assert!(serialized.contains("### References"));
@@ -1056,25 +1061,21 @@ This approach has limitations with large datasets.
         assert_eq!(phases.len(), 2);
 
         // Phase 1: Tickets then Dependencies
-        assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2"]);
         assert_eq!(phases[0].extra_subsections.len(), 1);
         assert_eq!(phases[0].extra_subsections[0].heading, "Dependencies");
-        assert!(
-            phases[0].extra_subsections[0]
-                .content
-                .contains("Node.js 18+")
-        );
+        assert!(phases[0].extra_subsections[0]
+            .content
+            .contains("Node.js 18+"));
 
         // Phase 2: Design Rationale, then Tickets, then Caveats
-        assert_eq!(phases[1].tickets, vec!["j-c3d4", "j-e5f6"]);
+        assert_eq!(phases[1].ticket_list.tickets, vec!["j-c3d4", "j-e5f6"]);
         assert_eq!(phases[1].extra_subsections.len(), 2);
         assert_eq!(phases[1].extra_subsections[0].heading, "Design Rationale");
         assert_eq!(phases[1].extra_subsections[1].heading, "Caveats");
-        assert!(
-            phases[1].extra_subsections[1]
-                .content
-                .contains("limitations")
-        );
+        assert!(phases[1].extra_subsections[1]
+            .content
+            .contains("limitations"));
     }
 
     #[test]
@@ -1084,7 +1085,7 @@ This approach has limitations with large datasets.
         let mut phase = Phase::new("1", "Legacy");
         phase.description = Some("A phase built without subsection_order.".to_string());
         phase.success_criteria = vec!["It works".to_string()];
-        phase.tickets = vec!["j-a1b2".to_string()];
+        phase.ticket_list.tickets = vec!["j-a1b2".to_string()];
         phase.extra_subsections = vec![FreeFormSection::new("Custom", "Custom content here.")];
         // subsection_order is empty (default)
 
@@ -1183,11 +1184,9 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
             assert_eq!(ts.extra_subsections[0].heading, "Ordering Notes");
             assert!(ts.extra_subsections[0].content.contains("API dependency"));
             assert_eq!(ts.extra_subsections[1].heading, "Risk Assessment");
-            assert!(
-                ts.extra_subsections[1]
-                    .content
-                    .contains("Timeline pressure")
-            );
+            assert!(ts.extra_subsections[1]
+                .content
+                .contains("Timeline pressure"));
         } else {
             panic!("Expected PlanSection::Tickets after round-trip");
         }
@@ -1225,8 +1224,10 @@ created: 2024-01-01T00:00:00Z
     #[test]
     fn test_serialize_tickets_section_with_extra_subsections() {
         let ts = TicketsSection {
-            tickets: vec!["j-a1b2".to_string(), "j-c3d4".to_string()],
-            tickets_raw: None,
+            ticket_list: TicketList {
+                tickets: vec!["j-a1b2".to_string(), "j-c3d4".to_string()],
+                tickets_raw: None,
+            },
             extra_subsections: vec![
                 FreeFormSection::new("Notes", "Some important notes."),
                 FreeFormSection::new("Dependencies", "- Requires external API"),
@@ -1325,20 +1326,16 @@ Run the full integration suite before merging.
             reparsed.acceptance_criteria_extra[0].heading,
             "Testing Notes"
         );
-        assert!(
-            reparsed.acceptance_criteria_extra[0]
-                .content
-                .contains("Detailed testing instructions")
-        );
+        assert!(reparsed.acceptance_criteria_extra[0]
+            .content
+            .contains("Detailed testing instructions"));
         assert_eq!(
             reparsed.acceptance_criteria_extra[1].heading,
             "Verification Steps"
         );
-        assert!(
-            reparsed.acceptance_criteria_extra[1]
-                .content
-                .contains("Deploy to staging")
-        );
+        assert!(reparsed.acceptance_criteria_extra[1]
+            .content
+            .contains("Deploy to staging"));
     }
 
     #[test]
@@ -1646,7 +1643,7 @@ Example response:
             acceptance_criteria_raw: None,
             acceptance_criteria_extra: vec![],
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-a1b2".to_string(),
+                "j-a1b2".to_string()
             ]))],
             file_path: None,
             extra_frontmatter: None,
@@ -1922,7 +1919,7 @@ Reliability requirements:
             "First criterion".to_string(),
             "Second criterion".to_string(),
         ];
-        phase.tickets = vec!["j-a1b2".to_string()];
+        phase.ticket_list.tickets = vec!["j-a1b2".to_string()];
 
         let metadata = PlanMetadata {
             id: Some(PlanId::new_unchecked("plan-sc-prog")),
@@ -1978,11 +1975,14 @@ created: 2024-01-01T00:00:00Z
         assert!(metadata.is_phased());
 
         let phases = metadata.phases();
-        assert_eq!(phases[0].tickets, vec!["j-dep1", "j-mod2", "j-cfg3"]);
+        assert_eq!(
+            phases[0].ticket_list.tickets,
+            vec!["j-dep1", "j-mod2", "j-cfg3"]
+        );
 
         // Raw content stored
-        assert!(phases[0].tickets_raw.is_some());
-        let raw = phases[0].tickets_raw.as_ref().unwrap();
+        assert!(phases[0].ticket_list.tickets_raw.is_some());
+        let raw = phases[0].ticket_list.tickets_raw.as_ref().unwrap();
         assert!(
             raw.contains("Add cache dependencies"),
             "Raw should contain ticket description, got: {}",
@@ -2006,9 +2006,12 @@ created: 2024-01-01T00:00:00Z
         // Re-parse and verify full round-trip
         let reparsed = parse_plan_content(&serialized).unwrap();
         let new_phases = reparsed.phases();
-        assert_eq!(new_phases[0].tickets, vec!["j-dep1", "j-mod2", "j-cfg3"]);
-        assert!(new_phases[0].tickets_raw.is_some());
-        let raw2 = new_phases[0].tickets_raw.as_ref().unwrap();
+        assert_eq!(
+            new_phases[0].ticket_list.tickets,
+            vec!["j-dep1", "j-mod2", "j-cfg3"]
+        );
+        assert!(new_phases[0].ticket_list.tickets_raw.is_some());
+        let raw2 = new_phases[0].ticket_list.tickets_raw.as_ref().unwrap();
         assert!(raw2.contains("Add cache dependencies"));
         assert!(raw2.contains("Create src/cache.rs"));
     }
@@ -2038,8 +2041,8 @@ created: 2024-01-01T00:00:00Z
 
         // Raw content stored
         if let PlanSection::Tickets(ts) = &metadata.sections[0] {
-            assert!(ts.tickets_raw.is_some());
-            let raw = ts.tickets_raw.as_ref().unwrap();
+            assert!(ts.ticket_list.tickets_raw.is_some());
+            let raw = ts.ticket_list.tickets_raw.as_ref().unwrap();
             assert!(
                 raw.contains("Add cache dependencies"),
                 "Raw should contain ticket description, got: {}",
@@ -2069,8 +2072,8 @@ created: 2024-01-01T00:00:00Z
         assert_eq!(reparsed.all_tickets(), vec!["j-a1b2", "j-c3d4", "j-e5f6"]);
 
         if let PlanSection::Tickets(ts) = &reparsed.sections[0] {
-            assert!(ts.tickets_raw.is_some());
-            let raw = ts.tickets_raw.as_ref().unwrap();
+            assert!(ts.ticket_list.tickets_raw.is_some());
+            let raw = ts.ticket_list.tickets_raw.as_ref().unwrap();
             assert!(raw.contains("Add cache dependencies"));
             assert!(raw.contains("Implement sync algorithm"));
         } else {
@@ -2086,7 +2089,7 @@ created: 2024-01-01T00:00:00Z
         let design_content = "### Architecture\n\nThe system uses a modular design.\n\n### Key Decisions\n\n1. Decision one\n2. Decision two";
 
         let mut phase = Phase::new("1", "Setup");
-        phase.tickets = vec!["j-a1b2".to_string()];
+        phase.ticket_list.tickets = vec!["j-a1b2".to_string()];
 
         let metadata = PlanMetadata {
             id: Some(PlanId::new_unchecked("plan-design-rt")),
@@ -2175,7 +2178,7 @@ created: 2024-01-01T00:00:00Z
         // Phases still intact
         let phases = reparsed.phases();
         assert_eq!(phases.len(), 1);
-        assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2"]);
 
         // Acceptance criteria still intact
         assert_eq!(reparsed.acceptance_criteria.len(), 1);
@@ -2186,7 +2189,7 @@ created: 2024-01-01T00:00:00Z
     fn test_serialize_programmatic_plan_tickets_without_raw_falls_back_to_numbered_list() {
         // Programmatically constructed plan — no tickets_raw set
         let mut phase = Phase::new("1", "Programmatic");
-        phase.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
+        phase.ticket_list.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
         // tickets_raw is None by default
 
         let metadata = PlanMetadata {

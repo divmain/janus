@@ -91,7 +91,7 @@ impl FullFormatter {
                     Self::print_phase_section(phase, phase_status, ticket_map, verbose_phases);
                 }
                 PlanSection::Tickets(ts) => {
-                    Self::print_tickets_section(&ts.tickets, ticket_map);
+                    Self::print_tickets_section(&ts.ticket_list.tickets, ticket_map);
                 }
                 PlanSection::FreeForm(freeform) => {
                     Self::print_freeform_section(freeform);
@@ -143,12 +143,12 @@ impl FullFormatter {
             }
         }
 
-        if !phase.tickets.is_empty() {
+        if !phase.ticket_list.tickets.is_empty() {
             println!();
             println!("{}", "### Tickets".bold());
             println!();
             let full_summary = verbose_phases.contains(&phase.number);
-            for (i, ticket_id) in phase.tickets.iter().enumerate() {
+            for (i, ticket_id) in phase.ticket_list.tickets.iter().enumerate() {
                 print_ticket_line(i + 1, ticket_id, ticket_map, full_summary);
             }
         }
@@ -194,6 +194,7 @@ impl JsonFormatter {
             .zip(phase_statuses.iter())
             .map(|(phase, ps)| {
                 let phase_tickets: Vec<serde_json::Value> = phase
+                    .ticket_list
                     .tickets
                     .iter()
                     .map(|tid| {

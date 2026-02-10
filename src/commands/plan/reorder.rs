@@ -183,13 +183,14 @@ pub async fn cmd_plan_reorder(
             .find_phase_mut(phase_identifier)
             .ok_or_else(|| JanusError::PhaseNotFound(phase_identifier.to_string()))?;
 
-        if phase_obj.tickets.is_empty() {
+        if phase_obj.ticket_list.tickets.is_empty() {
             println!("No tickets to reorder in phase '{phase_identifier}'");
             return Ok(());
         }
 
         // Create temp content with current order
         let temp_content: String = phase_obj
+            .ticket_list
             .tickets
             .iter()
             .enumerate()
@@ -203,21 +204,23 @@ pub async fn cmd_plan_reorder(
             return Ok(());
         }
 
-        phase_obj.tickets = parse_and_validate_ticket_order(&new_order, &phase_obj.tickets)?;
-        phase_obj.tickets_raw = None; // Invalidate stale raw content
+        phase_obj.ticket_list.tickets =
+            parse_and_validate_ticket_order(&new_order, &phase_obj.ticket_list.tickets)?;
+        phase_obj.ticket_list.tickets_raw = None; // Invalidate stale raw content
     } else if metadata.is_simple() {
         // Reorder tickets in simple plan
         let ts = metadata
             .tickets_section_mut()
             .ok_or_else(|| JanusError::PlanNoTicketsSection)?;
 
-        if ts.tickets.is_empty() {
+        if ts.ticket_list.tickets.is_empty() {
             println!("No tickets to reorder");
             return Ok(());
         }
 
         // Create temp content with current order
         let temp_content: String = ts
+            .ticket_list
             .tickets
             .iter()
             .enumerate()
@@ -231,8 +234,9 @@ pub async fn cmd_plan_reorder(
             return Ok(());
         }
 
-        ts.tickets = parse_and_validate_ticket_order(&new_order, &ts.tickets)?;
-        ts.tickets_raw = None; // Invalidate stale raw content
+        ts.ticket_list.tickets =
+            parse_and_validate_ticket_order(&new_order, &ts.ticket_list.tickets)?;
+        ts.ticket_list.tickets_raw = None; // Invalidate stale raw content
     } else {
         println!(
             "Use --phase to specify which phase to reorder, or --reorder-phases to reorder phases"

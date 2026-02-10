@@ -340,7 +340,10 @@ pub async fn cmd_plan_import(
 
         // Assign ticket IDs to this phase
         for _ in &import_phase.tasks {
-            phase.tickets.push(created_ticket_ids[ticket_idx].clone());
+            phase
+                .ticket_list
+                .tickets
+                .push(created_ticket_ids[ticket_idx].clone());
             ticket_idx += 1;
         }
 
@@ -352,7 +355,7 @@ pub async fn cmd_plan_import(
             .unwrap_or(false);
 
         if is_last_phase && let Some(ref v_id) = verification_ticket_id {
-            phase.tickets.push(v_id.clone());
+            phase.ticket_list.tickets.push(v_id.clone());
         }
 
         metadata.sections.push(PlanSection::Phase(phase));

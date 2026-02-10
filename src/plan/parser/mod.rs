@@ -27,7 +27,7 @@ use serde::Deserialize;
 
 use crate::error::{JanusError, Result};
 use crate::parser::split_frontmatter;
-use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection, TicketsSection};
+use crate::plan::types::{FreeFormSection, PlanMetadata, PlanSection, TicketList, TicketsSection};
 
 // Re-export public functions from submodules
 pub use import::{
@@ -319,8 +319,10 @@ fn classify_and_add_section(
             None
         };
         metadata.sections.push(PlanSection::Tickets(TicketsSection {
-            tickets,
-            tickets_raw,
+            ticket_list: TicketList {
+                tickets,
+                tickets_raw,
+            },
             extra_subsections,
         }));
         return;
@@ -595,12 +597,12 @@ Implement the core logic.
             Some("Set up the foundational components.".to_string())
         );
         assert_eq!(phases[0].success_criteria.len(), 2);
-        assert_eq!(phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2", "j-c3d4"]);
 
         // Phase 2
         assert_eq!(phases[1].number, "2");
         assert_eq!(phases[1].name, "Implementation");
-        assert_eq!(phases[1].tickets, vec!["j-e5f6"]);
+        assert_eq!(phases[1].ticket_list.tickets, vec!["j-e5f6"]);
 
         // All tickets across phases
         let all_tickets = metadata.all_tickets();
@@ -890,7 +892,7 @@ This phase has no tickets.
         let phases = metadata.phases();
         assert_eq!(phases.len(), 1);
         assert_eq!(phases[0].name, "Empty Phase");
-        assert!(phases[0].tickets.is_empty());
+        assert!(phases[0].ticket_list.tickets.is_empty());
         assert_eq!(phases[0].success_criteria.len(), 1);
     }
 
@@ -990,7 +992,7 @@ uuid: 550e8400-e29b-41d4-a716-446655440005
         assert_eq!(phases.len(), 1);
         assert_eq!(phases[0].number, "1");
         assert_eq!(phases[0].name, "lowercase");
-        assert_eq!(phases[0].tickets, vec!["j-a1b2"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2"]);
     }
 
     #[test]
@@ -1346,12 +1348,12 @@ Implement the core synchronization logic.
         assert_eq!(phases[0].number, "1");
         assert_eq!(phases[0].name, "Infrastructure");
         assert_eq!(phases[0].success_criteria.len(), 3);
-        assert_eq!(phases[0].tickets.len(), 2);
-        assert_eq!(phases[0].tickets[0], "j-dep1");
+        assert_eq!(phases[0].ticket_list.tickets.len(), 2);
+        assert_eq!(phases[0].ticket_list.tickets[0], "j-dep1");
 
         assert_eq!(phases[1].number, "2");
         assert_eq!(phases[1].name, "Sync Algorithm");
-        assert_eq!(phases[1].tickets.len(), 3);
+        assert_eq!(phases[1].ticket_list.tickets.len(), 3);
 
         // Free-form sections
         let freeform = metadata.free_form_sections();
@@ -1450,8 +1452,8 @@ First phase description.\r\n\
         assert_eq!(phases.len(), 2);
         assert_eq!(phases[0].number, "1");
         assert_eq!(phases[0].name, "First Phase");
-        assert_eq!(phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
-        assert_eq!(phases[1].tickets, vec!["j-e5f6"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(phases[1].ticket_list.tickets, vec!["j-e5f6"]);
     }
 
     #[test]
@@ -1786,7 +1788,7 @@ Here's an example ticket list format:
         // Tickets should only have the real ones, not those inside code blocks
         let phases = metadata.phases();
         assert_eq!(phases.len(), 1);
-        assert_eq!(phases[0].tickets, vec!["j-real1", "j-real2"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-real1", "j-real2"]);
     }
 
     #[test]
@@ -1830,10 +1832,10 @@ created: 2024-01-01T00:00:00Z
         assert_eq!(phases[0].success_criteria[1], "Helper functions work");
 
         // Phase 1 tickets
-        assert_eq!(phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2", "j-c3d4"]);
 
         // Phase 2 tickets (with description after ID)
-        assert_eq!(phases[1].tickets, vec!["j-e5f6"]);
+        assert_eq!(phases[1].ticket_list.tickets, vec!["j-e5f6"]);
     }
 
     #[test]
@@ -1975,7 +1977,7 @@ They contain useful context that must not be lost.
 
         // Known subsections parsed correctly
         assert_eq!(phases[0].success_criteria, vec!["Database tables created"]);
-        assert_eq!(phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2", "j-c3d4"]);
 
         // Unknown subsections preserved
         assert_eq!(phases[0].extra_subsections.len(), 2);
@@ -2371,6 +2373,6 @@ The following schema will be used:
         assert!(new_desc.contains("Column"));
         assert!(new_desc.contains("Primary key"));
         assert!(new_desc.contains("Display name"));
-        assert_eq!(new_phases[0].tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(new_phases[0].ticket_list.tickets, vec!["j-a1b2", "j-c3d4"]);
     }
 }

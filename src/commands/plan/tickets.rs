@@ -78,11 +78,12 @@ pub async fn cmd_plan_add_ticket(
 
         // Add ticket to phase
         if let Some(after_id) = after {
-            let resolved_after = resolve_after_id(after_id, &phase_obj.tickets)?;
+            let resolved_after = resolve_after_id(after_id, &phase_obj.ticket_list.tickets)?;
             if !phase_obj.add_ticket_after(&resolved_ticket_id, &resolved_after) {
                 return Err(JanusError::TicketNotFound(after_id.to_string()));
             }
             added_position = phase_obj
+                .ticket_list
                 .tickets
                 .iter()
                 .position(|t| t == &resolved_ticket_id);
@@ -91,7 +92,7 @@ pub async fn cmd_plan_add_ticket(
             added_position = Some(pos.saturating_sub(1));
         } else {
             phase_obj.add_ticket(&resolved_ticket_id);
-            added_position = Some(phase_obj.tickets.len().saturating_sub(1));
+            added_position = Some(phase_obj.ticket_list.tickets.len().saturating_sub(1));
         }
     } else if metadata.is_simple() {
         // Simple plan: --phase option is not allowed
@@ -105,9 +106,10 @@ pub async fn cmd_plan_add_ticket(
 
         // Add ticket to list (mutations invalidate tickets_raw automatically)
         if let Some(after_id) = after {
-            let resolved_after = resolve_after_id(after_id, &ts.tickets)?;
+            let resolved_after = resolve_after_id(after_id, &ts.ticket_list.tickets)?;
             if ts.insert_ticket_after(resolved_ticket_id.clone(), &resolved_after) {
                 let pos = ts
+                    .ticket_list
                     .tickets
                     .iter()
                     .position(|t| t == &resolved_ticket_id)
@@ -119,10 +121,10 @@ pub async fn cmd_plan_add_ticket(
         } else if let Some(pos) = position {
             let index = pos.saturating_sub(1);
             ts.insert_ticket_at(resolved_ticket_id.clone(), pos);
-            added_position = Some(index.min(ts.tickets.len().saturating_sub(1)));
+            added_position = Some(index.min(ts.ticket_list.tickets.len().saturating_sub(1)));
         } else {
             ts.add_ticket(resolved_ticket_id.clone());
-            added_position = Some(ts.tickets.len().saturating_sub(1));
+            added_position = Some(ts.ticket_list.tickets.len().saturating_sub(1));
         }
     } else {
         return Err(JanusError::PlanNoTicketsOrPhases);
@@ -264,7 +266,7 @@ pub async fn cmd_plan_move_ticket(
         .ok_or_else(|| JanusError::PhaseNotFound(to_phase.to_string()))?;
 
     if let Some(after_id) = after {
-        let resolved_after = resolve_after_id(after_id, &target_phase.tickets)?;
+        let resolved_after = resolve_after_id(after_id, &target_phase.ticket_list.tickets)?;
         if !target_phase.add_ticket_after(&resolved_id, &resolved_after) {
             return Err(JanusError::TicketNotFound(after_id.to_string()));
         }

@@ -158,7 +158,7 @@ pub async fn cmd_plan_remove_phase(
             && (p.number.eq_ignore_ascii_case(phase) || p.name.eq_ignore_ascii_case(phase))
         {
             phase_idx = Some(i);
-            phase_tickets = p.tickets.clone();
+            phase_tickets = p.ticket_list.tickets.clone();
             phase_name = p.name.clone();
             phase_number = p.number.clone();
             break;

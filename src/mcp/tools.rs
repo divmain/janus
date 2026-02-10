@@ -1411,10 +1411,10 @@ mod tests {
         );
 
         let mut phase1 = Phase::new("1", "Setup");
-        phase1.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
+        phase1.ticket_list.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
 
         let mut phase2 = Phase::new("2", "Implementation");
-        phase2.tickets = vec![
+        phase2.ticket_list.tickets = vec![
             "j-e5f6".to_string(),
             "j-g7h8".to_string(),
             "j-i9j0".to_string(),

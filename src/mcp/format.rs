@@ -382,7 +382,7 @@ pub fn format_plan_status_as_markdown(
                 phase.number, phase.name, phase_status.status
             ));
 
-            for ticket_id in &phase.tickets {
+            for ticket_id in &phase.ticket_list.tickets {
                 output.push_str(&format_plan_ticket_entry(ticket_id, ticket_map));
             }
         }

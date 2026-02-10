@@ -73,10 +73,10 @@ pub fn parse_phase_content(phase_info: (String, String), section: &H2Section) ->
             }
             phase.subsection_order.push(h3_heading_lower);
         } else if h3_heading_lower == "tickets" {
-            phase.tickets = parse_ticket_list(&h3.content);
+            phase.ticket_list.tickets = parse_ticket_list(&h3.content);
             let trimmed = h3.content.trim();
             if !trimmed.is_empty() {
-                phase.tickets_raw = Some(trimmed.to_string());
+                phase.ticket_list.tickets_raw = Some(trimmed.to_string());
             }
             phase.subsection_order.push(h3_heading_lower);
         } else {
@@ -340,7 +340,7 @@ mod tests {
 
         // Known subsections parsed correctly
         assert_eq!(phase.success_criteria, vec!["Criterion 1"]);
-        assert_eq!(phase.tickets, vec!["j-a1b2"]);
+        assert_eq!(phase.ticket_list.tickets, vec!["j-a1b2"]);
 
         // Unknown subsections preserved
         assert_eq!(phase.extra_subsections.len(), 2);

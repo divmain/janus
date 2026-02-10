@@ -108,10 +108,10 @@ impl PlanMetadata {
         for section in &self.sections {
             match section {
                 PlanSection::Phase(phase) => {
-                    tickets.extend(phase.tickets.iter().map(|s| s.as_str()));
+                    tickets.extend(phase.ticket_list.tickets.iter().map(|s| s.as_str()));
                 }
                 PlanSection::Tickets(ts) => {
-                    tickets.extend(ts.tickets.iter().map(|s| s.as_str()));
+                    tickets.extend(ts.ticket_list.tickets.iter().map(|s| s.as_str()));
                 }
                 PlanSection::FreeForm(_) => {}
             }
@@ -148,7 +148,7 @@ impl PlanMetadata {
     /// Get the tickets section for simple plans (returns None for phased plans)
     pub fn tickets_section(&self) -> Option<&Vec<String>> {
         self.sections.iter().find_map(|s| match s {
-            PlanSection::Tickets(ts) => Some(&ts.tickets),
+            PlanSection::Tickets(ts) => Some(&ts.ticket_list.tickets),
             _ => None,
         })
     }
@@ -253,48 +253,40 @@ pub enum PlanSection {
     FreeForm(FreeFormSection),
 }
 
-/// A tickets section in a simple (non-phased) plan.
+/// A list of tickets with raw cache invalidation.
 ///
-/// Stores the ordered list of ticket IDs and any H3 subsections that appear
-/// under the `## Tickets` heading, preserving them for round-trip fidelity.
+/// This is a reusable component that wraps the common pattern of a `Vec<String>`
+/// of ticket IDs with an optional raw cache that needs invalidation on mutation.
+/// Used by both `Phase` and `TicketsSection` to avoid code duplication.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TicketsSection {
+pub struct TicketList {
     /// Ordered list of ticket IDs
     pub tickets: Vec<String>,
 
-    /// Raw markdown content of the `## Tickets` section body (before any H3 subsections).
-    /// Used during serialization for round-trip fidelity to preserve ticket
-    /// descriptions (e.g., `1. j-a1b2 - Add cache dependencies`) that
-    /// `parse_ticket_list` would otherwise discard. When `Some`, this is output
-    /// verbatim instead of regenerating `1. ticket-id` lines. When `None`
-    /// (programmatically constructed plans), the serializer falls back to
-    /// generating numbered list lines from the `tickets` vec.
+    /// Raw markdown content cache.
+    /// When `Some`, this is output verbatim during serialization.
+    /// When `None`, the serializer generates ticket list lines from the `tickets` vec.
     #[serde(skip)]
     pub tickets_raw: Option<String>,
-
-    /// Unknown/unrecognized H3 subsections preserved verbatim for round-trip fidelity.
-    /// Each entry stores the original heading text and raw markdown content.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub extra_subsections: Vec<FreeFormSection>,
 }
 
-impl TicketsSection {
-    /// Create a new tickets section with the given ticket IDs and no extra subsections.
+impl TicketList {
+    /// Create a new ticket list with the given ticket IDs and no raw cache.
     pub fn new(tickets: Vec<String>) -> Self {
-        TicketsSection {
+        TicketList {
             tickets,
             tickets_raw: None,
-            extra_subsections: Vec::new(),
         }
     }
 
-    /// Add a ticket, invalidating stale raw content.
+    /// Add a ticket at the end, invalidating stale raw content.
     pub fn add_ticket(&mut self, ticket_id: impl Into<String>) {
         self.tickets.push(ticket_id.into());
         self.tickets_raw = None;
     }
 
-    /// Remove a ticket, invalidating stale raw content.
+    /// Remove a ticket by ID, invalidating stale raw content.
+    /// Returns true if the ticket was found and removed.
     pub fn remove_ticket(&mut self, ticket_id: &str) -> bool {
         if let Some(pos) = self.tickets.iter().position(|t| t == ticket_id) {
             self.tickets.remove(pos);
@@ -306,6 +298,7 @@ impl TicketsSection {
     }
 
     /// Insert a ticket at a specific position (1-indexed), invalidating stale raw content.
+    /// If position is beyond the end, the ticket is appended.
     pub fn insert_ticket_at(&mut self, ticket_id: impl Into<String>, position: usize) {
         let ticket = ticket_id.into();
         let index = position.saturating_sub(1);
@@ -318,6 +311,7 @@ impl TicketsSection {
     }
 
     /// Insert a ticket after another ticket, invalidating stale raw content.
+    /// Returns true if the reference ticket was found and the new ticket inserted.
     pub fn insert_ticket_after(
         &mut self,
         ticket_id: impl Into<String>,
@@ -330,6 +324,83 @@ impl TicketsSection {
         } else {
             false
         }
+    }
+
+    /// Check if a ticket ID is in this list.
+    pub fn contains_ticket(&self, ticket_id: &str) -> bool {
+        self.tickets.iter().any(|t| t == ticket_id)
+    }
+
+    /// Get the tickets as a slice.
+    pub fn tickets(&self) -> &[String] {
+        &self.tickets
+    }
+}
+
+/// A tickets section in a simple (non-phased) plan.
+///
+/// Stores the ordered list of ticket IDs and any H3 subsections that appear
+/// under the `## Tickets` heading, preserving them for round-trip fidelity.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TicketsSection {
+    /// The ticket list with raw cache
+    #[serde(flatten)]
+    pub ticket_list: TicketList,
+
+    /// Unknown/unrecognized H3 subsections preserved verbatim for round-trip fidelity.
+    /// Each entry stores the original heading text and raw markdown content.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_subsections: Vec<FreeFormSection>,
+}
+
+impl TicketsSection {
+    /// Create a new tickets section with the given ticket IDs and no extra subsections.
+    pub fn new(tickets: Vec<String>) -> Self {
+        TicketsSection {
+            ticket_list: TicketList::new(tickets),
+            extra_subsections: Vec::new(),
+        }
+    }
+
+    /// Ordered list of ticket IDs (convenience accessor)
+    pub fn tickets(&self) -> &[String] {
+        self.ticket_list.tickets()
+    }
+
+    /// Raw markdown content of the `## Tickets` section body (before any H3 subsections).
+    /// Used during serialization for round-trip fidelity to preserve ticket
+    /// descriptions (e.g., `1. j-a1b2 - Add cache dependencies`) that
+    /// `parse_ticket_list` would otherwise discard. When `Some`, this is output
+    /// verbatim instead of regenerating `1. ticket-id` lines. When `None`
+    /// (programmatically constructed plans), the serializer falls back to
+    /// generating numbered list lines from the `tickets` vec.
+    pub fn tickets_raw(&self) -> Option<&String> {
+        self.ticket_list.tickets_raw.as_ref()
+    }
+
+    /// Add a ticket, invalidating stale raw content.
+    pub fn add_ticket(&mut self, ticket_id: impl Into<String>) {
+        self.ticket_list.add_ticket(ticket_id);
+    }
+
+    /// Remove a ticket, invalidating stale raw content.
+    pub fn remove_ticket(&mut self, ticket_id: &str) -> bool {
+        self.ticket_list.remove_ticket(ticket_id)
+    }
+
+    /// Insert a ticket at a specific position (1-indexed), invalidating stale raw content.
+    pub fn insert_ticket_at(&mut self, ticket_id: impl Into<String>, position: usize) {
+        self.ticket_list.insert_ticket_at(ticket_id, position);
+    }
+
+    /// Insert a ticket after another ticket, invalidating stale raw content.
+    pub fn insert_ticket_after(
+        &mut self,
+        ticket_id: impl Into<String>,
+        after_ticket: &str,
+    ) -> bool {
+        self.ticket_list
+            .insert_ticket_after(ticket_id, after_ticket)
     }
 }
 
@@ -359,19 +430,9 @@ pub struct Phase {
     #[serde(skip)]
     pub success_criteria_raw: Option<String>,
 
-    /// Ordered list of ticket IDs in this phase
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tickets: Vec<String>,
-
-    /// Raw markdown content of the `### Tickets` H3 subsection body.
-    /// Used during serialization for round-trip fidelity to preserve ticket
-    /// descriptions (e.g., `1. j-a1b2 - Add cache dependencies`) that
-    /// `parse_ticket_list` would otherwise discard. When `Some`, this is output
-    /// verbatim instead of regenerating `1. ticket-id` lines. When `None`
-    /// (programmatically constructed phases), the serializer falls back to
-    /// generating numbered list lines from the `tickets` vec.
-    #[serde(skip)]
-    pub tickets_raw: Option<String>,
+    /// The ticket list with raw cache
+    #[serde(flatten)]
+    pub ticket_list: TicketList,
 
     /// Ordered list of H3 subsection keys tracking the original order of all subsections.
     /// Known keys: "success criteria", "tickets". Unknown keys are stored verbatim (lowercased).
@@ -394,8 +455,7 @@ impl Phase {
             description: None,
             success_criteria: Vec::new(),
             success_criteria_raw: None,
-            tickets: Vec::new(),
-            tickets_raw: None,
+            ticket_list: TicketList::default(),
             subsection_order: Vec::new(),
             extra_subsections: Vec::new(),
         }
@@ -411,55 +471,46 @@ impl Phase {
         &self.name
     }
 
-    /// Get the tickets in this phase
+    /// Get the tickets in this phase (convenience accessor)
     pub fn tickets(&self) -> &[String] {
-        &self.tickets
+        self.ticket_list.tickets()
+    }
+
+    /// Raw markdown content of the `### Tickets` H3 subsection body.
+    /// Used during serialization for round-trip fidelity to preserve ticket
+    /// descriptions (e.g., `1. j-a1b2 - Add cache dependencies`) that
+    /// `parse_ticket_list` would otherwise discard. When `Some`, this is output
+    /// verbatim instead of regenerating `1. ticket-id` lines. When `None`
+    /// (programmatically constructed phases), the serializer falls back to
+    /// generating numbered list lines from the `tickets` vec.
+    pub fn tickets_raw(&self) -> Option<&String> {
+        self.ticket_list.tickets_raw.as_ref()
     }
 
     /// Check if a ticket ID is in this phase
     pub fn contains_ticket(&self, ticket_id: &str) -> bool {
-        self.tickets.iter().any(|t| t == ticket_id)
+        self.ticket_list.contains_ticket(ticket_id)
     }
 
     /// Add a ticket to this phase at the end
     pub fn add_ticket(&mut self, ticket_id: impl Into<String>) {
-        self.tickets.push(ticket_id.into());
-        self.tickets_raw = None; // Invalidate stale raw content
+        self.ticket_list.add_ticket(ticket_id);
     }
 
     /// Add a ticket at a specific position (1-indexed)
     pub fn add_ticket_at_position(&mut self, ticket_id: impl Into<String>, position: usize) {
-        let ticket = ticket_id.into();
-        // Position is 1-indexed, convert to 0-indexed
-        let index = position.saturating_sub(1);
-        if index >= self.tickets.len() {
-            self.tickets.push(ticket);
-        } else {
-            self.tickets.insert(index, ticket);
-        }
-        self.tickets_raw = None; // Invalidate stale raw content
+        self.ticket_list.insert_ticket_at(ticket_id, position);
     }
 
     /// Add a ticket after another ticket
     pub fn add_ticket_after(&mut self, ticket_id: impl Into<String>, after_ticket: &str) -> bool {
-        if let Some(pos) = self.tickets.iter().position(|t| t == after_ticket) {
-            self.tickets.insert(pos + 1, ticket_id.into());
-            self.tickets_raw = None; // Invalidate stale raw content
-            true
-        } else {
-            false
-        }
+        self.ticket_list
+            .insert_ticket_after(ticket_id, after_ticket)
     }
 
     /// Remove a ticket from this phase
     pub fn remove_ticket(&mut self, ticket_id: &str) -> bool {
-        if let Some(pos) = self.tickets.iter().position(|t| t == ticket_id) {
-            self.tickets.remove(pos);
-            self.tickets_raw = None; // Invalidate stale raw content
-            true
-        } else {
-            false
-        }
+        self.ticket_list.remove_ticket(ticket_id)
     }
 }
 
@@ -823,10 +874,10 @@ mod tests {
         let mut plan = PlanMetadata::default();
 
         let mut phase1 = Phase::new("1", "Phase One");
-        phase1.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
+        phase1.ticket_list.tickets = vec!["j-a1b2".to_string(), "j-c3d4".to_string()];
 
         let mut phase2 = Phase::new("2", "Phase Two");
-        phase2.tickets = vec!["j-e5f6".to_string()];
+        phase2.ticket_list.tickets = vec!["j-e5f6".to_string()];
 
         plan.sections.push(PlanSection::Phase(phase1));
         plan.sections
@@ -909,7 +960,7 @@ mod tests {
         assert_eq!(phase.name, "Infrastructure");
         assert!(phase.description.is_none());
         assert!(phase.success_criteria.is_empty());
-        assert!(phase.tickets.is_empty());
+        assert!(phase.ticket_list.tickets.is_empty());
     }
 
     #[test]
@@ -919,7 +970,7 @@ mod tests {
         // Add tickets
         phase.add_ticket("j-a1b2");
         phase.add_ticket("j-c3d4");
-        assert_eq!(phase.tickets, vec!["j-a1b2", "j-c3d4"]);
+        assert_eq!(phase.ticket_list.tickets, vec!["j-a1b2", "j-c3d4"]);
 
         // Check contains
         assert!(phase.contains_ticket("j-a1b2"));
@@ -927,34 +978,46 @@ mod tests {
 
         // Add at position (1-indexed)
         phase.add_ticket_at_position("j-e5f6", 2);
-        assert_eq!(phase.tickets, vec!["j-a1b2", "j-e5f6", "j-c3d4"]);
+        assert_eq!(
+            phase.ticket_list.tickets,
+            vec!["j-a1b2", "j-e5f6", "j-c3d4"]
+        );
 
         // Add after
         phase.add_ticket_after("j-g7h8", "j-e5f6");
-        assert_eq!(phase.tickets, vec!["j-a1b2", "j-e5f6", "j-g7h8", "j-c3d4"]);
+        assert_eq!(
+            phase.ticket_list.tickets,
+            vec!["j-a1b2", "j-e5f6", "j-g7h8", "j-c3d4"]
+        );
 
         // Remove
         assert!(phase.remove_ticket("j-e5f6"));
-        assert_eq!(phase.tickets, vec!["j-a1b2", "j-g7h8", "j-c3d4"]);
+        assert_eq!(
+            phase.ticket_list.tickets,
+            vec!["j-a1b2", "j-g7h8", "j-c3d4"]
+        );
         assert!(!phase.remove_ticket("nonexistent"));
     }
 
     #[test]
     fn test_phase_add_ticket_at_position_edge_cases() {
         let mut phase = Phase::new("1", "Test");
-        phase.tickets = vec!["t1".to_string(), "t2".to_string()];
+        phase.ticket_list.tickets = vec!["t1".to_string(), "t2".to_string()];
 
         // Position 1 (first)
         phase.add_ticket_at_position("t0", 1);
-        assert_eq!(phase.tickets, vec!["t0", "t1", "t2"]);
+        assert_eq!(phase.ticket_list.tickets, vec!["t0", "t1", "t2"]);
 
         // Position beyond length (append)
         phase.add_ticket_at_position("t3", 100);
-        assert_eq!(phase.tickets, vec!["t0", "t1", "t2", "t3"]);
+        assert_eq!(phase.ticket_list.tickets, vec!["t0", "t1", "t2", "t3"]);
 
         // Position 0 (should be same as 1 due to saturating_sub)
         phase.add_ticket_at_position("t-1", 0);
-        assert_eq!(phase.tickets, vec!["t-1", "t0", "t1", "t2", "t3"]);
+        assert_eq!(
+            phase.ticket_list.tickets,
+            vec!["t-1", "t0", "t1", "t2", "t3"]
+        );
     }
 
     #[test]
@@ -1034,12 +1097,12 @@ mod tests {
     fn test_plan_metadata_find_phase_mut() {
         let mut plan = PlanMetadata::default();
         let mut phase = Phase::new("1", "Infrastructure");
-        phase.tickets = vec!["j-a1b2".to_string()];
+        phase.ticket_list.tickets = vec!["j-a1b2".to_string()];
         plan.sections.push(PlanSection::Phase(phase));
 
         // Find and modify
         if let Some(p) = plan.find_phase_mut("1") {
-            p.tickets.push("j-c3d4".to_string());
+            p.ticket_list.tickets.push("j-c3d4".to_string());
         }
 
         let tickets = plan.all_tickets();

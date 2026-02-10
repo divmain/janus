@@ -126,7 +126,7 @@ fn compute_phase_status_impl(
     ticket_map: &HashMap<String, TicketMetadata>,
     warn_missing: bool,
 ) -> PhaseStatus {
-    if phase.tickets.is_empty() {
+    if phase.ticket_list.tickets.is_empty() {
         return PhaseStatus {
             phase_number: phase.number.clone(),
             phase_name: phase.name.clone(),
@@ -138,7 +138,7 @@ fn compute_phase_status_impl(
 
     // Collect statuses of all referenced tickets, warning about missing ones
     let mut statuses: Vec<TicketStatus> = Vec::new();
-    for id in &phase.tickets {
+    for id in &phase.ticket_list.tickets {
         if warn_missing {
             if let Some(ticket) =
                 resolve_ticket_or_warn(id, ticket_map, Some(&format!("in phase '{}'", phase.name)))
@@ -241,7 +241,7 @@ pub fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::types::{PlanSection, TicketsSection};
+    use crate::plan::types::{PlanSection, TicketList, TicketsSection};
     use crate::types::TicketId;
 
     #[test]
@@ -361,7 +361,10 @@ mod tests {
             name: "Infrastructure".to_string(),
             description: None,
             success_criteria: vec![],
-            tickets: vec!["j-a1b2".to_string(), "j-c3d4".to_string()],
+            ticket_list: TicketList {
+                tickets: vec!["j-a1b2".to_string(), "j-c3d4".to_string()],
+                tickets_raw: None,
+            },
             ..Default::default()
         };
 
@@ -398,10 +401,13 @@ mod tests {
             name: "Test".to_string(),
             description: None,
             success_criteria: vec![],
-            tickets: vec![
-                "j-exists".to_string(),
-                "j-missing".to_string(), // Not in ticket_map
-            ],
+            ticket_list: TicketList {
+                tickets: vec![
+                    "j-exists".to_string(),
+                    "j-missing".to_string(), // Not in ticket_map
+                ],
+                tickets_raw: None,
+            },
             ..Default::default()
         };
 
@@ -441,7 +447,10 @@ mod tests {
                 name: name.to_string(),
                 description: None,
                 success_criteria: vec![],
-                tickets: tickets.iter().map(|s| s.to_string()).collect(),
+                ticket_list: TicketList {
+                    tickets: tickets.iter().map(|s| s.to_string()).collect(),
+                    tickets_raw: None,
+                },
                 ..Default::default()
             };
             metadata.sections.push(PlanSection::Phase(phase));
@@ -641,7 +650,10 @@ mod tests {
             name: "Empty".to_string(),
             description: None,
             success_criteria: vec![],
-            tickets: vec![],
+            ticket_list: TicketList {
+                tickets: vec![],
+                tickets_raw: None,
+            },
             ..Default::default()
         };
 
