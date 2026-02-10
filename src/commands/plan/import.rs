@@ -6,7 +6,7 @@ use std::io::Read;
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use crate::commands::{CommandOutput, print_json};
+use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection};
@@ -56,18 +56,20 @@ async fn check_duplicate_plan_title(title: &str) -> Result<()> {
     Ok(())
 }
 
-/// Format and print the dry-run import summary
+/// Format the dry-run import summary as a string
 ///
 /// # Arguments
 /// * `plan` - The parsed importable plan
-fn print_import_summary(plan: &ImportablePlan) {
-    println!();
-    println!("{}", "Import Summary".bold());
-    println!("{}", "==============".bold());
-    println!();
+fn format_import_summary(plan: &ImportablePlan) -> String {
+    let mut out = String::new();
+
+    out.push('\n');
+    out.push_str(&format!("{}\n", "Import Summary".bold()));
+    out.push_str(&format!("{}\n", "==============".bold()));
+    out.push('\n');
 
     // Title
-    println!("{}: {}", "Title".bold(), plan.title);
+    out.push_str(&format!("{}: {}\n", "Title".bold(), plan.title));
 
     // Description (truncated if long)
     if let Some(ref desc) = plan.description {
@@ -77,27 +79,27 @@ fn print_import_summary(plan: &ImportablePlan) {
         } else {
             desc.clone()
         };
-        println!("{}: {}", "Description".bold(), desc_preview);
+        out.push_str(&format!("{}: {}\n", "Description".bold(), desc_preview));
     }
 
     // Acceptance criteria
     if !plan.acceptance_criteria.is_empty() {
-        println!();
-        println!(
-            "{}: {} items",
+        out.push('\n');
+        out.push_str(&format!(
+            "{}: {} items\n",
             "Acceptance Criteria".bold(),
             plan.acceptance_criteria.len()
-        );
+        ));
         for criterion in &plan.acceptance_criteria {
-            println!("  - {criterion}");
+            out.push_str(&format!("  - {criterion}\n"));
         }
     }
 
     // Plan structure
-    println!();
-    println!("{}: {}", "Phases".bold(), plan.phases.len());
-    println!("{}: {}", "Tasks".bold(), plan.task_count());
-    println!();
+    out.push('\n');
+    out.push_str(&format!("{}: {}\n", "Phases".bold(), plan.phases.len()));
+    out.push_str(&format!("{}: {}\n", "Tasks".bold(), plan.task_count()));
+    out.push('\n');
 
     for phase in &plan.phases {
         let phase_header = if phase.name.is_empty() {
@@ -105,39 +107,40 @@ fn print_import_summary(plan: &ImportablePlan) {
         } else {
             format!("Phase {}: {}", phase.number, phase.name)
         };
-        println!("{}", phase_header.cyan());
+        out.push_str(&format!("{}\n", phase_header.cyan()));
 
         for task in &phase.tasks {
             let marker = if task.is_complete { "[x]" } else { "[ ]" };
-            println!("  {} {}", marker.dimmed(), task.title);
+            out.push_str(&format!("  {} {}\n", marker.dimmed(), task.title));
         }
     }
 
     // Summary of what would be created
-    println!();
-    println!("{}", "Would create:".bold());
-    println!("  - 1 plan");
+    out.push('\n');
+    out.push_str(&format!("{}\n", "Would create:".bold()));
+    out.push_str("  - 1 plan\n");
 
     let new_count = plan.all_tasks().iter().filter(|t| !t.is_complete).count();
     let complete_count = plan.all_tasks().iter().filter(|t| t.is_complete).count();
 
     if complete_count > 0 {
-        println!(
-            "  - {} tickets ({} new, {} complete)",
+        out.push_str(&format!(
+            "  - {} tickets ({} new, {} complete)\n",
             plan.task_count(),
             new_count,
             complete_count
-        );
+        ));
     } else {
-        println!("  - {} tickets (status: new)", plan.task_count());
+        out.push_str(&format!("  - {} tickets (status: new)\n", plan.task_count()));
     }
 
     if !plan.acceptance_criteria.is_empty() {
-        println!("  - 1 verification ticket (from acceptance criteria)");
+        out.push_str("  - 1 verification ticket (from acceptance criteria)\n");
     }
 
-    println!();
-    println!("Run without --dry-run to import.");
+    out.push('\n');
+    out.push_str("Run without --dry-run to import.");
+    out
 }
 
 /// Create a ticket from an ImportableTask
@@ -228,42 +231,39 @@ pub async fn cmd_plan_import(
 
     // 5. If dry-run, print summary and return
     if dry_run {
-        if output_json {
-            let new_count = plan.all_tasks().iter().filter(|t| !t.is_complete).count();
-            let complete_count = plan.all_tasks().iter().filter(|t| t.is_complete).count();
+        let new_count = plan.all_tasks().iter().filter(|t| !t.is_complete).count();
+        let complete_count = plan.all_tasks().iter().filter(|t| t.is_complete).count();
 
-            print_json(&json!({
-                "dry_run": true,
-                "valid": true,
-                "title": plan.title,
-                "description": plan.description,
-                "acceptance_criteria": plan.acceptance_criteria,
-                "acceptance_criteria_count": plan.acceptance_criteria.len(),
-                "is_phased": plan.is_phased(),
-                "phase_count": plan.phases.len(),
-                "task_count": plan.task_count(),
-                "phases": plan.phases.iter().map(|p| json!({
-                    "number": p.number,
-                    "name": p.name,
-                    "tasks": p.tasks.iter().map(|t| json!({
-                        "title": t.title,
-                        "is_complete": t.is_complete,
-                    })).collect::<Vec<_>>(),
+        return CommandOutput::new(json!({
+            "dry_run": true,
+            "valid": true,
+            "title": plan.title,
+            "description": plan.description,
+            "acceptance_criteria": plan.acceptance_criteria,
+            "acceptance_criteria_count": plan.acceptance_criteria.len(),
+            "is_phased": plan.is_phased(),
+            "phase_count": plan.phases.len(),
+            "task_count": plan.task_count(),
+            "phases": plan.phases.iter().map(|p| json!({
+                "number": p.number,
+                "name": p.name,
+                "tasks": p.tasks.iter().map(|t| json!({
+                    "title": t.title,
+                    "is_complete": t.is_complete,
                 })).collect::<Vec<_>>(),
-                "would_create": {
-                    "plans": 1,
-                    "tickets": {
-                        "total": plan.task_count() + if !plan.acceptance_criteria.is_empty() { 1 } else { 0 },
-                        "new": new_count,
-                        "complete": complete_count,
-                        "verification": !plan.acceptance_criteria.is_empty(),
-                    }
+            })).collect::<Vec<_>>(),
+            "would_create": {
+                "plans": 1,
+                "tickets": {
+                    "total": plan.task_count() + if !plan.acceptance_criteria.is_empty() { 1 } else { 0 },
+                    "new": new_count,
+                    "complete": complete_count,
+                    "verification": !plan.acceptance_criteria.is_empty(),
                 }
-            }))?;
-        } else {
-            print_import_summary(&plan);
-        }
-        return Ok(());
+            }
+        }))
+        .with_text(format_import_summary(&plan))
+        .print(output_json);
     }
 
     // 6. Create all tickets

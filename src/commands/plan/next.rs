@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
-use crate::commands::print_json;
+use crate::commands::CommandOutput;
 use crate::display::PlanNextFormatter;
 use crate::error::Result;
 use crate::plan::types::PlanMetadata;
@@ -38,51 +38,48 @@ pub async fn cmd_plan_next(
         get_next_items_simple(&metadata, &ticket_map, count)
     };
 
-    if output_json {
-        let next_items_json: Vec<_> = next_items
-            .iter()
-            .map(|item| {
-                let tickets_json: Vec<_> = item
-                    .tickets
-                    .iter()
-                    .map(|(ticket_id, ticket_meta)| {
-                        json!({
-                            "id": ticket_id,
-                            "title": ticket_meta.as_ref().and_then(|t| t.title.clone()),
-                            "status": ticket_meta.as_ref().and_then(|t| t.status).map(|s| s.to_string()),
-                            "priority": ticket_meta.as_ref().and_then(|t| t.priority).map(|p| p.as_num()),
-                            "deps": ticket_meta.as_ref().map(|t| &t.deps).cloned().unwrap_or_default(),
-                            "exists": ticket_meta.is_some(),
-                        })
+    let next_items_json: Vec<_> = next_items
+        .iter()
+        .map(|item| {
+            let tickets_json: Vec<_> = item
+                .tickets
+                .iter()
+                .map(|(ticket_id, ticket_meta)| {
+                    json!({
+                        "id": ticket_id,
+                        "title": ticket_meta.as_ref().and_then(|t| t.title.clone()),
+                        "status": ticket_meta.as_ref().and_then(|t| t.status).map(|s| s.to_string()),
+                        "priority": ticket_meta.as_ref().and_then(|t| t.priority).map(|p| p.as_num()),
+                        "deps": ticket_meta.as_ref().map(|t| &t.deps).cloned().unwrap_or_default(),
+                        "exists": ticket_meta.is_some(),
                     })
-                    .collect();
-
-                json!({
-                    "phase_number": item.phase_number,
-                    "phase_name": item.phase_name,
-                    "tickets": tickets_json,
                 })
+                .collect();
+
+            json!({
+                "phase_number": item.phase_number,
+                "phase_name": item.phase_name,
+                "tickets": tickets_json,
             })
-            .collect();
+        })
+        .collect();
 
-        print_json(&json!({
-            "plan_id": plan.id,
-            "next_items": next_items_json,
-        }))?;
-        return Ok(());
-    }
+    let text = if next_items.is_empty() {
+        "No actionable items remaining".to_string()
+    } else {
+        let mut text_parts = Vec::new();
+        for item in &next_items {
+            text_parts.push(PlanNextFormatter::format_next_item(item, &ticket_map));
+        }
+        text_parts.join("")
+    };
 
-    if next_items.is_empty() {
-        println!("No actionable items remaining");
-        return Ok(());
-    }
-
-    // Print next items
-    for item in &next_items {
-        PlanNextFormatter::print_next_item(item, &ticket_map);
-    }
-
-    Ok(())
+    CommandOutput::new(json!({
+        "plan_id": plan.id,
+        "next_items": next_items_json,
+    }))
+    .with_text(text.trim_end())
+    .print(output_json)
 }
 
 /// Helper struct for next item results

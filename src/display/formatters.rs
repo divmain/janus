@@ -27,30 +27,41 @@ impl TicketFormatter {
 pub struct PlanNextFormatter;
 
 impl PlanNextFormatter {
-    /// Print a next item with its tickets
-    pub fn print_next_item(item: &NextItemResult, ticket_map: &HashMap<String, TicketMetadata>) {
-        println!(
+    /// Format a next item with its tickets as a string
+    pub fn format_next_item(
+        item: &NextItemResult,
+        ticket_map: &HashMap<String, TicketMetadata>,
+    ) -> String {
+        let mut output = String::new();
+        output.push_str(&format!(
             "{}",
             format!("## Next: Phase {} - {}", item.phase_number, item.phase_name).bold()
-        );
-        println!();
+        ));
+        output.push('\n');
 
         for (i, (ticket_id, ticket_meta)) in item.tickets.iter().enumerate() {
-            Self::print_ticket(ticket_id, ticket_meta, ticket_map);
+            output.push_str(&Self::format_ticket(ticket_id, ticket_meta, ticket_map));
 
             if i < item.tickets.len() - 1 {
-                println!();
+                output.push('\n');
             }
         }
-        println!();
+        output.push('\n');
+        output
     }
 
-    /// Print a single ticket within a next item
-    fn print_ticket(
+    /// Print a next item with its tickets
+    pub fn print_next_item(item: &NextItemResult, ticket_map: &HashMap<String, TicketMetadata>) {
+        print!("{}", Self::format_next_item(item, ticket_map));
+    }
+
+    /// Format a single ticket within a next item as a string
+    fn format_ticket(
         ticket_id: &str,
         ticket_meta: &Option<TicketMetadata>,
         ticket_map: &HashMap<String, TicketMetadata>,
-    ) {
+    ) -> String {
+        let mut output = String::new();
         let status = ticket_meta
             .as_ref()
             .and_then(|t| t.status)
@@ -61,22 +72,28 @@ impl PlanNextFormatter {
             .and_then(|t| t.title.as_deref())
             .unwrap_or("");
 
-        println!("{} {} {}", status_badge, ticket_id.cyan(), title);
+        output.push_str(&format!(
+            "{} {} {}\n",
+            status_badge,
+            ticket_id.cyan(),
+            title
+        ));
 
         if let Some(meta) = ticket_meta {
-            Self::print_priority(meta);
-            Self::print_deps(meta, ticket_map);
+            output.push_str(&Self::format_priority(meta));
+            output.push_str(&Self::format_deps(meta, ticket_map));
         }
+        output
     }
 
-    /// Print ticket priority
-    fn print_priority(meta: &TicketMetadata) {
+    /// Format ticket priority as a string
+    fn format_priority(meta: &TicketMetadata) -> String {
         let priority = meta.priority.map(|p| p.as_num()).unwrap_or(2);
-        println!("  Priority: P{priority}");
+        format!("  Priority: P{priority}\n")
     }
 
-    /// Print ticket dependencies with their status
-    fn print_deps(meta: &TicketMetadata, ticket_map: &HashMap<String, TicketMetadata>) {
+    /// Format ticket dependencies with their status as a string
+    fn format_deps(meta: &TicketMetadata, ticket_map: &HashMap<String, TicketMetadata>) -> String {
         if !meta.deps.is_empty() {
             let deps_with_status: Vec<String> = meta
                 .deps
@@ -90,7 +107,9 @@ impl PlanNextFormatter {
                     format!("{dep} {dep_status}")
                 })
                 .collect();
-            println!("  Deps: {}", deps_with_status.join(", "));
+            format!("  Deps: {}\n", deps_with_status.join(", "))
+        } else {
+            String::new()
         }
     }
 }
