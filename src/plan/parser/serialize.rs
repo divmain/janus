@@ -48,7 +48,10 @@ pub fn serialize_plan(metadata: &PlanMetadata) -> String {
         keys.sort(); // deterministic output order
         for key in keys {
             let value = &extra[key];
-            let yaml_str = serde_yaml_ng::to_string(value).unwrap_or_default();
+            // This value was parsed from YAML, so it should always serialize successfully.
+            // If it fails, it's a bug in serde_yaml_ng that we should catch immediately.
+            let yaml_str = serde_yaml_ng::to_string(value)
+                .expect("serde_yaml_ng::Value should always serialize");
             let yaml_str = yaml_str.trim_end();
             output.push_str(&format!("{key}: {yaml_str}\n"));
         }
