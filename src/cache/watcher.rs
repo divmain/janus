@@ -425,11 +425,24 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
             // Capture the ID before upsert consumes ownership
             let ticket_id = metadata.id.clone();
             store.upsert_ticket(metadata);
-            // Invalidate stale embedding — the ticket content changed but
-            // the embedding was computed from the old content. The user can
-            // run `janus cache rebuild` to regenerate embeddings.
+
+            // Remove stale embedding and regenerate
             if let Some(id) = &ticket_id {
                 store.embeddings().remove(id.as_ref());
+
+                // Generate new embedding asynchronously
+                // Don't block the watcher - spawn a task
+                let id_clone = id.clone();
+                tokio::spawn(async move {
+                    // Get the global store singleton
+                    if let Ok(store) = crate::cache::get_or_init_store().await {
+                        // Silently generate embedding - errors are logged internally
+                        if let Err(e) = store.ensure_embedding(&id_clone).await {
+                            #[cfg(debug_assertions)]
+                            eprintln!("Warning: Failed to generate embedding for {id_clone}: {e}");
+                        }
+                    }
+                });
             }
             true
         }

@@ -11,6 +11,10 @@ use crate::config::Config;
 pub const EMBEDDING_DIMENSIONS: usize = 768;
 pub const EMBEDDING_MODEL_NAME: &str = "jinaai/jina-embeddings-v2-base-code";
 
+/// Batch size for embedding generation operations.
+/// Processing in batches improves throughput while controlling memory usage.
+pub const EMBEDDING_BATCH_SIZE: usize = 32;
+
 /// Wrapper around the fastembed TextEmbedding model with lazy loading.
 ///
 /// Uses `std::sync::Mutex` (not `tokio::sync::Mutex`) because the embedding

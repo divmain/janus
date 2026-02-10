@@ -214,6 +214,158 @@ impl TicketStore {
             .count();
         (with_embeddings, total)
     }
+
+    /// Check if a ticket has an embedding in the in-memory store.
+    pub fn has_embedding_for(&self, ticket_id: &str) -> bool {
+        self.embeddings().contains_key(ticket_id)
+    }
+
+    /// Ensure a ticket has an embedding generated and saved.
+    ///
+    /// This method:
+    /// 1. Looks up the ticket from the store by ID
+    /// 2. Gets file_path, title, body from metadata
+    /// 3. Computes embedding key from file_path + current mtime
+    /// 4. Checks if .bin file already exists for that key (optimization)
+    /// 5. If not, generates embedding via generate_ticket_embedding()
+    /// 6. Saves to disk via save_embedding()
+    /// 7. Inserts into in-memory embeddings DashMap (CRITICAL for TUI freshness)
+    ///
+    /// Returns silently on error (errors logged to stderr in debug builds only)
+    pub async fn ensure_embedding(&self, ticket_id: &str) -> Result<(), String> {
+        // Get ticket from store
+        let ticket = self
+            .tickets()
+            .get(ticket_id)
+            .ok_or_else(|| format!("Ticket '{ticket_id}' not found in store"))?;
+
+        let file_path = ticket
+            .file_path
+            .clone()
+            .ok_or_else(|| format!("Ticket '{ticket_id}' has no file_path"))?;
+        let title = ticket.title.clone().unwrap_or_default();
+        let body = ticket.body.clone();
+
+        // Get current mtime (fresh, not cached)
+        let mtime_ns = file_mtime_ns(&file_path)
+            .ok_or_else(|| format!("Could not get mtime for file: {file_path:?}"))?;
+
+        // Compute embedding key
+        let key = Self::embedding_key(&file_path, mtime_ns);
+
+        // Check if .bin file already exists
+        let emb_dir = embeddings_dir();
+        let bin_path = emb_dir.join(format!("{key}.bin"));
+
+        if bin_path.exists() {
+            // Embedding already exists on disk - load it into memory
+            if let Ok(data) = fs::read(&bin_path) {
+                let expected_bytes = EMBEDDING_DIMENSIONS * 4;
+                if data.len() == expected_bytes {
+                    if let Some(vector) = bytes_to_f32_vec(&data) {
+                        // Validate no NaN/infinity
+                        if !vector.iter().any(|v| !v.is_finite()) {
+                            self.embeddings().insert(ticket_id.to_string(), vector);
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+            // If loading failed, fall through to regeneration
+        }
+
+        // Generate new embedding
+        let embedding = crate::embedding::model::generate_ticket_embedding(&title, body.as_deref())
+            .await
+            .map_err(|e| format!("Failed to generate embedding: {e}"))?;
+
+        // Save to disk
+        Self::save_embedding(&key, &embedding)
+            .map_err(|e| format!("Failed to save embedding: {e}"))?;
+
+        // Insert into in-memory store (CRITICAL for TUI freshness)
+        self.embeddings().insert(ticket_id.to_string(), embedding);
+
+        Ok(())
+    }
+
+    /// Ensure all tickets have embeddings generated.
+    ///
+    /// Processes tickets in batches of EMBEDDING_BATCH_SIZE (32).
+    /// Returns (generated_count, total_count) for progress reporting.
+    pub async fn ensure_all_embeddings(&self) -> Result<(usize, usize), String> {
+        use crate::embedding::model::{EMBEDDING_BATCH_SIZE, get_embedding_model};
+
+        // Collect tickets needing embeddings
+        let tickets_to_embed: Vec<(String, std::path::PathBuf, String, Option<String>)> = self
+            .tickets()
+            .iter()
+            .filter(|entry| !self.has_embedding_for(entry.key()))
+            .filter_map(|entry| {
+                let ticket = entry.value();
+                let id = entry.key().clone();
+                let file_path = ticket.file_path.clone()?;
+                let title = ticket.title.clone().unwrap_or_default();
+                let body = ticket.body.clone();
+                Some((id, file_path, title, body))
+            })
+            .collect();
+
+        let total = tickets_to_embed.len();
+        if total == 0 {
+            return Ok((0, 0));
+        }
+
+        let mut generated = 0usize;
+        let model = get_embedding_model().await?;
+
+        // Process in batches
+        for batch in tickets_to_embed.chunks(EMBEDDING_BATCH_SIZE) {
+            // Prepare batch texts
+            let texts: Vec<String> = batch
+                .iter()
+                .map(|(_, _, title, body)| match body {
+                    Some(b) if !b.is_empty() => format!("{title}\n\n{b}"),
+                    _ => title.clone(),
+                })
+                .collect();
+
+            let texts_ref: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+
+            // Generate batch embeddings
+            match model.embed_batch(&texts_ref).await {
+                Ok(embeddings) => {
+                    // Save each embedding
+                    for (i, (id, file_path, _, _)) in batch.iter().enumerate() {
+                        if let Some(embedding) = embeddings.get(i) {
+                            // Get current mtime (may have changed)
+                            let mtime_ns = file_mtime_ns(file_path);
+
+                            if let Some(mtime) = mtime_ns {
+                                let key = TicketStore::embedding_key(file_path, mtime);
+
+                                // Save and update memory
+                                if TicketStore::save_embedding(&key, embedding).is_ok() {
+                                    // Check ticket still exists before inserting
+                                    if self.tickets().contains_key(id.as_str()) {
+                                        self.embeddings().insert(id.clone(), embedding.clone());
+                                        generated += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Log batch error but continue with next batch
+                    #[cfg(debug_assertions)]
+                    eprintln!("Warning: Batch embedding generation failed: {e}");
+                }
+            }
+        }
+
+        Ok((generated, total))
+    }
 }
 
 /// Get file modification time as nanoseconds since UNIX epoch.

@@ -79,15 +79,35 @@ static STORE: OnceCell<TicketStore> = OnceCell::const_new();
 /// Get or initialize the global ticket store singleton.
 ///
 /// On first call, reads all tickets and plans from disk to populate the store.
+/// Also ensures all tickets have embeddings generated (blocking call).
 /// Subsequent calls return the existing store without re-reading.
 /// If initialization fails, the error is propagated and the `OnceCell` remains
 /// unset, allowing subsequent calls to retry.
 pub async fn get_or_init_store() -> Result<&'static TicketStore> {
     STORE
         .get_or_try_init(|| async {
-            tokio::task::spawn_blocking(TicketStore::init)
+            // Step 1: Initialize store (loads tickets, plans, existing embeddings)
+            let store = tokio::task::spawn_blocking(TicketStore::init)
                 .await
-                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))?
+                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))??;
+
+            // Step 2: Ensure all tickets have embeddings (BLOCKING)
+            // This runs synchronously during store initialization
+            match store.ensure_all_embeddings().await {
+                Ok((generated, total)) => {
+                    if generated > 0 {
+                        // User-facing message for startup
+                        eprintln!("Generated embeddings for {generated}/{total} tickets");
+                    }
+                }
+                Err(e) => {
+                    // Silent error - just log in debug mode
+                    #[cfg(debug_assertions)]
+                    eprintln!("Warning: Failed to generate embeddings: {e}");
+                }
+            }
+
+            Ok(store)
         })
         .await
 }

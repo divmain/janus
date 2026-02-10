@@ -8,13 +8,10 @@ use crate::cache::get_or_init_store;
 use crate::error::Result;
 use crate::events::log_cache_rebuilt;
 
-use crate::embedding::model::EMBEDDING_MODEL_NAME;
+use crate::embedding::model::{EMBEDDING_BATCH_SIZE, EMBEDDING_MODEL_NAME};
 
 /// Timeout for embedding generation per ticket (30 seconds)
 const EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Batch size for embedding generation (tune based on memory/performance)
-const EMBEDDING_BATCH_SIZE: usize = 32;
 
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     let store = get_or_init_store().await?;
