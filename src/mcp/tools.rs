@@ -50,10 +50,10 @@ static COMPLETION_SUMMARY_RE: LazyLock<Regex> =
 static NEXT_H2_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^## ").expect("regex should compile"));
 
+use crate::config::Config;
 use crate::next::NextWorkFinder;
 use crate::plan::parser::serialize_plan;
 use crate::plan::{Plan, compute_plan_status};
-use crate::remote::config::Config;
 use crate::status::is_dependency_satisfied;
 use crate::ticket::{
     Ticket, TicketBuilder, build_ticket_map, check_circular_dependency, get_all_tickets_with_map,

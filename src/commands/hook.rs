@@ -20,10 +20,10 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{CommandOutput, interactive, print_json};
+use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
 use crate::hooks::{HookContext, context_to_env};
-use crate::remote::config::Config;
 use crate::ticket::Ticket;
 use crate::types::EntityType;
 use crate::types::janus_root;

@@ -6,8 +6,8 @@
 use crate::cache::get_or_init_store;
 use crate::cache::search::SearchResult;
 use crate::commands::print_json;
+use crate::config::Config;
 use crate::error::{JanusError, Result};
-use crate::remote::config::Config;
 use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};

@@ -58,8 +58,8 @@ pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
 fn handle_switch_provider(ctx: &mut HandlerContext<'_>) {
     let current = ctx.filters.provider();
     let new_provider = match current {
-        crate::remote::config::Platform::GitHub => crate::remote::config::Platform::Linear,
-        crate::remote::config::Platform::Linear => crate::remote::config::Platform::GitHub,
+        crate::remote::Platform::GitHub => crate::remote::Platform::Linear,
+        crate::remote::Platform::Linear => crate::remote::Platform::GitHub,
     };
     ctx.filters.set_provider(new_provider);
     ctx.modals

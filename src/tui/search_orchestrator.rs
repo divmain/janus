@@ -107,7 +107,7 @@ impl SearchState {
                     let clean_query = clean_query.trim_start();
 
                     // Check if semantic search is enabled before attempting search
-                    match crate::remote::config::Config::load() {
+                    match crate::config::Config::load() {
                         Ok(config) => {
                             if !config.semantic_search_enabled() {
                                 // Gracefully skip semantic search - don't show error, just don't run

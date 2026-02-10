@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 use iocraft::prelude::{Handler, State};
 
-use crate::remote::config::Platform;
+use crate::remote::Platform;
 use crate::remote::{RemoteIssue, RemoteQuery};
 use crate::tui::remote::link_mode::LinkSource;
 use crate::tui::remote::state::{

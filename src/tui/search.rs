@@ -223,7 +223,7 @@ pub async fn perform_semantic_search(
     query: &str,
 ) -> std::result::Result<Vec<crate::cache::search::SearchResult>, String> {
     use crate::cache::get_or_init_store;
-    use crate::remote::config::Config;
+    use crate::config::Config;
 
     // Check if semantic search is enabled
     match Config::load() {

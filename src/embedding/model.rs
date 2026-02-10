@@ -6,7 +6,7 @@ use directories::BaseDirs;
 use fastembed::{EmbeddingModel as FastembedModel, InitOptions, TextEmbedding};
 use tokio::sync::OnceCell;
 
-use crate::remote::config::Config;
+use crate::config::Config;
 
 pub const EMBEDDING_DIMENSIONS: usize = 768;
 pub const EMBEDDING_MODEL_NAME: &str = "jinaai/jina-embeddings-v2-base-code";

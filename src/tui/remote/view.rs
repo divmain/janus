@@ -26,7 +26,7 @@ macro_rules! clone_states {
 use futures::stream::{self, StreamExt};
 use iocraft::prelude::*;
 
-use crate::remote::config::Platform;
+use crate::remote::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::{Clickable, InlineSearchBox};
@@ -56,7 +56,7 @@ enum FetchResult {
 
 /// Fetch remote issues from the given provider with optional query filters
 async fn fetch_remote_issues_with_query(platform: Platform, query: RemoteQuery) -> FetchResult {
-    let config = match crate::remote::config::Config::load() {
+    let config = match crate::config::Config::load() {
         Ok(c) => c,
         Err(e) => {
             return FetchResult::Error("ConfigError".to_string(), e.to_string());

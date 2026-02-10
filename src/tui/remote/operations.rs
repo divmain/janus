@@ -1,7 +1,7 @@
 //! Operation handlers for remote TUI
 
 use crate::error::{JanusError, Result};
-use crate::remote::config::Platform;
+use crate::remote::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef};
 use crate::ticket::TicketBuilder;
 use crate::types::{TicketMetadata, TicketType};
@@ -756,8 +756,8 @@ pub async fn push_ticket_to_remote(
     use crate::ticket::Ticket;
 
     // Load config
-    let config = crate::remote::config::Config::load()
-        .map_err(|e| PushError::from((e, ticket_id.to_string())))?;
+    let config =
+        crate::config::Config::load().map_err(|e| PushError::from((e, ticket_id.to_string())))?;
 
     // Find and read the ticket
     let ticket = Ticket::find(ticket_id).await.map_err(|e| match e {
@@ -887,7 +887,7 @@ pub async fn fetch_remote_issue_for_ticket(
 ) -> Result<(TicketMetadata, crate::remote::RemoteIssue)> {
     use crate::ticket::Ticket;
 
-    let config = crate::remote::config::Config::load()?;
+    let config = crate::config::Config::load()?;
     let ticket = Ticket::find(ticket_id).await?;
     let metadata = ticket.read()?;
 
@@ -1010,7 +1010,7 @@ pub async fn apply_sync_change_to_remote(
     change: &SyncChange,
     platform: Platform,
 ) -> Result<()> {
-    let config = crate::remote::config::Config::load()?;
+    let config = crate::config::Config::load()?;
     let remote_ref = RemoteRef::parse(remote_ref, Some(&config))?;
 
     let updates = match change.field_name.as_str() {

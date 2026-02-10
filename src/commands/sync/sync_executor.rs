@@ -1,5 +1,5 @@
+use crate::config::Config;
 use crate::error::Result;
-use crate::remote::config::Config;
 use crate::remote::{RemoteProvider, RemoteRef, create_provider};
 use crate::ticket::Ticket;
 

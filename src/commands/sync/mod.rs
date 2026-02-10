@@ -10,8 +10,8 @@ use owo_colors::OwoColorize;
 use serde_json::json;
 
 use super::{CommandOutput, print_json};
+use crate::config::Config;
 use crate::error::{JanusError, Result};
-use crate::remote::config::Config;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef, create_provider};
 use crate::ticket::extract_body;
 use crate::ticket::{Ticket, TicketBuilder};

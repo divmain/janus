@@ -407,8 +407,8 @@ hooks:
 // Tests moved from src/commands/hook.rs (Phase 5)
 // ============================================================================
 
+use janus::Config;
 use janus::commands::{cmd_hook_disable, cmd_hook_enable, cmd_hook_list, cmd_hook_run};
-use janus::remote::Config;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;

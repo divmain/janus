@@ -45,8 +45,8 @@ pub use types::{HookContext, HookEvent};
 
 pub use crate::types::EntityType;
 
+use crate::config::Config;
 use crate::error::{JanusError, Result};
-use crate::remote::Config;
 use crate::types::janus_root;
 use crate::utils::iso_date;
 
@@ -830,7 +830,7 @@ hooks:
 
     #[test]
     fn test_hooks_config_default() {
-        use crate::remote::config::HooksConfig;
+        use crate::config::HooksConfig;
 
         let config = HooksConfig::default();
         assert!(config.enabled);
@@ -841,7 +841,7 @@ hooks:
 
     #[test]
     fn test_hooks_config_is_default() {
-        use crate::remote::config::HooksConfig;
+        use crate::config::HooksConfig;
 
         let mut config = HooksConfig::default();
         assert!(config.is_default());
