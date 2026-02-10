@@ -39,7 +39,7 @@ cargo check
 
 ```bash
 # Run all tests
-cargo test
+cargo test -- --format=terse 2>&1
 
 # Run a single test by name
 cargo test <test_name>
