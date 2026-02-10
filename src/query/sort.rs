@@ -3,7 +3,32 @@
 //! These functions are used by the query module to sort ticket results.
 //! They are re-exported from the display module for backward compatibility.
 
+use crate::error::JanusError;
 use crate::types::TicketMetadata;
+
+/// Sort field for ticket listing and queries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortField {
+    Created,
+    Id,
+    #[default]
+    Priority,
+}
+
+impl SortField {
+    /// All valid string representations of this enum.
+    pub const ALL_STRINGS: &[&str] = &["priority", "created", "id"];
+}
+
+enum_display_fromstr!(
+    SortField,
+    JanusError::InvalidSortField,
+    {
+        Created => "created",
+        Id => "id",
+        Priority => "priority",
+    }
+);
 
 /// Sort tickets by priority (ascending) then by ID
 pub fn sort_by_priority(tickets: &mut [TicketMetadata]) {
@@ -34,17 +59,18 @@ pub fn sort_by_id(tickets: &mut [TicketMetadata]) {
 }
 
 /// Sort tickets by the specified field
-pub fn sort_tickets_by(tickets: &mut [TicketMetadata], sort_by: &str) {
+pub fn sort_tickets_by(tickets: &mut [TicketMetadata], sort_by: SortField) {
     match sort_by {
-        "created" => sort_by_created(tickets),
-        "id" => sort_by_id(tickets),
-        "priority" => sort_by_priority(tickets),
-        _ => sort_by_priority(tickets),
+        SortField::Created => sort_by_created(tickets),
+        SortField::Id => sort_by_id(tickets),
+        SortField::Priority => sort_by_priority(tickets),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use crate::types::{CreatedAt, TicketId};
     use crate::types::{TicketMetadata, TicketPriority};
@@ -141,7 +167,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        sort_tickets_by(&mut tickets1, "priority");
+        sort_tickets_by(&mut tickets1, SortField::Priority);
         assert_eq!(tickets1[0].id.as_deref(), Some("j-1"));
 
         let mut tickets2 = vec![
@@ -156,7 +182,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        sort_tickets_by(&mut tickets2, "created");
+        sort_tickets_by(&mut tickets2, SortField::Created);
         assert_eq!(tickets2[0].id.as_deref(), Some("j-new"));
 
         let mut tickets3 = vec![
@@ -169,22 +195,45 @@ mod tests {
                 ..Default::default()
             },
         ];
-        sort_tickets_by(&mut tickets3, "id");
+        sort_tickets_by(&mut tickets3, SortField::Id);
         assert_eq!(tickets3[0].id.as_deref(), Some("j-alpha"));
+    }
 
-        let mut tickets4 = vec![
-            TicketMetadata {
-                id: Some(TicketId::new_unchecked("j-3")),
-                priority: Some(TicketPriority::P3),
-                ..Default::default()
-            },
-            TicketMetadata {
-                id: Some(TicketId::new_unchecked("j-1")),
-                priority: Some(TicketPriority::P0),
-                ..Default::default()
-            },
-        ];
-        sort_tickets_by(&mut tickets4, "invalid_option");
-        assert_eq!(tickets4[0].id.as_deref(), Some("j-1"));
+    #[test]
+    fn test_sort_field_from_str() {
+        assert_eq!(
+            SortField::from_str("priority").unwrap(),
+            SortField::Priority
+        );
+        assert_eq!(SortField::from_str("created").unwrap(), SortField::Created);
+        assert_eq!(SortField::from_str("id").unwrap(), SortField::Id);
+
+        // Case insensitive
+        assert_eq!(
+            SortField::from_str("PRIORITY").unwrap(),
+            SortField::Priority
+        );
+        assert_eq!(SortField::from_str("Created").unwrap(), SortField::Created);
+        assert_eq!(SortField::from_str("ID").unwrap(), SortField::Id);
+    }
+
+    #[test]
+    fn test_sort_field_from_str_invalid() {
+        assert!(SortField::from_str("invalid").is_err());
+        assert!(SortField::from_str("priorty").is_err());
+        assert!(SortField::from_str("").is_err());
+        assert!(SortField::from_str("date").is_err());
+    }
+
+    #[test]
+    fn test_sort_field_display() {
+        assert_eq!(SortField::Priority.to_string(), "priority");
+        assert_eq!(SortField::Created.to_string(), "created");
+        assert_eq!(SortField::Id.to_string(), "id");
+    }
+
+    #[test]
+    fn test_sort_field_default() {
+        assert_eq!(SortField::default(), SortField::Priority);
     }
 }

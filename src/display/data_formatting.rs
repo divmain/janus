@@ -103,6 +103,7 @@ pub fn format_deps(deps: &[String]) -> String {
 }
 
 // Re-export sort functions from the query module for backward compatibility
+pub use crate::query::SortField;
 pub use crate::query::sort_by_created;
 pub use crate::query::sort_by_id;
 pub use crate::query::sort_by_priority;

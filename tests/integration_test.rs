@@ -689,29 +689,16 @@ fn test_ls_sort_by_created() {
 }
 
 #[test]
-fn test_ls_sort_by_invalid_uses_priority() {
+fn test_ls_sort_by_invalid_rejects() {
     let janus = JanusTest::new();
 
-    let t1_id = janus
-        .run_success(&["create", "Task 1", "--priority", "3"])
-        .trim()
-        .to_string();
-    let t2_id = janus
-        .run_success(&["create", "Task 2", "--priority", "0"])
-        .trim()
-        .to_string();
+    janus.run_success(&["create", "Task 1", "--priority", "3"]);
+    janus.run_success(&["create", "Task 2", "--priority", "0"]);
 
-    let output = janus.run_success(&["ls", "--sort-by", "invalid"]);
-    let lines: Vec<&str> = output.lines().collect();
-
-    assert_eq!(lines.len(), 2, "Should show 2 tickets");
+    let output = janus.run_failure(&["ls", "--sort-by", "invalid"]);
     assert!(
-        lines[0].contains(&t2_id),
-        "P0 ticket should be first (fallback to priority)"
-    );
-    assert!(
-        lines[1].contains(&t1_id),
-        "P3 ticket should be second (fallback to priority)"
+        output.contains("Invalid sort field"),
+        "Should reject invalid sort field, got: {output}"
     );
 }
 

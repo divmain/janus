@@ -329,6 +329,9 @@ pub enum JanusError {
     )]
     InvalidSize(String),
 
+    #[error("invalid sort field: {0}. Must be one of: priority, created, id")]
+    InvalidSortField(String),
+
     #[error("plan has no tickets section")]
     PlanNoTicketsSection,
 

@@ -13,7 +13,7 @@ use crate::types::{TicketMetadata, TicketSize, TicketStatus};
 
 pub mod sort;
 
-pub use sort::{sort_by_created, sort_by_id, sort_by_priority, sort_tickets_by};
+pub use sort::{SortField, sort_by_created, sort_by_id, sort_by_priority, sort_tickets_by};
 
 /// Context passed to filters containing shared state
 pub struct TicketFilterContext {
@@ -279,7 +279,7 @@ impl TicketFilter for ActiveFilter {
 pub struct TicketQueryBuilder {
     filters: Vec<Box<dyn TicketFilter>>,
     or_filter_groups: Vec<Vec<Box<dyn TicketFilter>>>,
-    sort_by: String,
+    sort_by: SortField,
     limit: Option<usize>,
 }
 
@@ -289,7 +289,7 @@ impl TicketQueryBuilder {
         Self {
             filters: Vec::new(),
             or_filter_groups: Vec::new(),
-            sort_by: "priority".to_string(),
+            sort_by: SortField::default(),
             limit: None,
         }
     }
@@ -310,8 +310,8 @@ impl TicketQueryBuilder {
     }
 
     /// Set the sort field
-    pub fn with_sort(mut self, sort_by: &str) -> Self {
-        self.sort_by = sort_by.to_string();
+    pub fn with_sort(mut self, sort_by: SortField) -> Self {
+        self.sort_by = sort_by;
         self
     }
 
@@ -347,7 +347,7 @@ impl TicketQueryBuilder {
         }
 
         // Sort using local sort function
-        sort::sort_tickets_by(&mut filtered, &self.sort_by);
+        sort::sort_tickets_by(&mut filtered, self.sort_by);
 
         // Apply limit
         if let Some(limit) = self.limit {

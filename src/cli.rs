@@ -3,6 +3,7 @@ use clap_complete::Shell;
 use std::io;
 use std::str::FromStr;
 
+use crate::query::SortField;
 use crate::types::{DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType};
 
 #[derive(Parser)]
@@ -255,8 +256,8 @@ pub enum Commands {
         limit: Option<usize>,
 
         /// Sort tickets by field (priority, created, id; default: priority)
-        #[arg(long, default_value = "priority")]
-        sort_by: String,
+        #[arg(long, default_value = "priority", value_parser = parse_sort_field)]
+        sort_by: SortField,
 
         /// Output as JSON
         #[arg(long)]
@@ -1360,6 +1361,15 @@ fn parse_bool_strict(s: &str) -> Result<bool, String> {
             "Invalid boolean value '{s}'. Must be 'true' or 'false'"
         )),
     }
+}
+
+fn parse_sort_field(s: &str) -> Result<SortField, String> {
+    parse_with_validation(
+        s,
+        |v| v.parse().map_err(|_| String::new()),
+        "sort field",
+        SortField::ALL_STRINGS,
+    )
 }
 
 fn parse_size(s: &str) -> Result<TicketSize, String> {

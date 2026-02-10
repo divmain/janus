@@ -8,7 +8,7 @@ use super::{
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 use crate::query::{
-    ActiveFilter, BlockedFilter, ClosedFilter, ReadyFilter, SizeFilter, SpawningFilter,
+    ActiveFilter, BlockedFilter, ClosedFilter, ReadyFilter, SizeFilter, SortField, SpawningFilter,
     StatusFilter, TicketQueryBuilder, TriagedFilter,
 };
 use crate::ticket::{Ticket, build_ticket_map, get_all_tickets_with_map};
@@ -29,7 +29,7 @@ pub struct LsOptions {
     pub triaged: Option<bool>,
     pub size_filter: Option<Vec<TicketSize>>,
     pub limit: Option<usize>,
-    pub sort_by: String,
+    pub sort_by: SortField,
     pub output_json: bool,
 }
 
@@ -50,7 +50,7 @@ impl LsOptions {
             triaged: None,
             size_filter: None,
             limit: None,
-            sort_by: "priority".to_string(),
+            sort_by: SortField::default(),
             output_json: false,
         }
     }
@@ -123,7 +123,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
                 "--phase cannot be used with --next-in-plan".to_string(),
             ));
         }
-        return cmd_ls_next_in_plan(plan_id, opts.limit, &opts.sort_by, opts.output_json).await;
+        return cmd_ls_next_in_plan(plan_id, opts.limit, opts.sort_by, opts.output_json).await;
     }
 
     let (tickets, _ticket_map) = get_all_tickets_with_map().await?;
@@ -137,7 +137,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
     };
 
     // Build query using TicketQueryBuilder
-    let mut builder = TicketQueryBuilder::new().with_sort(&opts.sort_by);
+    let mut builder = TicketQueryBuilder::new().with_sort(opts.sort_by);
 
     // Add spawning filter if any spawning criteria are specified
     if resolved_spawned_from.is_some() || opts.depth.is_some() || opts.max_depth.is_some() {
@@ -255,7 +255,7 @@ pub async fn cmd_ls(
         triaged: parsed_triaged,
         size_filter,
         limit,
-        sort_by: sort_by.to_string(),
+        sort_by: sort_by.parse::<SortField>()?,
         output_json,
     };
     cmd_ls_with_options(opts).await
@@ -265,7 +265,7 @@ pub async fn cmd_ls(
 async fn cmd_ls_next_in_plan(
     plan_id: &str,
     limit: Option<usize>,
-    sort_by: &str,
+    sort_by: SortField,
     output_json: bool,
 ) -> Result<()> {
     use crate::query::sort_tickets_by;
