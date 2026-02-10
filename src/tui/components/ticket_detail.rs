@@ -5,7 +5,8 @@
 
 use iocraft::prelude::*;
 
-use crate::display::{extract_ticket_body, format_date_for_display};
+use crate::display::format_date_for_display;
+use crate::parser::extract_ticket_body;
 use crate::ticket::Ticket;
 use crate::tui::components::{Clickable, TextViewer};
 use crate::tui::theme::theme;

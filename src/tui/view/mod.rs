@@ -9,7 +9,7 @@ pub mod model;
 
 use iocraft::prelude::*;
 
-use crate::display::extract_ticket_body;
+use crate::parser::extract_ticket_body;
 use crate::ticket::Ticket;
 use crate::tui::components::{
     Clickable, EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox,
