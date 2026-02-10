@@ -406,9 +406,6 @@ pub enum JanusError {
     #[error("internal error: {0}")]
     InternalError(String),
 
-    #[error("{0}")]
-    Other(String),
-
     #[error("embedding model error: {0}")]
     EmbeddingModel(String),
 
