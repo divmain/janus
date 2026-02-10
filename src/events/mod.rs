@@ -108,9 +108,11 @@ fn log_event_impl(event: Event) -> std::io::Result<()> {
         use std::os::unix::io::AsRawFd;
         let fd = file.as_raw_fd();
         // LOCK_EX = exclusive lock, will block until acquired
-        // We ignore errors here - if locking fails, we still try to write
-        unsafe {
-            libc::flock(fd, libc::LOCK_EX);
+        // If locking fails, we still proceed with the write (graceful degradation)
+        let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
+        if ret == -1 {
+            let errno = std::io::Error::last_os_error();
+            eprintln!("Warning: failed to acquire file lock on events log: {errno}");
         }
     }
 
@@ -637,20 +639,16 @@ mod tests {
         assert_eq!(events[1].event_type, EventType::CacheRebuilt);
         assert_eq!(events[1].data["reason"], "corruption_recovery");
         assert_eq!(events[1].data["trigger"], "automatic_recovery");
-        assert!(
-            !events[1]
-                .data
-                .as_object()
-                .unwrap()
-                .contains_key("duration_ms")
-        );
-        assert!(
-            !events[1]
-                .data
-                .as_object()
-                .unwrap()
-                .contains_key("ticket_count")
-        );
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("duration_ms"));
+        assert!(!events[1]
+            .data
+            .as_object()
+            .unwrap()
+            .contains_key("ticket_count"));
         assert!(!events[1].data.as_object().unwrap().contains_key("details"));
     }
 
