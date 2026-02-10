@@ -34,7 +34,7 @@ impl ReverseEdges {
             // Build reverse_spawned: for each parent, add this ticket to its children list
             if let Some(parent) = &ticket.spawned_from {
                 reverse_spawned
-                    .entry(parent.clone())
+                    .entry(parent.to_string())
                     .or_default()
                     .push(id.clone());
             }
@@ -90,9 +90,9 @@ pub fn get_reachable_tickets(
 
             if filter != RelationshipFilter::Deps
                 && let Some(parent) = &ticket.spawned_from
-                && !visited.contains(parent)
+                && !visited.contains(parent.as_ref())
             {
-                queue.push_back(parent.clone());
+                queue.push_back(parent.to_string());
             }
         }
 
@@ -178,7 +178,7 @@ mod tests {
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-child")),
                 deps: vec![],
-                spawned_from: Some("j-parent".to_string()),
+                spawned_from: Some(TicketId::new_unchecked("j-parent")),
                 ..Default::default()
             },
         );

@@ -58,7 +58,7 @@ impl TicketBuilder {
 
     /// Set the parent ticket
     pub fn parent(mut self, parent_id: &str) -> Self {
-        self.metadata.parent = Some(parent_id.to_string());
+        self.metadata.parent = Some(TicketId::new_unchecked(parent_id));
         self
     }
 
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(ticket.ticket_type, Some(TicketType::Bug));
         assert_eq!(ticket.priority, Some(TicketPriority::P0));
         assert_eq!(ticket.deps, vec!["j-dep1"]);
-        assert_eq!(ticket.parent, Some("j-parent".to_string()));
+        assert_eq!(ticket.parent.as_deref(), Some("j-parent"));
     }
 
     #[test]

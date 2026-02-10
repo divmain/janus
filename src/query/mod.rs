@@ -131,7 +131,7 @@ impl TicketFilter for SpawningFilter {
     fn matches(&self, ticket: &TicketMetadata, _context: &TicketFilterContext) -> bool {
         // Filter by spawned_from (direct children only)
         if let Some(ref parent_id) = self.spawned_from {
-            match &ticket.spawned_from {
+            match ticket.spawned_from.as_deref() {
                 Some(spawned_from) if spawned_from == parent_id => {}
                 _ => return false,
             }

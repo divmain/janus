@@ -137,7 +137,7 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
             ticket.update_field("type", value)?;
         }
         "parent" => {
-            previous_value = metadata.parent.clone();
+            previous_value = metadata.parent.as_deref().map(|s| s.to_string());
             if let Some(value) = value {
                 let parent_id = validate_parent(value, &ticket).await?;
                 new_value = parent_id.clone();

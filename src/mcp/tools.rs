@@ -996,7 +996,7 @@ impl JanusTools {
             }
 
             // Check if this is a child (spawned from current ticket)
-            if other.spawned_from.as_ref() == Some(&ticket.id) {
+            if other.spawned_from.as_deref() == Some(ticket.id.as_str()) {
                 children.push(other);
             }
 
@@ -1233,7 +1233,7 @@ impl JanusTools {
 
         let children: Vec<&TicketMetadata> = tickets
             .iter()
-            .filter(|t| t.spawned_from.as_ref() == Some(&parent.id))
+            .filter(|t| t.spawned_from.as_deref() == Some(parent.id.as_str()))
             .collect();
 
         let parent_title = parent_metadata.title.as_deref().unwrap_or("Untitled");

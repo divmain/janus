@@ -72,7 +72,7 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
     let created = ticket.created.clone();
     let deps = ticket.deps.clone();
     let links = ticket.links.clone();
-    let parent = ticket.parent.clone();
+    let parent = ticket.parent.as_deref().map(|s| s.to_string());
 
     // Get status and type colors
     let status_color = theme.status_color(status);

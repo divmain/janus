@@ -24,7 +24,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
         }
 
         // Check if this is a child of the current ticket
-        if other.parent.as_ref() == Some(&ticket.id) {
+        if other.parent.as_deref() == Some(ticket.id.as_str()) {
             children.push(other);
         }
 

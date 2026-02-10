@@ -322,7 +322,7 @@ mod tests {
     fn make_ticket(id: &str, spawned_from: Option<&str>, depth: Option<u32>) -> TicketMetadata {
         TicketMetadata {
             id: Some(TicketId::new_unchecked(id)),
-            spawned_from: spawned_from.map(|s| s.to_string()),
+            spawned_from: spawned_from.map(TicketId::new_unchecked),
             depth,
             ..Default::default()
         }

@@ -525,7 +525,7 @@ async fn read_spawned_from(id: &str) -> Result<ReadResourceResult, ResourceError
 
     let children: Vec<serde_json::Value> = tickets
         .iter()
-        .filter(|t| t.spawned_from.as_ref() == Some(&parent.id))
+        .filter(|t| t.spawned_from.as_deref() == Some(parent.id.as_str()))
         .map(ticket_to_json)
         .collect();
 
@@ -646,7 +646,7 @@ mod tests {
             title: Some("Test Ticket".to_string()),
             status: Some(TicketStatus::New),
             deps: vec!["j-dep1".to_string()],
-            spawned_from: Some("j-parent".to_string()),
+            spawned_from: Some(TicketId::new_unchecked("j-parent")),
             depth: Some(1),
             ..Default::default()
         };

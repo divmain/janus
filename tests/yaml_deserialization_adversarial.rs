@@ -723,7 +723,7 @@ remote: "1.0""#;
         .deserialize_frontmatter()
         .expect("quoted values should deserialize as strings");
 
-    assert_eq!(meta.parent, Some("yes".to_string()));
+    assert_eq!(meta.parent.as_deref(), Some("yes"));
     assert_eq!(meta.external_ref, Some("no".to_string()));
     assert_eq!(meta.spawn_context, Some("null".to_string()));
     assert_eq!(meta.remote, Some("1.0".to_string()));

@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::error::Result;
-use crate::parser::{ParsedDocument, parse_document};
+use crate::parser::{parse_document, ParsedDocument};
 use crate::types::{
     CreatedAt, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
@@ -31,9 +31,9 @@ struct TicketFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     remote: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    parent: Option<String>,
+    parent: Option<TicketId>,
     #[serde(rename = "spawned-from", skip_serializing_if = "Option::is_none")]
-    spawned_from: Option<String>,
+    spawned_from: Option<TicketId>,
     #[serde(rename = "spawn-context", skip_serializing_if = "Option::is_none")]
     spawn_context: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

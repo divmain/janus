@@ -30,10 +30,10 @@ pub fn build_edges(
 
             if filter != RelationshipFilter::Deps
                 && let Some(parent) = &ticket.spawned_from
-                && ticket_ids.contains(parent)
+                && ticket_ids.contains(parent.as_ref())
             {
                 edges.push(Edge {
-                    from: parent.clone(),
+                    from: parent.to_string(),
                     to: id.clone(),
                     edge_type: EdgeType::Spawned,
                 });
@@ -61,7 +61,7 @@ mod tests {
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
-                spawned_from: Some("j-b".to_string()),
+                spawned_from: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
         );
@@ -90,7 +90,7 @@ mod tests {
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
-                spawned_from: Some("j-b".to_string()),
+                spawned_from: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
         );
@@ -119,7 +119,7 @@ mod tests {
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
-                spawned_from: Some("j-b".to_string()),
+                spawned_from: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
         );
@@ -146,7 +146,7 @@ mod tests {
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
                 deps: vec!["j-b".to_string()],
-                spawned_from: Some("j-c".to_string()),
+                spawned_from: Some(TicketId::new_unchecked("j-c")),
                 ..Default::default()
             },
         );

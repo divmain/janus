@@ -126,7 +126,7 @@ impl TicketStore {
         let mut counts: HashMap<String, usize> = HashMap::new();
         for entry in self.tickets().iter() {
             if let Some(parent_id) = &entry.value().spawned_from {
-                *counts.entry(parent_id.clone()).or_insert(0) += 1;
+                *counts.entry(parent_id.to_string()).or_insert(0) += 1;
             }
         }
         counts
@@ -299,7 +299,7 @@ mod tests {
             priority: Some(TicketPriority::P1),
             size: Some(TicketSize::Small),
             body: Some("Users cannot log in".to_string()),
-            spawned_from: Some("j-a1b2".to_string()),
+            spawned_from: Some(TicketId::new_unchecked("j-a1b2")),
             ..Default::default()
         });
 
@@ -310,7 +310,7 @@ mod tests {
             ticket_type: Some(TicketType::Feature),
             priority: Some(TicketPriority::P2),
             size: Some(TicketSize::Large),
-            spawned_from: Some("j-a1b2".to_string()),
+            spawned_from: Some(TicketId::new_unchecked("j-a1b2")),
             ..Default::default()
         });
 
@@ -345,7 +345,7 @@ mod tests {
             id: Some(PlanId::new_unchecked("plan-c3d4")),
             title: Some("Feature Rollout".to_string()),
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-e5f6".to_string(),
+                "j-e5f6".to_string()
             ]))],
             ..Default::default()
         });

@@ -653,11 +653,11 @@ pub struct TicketMetadata {
     pub remote: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
+    pub parent: Option<TicketId>,
 
     /// ID of the parent ticket that spawned this one (decomposition provenance)
     #[serde(rename = "spawned-from", skip_serializing_if = "Option::is_none")]
-    pub spawned_from: Option<String>,
+    pub spawned_from: Option<TicketId>,
 
     /// Brief context explaining why this ticket was created from the parent
     #[serde(rename = "spawn-context", skip_serializing_if = "Option::is_none")]
@@ -712,7 +712,11 @@ impl TicketMetadata {
     pub fn compute_depth(&self) -> u32 {
         self.depth.unwrap_or_else(|| {
             // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if self.spawned_from.is_none() { 0 } else { 1 }
+            if self.spawned_from.is_none() {
+                0
+            } else {
+                1
+            }
         })
     }
 
@@ -775,8 +779,8 @@ pub struct TicketSummary {
     pub size: Option<TicketSize>,
     pub external_ref: Option<String>,
     pub remote: Option<String>,
-    pub parent: Option<String>,
-    pub spawned_from: Option<String>,
+    pub parent: Option<TicketId>,
+    pub spawned_from: Option<TicketId>,
     pub spawn_context: Option<String>,
     pub depth: Option<u32>,
     pub triaged: Option<bool>,
@@ -1047,7 +1051,7 @@ mod tests {
         // Test that spawning fields serialize correctly when present
         let metadata = TicketMetadata {
             id: Some(TicketId::new_unchecked("j-test")),
-            spawned_from: Some("j-parent".to_string()),
+            spawned_from: Some(TicketId::new_unchecked("j-parent")),
             spawn_context: Some("Test context".to_string()),
             depth: Some(2),
             ..Default::default()
@@ -1088,7 +1092,7 @@ depth: 2
 "#;
         let metadata: TicketMetadata = yaml::from_str(yaml_str).unwrap();
         assert_eq!(metadata.id.as_deref(), Some("j-test"));
-        assert_eq!(metadata.spawned_from, Some("j-parent".to_string()));
+        assert_eq!(metadata.spawned_from.as_deref(), Some("j-parent"));
         assert_eq!(
             metadata.spawn_context,
             Some("Auth implementation requires OAuth setup first".to_string())
