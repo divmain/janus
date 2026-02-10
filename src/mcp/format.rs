@@ -7,7 +7,7 @@
 use crate::next::{InclusionReason, WorkItem};
 use crate::plan::compute_all_phase_statuses;
 use crate::plan::types::{PlanMetadata, PlanStatus};
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::{TicketData, TicketMetadata, TicketStatus};
 use std::collections::HashMap;
 
 // ============================================================================

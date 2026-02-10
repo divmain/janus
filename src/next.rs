@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::Result;
 use crate::status::all_deps_satisfied;
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::{TicketData, TicketMetadata, TicketStatus};
 
 /// Reason why a ticket is included in the next work queue
 #[derive(Debug, Clone, PartialEq, Eq)]

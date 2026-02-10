@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::Result;
 use crate::status::{all_deps_satisfied, has_unsatisfied_dep};
 use crate::ticket::build_ticket_map;
-use crate::types::{TicketMetadata, TicketSize, TicketStatus};
+use crate::types::{TicketData, TicketMetadata, TicketSize, TicketStatus};
 
 pub mod sort;
 

@@ -22,7 +22,7 @@ use std::sync::Arc;
 // Re-export priority filter utilities from shared utils module
 pub use crate::utils::{parse_priority_filter, strip_priority_shorthand};
 
-use crate::types::TicketMetadata;
+use crate::types::{TicketData, TicketMetadata};
 
 /// A ticket with its fuzzy match score and matched indices
 #[derive(Debug, Clone, Default)]

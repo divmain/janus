@@ -688,14 +688,30 @@ pub struct TicketMetadata {
     pub body: Option<String>,
 }
 
-impl TicketMetadata {
-    /// Get priority as a number for sorting (defaults to DEFAULT_PRIORITY)
-    pub fn priority_num(&self) -> u8 {
+impl TicketData for TicketMetadata {
+    fn id(&self) -> Option<&str> {
+        self.id.as_ref().map(|id| id.as_ref())
+    }
+
+    fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    fn priority_num(&self) -> u8 {
         self.priority
             .map(|p| p.as_num())
             .unwrap_or(DEFAULT_PRIORITY)
     }
 
+    fn compute_depth(&self) -> u32 {
+        self.depth.unwrap_or_else(|| {
+            // If no explicit depth, infer: if no spawned_from, it's depth 0
+            if self.spawned_from.is_none() { 0 } else { 1 }
+        })
+    }
+}
+
+impl TicketMetadata {
     /// Parse the `created` field as a jiff::Timestamp.
     ///
     /// Returns `Some(Timestamp)` if the field is present and valid,
@@ -704,31 +720,9 @@ impl TicketMetadata {
         self.created.as_ref().and_then(|c| c.to_timestamp())
     }
 
-    /// Compute the effective depth of this ticket.
-    ///
-    /// Returns the explicit depth if set, otherwise infers from spawned_from:
-    /// - No spawned_from -> depth 0 (root)
-    /// - Has spawned_from -> depth 1 (child, unless parent depth is known)
-    pub fn compute_depth(&self) -> u32 {
-        self.depth.unwrap_or_else(|| {
-            // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if self.spawned_from.is_none() { 0 } else { 1 }
-        })
-    }
-
-    /// Get the item ID as a string slice
-    pub fn id(&self) -> Option<&str> {
-        self.id.as_ref().map(|id| id.as_ref())
-    }
-
     /// Get the item UUID
     pub fn uuid(&self) -> Option<&str> {
         self.uuid.as_deref()
-    }
-
-    /// Get the item title
-    pub fn title(&self) -> Option<&str> {
-        self.title.as_deref()
     }
 
     /// Get the file path
@@ -757,6 +751,24 @@ impl TicketMetadata {
     }
 }
 
+/// Shared ticket data interface for types that contain ticket metadata.
+///
+/// This trait abstracts common access patterns for both `TicketMetadata`
+/// and `TicketSummary`, avoiding method duplication.
+pub trait TicketData {
+    /// Get the ticket ID as a string slice
+    fn id(&self) -> Option<&str>;
+
+    /// Get the ticket title
+    fn title(&self) -> Option<&str>;
+
+    /// Get priority as a number for sorting (defaults to DEFAULT_PRIORITY)
+    fn priority_num(&self) -> u8;
+
+    /// Compute the effective depth of this ticket
+    fn compute_depth(&self) -> u32;
+}
+
 /// Lightweight ticket summary without the full markdown body.
 ///
 /// Contains all metadata fields needed for listing, filtering, and display
@@ -764,46 +776,77 @@ impl TicketMetadata {
 /// clone overhead in query and search operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TicketSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<TicketId>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub uuid: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<TicketStatus>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deps: Vec<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<CreatedAt>,
+
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub ticket_type: Option<TicketType>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<TicketPriority>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<TicketSize>,
+
+    #[serde(rename = "external-ref", skip_serializing_if = "Option::is_none")]
     pub external_ref: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub remote: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<TicketId>,
+
+    #[serde(rename = "spawned-from", skip_serializing_if = "Option::is_none")]
     pub spawned_from: Option<TicketId>,
+
+    #[serde(rename = "spawn-context", skip_serializing_if = "Option::is_none")]
     pub spawn_context: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub triaged: Option<bool>,
+
+    #[serde(skip)]
     pub title: Option<String>,
+
+    #[serde(skip)]
     pub completion_summary: Option<String>,
 }
 
-impl TicketSummary {
-    /// Get the item ID as a string slice
-    pub fn id(&self) -> Option<&str> {
+impl TicketData for TicketSummary {
+    fn id(&self) -> Option<&str> {
         self.id.as_ref().map(|id| id.as_ref())
     }
 
-    /// Get the item title
-    pub fn title(&self) -> Option<&str> {
+    fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
 
-    /// Get priority as a number for sorting (defaults to DEFAULT_PRIORITY)
-    pub fn priority_num(&self) -> u8 {
+    fn priority_num(&self) -> u8 {
         self.priority
             .map(|p| p.as_num())
             .unwrap_or(DEFAULT_PRIORITY)
     }
 
-    /// Compute the effective depth of this ticket.
-    pub fn compute_depth(&self) -> u32 {
+    fn compute_depth(&self) -> u32 {
         self.depth
             .unwrap_or_else(|| if self.spawned_from.is_none() { 0 } else { 1 })
     }

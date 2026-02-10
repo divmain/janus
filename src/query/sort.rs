@@ -4,7 +4,7 @@
 //! They are re-exported from the display module for backward compatibility.
 
 use crate::error::JanusError;
-use crate::types::TicketMetadata;
+use crate::types::{TicketData, TicketMetadata};
 
 /// Sort field for ticket listing and queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

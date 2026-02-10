@@ -1,6 +1,6 @@
 //! Ticket analytics for filtering, counting, and status analysis
 
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::{TicketData, TicketMetadata, TicketStatus};
 
 /// Analytics operations on ticket collections
 pub struct TicketAnalytics;

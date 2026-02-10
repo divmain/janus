@@ -5,6 +5,7 @@ use crate::error::Result;
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::status::is_dependency_satisfied;
 use crate::ticket::build_ticket_map;
+use crate::types::TicketData;
 
 /// JSON output structure for a work item
 #[derive(Serialize)]

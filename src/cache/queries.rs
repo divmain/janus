@@ -261,7 +261,8 @@ mod tests {
     use crate::cache::TicketStore;
     use crate::plan::types::{PlanMetadata, PlanSection, TicketsSection};
     use crate::types::{
-        PlanId, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType,
+        PlanId, TicketData, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus,
+        TicketType,
     };
 
     /// Helper to create a test store with some tickets pre-loaded.
