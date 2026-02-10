@@ -6,6 +6,23 @@ use crate::events::log_ticket_created;
 use crate::ticket::{Ticket, TicketBuilder, parse_ticket};
 use crate::types::{TicketPriority, TicketSize, TicketType, tickets_items_dir};
 
+/// Options for the `create` command, bundling all parameters.
+pub struct CreateOptions {
+    pub title: String,
+    pub description: Option<String>,
+    pub design: Option<String>,
+    pub acceptance: Option<String>,
+    pub priority: TicketPriority,
+    pub ticket_type: TicketType,
+    pub external_ref: Option<String>,
+    pub parent: Option<String>,
+    pub prefix: Option<String>,
+    pub spawned_from: Option<String>,
+    pub spawn_context: Option<String>,
+    pub size: Option<TicketSize>,
+    pub output_json: bool,
+}
+
 /// Compute the depth for a spawned ticket based on the parent's resolved canonical ID.
 /// Returns None if no spawned_from is provided, or parent.depth + 1 otherwise.
 /// If the parent ticket can't be read, prints a warning to stderr and defaults to depth 1.
@@ -30,22 +47,23 @@ fn compute_depth(canonical_id: Option<&str>) -> Option<u32> {
 }
 
 /// Create a new ticket and print its ID
-#[allow(clippy::too_many_arguments)]
-pub async fn cmd_create(
-    title: String,
-    description: Option<String>,
-    design: Option<String>,
-    acceptance: Option<String>,
-    priority: TicketPriority,
-    ticket_type: TicketType,
-    external_ref: Option<String>,
-    parent: Option<String>,
-    prefix: Option<String>,
-    spawned_from: Option<String>,
-    spawn_context: Option<String>,
-    size: Option<TicketSize>,
-    output_json: bool,
-) -> Result<()> {
+pub async fn cmd_create(opts: CreateOptions) -> Result<()> {
+    let CreateOptions {
+        title,
+        description,
+        design,
+        acceptance,
+        priority,
+        ticket_type,
+        external_ref,
+        parent,
+        prefix,
+        spawned_from,
+        spawn_context,
+        size,
+        output_json,
+    } = opts;
+
     // Validate that title is not empty or only whitespace
     if title.trim().is_empty() {
         return Err(JanusError::EmptyTitle);
