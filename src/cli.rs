@@ -1308,46 +1308,11 @@ fn parse_status(s: &str) -> Result<TicketStatus, String> {
 }
 
 fn parse_partial_id(s: &str) -> Result<String, String> {
-    if s.is_empty() {
-        return Err("ID cannot be empty".to_string());
-    }
-
-    if s.chars().all(char::is_whitespace) {
-        return Err("ID cannot be only whitespace".to_string());
-    }
-
-    if !s
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(
-            "ID must contain only alphanumeric characters, hyphens, and underscores".to_string(),
-        );
-    }
-
-    Ok(s.to_string())
+    crate::utils::validate_identifier(s, "ID").map_err(|e| e.to_string())
 }
 
 fn parse_plan_id(s: &str) -> Result<String, String> {
-    if s.is_empty() {
-        return Err("Plan ID cannot be empty".to_string());
-    }
-
-    if s.chars().all(char::is_whitespace) {
-        return Err("Plan ID cannot be only whitespace".to_string());
-    }
-
-    if !s
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(
-            "Plan ID must contain only alphanumeric characters, hyphens, and underscores"
-                .to_string(),
-        );
-    }
-
-    Ok(s.to_string())
+    crate::utils::validate_identifier(s, "Plan ID").map_err(|e| e.to_string())
 }
 
 fn parse_bool_strict(s: &str) -> Result<bool, String> {

@@ -22,8 +22,7 @@ use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
 use crate::types::{EntityType, TicketMetadata, plans_dir};
-use crate::utils::validation::validate_safe_id;
-use crate::utils::{DirScanner, extract_id_from_path};
+use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
 
 // Re-export status computation functions
 pub use crate::status::plan::{
@@ -54,7 +53,8 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     let dir = plans_dir();
 
     // Validate ID before any path construction
-    validate_safe_id(partial_id).map_err(|_| JanusError::InvalidPlanId(partial_id.to_string()))?;
+    validate_identifier(partial_id, "Plan ID")
+        .map_err(|_| JanusError::InvalidPlanId(partial_id.to_string()))?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {

@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use crate::cache::get_or_init_store;
 use crate::error::{JanusError, Result};
 use crate::types::tickets_items_dir;
-use crate::utils::validation::validate_safe_id;
 use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
 
 fn validate_partial_id(id: &str) -> Result<String> {
@@ -29,7 +28,7 @@ async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
     let dir = tickets_items_dir();
 
     // Validate ID before any path construction
-    validate_safe_id(partial_id)
+    validate_identifier(partial_id, "Ticket ID")
         .map_err(|_| JanusError::InvalidTicketId(partial_id.to_string()))?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
