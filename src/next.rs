@@ -5,7 +5,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::error::Result;
 use crate::status::all_deps_satisfied;
 use crate::types::{TicketData, TicketMetadata, TicketStatus};
 
@@ -53,14 +52,14 @@ impl<'a> NextWorkFinder<'a> {
     ///    - Add with Ready reason
     /// 5. Use visited set to avoid duplicates
     /// 6. Truncate to limit
-    pub fn get_next_work(&self, limit: usize) -> Result<Vec<WorkItem>> {
+    pub fn get_next_work(&self, limit: usize) -> Vec<WorkItem> {
         if limit == 0 {
-            return Ok(Vec::new());
+            return Vec::new();
         }
 
         let workable = self.get_workable_tickets();
         if workable.is_empty() {
-            return Ok(Vec::new());
+            return Vec::new();
         }
 
         let mut result = Vec::new();
@@ -182,7 +181,7 @@ impl<'a> NextWorkFinder<'a> {
             });
         }
 
-        Ok(result)
+        result
     }
 
     /// Get all workable tickets (status new or next)
@@ -427,7 +426,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].ticket_id, "j-a1b2");
@@ -459,7 +458,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].ticket_id, "j-high"); // P0 first
@@ -491,7 +490,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].ticket_id, "j-dep");
@@ -533,7 +532,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 3);
         // Order should be: j-a (ready dep), j-b (blocked, added when processing j-c), j-c (target blocked)
@@ -591,7 +590,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         // j-d should appear only once, then j-b and j-c (order depends on processing)
         let ids: Vec<String> = result.iter().map(|w| w.ticket_id.clone()).collect();
@@ -642,7 +641,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         // All tickets in cycle should be skipped
         assert_eq!(result.len(), 0);
@@ -665,7 +664,7 @@ mod tests {
         }
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(5).unwrap();
+        let result = finder.get_next_work(5);
 
         assert_eq!(result.len(), 5);
     }
@@ -685,7 +684,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(0).unwrap();
+        let result = finder.get_next_work(0);
 
         assert_eq!(result.len(), 0);
     }
@@ -695,7 +694,7 @@ mod tests {
         let map: HashMap<String, TicketMetadata> = HashMap::new();
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 0);
     }
@@ -725,7 +724,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 0);
     }
@@ -746,7 +745,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         // Orphan dep should be treated as blocking (safer default)
         assert_eq!(result.len(), 1);
@@ -780,7 +779,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         // Cancelled dep should be treated as satisfied, so j-ticket is ready
         assert_eq!(result.len(), 1);
@@ -803,7 +802,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].ticket_id, "j-next");
@@ -824,7 +823,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         assert_eq!(result.len(), 0);
     }
@@ -855,7 +854,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         // j-a is workable but blocked, j-b is not workable (in_progress)
         // Since j-b is not workable and not complete, j-a's dep is not ready
@@ -901,7 +900,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         // j-shared should only appear once
         let shared_count = result.iter().filter(|w| w.ticket_id == "j-shared").count();
@@ -936,7 +935,7 @@ mod tests {
         );
 
         let finder = NextWorkFinder::new(&map);
-        let result = finder.get_next_work(10).unwrap();
+        let result = finder.get_next_work(10);
 
         // Same priority, older created date should come first
         assert_eq!(result[0].ticket_id, "j-older");

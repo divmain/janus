@@ -940,7 +940,7 @@ impl JanusTools {
         }
 
         let finder = NextWorkFinder::new(&ticket_map);
-        let work_items = finder.get_next_work(limit).map_err(|e| e.to_string())?;
+        let work_items = finder.get_next_work(limit);
 
         if work_items.is_empty() {
             return Ok("No tickets ready to work on.".to_string());

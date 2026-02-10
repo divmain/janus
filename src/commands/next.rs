@@ -53,7 +53,7 @@ pub async fn cmd_next(limit: usize, output_json: bool) -> Result<()> {
     }
 
     let finder = NextWorkFinder::new(&ticket_map);
-    let work_items = finder.get_next_work(limit)?;
+    let work_items = finder.get_next_work(limit);
 
     if work_items.is_empty() {
         if output_json {
