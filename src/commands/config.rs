@@ -9,7 +9,7 @@ use serde_json::json;
 use super::print_json;
 use crate::config::Config;
 use crate::error::{JanusError, Result};
-use crate::remote::config::Platform;
+use crate::remote::Platform;
 
 /// Validate a config key and convert underscore notation to dot notation suggestion
 fn validate_config_key(key: &str) -> Result<&str> {

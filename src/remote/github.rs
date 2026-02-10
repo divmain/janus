@@ -5,9 +5,10 @@ use std::fmt;
 
 use crate::error::{JanusError, Result};
 
+use crate::config::Config;
+
 use super::{
-    AsHttpError, Config, IssueUpdates, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef,
-    RemoteStatus,
+    AsHttpError, IssueUpdates, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef, RemoteStatus,
 };
 
 /// GitHub Issues provider

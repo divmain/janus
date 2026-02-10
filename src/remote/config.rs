@@ -8,12 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{JanusError, Result};
 
-// Re-export everything from the top-level config module for backward compatibility.
-// This allows existing code using `crate::remote::config::Config` to continue working.
-pub use crate::config::{
-    AuthConfig, Config, GitHubAuth, HooksConfig, LinearAuth, SemanticSearchConfig,
-};
-
 /// Default remote configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DefaultRemote {

@@ -22,7 +22,9 @@ use crate::types::TicketStatus;
 use crate::remote::github::GitHubProvider;
 use crate::remote::linear::LinearProvider;
 
-pub use config::{Config, Platform};
+pub use config::Platform;
+
+use crate::config::Config;
 
 /// Parsed remote reference
 #[derive(Debug, Clone, PartialEq, Eq)]

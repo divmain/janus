@@ -26,9 +26,11 @@ use tokio::sync::RwLock;
 
 use crate::error::{JanusError, Result};
 
+use crate::config::Config;
+
 use super::{
-    AsHttpError, Config, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteQuery,
-    RemoteRef, RemoteStatus,
+    AsHttpError, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef,
+    RemoteStatus,
 };
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
