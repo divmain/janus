@@ -24,14 +24,11 @@ use formatter::generate_mermaid;
 pub async fn cmd_graph(
     deps_only: bool,
     spawn_only: bool,
-    all: bool,
     format: &str,
     root: Option<&str>,
     plan: Option<&str>,
     output_json: bool,
 ) -> Result<()> {
-    // Note: The `all` parameter is accepted for explicitness but is the default behavior
-    let _ = all; // Explicitly mark as used
     use types::RelationshipFilter;
 
     // Validate format early to fail fast

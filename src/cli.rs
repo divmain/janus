@@ -1229,7 +1229,7 @@ impl Commands {
             Commands::Graph {
                 deps,
                 spawn,
-                all,
+                all: _,
                 format,
                 root,
                 plan,
@@ -1238,7 +1238,6 @@ impl Commands {
                 cmd_graph(
                     deps,
                     spawn,
-                    all,
                     &format,
                     root.as_deref(),
                     plan.as_deref(),
