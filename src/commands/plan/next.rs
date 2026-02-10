@@ -9,6 +9,7 @@ use crate::display::PlanNextFormatter;
 use crate::error::Result;
 use crate::plan::types::PlanMetadata;
 use crate::plan::{Plan, compute_phase_status};
+use crate::status::all_deps_satisfied;
 use crate::ticket::build_ticket_map;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -125,6 +126,16 @@ pub fn get_next_items_phased(
                 continue;
             }
 
+            // Skip tickets with unsatisfied dependencies
+            if let Some(ref meta) = ticket_meta {
+                if !all_deps_satisfied(meta, ticket_map) {
+                    continue;
+                }
+            } else {
+                // Skip tickets that don't exist in the ticket map
+                continue;
+            }
+
             next_tickets.push((ticket_id.clone(), ticket_meta));
 
             // Limit by count unless showing all
@@ -176,6 +187,16 @@ pub fn get_next_items_simple(
 
         // Skip completed/cancelled tickets
         if status == TicketStatus::Complete || status == TicketStatus::Cancelled {
+            continue;
+        }
+
+        // Skip tickets with unsatisfied dependencies
+        if let Some(ref meta) = ticket_meta {
+            if !all_deps_satisfied(meta, ticket_map) {
+                continue;
+            }
+        } else {
+            // Skip tickets that don't exist in the ticket map
             continue;
         }
 
