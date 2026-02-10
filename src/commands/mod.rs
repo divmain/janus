@@ -115,11 +115,6 @@ impl CommandOutput {
         }
         Ok(())
     }
-
-    /// Get the JSON value (useful for testing or further processing).
-    pub fn json(&self) -> &serde_json::Value {
-        &self.json
-    }
 }
 
 /// Re-export display formatting functions for convenience
