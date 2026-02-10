@@ -7,6 +7,7 @@ mod dep;
 mod dep_tree;
 mod doctor;
 mod edit;
+mod events;
 pub mod graph;
 pub mod hook;
 pub mod interactive;
@@ -32,6 +33,7 @@ pub use create::{CreateOptions, cmd_create};
 pub use dep::{cmd_dep_add, cmd_dep_remove, cmd_dep_tree};
 pub use doctor::cmd_doctor;
 pub use edit::cmd_edit;
+pub use events::cmd_events_prune;
 pub use graph::cmd_graph;
 pub use hook::{
     cmd_hook_disable, cmd_hook_enable, cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run,
