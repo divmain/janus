@@ -202,7 +202,11 @@ fn render_local_detail(
         let status = ticket.status.unwrap_or_default();
 
         // Clone data for rendering
-        let ticket_id = ticket.id.clone().unwrap_or_default();
+        let ticket_id = ticket
+            .id
+            .clone()
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "(unknown)".to_string());
         let ticket_title = ticket.title.clone().unwrap_or_default();
         let ticket_type = ticket.ticket_type;
         let ticket_priority = ticket.priority;

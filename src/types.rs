@@ -22,7 +22,7 @@ pub use crate::paths::{janus_root, plans_dir, tickets_items_dir};
 ///
 /// Serializes transparently as a plain string in YAML/JSON for backward
 /// compatibility.
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct TicketId(String);
 
@@ -132,7 +132,7 @@ impl Borrow<str> for TicketId {
 ///
 /// Serializes transparently as a plain string in YAML/JSON for backward
 /// compatibility.
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PlanId(String);
 
