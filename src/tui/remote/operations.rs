@@ -538,11 +538,14 @@ pub fn create_sync_changes(
         });
     }
 
+    // Use resolve_with_local to avoid flagging spurious diffs when the remote
+    // status is just a less-specific version of the local status (e.g., local
+    // is InProgress and remote is Open—they're semantically equivalent).
     let local_status = ticket.status.ok_or_else(|| JanusError::CorruptedTicket {
         id: ticket.id.as_deref().unwrap_or("unknown").to_string(),
         field: "status".to_string(),
     })?;
-    let remote_status = issue.status.to_ticket_status();
+    let remote_status = issue.status.resolve_with_local(local_status);
     if local_status != remote_status {
         changes.push(SyncChange {
             field_name: "Status".to_string(),
@@ -927,12 +930,14 @@ pub fn build_sync_changes(
         });
     }
 
-    // Compare status
+    // Compare status using resolve_with_local to avoid lossy round-trip corruption.
+    // This preserves more-specific local statuses (e.g., InProgress, Cancelled)
+    // when the remote only has coarse-grained states (Open/Closed).
     let local_status = ticket.status.ok_or_else(|| JanusError::CorruptedTicket {
         id: ticket.id.as_deref().unwrap_or("unknown").to_string(),
         field: "status".to_string(),
     })?;
-    let remote_status = issue.status.to_ticket_status();
+    let remote_status = issue.status.resolve_with_local(local_status);
     if local_status != remote_status {
         changes.push(SyncChange {
             field_name: "Status".to_string(),

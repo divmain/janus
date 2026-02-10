@@ -31,11 +31,14 @@ pub fn compute_sync_state(
         None
     };
 
-    let remote_ticket_status = remote_issue.status.to_ticket_status();
-    let status_diff = if local_status != remote_ticket_status {
+    // Use resolve_with_local to avoid lossy round-trip status corruption.
+    // This preserves more-specific local statuses (e.g., InProgress, Cancelled)
+    // when the remote only has coarse-grained states (Open/Closed).
+    let resolved_status = remote_issue.status.resolve_with_local(local_status);
+    let status_diff = if local_status != resolved_status {
         Some(StatusDiff {
             local: local_status,
-            remote_status: remote_ticket_status,
+            remote_status: resolved_status,
             remote_raw: remote_issue.status.clone(),
         })
     } else {

@@ -260,7 +260,25 @@ pub enum RemoteStatus {
 }
 
 impl RemoteStatus {
-    /// Convert to Janus TicketStatus
+    /// Convert to Janus TicketStatus.
+    ///
+    /// **WARNING: This conversion is lossy.** Remote platforms like GitHub only
+    /// have two states (Open/Closed), while Janus has five (New, Next, InProgress,
+    /// Complete, Cancelled). This means:
+    ///
+    /// - `Open` always maps to `New`, even though the local ticket may be `Next`
+    ///   or `InProgress`
+    /// - `Closed` always maps to `Complete`, even though the local ticket may be
+    ///   `Cancelled`
+    ///
+    /// A round-trip (`TicketStatus` → `RemoteStatus` → `TicketStatus`) can silently
+    /// change statuses: `InProgress` becomes `New`, `Cancelled` becomes `Complete`.
+    ///
+    /// When syncing from a remote, prefer [`RemoteStatus::resolve_with_local`] to
+    /// avoid overwriting more-specific local statuses with lossy remote conversions.
+    ///
+    /// `Custom` variants (e.g., Linear workflow states) attempt exact and substring
+    /// matching to recover finer-grained statuses.
     pub fn to_ticket_status(&self) -> TicketStatus {
         match self {
             RemoteStatus::Open => TicketStatus::New,
@@ -292,7 +310,17 @@ impl RemoteStatus {
         }
     }
 
-    /// Create from Janus TicketStatus
+    /// Create from Janus TicketStatus.
+    ///
+    /// **WARNING: This conversion is lossy.** Multiple Janus statuses map to the
+    /// same remote status:
+    ///
+    /// - `New`, `Next`, `InProgress` all map to `Open`
+    /// - `Complete`, `Cancelled` both map to `Closed`
+    ///
+    /// This is inherent to mapping Janus's 5-state system to a 2-state remote
+    /// system (e.g., GitHub Open/Closed). The original Janus status cannot be
+    /// recovered from the remote status alone.
     pub fn from_ticket_status(status: TicketStatus) -> Self {
         match status {
             TicketStatus::New => RemoteStatus::Open,
@@ -300,6 +328,48 @@ impl RemoteStatus {
             TicketStatus::InProgress => RemoteStatus::Open,
             TicketStatus::Complete => RemoteStatus::Closed,
             TicketStatus::Cancelled => RemoteStatus::Closed,
+        }
+    }
+
+    /// Resolve a remote status against a known local status, preserving local
+    /// specificity when the remote status is ambiguous.
+    ///
+    /// This should be used when syncing FROM remote TO local. It prevents lossy
+    /// remote-to-local conversions from overwriting more-specific local statuses.
+    ///
+    /// Rules:
+    /// - If remote is `Open` and local is `Next` or `InProgress`, keep the local
+    ///   status (since `Open` → `New` would be an information-losing downgrade).
+    /// - If remote is `Closed` and local is `Cancelled`, keep the local status
+    ///   (since `Closed` → `Complete` would lose the cancelled distinction).
+    /// - `Custom` variants are always resolved via `to_ticket_status()` since they
+    ///   carry richer state information from platforms like Linear.
+    /// - Otherwise, use the straightforward `to_ticket_status()` conversion
+    ///   (e.g., local is `New` but remote is `Closed` → `Complete`).
+    pub fn resolve_with_local(&self, local_status: TicketStatus) -> TicketStatus {
+        match self {
+            RemoteStatus::Open => {
+                // Open is ambiguous: could mean New, Next, or InProgress.
+                // Only update if the local status is not already a more-specific
+                // "open" state.
+                match local_status {
+                    TicketStatus::Next | TicketStatus::InProgress => local_status,
+                    _ => self.to_ticket_status(),
+                }
+            }
+            RemoteStatus::Closed => {
+                // Closed is ambiguous: could mean Complete or Cancelled.
+                // Only update if the local status is not already a more-specific
+                // "closed" state.
+                match local_status {
+                    TicketStatus::Cancelled => local_status,
+                    _ => self.to_ticket_status(),
+                }
+            }
+            RemoteStatus::Custom(_) => {
+                // Custom statuses carry richer information, so always use them.
+                self.to_ticket_status()
+            }
         }
     }
 }
@@ -773,5 +843,142 @@ mod tests {
         } else {
             panic!("Expected GitHub ref");
         }
+    }
+
+    // =========================================================================
+    // resolve_with_local tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_open_preserves_next() {
+        // Open is ambiguous for Next/InProgress — should preserve local Next
+        assert_eq!(
+            RemoteStatus::Open.resolve_with_local(TicketStatus::Next),
+            TicketStatus::Next
+        );
+    }
+
+    #[test]
+    fn test_resolve_open_preserves_in_progress() {
+        // Open is ambiguous for Next/InProgress — should preserve local InProgress
+        assert_eq!(
+            RemoteStatus::Open.resolve_with_local(TicketStatus::InProgress),
+            TicketStatus::InProgress
+        );
+    }
+
+    #[test]
+    fn test_resolve_open_updates_new() {
+        // Open → New is not a lossy conversion, so New stays New
+        assert_eq!(
+            RemoteStatus::Open.resolve_with_local(TicketStatus::New),
+            TicketStatus::New
+        );
+    }
+
+    #[test]
+    fn test_resolve_open_updates_complete_to_new() {
+        // Local is Complete but remote is Open — this is real new info (reopened)
+        assert_eq!(
+            RemoteStatus::Open.resolve_with_local(TicketStatus::Complete),
+            TicketStatus::New
+        );
+    }
+
+    #[test]
+    fn test_resolve_open_updates_cancelled_to_new() {
+        // Local is Cancelled but remote is Open — this is real new info (reopened)
+        assert_eq!(
+            RemoteStatus::Open.resolve_with_local(TicketStatus::Cancelled),
+            TicketStatus::New
+        );
+    }
+
+    #[test]
+    fn test_resolve_closed_preserves_cancelled() {
+        // Closed is ambiguous for Complete/Cancelled — should preserve local Cancelled
+        assert_eq!(
+            RemoteStatus::Closed.resolve_with_local(TicketStatus::Cancelled),
+            TicketStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn test_resolve_closed_updates_complete() {
+        // Closed → Complete is not a lossy conversion, so Complete stays Complete
+        assert_eq!(
+            RemoteStatus::Closed.resolve_with_local(TicketStatus::Complete),
+            TicketStatus::Complete
+        );
+    }
+
+    #[test]
+    fn test_resolve_closed_updates_new_to_complete() {
+        // Local is New but remote is Closed — this is real new info (closed remotely)
+        assert_eq!(
+            RemoteStatus::Closed.resolve_with_local(TicketStatus::New),
+            TicketStatus::Complete
+        );
+    }
+
+    #[test]
+    fn test_resolve_closed_updates_in_progress_to_complete() {
+        // Local is InProgress but remote is Closed — real new info (completed)
+        assert_eq!(
+            RemoteStatus::Closed.resolve_with_local(TicketStatus::InProgress),
+            TicketStatus::Complete
+        );
+    }
+
+    #[test]
+    fn test_resolve_closed_updates_next_to_complete() {
+        // Local is Next but remote is Closed — real new info (completed)
+        assert_eq!(
+            RemoteStatus::Closed.resolve_with_local(TicketStatus::Next),
+            TicketStatus::Complete
+        );
+    }
+
+    #[test]
+    fn test_resolve_custom_always_uses_to_ticket_status() {
+        // Custom statuses carry richer info, so they always override
+        assert_eq!(
+            RemoteStatus::Custom("In Progress".to_string()).resolve_with_local(TicketStatus::New),
+            TicketStatus::InProgress
+        );
+        assert_eq!(
+            RemoteStatus::Custom("Cancelled".to_string())
+                .resolve_with_local(TicketStatus::Complete),
+            TicketStatus::Cancelled
+        );
+        assert_eq!(
+            RemoteStatus::Custom("Done".to_string()).resolve_with_local(TicketStatus::InProgress),
+            TicketStatus::Complete
+        );
+    }
+
+    #[test]
+    fn test_resolve_round_trip_no_information_loss() {
+        // The key scenario: round-tripping should not change status
+        // InProgress → Open → resolve_with_local(InProgress) → InProgress (preserved!)
+        let original = TicketStatus::InProgress;
+        let remote = RemoteStatus::from_ticket_status(original);
+        assert_eq!(remote, RemoteStatus::Open);
+        let resolved = remote.resolve_with_local(original);
+        assert_eq!(resolved, original); // No information loss!
+
+        // Next → Open → resolve_with_local(Next) → Next (preserved!)
+        let original = TicketStatus::Next;
+        let remote = RemoteStatus::from_ticket_status(original);
+        assert_eq!(remote, RemoteStatus::Open);
+        let resolved = remote.resolve_with_local(original);
+        assert_eq!(resolved, original); // No information loss!
+
+        // Cancelled → Closed → resolve_with_local(Cancelled) → Cancelled (preserved!)
+        let original = TicketStatus::Cancelled;
+        let remote = RemoteStatus::from_ticket_status(original);
+        assert_eq!(remote, RemoteStatus::Closed);
+        let resolved = remote.resolve_with_local(original);
+        assert_eq!(resolved, original); // No information loss!
     }
 }
