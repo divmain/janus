@@ -1,6 +1,8 @@
 # Janus
 
-Plain-text issue tracking with TUI interfaces and remote synchronization.
+Janus is a plain-text issue tracking with TUI interfaces and remote synchronization.
+
+_Janus: ancient Roman deity, guardian of doorways and gates, protector of the state in time of war, and arbiter of agentic coding._
 
 ## Features
 
