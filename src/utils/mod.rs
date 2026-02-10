@@ -50,7 +50,27 @@ pub fn format_relative_path(path: &Path) -> String {
 
 /// Ensure the tickets directory exists
 pub fn ensure_dir() -> io::Result<()> {
-    fs::create_dir_all(tickets_items_dir())
+    fs::create_dir_all(tickets_items_dir())?;
+    ensure_gitignore();
+    Ok(())
+}
+
+/// Default contents for the `.janus/.gitignore` file.
+///
+/// Protects sensitive configuration (API tokens) and large binary files
+/// (embeddings) from accidental inclusion in version control.
+const GITIGNORE_CONTENTS: &str = "config.yaml\nembeddings/\n";
+
+/// Ensure a `.gitignore` exists in the `.janus/` root directory.
+///
+/// Creates the file with default entries (config.yaml, embeddings/) only if
+/// it does not already exist. This avoids overwriting user customizations.
+pub fn ensure_gitignore() {
+    let gitignore_path = janus_root().join(".gitignore");
+    if !gitignore_path.exists() {
+        // Best-effort: don't fail ticket operations if gitignore can't be written
+        let _ = fs::write(&gitignore_path, GITIGNORE_CONTENTS);
+    }
 }
 
 /// Extract an ID from a file path's stem
@@ -738,6 +758,75 @@ mod tests {
                 "Filename '{name}' should be rejected on Unix"
             );
         }
+    }
+
+    #[test]
+    #[serial]
+    fn test_ensure_gitignore_creates_file() {
+        let _cwd_guard = CwdGuard::new().unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_gitignore_create");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create the .janus directory
+        std::fs::create_dir_all(".janus").unwrap();
+
+        // Ensure .gitignore doesn't exist yet
+        let gitignore_path = PathBuf::from(".janus/.gitignore");
+        assert!(!gitignore_path.exists());
+
+        // Call ensure_gitignore
+        ensure_gitignore();
+
+        // Verify the file was created with expected contents
+        assert!(gitignore_path.exists());
+        let contents = std::fs::read_to_string(&gitignore_path).unwrap();
+        assert!(contents.contains("config.yaml"));
+        assert!(contents.contains("embeddings/"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_ensure_gitignore_does_not_overwrite_existing() {
+        let _cwd_guard = CwdGuard::new().unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_gitignore_no_overwrite");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Create the .janus directory and a custom .gitignore
+        std::fs::create_dir_all(".janus").unwrap();
+        let gitignore_path = PathBuf::from(".janus/.gitignore");
+        let custom_content = "# Custom gitignore\nconfig.yaml\nembeddings/\nmy-custom-entry\n";
+        std::fs::write(&gitignore_path, custom_content).unwrap();
+
+        // Call ensure_gitignore
+        ensure_gitignore();
+
+        // Verify the file was NOT overwritten
+        let contents = std::fs::read_to_string(&gitignore_path).unwrap();
+        assert_eq!(contents, custom_content);
+    }
+
+    #[test]
+    #[serial]
+    fn test_ensure_dir_creates_gitignore() {
+        let _cwd_guard = CwdGuard::new().unwrap();
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo_path = temp.path().join("test_ensure_dir_gitignore");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::env::set_current_dir(&repo_path).unwrap();
+
+        // Call ensure_dir which creates .janus/items/
+        ensure_dir().unwrap();
+
+        // Verify .gitignore was also created
+        let gitignore_path = PathBuf::from(".janus/.gitignore");
+        assert!(gitignore_path.exists());
+        let contents = std::fs::read_to_string(&gitignore_path).unwrap();
+        assert!(contents.contains("config.yaml"));
+        assert!(contents.contains("embeddings/"));
     }
 
     #[test]

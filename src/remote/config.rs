@@ -264,6 +264,9 @@ impl Config {
             })?;
         }
 
+        // Ensure .gitignore exists to protect config from accidental commits
+        crate::utils::ensure_gitignore();
+
         Ok(())
     }
 

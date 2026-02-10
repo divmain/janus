@@ -406,7 +406,9 @@ pub fn ensure_plans_dir() -> Result<()> {
         item_type: "directory",
         path: p_dir.clone(),
         source: e,
-    })
+    })?;
+    crate::utils::ensure_gitignore();
+    Ok(())
 }
 
 /// Generate a unique plan ID with collision checking
