@@ -122,7 +122,11 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Mark ticket as complete
+    /// Mark ticket as complete or cancelled (enforces completion summary).
+    ///
+    /// Requires either --summary or --no-summary to ensure a conscious decision
+    /// about completion documentation. For scripting or automation where summary
+    /// enforcement isn't needed, use `janus status <id> complete` instead.
     Close {
         /// Ticket ID (can be partial)
         #[arg(value_parser = parse_partial_id)]
@@ -156,7 +160,11 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Set ticket status
+    /// Set ticket status (low-level field setter).
+    ///
+    /// Directly sets the status field without enforcing completion summaries.
+    /// For completing tickets with documentation, prefer `janus close` which
+    /// requires a summary or explicit opt-out.
     Status {
         /// Ticket ID (partial match supported)
         #[arg(value_parser = parse_partial_id)]
