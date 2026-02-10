@@ -401,7 +401,10 @@ async fn execute_hook_async(
             ));
         }
     } else {
-        let mut child = cmd.spawn()?;
+        let mut child = cmd
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
 
         match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
             Ok(Ok(status)) => {
