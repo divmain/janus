@@ -1,5 +1,4 @@
 use rand::Rng;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::error::{JanusError, Result};
@@ -9,14 +8,16 @@ use super::{validate_filename, validate_identifier};
 
 /// Generate a random hex hash of the specified length
 ///
-/// Uses SHA-256 to hash random bytes and returns the first `length` hex characters.
-/// This is used for generating unique IDs for tickets and plans.
+/// Generates random bytes and hex-encodes them directly, returning the first
+/// `length` hex characters. This is used for generating unique IDs for tickets
+/// and plans.
 pub fn generate_hash(length: usize) -> String {
-    let random_bytes: [u8; 16] = rand::rng().random();
-    let mut hasher = Sha256::new();
-    hasher.update(random_bytes);
-    let hash = format!("{:x}", hasher.finalize());
-    hash[..length].to_string()
+    // Each byte produces 2 hex characters, so we need ceil(length / 2) bytes
+    let num_bytes = length.div_ceil(2);
+    let mut buf = vec![0u8; num_bytes];
+    rand::rng().fill(&mut buf[..]);
+    let hex: String = buf.iter().map(|b| format!("{b:02x}")).collect();
+    hex[..length].to_string()
 }
 
 /// Generate a UUID v4

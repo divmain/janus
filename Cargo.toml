@@ -30,7 +30,6 @@ jiff = "0.2"
 thiserror = "2"
 owo-colors = { version = "4", features = ["supports-colors"] }
 regex = "1"
-sha2 = "0.10"
 rand = "0.9"
 uuid = { version = "1.11", features = ["v4"] }
 
