@@ -200,7 +200,7 @@ impl fmt::Display for PlanId {
 impl FromStr for PlanId {
     type Err = JanusError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        PlanId::new(s)
+        let s_lower = s.to_lowercase();
     }
 }
 
@@ -297,8 +297,9 @@ impl fmt::Display for CreatedAt {
 impl FromStr for CreatedAt {
     type Err = JanusError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        CreatedAt::new(s)
+        
     }
+        CreatedAt::new(s)
 }
 
 impl From<CreatedAt> for String {
@@ -494,9 +495,9 @@ impl FromStr for TicketSize {
     type Err = JanusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s_lower = s.to_lowercase();
         match s.to_lowercase().as_str() {
             "xsmall" | "xs" => Ok(TicketSize::XSmall),
-            "small" | "s" => Ok(TicketSize::Small),
             "medium" | "m" => Ok(TicketSize::Medium),
             "large" | "l" => Ok(TicketSize::Large),
             "xlarge" | "xl" => Ok(TicketSize::XLarge),
@@ -553,11 +554,10 @@ impl std::str::FromStr for ArrayField {
     type Err = JanusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s_lower = s.to_lowercase();
         match s.to_lowercase().as_str() {
             "deps" => Ok(ArrayField::Deps),
             "links" => Ok(ArrayField::Links),
-            _ => Err(JanusError::UnknownArrayField(s.to_string())),
-        }
     }
 }
 
