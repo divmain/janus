@@ -1,46 +1,56 @@
 # Caching
 
-Janus uses a SQLite-based cache to make common operations dramatically faster.
+Janus uses an in-memory store with content-addressable embedding caching to make common operations fast.
+
+## Architecture
+
+### In-Memory Store
+
+The store is kept in-process memory using `DashMap` concurrent hash maps:
+
+- **Store Location**: In-process memory (no database files)
+- **Initialization**: On process start, all tickets and plans are read from `.janus/items/` and `.janus/plans/` into `DashMap` structures
+- **Concurrency**: `DashMap` provides lock-free concurrent reads and fine-grained locking for writes
+- **Filesystem Watcher**: For long-running processes (TUI, MCP server), a `notify`-based watcher monitors `.janus/` recursively, debounces events (150ms), and updates the store automatically
+- **Source of truth**: Markdown files remain authoritative; the store is always derived from them
+
+### Embedding Storage
+
+Semantic search embeddings are stored separately from the in-memory store:
+
+- **Location**: `.janus/embeddings/` as `.bin` files
+- **Key format**: `blake3(file_path + ":" + mtime_ns)` for content-addressable cache invalidation
+- **Invalidation**: When a ticket file is modified, its mtime changes, producing a new hash key, automatically invalidating stale embeddings
 
 ## Benefits
 
-- **~100x faster lookups** after cache warmup
-- **Instant list operations** - `janus ls` completes in milliseconds instead of seconds
-- **Automatic synchronization** - cache stays in sync on every command
-- **Graceful degradation** - falls back to file reads if cache is unavailable
-- **Per-repo isolation** - each repository has its own cache
-
-## How It Works
-
-1. **Cache location**: Stored outside the repository at `~/.local/share/janus/cache/<repo-hash>.db`
-2. **Sync on every command**: Cache validates against filesystem and updates only changed tickets
-3. **Source of truth**: Markdown files remain authoritative; cache is always derived from them
-4. **Metadata only**: Cache stores YAML frontmatter; Markdown body is read on demand
+- **Fast lookups** after loading tickets into memory
+- **Quick list operations** - `janus ls` completes quickly by scanning the in-memory store
+- **Automatic synchronization** - filesystem watcher keeps store updated for long-running processes
+- **Graceful degradation** - falls back to file reads if needed
+- **Per-repo isolation** - each repository has its own `.janus/` directory
 
 ## Performance Characteristics
 
-| Operation | Without Cache | With Cache | Improvement |
-|-----------|---------------|------------|-------------|
-| Single ticket lookup | ~500ms | <5ms | ~100x |
-| List all tickets | ~1-5s | ~25-50ms | ~100x |
-| TUI startup | ~1-5s | ~25-50ms | ~100x |
+| Operation | Performance |
+|-----------|-------------|
+| Single ticket lookup | <5ms (after load) |
+| List all tickets | ~25-50ms |
+| TUI startup | ~25-50ms |
 
-The cache is particularly valuable when working with large repositories (1000+ tickets) or using the TUI frequently.
+Performance depends on the number of tickets and system I/O speed.
 
 ## Cache Commands
 
 ```bash
-# Show cache status
-janus cache
+# Show embedding coverage, model name, dir size
+janus cache status
 
-# Clear cache for current repo
-janus cache clear
+# Delete orphaned embedding files
+janus cache prune
 
-# Force a full cache rebuild
+# Regenerate all embeddings
 janus cache rebuild
-
-# Show cache file location
-janus cache path
 ```
 
 ## Concurrency
@@ -49,39 +59,26 @@ Janus is designed to handle multiple concurrent processes safely:
 
 ### Multiple Processes
 
-You can run multiple `janus` commands simultaneously (e.g., a TUI in one terminal and CLI commands in another). The cache uses SQLite's WAL mode with a busy timeout, allowing processes to wait briefly for locks rather than failing immediately.
+You can run multiple `janus` commands simultaneously (e.g., a TUI in one terminal and CLI commands in another). Each process maintains its own in-memory store loaded from the filesystem.
 
 ### Source of Truth
 
-The Markdown files in `.janus/` are always authoritative. The cache is a derived read-replica that accelerates lookups but never contains data that isn't in the files.
+The Markdown files in `.janus/` are always authoritative. The in-memory store is a derived read-replica that accelerates lookups but never contains data that isn't in the files.
 
 ### Graceful Degradation
 
-If a cache operation fails due to contention, Janus falls back to reading directly from the filesystem. Operations always succeed; only performance may be affected.
-
-### Cache Consistency
-
-The cache may become temporarily stale if concurrent syncs conflict, but it will never be corrupted. Running any `janus` command will re-sync the cache with the current filesystem state.
-
-### What to Expect
-
-In typical usage (occasional concurrent commands), you won't notice any issues. In heavy concurrent scenarios (many simultaneous writes), some commands may run slower due to cache fallback, but data integrity is always maintained.
+If the store encounters issues, Janus falls back to reading directly from the filesystem. Operations always succeed; only performance may be affected.
 
 ## Semantic Search
 
-When semantic search is enabled, the cache also stores vector embeddings for each ticket. This enables natural language search that matches by intent rather than exact keywords.
-
-**Important**: Semantic search requires the cache - it cannot work without it. The embeddings are stored in the cache database and generated during cache sync.
+When semantic search is enabled, embeddings are stored as `.bin` files in `.janus/embeddings/`.
 
 ### How It Works
 
-1. When the cache syncs, it generates vector embeddings for each ticket's title and description
-2. Embeddings are stored in the cache database alongside ticket metadata
-3. Queries are converted to vectors and compared against stored embeddings
-4. Results are ranked by cosine similarity
-
-### Cache File Naming
-
-Cache files are named `cache-v{VERSION}.db` where VERSION is the schema version number.
+1. Embeddings are generated for each ticket's title and description
+2. Embeddings are stored as `.bin` files in `.janus/embeddings/`
+3. The filename is derived from `blake3(file_path + ":" + mtime_ns)` for automatic invalidation
+4. Queries are converted to vectors and compared against stored embeddings using cosine similarity
+5. Orphaned embedding files can be cleaned up with `janus cache prune`
 
 See [Semantic Search Guide](semantic-search.md) for usage details.

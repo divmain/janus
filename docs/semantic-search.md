@@ -73,18 +73,18 @@ See [MCP Guide](mcp.md) for integration details.
 
 ## How It Works
 
-1. **Embedding generation**: When the cache syncs, each ticket's title and description are converted to a vector embedding using a local AI model (fastembed)
-2. **Storage**: Embeddings are stored in the SQLite cache database
+1. **Embedding generation**: Each ticket's title and description are converted to a vector embedding using a local AI model (fastembed). Embeddings are generated on-demand or during cache rebuild operations.
+2. **Storage**: Embeddings are stored as binary files in `.janus/embeddings/`. Each embedding file is content-addressable, keyed by `blake3(file_path + ":" + mtime_ns)` for automatic cache invalidation when ticket files change.
 3. **Query processing**: Search queries are converted to vectors using the same model
-4. **Similarity matching**: Results are ranked by cosine similarity between query and ticket embeddings
+4. **Similarity matching**: Results are ranked by brute-force cosine similarity between query and ticket embeddings using the in-memory store
 
 All processing happens locally - no data is sent to external services.
 
 ## Performance
 
-- **First sync**: Generating embeddings for all tickets takes a few seconds (depends on ticket count)
-- **Incremental sync**: Only new/modified tickets need embedding generation
-- **Search**: Sub-second for most queries
+- **Initial embedding generation**: Generating embeddings for all tickets takes a few seconds (depends on ticket count)
+- **Incremental updates**: Only new/modified tickets need embedding generation. The store automatically detects changes via filesystem watching in long-running processes (TUI, MCP server)
+- **Search**: Sub-second for most queries using brute-force cosine similarity on the in-memory store
 
 ## Troubleshooting
 
@@ -96,13 +96,15 @@ Run `janus cache rebuild` to regenerate embeddings:
 janus cache rebuild
 ```
 
-### Cache version mismatch
+### Orphaned embedding files
 
-Different builds use separate cache files. If you switch between builds, run:
+Over time, deleted tickets may leave behind orphaned embedding files. To clean up:
 
 ```bash
-janus cache rebuild
+janus cache prune
 ```
+
+This removes embedding files for tickets that no longer exist.
 
 ## Tips
 

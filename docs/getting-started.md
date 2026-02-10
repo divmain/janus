@@ -7,6 +7,16 @@ This guide walks you through your first project with Janus, from creating ticket
 - Janus installed (see [Installation](../README.md#installation))
 - A terminal with a Unix-like shell (Linux, macOS, or WSL)
 
+## Project Setup
+
+Janus stores tickets as Markdown files with YAML frontmatter in your project directory:
+
+- **Tickets**: `.janus/items/*.md`
+- **Plans**: `.janus/plans/*.md`
+- **Configuration**: `.janus/config.yaml`
+
+Initialize by creating your first ticket - Janus will create the directory structure automatically.
+
 ## Your First Ticket
 
 Create a ticket with:
@@ -121,8 +131,8 @@ janus ls --ready      # Ready to work on
 Get a prioritized, dependency-aware list:
 
 ```bash
-janus next            # Show next 5 tickets
-janus next --limit 10 # Show more
+janus next           # Show next 5 tickets
+janus next -l 10     # Show more
 ```
 
 Output shows ready tickets first, then blocking dependencies, then blocked tickets:
@@ -177,15 +187,47 @@ janus link add j-x3y4 j-x4y5
 
 Links are bidirectional and appear in `janus show` output.
 
+## Visualizing Relationships
+
+Generate dependency graphs:
+
+```bash
+janus graph                          # Full dependency graph (DOT format)
+janus graph --format mermaid       # Mermaid format for documentation
+janus graph --root j-a1b2          # Subgraph from specific ticket
+janus graph --spawn                # Show parent/child (spawning) relationships
+```
+
+## Health Check
+
+Scan for corrupted or invalid ticket files:
+
+```bash
+janus doctor
+```
+
 ## Querying Tickets
 
-Export tickets as JSON with optional filters:
+Export tickets as JSON with optional jq filters:
 
 ```bash
 janus query                              # All tickets
-janus query '.status != "complete"'      # Open tickets
-janus query '.priority <= 1 and .type == "bug"'  # High-priority bugs
+janus query --filter '.status != "complete"'      # Open tickets
+janus query --filter '.priority <= 1 and .type == "bug"'  # High-priority bugs
 ```
+
+Requires [jq](https://jqlang.github.io/jq/) to be installed for filtering.
+
+## Semantic Search
+
+Search tickets by meaning, not just keywords:
+
+```bash
+janus search "authentication problems"
+janus search "performance issues" --limit 5
+```
+
+See [Semantic Search Guide](semantic-search.md) for details.
 
 ## Next Steps
 

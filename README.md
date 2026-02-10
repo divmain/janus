@@ -7,7 +7,7 @@ _Janus: ancient Roman deity, guardian of doorways and gates, protector of the st
 ## Features
 
 - **Local-first storage**: Tickets stored as Markdown files with YAML frontmatter in `.janus/`
-- **High-performance cache**: SQLite-based caching makes lookups ~100x faster
+- **In-memory store**: Concurrent DashMap store with filesystem watching for real-time updates
 - **Rich ticket metadata**: Status, type, priority, dependencies, links, and more
 - **Interactive TUI**: Browse issues with fuzzy search or view on a Kanban board
 - **Remote sync**: Two-way sync with GitHub Issues and Linear
@@ -93,6 +93,9 @@ Tickets can depend on other tickets. Use `janus ls --ready` to see tickets with 
 | `janus close <id>` | | Mark complete |
 | `janus view` | | Interactive issue browser |
 | `janus board` | | Kanban board view |
+| `janus cache status` | | Show embedding cache status |
+| `janus cache prune` | | Delete orphaned embedding files |
+| `janus cache rebuild` | | Regenerate all embeddings |
 
 Partial IDs work - use just the first few unique characters (e.g., `j-a1` instead of `j-a1b2`).
 

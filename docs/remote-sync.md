@@ -105,9 +105,9 @@ janus remote adopt github:facebook/react/1234
 janus remote adopt linear:mycompany/ENG-456
 ```
 
-Both commands create a local ticket with:
-- Remote reference stored in `remote:` field
-- Title, description, status, priority imported
+Both commands create a local ticket in `.janus/items/` with:
+- Remote reference stored in `remote:` field (e.g., `github:owner/repo/123` or `linear:org/PROJ-123`)
+- Title, description, status, priority imported from the remote issue
 - URL displayed for easy reference
 
 ### Bi-Directional Sync

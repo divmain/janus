@@ -401,15 +401,155 @@ Display current configuration.
 janus config show
 ```
 
-## Cache Management
+## Plan Commands
 
-See [Cache Guide](cache.md) for details.
+Plans organize tickets toward larger goals. Plans are stored as Markdown files in `.janus/plans/` with IDs like `plan-a1b2`.
+
+### `janus plan create`
+
+Create a new plan.
 
 ```bash
-janus cache           # Show cache status
-janus cache clear     # Clear cache for current repo
-janus cache rebuild   # Force full cache rebuild
-janus cache path      # Show cache file location
+janus plan create "Plan title" [OPTIONS]
+
+Options:
+      --phased              Create a phased plan (has multiple phases)
+      --prefix <PREFIX>     Custom prefix for plan ID
+```
+
+### `janus plan show`
+
+Display plan details with progress and constituent tickets.
+
+```bash
+janus plan show <ID>
+```
+
+Plan status is computed from constituent tickets:
+- All `complete` → `complete`
+- All `cancelled` → `cancelled`
+- Mixed `complete`/`cancelled` → `complete`
+- All `new` or `next` → `new`
+- Otherwise → `in_progress`
+
+### `janus plan add`
+
+Add tickets to a plan.
+
+```bash
+janus plan add <PLAN_ID> <TICKET_ID> [TICKET_ID2 ...]
+
+Options:
+      --phase <N>           Add to specific phase (for phased plans)
+```
+
+### `janus plan remove`
+
+Remove tickets from a plan.
+
+```bash
+janus plan remove <PLAN_ID> <TICKET_ID>
+```
+
+### `janus plan list` / `janus plan ls`
+
+List all plans.
+
+```bash
+janus plan list
+janus plan ls
+
+Options:
+      --json                Output as JSON
+```
+
+### `janus plan import`
+
+Import a plan from a markdown document. See `janus plan import-spec` for the expected format.
+
+```bash
+janus plan import <FILE_PATH>
+
+# Preview what would be created without actually creating:
+janus plan import <FILE_PATH> --dry-run
+```
+
+### `janus plan import-spec`
+
+Display the plan import format specification.
+
+```bash
+janus plan import-spec
+```
+
+### Plan Format
+
+**Simple Plan** (single sequence of tickets):
+```markdown
+---
+id: plan-a1b2
+type: plan
+---
+# Project Title
+
+Overview text...
+
+## Acceptance Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Tickets
+- [ ] TASK-001: First task description
+- [ ] TASK-002: Second task description
+```
+
+**Phased Plan** (multiple phases):
+```markdown
+---
+id: plan-a1b2
+type: plan
+phased: true
+---
+# Multi-Phase Project
+
+## Phase 1: Foundation
+- [ ] TASK-001: Setup infrastructure
+- [ ] TASK-002: Core architecture
+
+## Phase 2: Implementation
+- [ ] TASK-003: Feature A
+- [ ] TASK-004: Feature B
+
+## Acceptance Criteria
+- [ ] All phases complete
+```
+
+## Cache Management
+
+The cache stores pre-computed embeddings for semantic search as `.bin` files in `.janus/embeddings/`. See [Cache Guide](cache.md) for details.
+
+### `janus cache status`
+
+Show embedding cache coverage, model name, and directory size.
+
+```bash
+janus cache status
+```
+
+### `janus cache prune`
+
+Delete orphaned embedding files (embeddings for tickets that no longer exist).
+
+```bash
+janus cache prune
+```
+
+### `janus cache rebuild`
+
+Regenerate all embeddings for the current repository.
+
+```bash
+janus cache rebuild
 ```
 
 ## Shell Completions
@@ -465,3 +605,4 @@ Invoke-Expression (& janus completions powershell | Out-String)
 | `janus edit` | `janus e` |
 | `janus ls` | `janus l` |
 | `janus next` | `janus n` |
+| `janus plan list` | `janus plan ls` |

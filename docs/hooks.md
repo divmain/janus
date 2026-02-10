@@ -14,11 +14,10 @@ Hooks allow you to run custom scripts before or after Janus operations. This ena
 |-------|---------------|
 | `pre_write` | Before any ticket/plan write |
 | `post_write` | After any ticket/plan write |
-| `pre_delete` | Before a plan is deleted |
-| `post_delete` | After a plan is deleted |
+| `pre_delete` | Before a ticket/plan is deleted |
+| `post_delete` | After a ticket/plan is deleted |
 | `ticket_created` | After a new ticket is created |
 | `ticket_updated` | After a ticket is modified |
-| `ticket_deleted` | After a ticket is deleted |
 | `plan_created` | After a new plan is created |
 | `plan_updated` | After a plan is modified |
 | `plan_deleted` | After a plan is deleted |

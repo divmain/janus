@@ -181,9 +181,16 @@ Execute the migration.
 ├── items/           # Ticket files (*.md)
 ├── plans/           # Plan files (*.md)
 ├── hooks/           # Hook scripts
-├── config.yaml      # Configuration
-└── cache-v*.db      # SQLite cache (auto-generated)
+├── embeddings/      # Embedding cache (*.bin files)
+└── config.yaml      # Configuration
 ```
+
+### Store Architecture
+
+Janus uses an in-memory store (DashMap) for fast queries:
+- **No database**: Store is rebuilt from Markdown files on process start
+- **Embeddings**: Stored as `.bin` files in `.janus/embeddings/`, keyed by `blake3(file_path + ":" + mtime_ns)`
+- **Filesystem watcher**: Live updates for long-running processes (TUI, MCP server)
 
 ## Command Aliases
 

@@ -41,9 +41,13 @@ The second task's description. All task descriptions must be comprehensive.
 
 ### Phase 2: Another Phase Name
 
+Phase description (optional). Content between the phase header and the first
+task becomes the phase description.
+
 #### The Title of the First Task in Phase Two
 
-Task description.
+Task description. If a phase has no H4 task headers, an automatic task will
+be created from the phase description.
 ```
 
 ## Required Sections
@@ -67,7 +71,9 @@ The following sections are **required**:
 | Design              | `## Design`                 | Required, contains design details           |
 | Acceptance criteria | `## Acceptance Criteria`    | Optional, creates verification ticket       |
 | Implementation      | `## Implementation`         | Required, contains all phases               |
-| Phase               | `### Phase N: Name`         | Under Implementation; also: Stage N, etc.   |
+| Implementation preamble | Content after H2        | Optional H3 sections/text before first phase |
+| Phase               | `### Phase N: Name`         | H3 under Implementation; also: Stage N, etc. |
+| Phase description   | Content after H3          | Optional, before first H4 task            |
 | Task                | `#### Task Title`           | Under a phase, becomes ticket title         |
 | Completed task      | `#### Title [x]`            | Created with status: complete               |
 | Task body           | Content after H4            | Becomes ticket description                  |
@@ -104,4 +110,4 @@ containing all the prose, bullet points, and acceptance criteria.
 
 ## Examples
 
-See `janus plan import --dry-run <file>` to preview what would be created.
+See `janus plan import <file> --dry-run` to preview what would be created.

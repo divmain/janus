@@ -55,7 +55,7 @@ Press `Ctrl+T` to toggle triage mode, which filters to show only untriaged ticke
 |-----|--------|
 | `Ctrl+T` | Toggle triage mode |
 | `t` | Mark ticket as triaged |
-| `c` | Cancel ticket (press twice to confirm) |
+| `c` | Cancel ticket (shows confirmation modal) |
 | `n` | Add note to ticket |
 
 ### Quit
@@ -109,6 +109,7 @@ The board displays five columns by default:
 | `S` | Move ticket to previous status (left) |
 | `e` | Edit ticket |
 | `n` | Create new ticket |
+| `r` | Reload tickets |
 
 ### Search
 
