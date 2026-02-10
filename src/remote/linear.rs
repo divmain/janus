@@ -277,6 +277,7 @@ mod graphql {
         pub state: WorkflowState,
         pub priority: f64,
         pub assignee: Option<User>,
+        pub created_at: DateTime,
         pub updated_at: DateTime,
         pub url: String,
     }
@@ -867,7 +868,7 @@ impl LinearProvider {
             project: None,
             milestone: None,
             due_date: None,
-            created_at: jiff::Timestamp::now().to_string(),
+            created_at: issue.created_at.0,
             creator: None,
         }
     }
@@ -915,6 +916,7 @@ mod tests {
             assignee: Some(User {
                 name: "Test User".to_string(),
             }),
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -935,6 +937,7 @@ mod tests {
             assignee: Some(User {
                 name: "Test User".to_string(),
             }),
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -954,6 +957,7 @@ mod tests {
             assignee: Some(User {
                 name: "Test User".to_string(),
             }),
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -978,6 +982,7 @@ mod tests {
             assignee: Some(User {
                 name: "Test User".to_string(),
             }),
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -1000,6 +1005,7 @@ mod tests {
             },
             priority: 2.0,
             assignee: None,
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -1020,6 +1026,7 @@ mod tests {
             },
             priority: 2.0,
             assignee: None,
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -1040,6 +1047,7 @@ mod tests {
             },
             priority: 2.0,
             assignee: None,
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -1065,6 +1073,7 @@ mod tests {
             },
             priority: 2.0,
             assignee: None,
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -1088,6 +1097,7 @@ mod tests {
             },
             priority: 2.0,
             assignee: None,
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -1113,6 +1123,7 @@ mod tests {
             assignee: Some(User {
                 name: "Test User".to_string(),
             }),
+            created_at: DateTime("2023-12-01T00:00:00Z".to_string()),
             updated_at: DateTime("2024-01-01T00:00:00Z".to_string()),
             url: "https://linear.app/issue/ENG-123".to_string(),
         };
@@ -1130,5 +1141,6 @@ mod tests {
         assert_eq!(converted.milestone, None);
         assert_eq!(converted.due_date, None);
         assert_eq!(converted.creator, None);
+        assert_eq!(converted.created_at, "2023-12-01T00:00:00Z");
     }
 }
