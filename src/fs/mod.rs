@@ -209,40 +209,22 @@ pub async fn write_file_async(path: &Path, content: &str) -> Result<()> {
 /// The write is atomic: either the new content is fully written, or the
 /// original file remains unchanged. Uses `tempfile::NamedTempFile` to generate
 /// a unique temp filename, avoiding collisions from concurrent writes.
+///
+/// The synchronous I/O operations are wrapped in `spawn_blocking` to avoid
+/// blocking the async runtime.
 pub async fn write_file_async_atomic(path: &Path, content: &str) -> Result<()> {
-    ensure_parent_dir_async(path).await?;
+    let path = path.to_path_buf();
+    let content = content.to_string();
+    let path_for_error = path.clone();
 
-    let parent = path.parent().unwrap_or(Path::new("."));
-
-    // Create a uniquely-named temp file in the same directory as the target
-    let mut temp_file = NamedTempFile::new_in(parent).map_err(|e| JanusError::StorageError {
-        operation: "create temp file for",
-        item_type: "file",
-        path: path.to_path_buf(),
-        source: e,
-    })?;
-
-    // Write content to the temp file
-    temp_file
-        .write_all(content.as_bytes())
+    tokio::task::spawn_blocking(move || write_file_atomic(&path, &content))
+        .await
         .map_err(|e| JanusError::StorageError {
             operation: "write",
             item_type: "file",
-            path: temp_file.path().to_path_buf(),
-            source: e,
-        })?;
-
-    // Atomically persist (rename) the temp file to the target path
-    temp_file
-        .persist(path)
-        .map_err(|e| JanusError::StorageError {
-            operation: "rename",
-            item_type: "file",
-            path: path.to_path_buf(),
-            source: e.into(),
-        })?;
-
-    Ok(())
+            path: path_for_error,
+            source: std::io::Error::other(e),
+        })?
 }
 
 /// Ensure parent directory exists (async version)
