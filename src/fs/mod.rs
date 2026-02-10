@@ -5,7 +5,9 @@ use crate::hooks::{
     HookContext, HookEvent, run_post_hooks, run_post_hooks_async, run_pre_hooks,
     run_pre_hooks_async,
 };
+use std::io::Write;
 use std::path::Path;
+use tempfile::NamedTempFile;
 use tokio::fs as tokio_fs;
 
 /// RAII guard that holds an advisory file lock.
@@ -78,28 +80,42 @@ pub fn write_file(path: &Path, content: &str) -> Result<()> {
 ///
 /// This ensures that the original file is never in a partially written state.
 /// The write is atomic: either the new content is fully written, or the
-/// original file remains unchanged.
+/// original file remains unchanged. Uses `tempfile::NamedTempFile` to generate
+/// a unique temp filename, avoiding collisions from concurrent writes.
 pub fn write_file_atomic(path: &Path, content: &str) -> Result<()> {
     ensure_parent_dir(path)?;
 
-    // Create a temp file in the same directory as the target file
-    let temp_path = path.with_extension("tmp");
+    let parent = path.parent().unwrap_or(Path::new("."));
 
-    // Write to temp file first
-    std::fs::write(&temp_path, content).map_err(|e| JanusError::StorageError {
-        operation: "write",
-        item_type: "file",
-        path: temp_path.clone(),
-        source: e,
-    })?;
-
-    // Atomically rename temp file to target path
-    std::fs::rename(&temp_path, path).map_err(|e| JanusError::StorageError {
-        operation: "rename",
+    // Create a uniquely-named temp file in the same directory as the target
+    let mut temp_file = NamedTempFile::new_in(parent).map_err(|e| JanusError::StorageError {
+        operation: "create temp file for",
         item_type: "file",
         path: path.to_path_buf(),
         source: e,
-    })
+    })?;
+
+    // Write content to the temp file
+    temp_file
+        .write_all(content.as_bytes())
+        .map_err(|e| JanusError::StorageError {
+            operation: "write",
+            item_type: "file",
+            path: temp_file.path().to_path_buf(),
+            source: e,
+        })?;
+
+    // Atomically persist (rename) the temp file to the target path
+    temp_file
+        .persist(path)
+        .map_err(|e| JanusError::StorageError {
+            operation: "rename",
+            item_type: "file",
+            path: path.to_path_buf(),
+            source: e.into(),
+        })?;
+
+    Ok(())
 }
 
 /// Ensure parent directory exists
@@ -191,32 +207,42 @@ pub async fn write_file_async(path: &Path, content: &str) -> Result<()> {
 ///
 /// This ensures that the original file is never in a partially written state.
 /// The write is atomic: either the new content is fully written, or the
-/// original file remains unchanged.
+/// original file remains unchanged. Uses `tempfile::NamedTempFile` to generate
+/// a unique temp filename, avoiding collisions from concurrent writes.
 pub async fn write_file_async_atomic(path: &Path, content: &str) -> Result<()> {
     ensure_parent_dir_async(path).await?;
 
-    // Create a temp file in the same directory as the target file
-    let temp_path = path.with_extension("tmp");
+    let parent = path.parent().unwrap_or(Path::new("."));
 
-    // Write to temp file first
-    tokio_fs::write(&temp_path, content)
-        .await
+    // Create a uniquely-named temp file in the same directory as the target
+    let mut temp_file = NamedTempFile::new_in(parent).map_err(|e| JanusError::StorageError {
+        operation: "create temp file for",
+        item_type: "file",
+        path: path.to_path_buf(),
+        source: e,
+    })?;
+
+    // Write content to the temp file
+    temp_file
+        .write_all(content.as_bytes())
         .map_err(|e| JanusError::StorageError {
             operation: "write",
             item_type: "file",
-            path: temp_path.clone(),
+            path: temp_file.path().to_path_buf(),
             source: e,
         })?;
 
-    // Atomically rename temp file to target path
-    tokio_fs::rename(&temp_path, path)
-        .await
+    // Atomically persist (rename) the temp file to the target path
+    temp_file
+        .persist(path)
         .map_err(|e| JanusError::StorageError {
             operation: "rename",
             item_type: "file",
             path: path.to_path_buf(),
-            source: e,
-        })
+            source: e.into(),
+        })?;
+
+    Ok(())
 }
 
 /// Ensure parent directory exists (async version)
