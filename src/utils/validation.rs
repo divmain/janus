@@ -31,27 +31,29 @@
 /// assert!(validate_safe_id("invalid@id").is_err());
 /// ```
 pub fn validate_safe_id(id: &str) -> Result<(), String> {
-    // Trim whitespace for validation
+    use super::validate_identifier;
+
+    // Delegate empty-string and character-set checks to validate_identifier.
+    // This covers: empty/whitespace rejection, and ensures only alphanumeric,
+    // hyphens, and underscores are present (which also implicitly prevents
+    // path separators like '/', '\', and '.').
+    validate_identifier(id, "ID").map_err(|e| match e {
+        crate::error::JanusError::ValidationEmpty(_) => {
+            "ID cannot be empty or only whitespace".to_string()
+        }
+        crate::error::JanusError::ValidationInvalidCharacters(_, _) => {
+            "ID can only contain alphanumeric characters, hyphens, and underscores".to_string()
+        }
+        other => other.to_string(),
+    })?;
+
+    // Defense-in-depth: explicitly reject path traversal patterns.
+    // The character-set check above already prevents '/', '\', and '.',
+    // but these checks guard against future changes to validate_identifier
+    // that might relax the allowed character set.
     let trimmed = id.trim();
-
-    // Check for empty or whitespace-only
-    if trimmed.is_empty() {
-        return Err("ID cannot be empty or only whitespace".to_string());
-    }
-
-    // Check for path separators and parent directory references
     if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") {
         return Err("ID cannot contain path separators or traversal sequences".to_string());
-    }
-
-    // Ensure ID contains only alphanumeric characters, hyphens, and underscores
-    if !trimmed
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(
-            "ID can only contain alphanumeric characters, hyphens, and underscores".to_string(),
-        );
     }
 
     Ok(())
