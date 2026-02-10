@@ -63,6 +63,15 @@ impl TicketId {
         {
             return Err(JanusError::InvalidTicketIdFormat(s.to_string()));
         }
+        // Both prefix and hash must be non-empty
+        if let Some(pos) = s.find('-') {
+            let (prefix, hash) = s.split_at(pos);
+            // hash includes the hyphen, so skip it
+            let hash = &hash[1..];
+            if prefix.is_empty() || hash.is_empty() {
+                return Err(JanusError::InvalidTicketIdFormat(s.to_string()));
+            }
+        }
         Ok(())
     }
 }
@@ -158,6 +167,11 @@ impl PlanId {
         }
         // All characters must be alphanumeric or hyphens
         if !s.chars().all(|c| c.is_alphanumeric() || c == '-') {
+            return Err(JanusError::InvalidPlanIdFormat(s.to_string()));
+        }
+        // Hash portion after "plan-" must be non-empty
+        let hash_part = &s[5..];
+        if hash_part.is_empty() {
             return Err(JanusError::InvalidPlanIdFormat(s.to_string()));
         }
         Ok(())
