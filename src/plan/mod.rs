@@ -182,7 +182,14 @@ impl Plan {
     ///
     /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `PlanUpdated`
     /// hooks after successful write.
+    ///
+    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
+    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
+    /// the same plan simultaneously.
     pub fn write(&self, content: &str) -> Result<()> {
+        // Hold an exclusive lock for the entire read-modify-write cycle.
+        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
+
         crate::fs::with_write_hooks(
             self.hook_context(),
             || self.write_raw(content),
@@ -199,7 +206,14 @@ impl Plan {
     }
 
     /// Write the given metadata to the plan file
+    ///
+    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
+    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
+    /// the same plan simultaneously.
     pub fn write_metadata(&self, metadata: &PlanMetadata) -> Result<()> {
+        // Hold an exclusive lock for the entire read-modify-write cycle.
+        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
+
         let content = serialize_plan(metadata);
         self.write(&content)
     }
