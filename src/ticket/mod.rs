@@ -231,10 +231,10 @@ impl Ticket {
                 let field_enum: ArrayField = field.parse()?;
                 Self::get_array_field(&metadata, field_enum)?.clone()
             }
-            Err(_) => {
+            Err(e) => {
                 eprintln!(
-                    "Warning: ticket '{}' has validation issues; using tolerant read for field '{}'",
-                    self.id, field
+                    "Warning: ticket '{}' has validation issues ({}); using tolerant read for field '{}'",
+                    self.id, e, field
                 );
                 Self::extract_array_field_tolerant(&raw_content, field)?
             }
@@ -272,10 +272,10 @@ impl Ticket {
                 let field_enum: ArrayField = field.parse()?;
                 Self::get_array_field(&metadata, field_enum)?.clone()
             }
-            Err(_) => {
+            Err(e) => {
                 eprintln!(
-                    "Warning: ticket '{}' has validation issues; using tolerant edit for field '{}'",
-                    self.id, field
+                    "Warning: ticket '{}' has validation issues ({}); using tolerant edit for field '{}'",
+                    self.id, e, field
                 );
                 Self::extract_array_field_tolerant(&raw_content, field)?
             }
