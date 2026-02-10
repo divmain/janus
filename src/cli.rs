@@ -268,7 +268,10 @@ pub enum Commands {
 
     /// Output tickets as JSON, optionally filtered with jq syntax
     Query {
-        /// jq filter expression (e.g., '.status == "new"')
+        /// Boolean expression for jq's select() function. The expression is wrapped
+        /// in select(...) before being passed to jq. Requires jq to be installed.
+        /// Example: '.status == "new"' becomes select(.status == "new")
+        #[arg(long)]
         filter: Option<String>,
     },
 

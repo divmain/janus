@@ -1,4 +1,4 @@
-use std::io::{BufWriter, Write, stdout};
+use std::io::{BufWriter, ErrorKind, Write, stdout};
 use std::process::{Command, Stdio};
 
 use serde_json::json;
@@ -26,7 +26,7 @@ fn write_ticket_json(writer: &mut impl Write, json_val: &serde_json::Value) -> R
     Ok(())
 }
 
-/// Output tickets as JSON, optionally filtered with jq syntax
+/// Output tickets as JSON, optionally filtered with jq's select() function
 pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
     let result = get_all_tickets().await?;
     let tickets = result.items;
@@ -47,7 +47,16 @@ pub async fn cmd_query(filter: Option<&str>) -> Result<()> {
             .stdin(Stdio::piped())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
-            .spawn()?;
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == ErrorKind::NotFound {
+                    JanusError::JqFilter(
+                        "jq is not installed. Install jq (https://jqlang.github.io/jq/) or omit the --filter flag to get raw JSON output.".to_string()
+                    )
+                } else {
+                    JanusError::Io(e)
+                }
+            })?;
 
         // Stream each ticket as a JSON line directly to jq's stdin
         if let Some(stdin) = child.stdin.take() {
