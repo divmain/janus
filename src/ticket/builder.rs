@@ -1,7 +1,7 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
 use crate::types::{
-    EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
+    tickets_items_dir, EntityType, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
 use crate::utils;
 use serde::Serialize;
@@ -270,9 +270,6 @@ impl TicketBuilder {
         let items_dir = tickets_items_dir();
         let file_path = items_dir.join(format!("{id}.md"));
 
-        // Ensure parent directory exists
-        crate::fs::ensure_parent_dir(&file_path)?;
-
         if self.run_hooks {
             let context = HookContext::new()
                 .with_item_type(EntityType::Ticket)
@@ -281,30 +278,12 @@ impl TicketBuilder {
 
             run_pre_hooks(HookEvent::PreWrite, &context)?;
 
-            std::fs::write(&file_path, &content).map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to write ticket at {}: {}",
-                        crate::utils::format_relative_path(&file_path),
-                        e
-                    ),
-                ))
-            })?;
+            crate::fs::write_file_atomic(&file_path, &content)?;
 
             run_post_hooks(HookEvent::PostWrite, &context);
             run_post_hooks(HookEvent::TicketCreated, &context);
         } else {
-            std::fs::write(&file_path, &content).map_err(|e| {
-                JanusError::Io(std::io::Error::new(
-                    e.kind(),
-                    format!(
-                        "Failed to write ticket at {}: {}",
-                        crate::utils::format_relative_path(&file_path),
-                        e
-                    ),
-                ))
-            })?;
+            crate::fs::write_file_atomic(&file_path, &content)?;
         }
 
         Ok((id, file_path))
