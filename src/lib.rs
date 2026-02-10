@@ -9,6 +9,7 @@ pub mod entity;
 pub mod error;
 pub mod events;
 pub mod fs;
+pub mod graph;
 pub mod hooks;
 pub mod locator;
 pub mod mcp;
@@ -33,6 +34,7 @@ pub(crate) mod test_guards;
 pub use config::Config;
 pub use entity::Entity;
 pub use error::{JanusError, Result};
+pub use graph::{check_circular_dependency, resolve_id_from_map};
 pub use hooks::{
     HookContext, HookEvent, context_to_env, run_post_hooks, run_post_hooks_async, run_pre_hooks,
     run_pre_hooks_async,
@@ -46,7 +48,7 @@ pub use plan::{
 pub use remote::{Platform, RemoteIssue, RemoteRef, RemoteStatus};
 pub use ticket::{
     Ticket, TicketBuilder, TicketLoadResult, build_ticket_map, get_all_tickets,
-    get_all_tickets_from_disk, resolve_id_from_map,
+    get_all_tickets_from_disk,
 };
 pub use types::{
     ArrayField, CreatedAt, EntityType, PlanId, TicketData, TicketId, TicketMetadata,

@@ -6,7 +6,8 @@ use super::CommandOutput;
 use crate::commands::dep_tree::{DepthCalculator, TreeBuilder, TreeFormatter};
 use crate::error::{JanusError, Result};
 use crate::events::{log_dependency_added, log_dependency_removed};
-use crate::ticket::{Ticket, build_ticket_map, check_circular_dependency, resolve_id_from_map};
+use crate::graph::{check_circular_dependency, resolve_id_from_map};
+use crate::ticket::{Ticket, build_ticket_map};
 
 /// Add a dependency to a ticket
 pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {

@@ -3,8 +3,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::error::Result;
+use crate::graph::resolve_id_from_map;
 use crate::plan::Plan;
-use crate::ticket::resolve_id_from_map;
 use crate::types::TicketMetadata;
 
 use super::types::RelationshipFilter;
