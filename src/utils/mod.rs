@@ -364,7 +364,7 @@ pub fn is_stdin_tty() -> bool {
 ///
 /// The file path argument is safely passed using shell positional parameters
 /// (`$1`) to prevent path-based injection.
-pub fn open_in_editor(path: &Path) -> io::Result<()> {
+pub fn open_in_editor(path: &Path) -> Result<()> {
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
 
     let status = Command::new("sh")
@@ -375,7 +375,7 @@ pub fn open_in_editor(path: &Path) -> io::Result<()> {
         .status()?;
 
     if !status.success() {
-        eprintln!("Editor exited with code {:?}", status.code());
+        return Err(JanusError::EditorFailed(status.code().unwrap_or(-1)));
     }
 
     Ok(())
