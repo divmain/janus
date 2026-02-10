@@ -30,28 +30,10 @@ pub static TITLE_RE: LazyLock<Regex> =
 // The parser uses comrak's markdown AST to identify frontmatter boundaries
 // before any YAML parsing occurs, ensuring accurate delimiter detection.
 
-/// A lightweight parsed document with raw YAML frontmatter and body content.
-///
-/// This struct is the primary return type for production parsing paths. It stores
-/// the YAML frontmatter as a raw string (for typed deserialization via serde) and
-/// the body content, without performing any intermediate YAML parsing into a HashMap.
-///
-/// For callers that need generic key-value access to frontmatter fields, use
-/// [`ParsedDocument`] via [`parse_document`] instead.
-#[derive(Debug, Clone)]
-pub struct RawParsedDocument {
-    /// Raw YAML frontmatter string (for typed deserialization)
-    pub frontmatter_raw: String,
-    /// The body content after the frontmatter (including title)
-    pub body: String,
-}
-
 /// A parsed document with YAML frontmatter available as both raw string and HashMap.
 ///
-/// This struct extends [`RawParsedDocument`] with a pre-parsed HashMap for generic
-/// key-value access to frontmatter fields. It is primarily used in tests.
-/// Production parsing paths should prefer [`parse_document_raw`] to avoid the
-/// unnecessary HashMap parse.
+/// This struct stores the YAML frontmatter as a raw string for typed deserialization
+/// and optionally as a HashMap for generic key-value access.
 #[derive(Debug, Clone)]
 pub struct ParsedDocument {
     /// Raw YAML frontmatter string (for typed deserialization)
@@ -137,7 +119,7 @@ pub fn split_frontmatter(content: &str) -> Result<(String, String)> {
     split_frontmatter_comrak(&normalized)
 }
 
-impl RawParsedDocument {
+impl ParsedDocument {
     /// Extract the title from the body (first H1 heading)
     pub fn extract_title(&self) -> Option<String> {
         TITLE_RE
@@ -301,61 +283,7 @@ impl RawParsedDocument {
     }
 }
 
-impl ParsedDocument {
-    /// Extract the title from the body (first H1 heading)
-    pub fn extract_title(&self) -> Option<String> {
-        self.as_raw().extract_title()
-    }
-
-    /// Extract a named section from the body (case-insensitive).
-    /// Returns the content between the section header and the next H2 or end of document.
-    pub fn extract_section(&self, section_name: &str) -> Result<Option<String>> {
-        self.as_raw().extract_section(section_name)
-    }
-
-    /// Update or add a section in the document body.
-    ///
-    /// If the section exists, its content is replaced. If it doesn't exist,
-    /// the section is appended to the end of the body.
-    ///
-    /// # Arguments
-    /// * `section_name` - The name of the section to update (case-insensitive)
-    /// * `section_content` - The new content for the section (without the header)
-    ///
-    /// # Returns
-    /// The full updated document content (frontmatter + body)
-    pub fn update_section(&self, section_name: &str, section_content: &str) -> Result<String> {
-        self.as_raw().update_section(section_name, section_content)
-    }
-
-    /// Remove a section from the document body (case-insensitive).
-    ///
-    /// Uses a deterministic line scanner to find the `## {section_name}` header
-    /// and remove all lines from the header up to (but not including) the next
-    /// H2 heading or end of document. Returns the updated body string.
-    ///
-    /// If the section does not exist, the body is returned unchanged.
-    pub fn remove_section(&self, section_name: &str) -> String {
-        self.as_raw().remove_section(section_name)
-    }
-
-    /// Deserialize the frontmatter into a specific type.
-    ///
-    /// This uses the raw YAML string for proper type conversion via serde.
-    pub fn deserialize_frontmatter<T: DeserializeOwned>(&self) -> Result<T> {
-        self.as_raw().deserialize_frontmatter()
-    }
-
-    /// Create a borrowed [`RawParsedDocument`] view of this document.
-    fn as_raw(&self) -> RawParsedDocument {
-        RawParsedDocument {
-            frontmatter_raw: self.frontmatter_raw.clone(),
-            body: self.body.clone(),
-        }
-    }
-}
-
-/// Parse a document with YAML frontmatter, returning only the raw YAML string and body.
+/// Parse a document with YAML frontmatter, returning the raw YAML string and body.
 ///
 /// This is the preferred parsing function for production code paths. It splits the
 /// document into frontmatter and body without performing any intermediate YAML
@@ -375,17 +303,14 @@ impl ParsedDocument {
 ///
 /// For callers that need generic key-value access to frontmatter fields,
 /// use [`parse_document`] instead.
-pub fn parse_document_raw(content: &str) -> Result<RawParsedDocument> {
+pub fn parse_document_raw(content: &str) -> Result<(String, String)> {
     let (frontmatter_raw, body) = split_frontmatter(content)?;
 
     if frontmatter_raw.trim().is_empty() {
         return Err(JanusError::EmptyFrontmatter);
     }
 
-    Ok(RawParsedDocument {
-        frontmatter_raw,
-        body,
-    })
+    Ok((frontmatter_raw, body))
 }
 
 /// Parse a document with YAML frontmatter into a generic ParsedDocument.

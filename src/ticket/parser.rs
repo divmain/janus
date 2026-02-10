@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::error::Result;
-use crate::parser::{RawParsedDocument, parse_document_raw};
+use crate::parser::parse_document_raw;
 use crate::types::{
     CreatedAt, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
@@ -48,19 +48,19 @@ struct TicketFrontmatter {
 /// and converts it to TicketMetadata, extracting both frontmatter fields
 /// and body-derived fields (title, completion summary).
 pub fn parse(content: &str) -> Result<TicketMetadata> {
-    let doc = parse_document_raw(content)?;
-    ticket_metadata_from_document(doc)
+    let (frontmatter_raw, body) = parse_document_raw(content)?;
+    ticket_metadata_from_document(&frontmatter_raw, &body)
 }
 
-/// Convert a RawParsedDocument to TicketMetadata.
+/// Convert parsed document parts to TicketMetadata.
 ///
 /// This handles the ticket-specific conversion logic, including:
 /// - Deserializing frontmatter into strict TicketFrontmatter (validates required fields at parse time)
 /// - Mapping strict frontmatter to lenient TicketMetadata
 /// - Extracting title from the first H1 heading
 /// - Extracting completion summary from the `## Completion Summary` section
-fn ticket_metadata_from_document(doc: RawParsedDocument) -> Result<TicketMetadata> {
-    let frontmatter: TicketFrontmatter = doc.deserialize_frontmatter()?;
+fn ticket_metadata_from_document(frontmatter_raw: &str, body: &str) -> Result<TicketMetadata> {
+    let frontmatter: TicketFrontmatter = serde_yaml_ng::from_str(frontmatter_raw)?;
 
     let metadata = TicketMetadata {
         id: Some(TicketId::new_unchecked(frontmatter.id)),
@@ -79,13 +79,64 @@ fn ticket_metadata_from_document(doc: RawParsedDocument) -> Result<TicketMetadat
         spawn_context: frontmatter.spawn_context,
         depth: frontmatter.depth,
         triaged: frontmatter.triaged,
-        title: doc.extract_title(),
-        completion_summary: doc.extract_section("completion summary")?,
+        title: extract_title(body),
+        completion_summary: extract_section(body, "completion summary")?,
         file_path: None,
         body: None,
     };
 
     Ok(metadata)
+}
+
+/// Extract the title from the body (first H1 heading)
+fn extract_title(body: &str) -> Option<String> {
+    crate::parser::TITLE_RE
+        .captures(body)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+}
+
+/// Extract a named section from the body (case-insensitive).
+/// Returns the content between the section header and the next H2 or end of document.
+fn extract_section(body: &str, section_name: &str) -> Result<Option<String>> {
+    use crate::error::JanusError;
+    use regex::Regex;
+    use std::collections::HashMap;
+    use std::sync::LazyLock;
+    use std::sync::Mutex;
+
+    // Cache for compiled section regexes
+    static SECTION_REGEX_CACHE: LazyLock<Mutex<HashMap<String, Regex>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+
+    let pattern = format!(
+        r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
+        regex::escape(section_name)
+    );
+
+    // Try to get from cache first, otherwise compile and cache
+    let section_re = {
+        let cache = SECTION_REGEX_CACHE.lock().unwrap();
+        if let Some(cached) = cache.get(&pattern) {
+            cached.clone()
+        } else {
+            drop(cache); // Release lock before compilation
+            let re = Regex::new(&pattern).map_err(|e| {
+                JanusError::ParseError(format!(
+                    "failed to compile section regex for '{section_name}': {e}"
+                ))
+            })?;
+            let mut cache = SECTION_REGEX_CACHE.lock().unwrap();
+            cache.insert(pattern.clone(), re.clone());
+            re
+        }
+    };
+
+    Ok(section_re.captures(body).map(|caps| {
+        caps.get(1)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default()
+    }))
 }
 
 #[cfg(test)]
