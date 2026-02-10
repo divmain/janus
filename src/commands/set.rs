@@ -6,10 +6,7 @@ use crate::events::log_field_updated;
 use crate::ticket::Ticket;
 use std::str::FromStr;
 
-use crate::types::{
-    TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES, VALID_SIZES,
-    VALID_STATUSES, VALID_TYPES,
-};
+use crate::types::{TicketPriority, TicketSize, TicketStatus, TicketType};
 
 /// Supported fields for the set command
 const SUPPORTED_FIELDS: &[&str] = &[
@@ -29,7 +26,10 @@ fn validate_priority(value: &str) -> Result<TicketPriority> {
     value.parse().map_err(|_| JanusError::InvalidFieldValue {
         field: "priority".to_string(),
         value: value.to_string(),
-        valid_values: VALID_PRIORITIES.iter().map(|s| s.to_string()).collect(),
+        valid_values: TicketPriority::ALL_STRINGS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     })
 }
 
@@ -38,7 +38,10 @@ fn validate_type(value: &str) -> Result<TicketType> {
     value.parse().map_err(|_| JanusError::InvalidFieldValue {
         field: "type".to_string(),
         value: value.to_string(),
-        valid_values: VALID_TYPES.iter().map(|s| s.to_string()).collect(),
+        valid_values: TicketType::ALL_STRINGS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     })
 }
 
@@ -47,7 +50,10 @@ fn validate_status(value: &str) -> Result<TicketStatus> {
     TicketStatus::from_str(value).map_err(|_| JanusError::InvalidFieldValue {
         field: "status".to_string(),
         value: value.to_string(),
-        valid_values: VALID_STATUSES.iter().map(|s| s.to_string()).collect(),
+        valid_values: TicketStatus::ALL_STRINGS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     })
 }
 
@@ -56,7 +62,10 @@ fn validate_size(value: &str) -> Result<TicketSize> {
     value.parse().map_err(|_| JanusError::InvalidFieldValue {
         field: "size".to_string(),
         value: value.to_string(),
-        valid_values: VALID_SIZES.iter().map(|s| s.to_string()).collect(),
+        valid_values: TicketSize::ALL_STRINGS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     })
 }
 
@@ -104,7 +113,10 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
             let value = value.ok_or_else(|| JanusError::InvalidFieldValue {
                 field: field.to_string(),
                 value: "(none)".to_string(),
-                valid_values: VALID_PRIORITIES.iter().map(|s| s.to_string()).collect(),
+                valid_values: TicketPriority::ALL_STRINGS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
             })?;
             validate_priority(value)?;
             new_value = value.to_string();
@@ -115,7 +127,10 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
             let value = value.ok_or_else(|| JanusError::InvalidFieldValue {
                 field: field.to_string(),
                 value: "(none)".to_string(),
-                valid_values: VALID_TYPES.iter().map(|s| s.to_string()).collect(),
+                valid_values: TicketType::ALL_STRINGS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
             })?;
             validate_type(value)?;
             new_value = value.to_string();
@@ -137,7 +152,10 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
             let value = value.ok_or_else(|| JanusError::InvalidFieldValue {
                 field: field.to_string(),
                 value: "(none)".to_string(),
-                valid_values: VALID_STATUSES.iter().map(|s| s.to_string()).collect(),
+                valid_values: TicketStatus::ALL_STRINGS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
             })?;
             validate_status(value)?;
             new_value = value.to_string();

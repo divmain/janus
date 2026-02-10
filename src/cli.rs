@@ -3,10 +3,7 @@ use clap_complete::Shell;
 use std::io;
 use std::str::FromStr;
 
-use crate::types::{
-    DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType, VALID_PRIORITIES,
-    VALID_SIZES, VALID_STATUSES, VALID_TYPES,
-};
+use crate::types::{DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType};
 
 #[derive(Parser)]
 #[command(name = "janus")]
@@ -1290,7 +1287,7 @@ fn parse_priority(s: &str) -> Result<TicketPriority, String> {
         s,
         |v| v.parse().map_err(|_| String::new()),
         "priority",
-        VALID_PRIORITIES,
+        TicketPriority::ALL_STRINGS,
     )
 }
 
@@ -1299,7 +1296,7 @@ fn parse_type(s: &str) -> Result<TicketType, String> {
         s,
         |v| v.parse().map_err(|_| String::new()),
         "type",
-        VALID_TYPES,
+        TicketType::ALL_STRINGS,
     )
 }
 
@@ -1308,7 +1305,7 @@ fn parse_status(s: &str) -> Result<TicketStatus, String> {
         s,
         |v| TicketStatus::from_str(v).map_err(|_| String::new()),
         "status",
-        VALID_STATUSES,
+        TicketStatus::ALL_STRINGS,
     )
 }
 
@@ -1344,7 +1341,7 @@ fn parse_bool_strict(s: &str) -> Result<bool, String> {
 }
 
 fn parse_size(s: &str) -> Result<TicketSize, String> {
-    let mut valid_values = VALID_SIZES.to_vec();
+    let mut valid_values = TicketSize::ALL_STRINGS.to_vec();
     valid_values.extend(["xs", "s", "m", "l", "xl"]);
     parse_with_validation(
         s,

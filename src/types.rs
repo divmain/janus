@@ -306,6 +306,9 @@ pub enum TicketStatus {
 }
 
 impl TicketStatus {
+    /// All valid string representations of this enum.
+    pub const ALL_STRINGS: &[&str] = &["new", "next", "in_progress", "complete", "cancelled"];
+
     /// Returns true if this status represents a terminal state (complete or cancelled).
     /// Terminal states indicate no further work is expected on the ticket.
     ///
@@ -335,7 +338,7 @@ enum_display_fromstr!(
     }
 );
 
-pub const VALID_STATUSES: &[&str] = &["new", "next", "in_progress", "complete", "cancelled"];
+pub const VALID_STATUSES: &[&str] = TicketStatus::ALL_STRINGS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -346,6 +349,11 @@ pub enum TicketType {
     Task,
     Epic,
     Chore,
+}
+
+impl TicketType {
+    /// All valid string representations of this enum.
+    pub const ALL_STRINGS: &[&str] = &["bug", "feature", "task", "epic", "chore"];
 }
 
 enum_display_fromstr!(
@@ -360,7 +368,7 @@ enum_display_fromstr!(
     }
 );
 
-pub const VALID_TYPES: &[&str] = &["bug", "feature", "task", "epic", "chore"];
+pub const VALID_TYPES: &[&str] = TicketType::ALL_STRINGS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -396,6 +404,9 @@ pub enum TicketPriority {
 }
 
 impl TicketPriority {
+    /// All valid string representations of this enum.
+    pub const ALL_STRINGS: &[&str] = &["0", "1", "2", "3", "4"];
+
     pub fn as_num(&self) -> u8 {
         match self {
             TicketPriority::P0 => 0,
@@ -419,7 +430,7 @@ enum_display_fromstr!(
     }
 );
 
-pub const VALID_PRIORITIES: &[&str] = &["0", "1", "2", "3", "4"];
+pub const VALID_PRIORITIES: &[&str] = TicketPriority::ALL_STRINGS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -432,6 +443,9 @@ pub enum TicketSize {
 }
 
 impl TicketSize {
+    /// All valid string representations of this enum.
+    pub const ALL_STRINGS: &[&str] = &["xsmall", "small", "medium", "large", "xlarge"];
+
     pub fn ordinal(&self) -> u8 {
         match self {
             Self::XSmall => 0,
@@ -478,7 +492,7 @@ impl FromStr for TicketSize {
     }
 }
 
-pub const VALID_SIZES: &[&str] = &["xsmall", "small", "medium", "large", "xlarge"];
+pub const VALID_SIZES: &[&str] = TicketSize::ALL_STRINGS;
 
 /// Default priority value (P2 - normal priority)
 pub const DEFAULT_PRIORITY: u8 = 2;

@@ -908,7 +908,7 @@ impl JanusTools {
                 format!(
                     "Invalid status '{}'. Must be one of: {}",
                     status_filter,
-                    crate::types::VALID_STATUSES.join(", ")
+                    crate::types::TicketStatus::ALL_STRINGS.join(", ")
                 )
             })?;
             query_builder = query_builder.with_filter(Box::new(StatusFilter::new(parsed_status)));
