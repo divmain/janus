@@ -58,7 +58,7 @@ pub fn format_date_for_display(date_str: &str) -> String {
 /// assert!(body.unwrap().contains("This is the body"));
 /// ```
 pub fn extract_ticket_body(content: &str) -> Option<String> {
-    use crate::parser::{TITLE_RE, split_frontmatter};
+    use crate::parser::{split_frontmatter, TITLE_RE};
 
     let (_frontmatter, body_with_title) = split_frontmatter(content).ok()?;
 
@@ -101,13 +101,6 @@ pub fn format_deps(deps: &[String]) -> String {
         format!(" <- [{deps_str}]")
     }
 }
-
-// Re-export sort functions from the query module for backward compatibility
-pub use crate::query::SortField;
-pub use crate::query::sort_by_created;
-pub use crate::query::sort_by_id;
-pub use crate::query::sort_by_priority;
-pub use crate::query::sort_tickets_by;
 
 #[cfg(test)]
 mod tests {
