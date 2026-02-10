@@ -505,67 +505,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     let sync_fetch_handler_for_events = sync_fetch_handler.clone();
-    let sync_apply_handler: Handler<(
-        super::sync_preview::SyncPreviewState,
-        Platform,
-        RemoteQuery,
-    )> = hooks.use_async_handler({
-        clone_states!(local_tickets, fetch_handler, toast, last_error);
-        move |(state, platform, query): (
-            super::sync_preview::SyncPreviewState,
-            Platform,
-            RemoteQuery,
-        )| {
-            let mut local_tickets = local_tickets.clone();
-            let fetch_handler = fetch_handler.clone();
-            let mut toast = toast.clone();
-            let mut last_error = last_error.clone();
-
-            async move {
-                let accepted = state.accepted_changes();
-                let mut applied = 0;
-                let mut errors = Vec::new();
-
-                for change_ctx in accepted {
-                    let result = match change_ctx.change.direction {
-                        super::sync_preview::SyncDirection::RemoteToLocal => {
-                            super::operations::apply_sync_change_to_local(
-                                &change_ctx.ticket_id,
-                                &change_ctx.change,
-                            )
-                            .await
-                        }
-                        super::sync_preview::SyncDirection::LocalToRemote => {
-                            super::operations::apply_sync_change_to_remote(
-                                &change_ctx.remote_ref,
-                                &change_ctx.change,
-                                platform,
-                            )
-                            .await
-                        }
-                    };
-
-                    match result {
-                        Ok(()) => applied += 1,
-                        Err(e) => errors.push(e.to_string()),
-                    }
-                }
-
-                if !errors.is_empty() {
-                    last_error.set(Some(("SyncApplyError".to_string(), errors.join("\n"))));
-                }
-
-                if applied > 0 {
-                    toast.set(Some(Toast::info(format!("Applied {applied} change(s)"))));
-                    local_tickets.set(get_all_tickets_from_disk().items);
-                    fetch_handler((platform, query));
-                } else if !errors.is_empty() {
-                    toast.set(Some(Toast::error("Failed to apply changes")));
-                }
-            }
-        }
-    });
-
     let sync_apply_handler_for_events = sync_apply_handler.clone();
 
     // Async link handler for linking a local ticket to a remote issue
