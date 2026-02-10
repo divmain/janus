@@ -279,7 +279,9 @@ impl AddNoteRequest {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, Default)]
 pub struct ListTicketsRequest {
     /// Filter by status (e.g., "new", "in_progress")
-    #[schemars(description = "Filter by ticket status")]
+    #[schemars(
+        description = "Filter by ticket status. When not specified, only open tickets are returned (Complete and Cancelled are excluded). Set to 'complete' or 'cancelled' to see closed tickets."
+    )]
     pub status: Option<String>,
 
     /// Filter by type (e.g., "bug", "feature")
@@ -524,7 +526,7 @@ impl JanusTools {
         register_tool!(
             router,
             "list_tickets",
-            "Query tickets with optional filters. Returns a list of matching tickets with their metadata.",
+            "Query tickets with optional filters. Returns a list of matching tickets with their metadata. By default, only open tickets are returned (Complete and Cancelled tickets are excluded). To include closed tickets, specify an explicit status filter.",
             ListTicketsRequest,
             list_tickets_impl,
             true
