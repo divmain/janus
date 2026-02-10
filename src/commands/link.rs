@@ -39,10 +39,8 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
                 let has_existing_link = ticket.has_in_array_field("links", &other.id)?;
                 let other_has_link = other.has_in_array_field("links", &ticket.id)?;
 
-                // Check for asymmetric link before adding
+                // Detect one-way link: other -> ticket exists, but ticket -> other does not yet
                 if !has_existing_link && other_has_link {
-                    // We're about to add A->B but B->A already exists
-                    // This is expected behavior, but warn about the asymmetry
                     asymmetric_warnings.push((other.id.clone(), ticket.id.clone()));
                 }
 
@@ -55,11 +53,20 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
         }
     }
 
-    // Warn about asymmetric links (where only one direction existed before we added)
-    for (from, to) in asymmetric_warnings {
-        eprintln!(
-            "Warning: Link from {from} -> {to} already existed but not vice versa. Link state is asymmetric."
-        );
+    // Report any one-way links that were detected and fixed
+    let asymmetric_messages: Vec<String> = asymmetric_warnings
+        .iter()
+        .map(|(from, to)| {
+            format!(
+                "Detected one-way link from {from} to {to}; added reverse link to restore symmetry."
+            )
+        })
+        .collect();
+
+    if !output_json {
+        for msg in &asymmetric_messages {
+            eprintln!("{msg}");
+        }
     }
 
     let mut links_updated = serde_json::Map::new();
@@ -76,14 +83,20 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
         format!("Added {added_count} link(s) between {num_tickets} tickets")
     };
 
-    CommandOutput::new(json!({
+    let mut json_payload = json!({
         "action": if added_count > 0 { "linked" } else { "already_linked" },
         "tickets": ticket_ids,
         "links_added": added_count,
         "links_updated": links_updated,
-    }))
-    .with_text(text)
-    .print(output_json)
+    });
+
+    if !asymmetric_messages.is_empty() {
+        json_payload["warnings"] = json!(asymmetric_messages);
+    }
+
+    CommandOutput::new(json_payload)
+        .with_text(text)
+        .print(output_json)
 }
 
 /// Remove symmetric links between two tickets
@@ -110,20 +123,23 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
         return Err(JanusError::LinkNotFound);
     }
 
-    // Warn about partial removal (only one direction succeeded)
-    if removed_count == 1 {
-        if removed_1_to_2 && !removed_2_to_1 {
-            eprintln!(
-                "Warning: Removed link from {} -> {} but not vice versa. Link state may be asymmetric.",
-                ticket1.id, ticket2.id
-            );
-        } else if removed_2_to_1 && !removed_1_to_2 {
-            eprintln!(
-                "Warning: Removed link from {} -> {} but not vice versa. Link state may be asymmetric.",
-                ticket2.id, ticket1.id
-            );
+    // Report if only one direction existed (pre-existing asymmetry now cleaned up)
+    let asymmetric_warning = if removed_count == 1 {
+        let (from, to) = if removed_1_to_2 && !removed_2_to_1 {
+            (&ticket1.id, &ticket2.id)
+        } else {
+            (&ticket2.id, &ticket1.id)
+        };
+        let msg = format!(
+            "Detected one-way link from {from} to {to} (reverse link did not exist). Removed the one-way link."
+        );
+        if !output_json {
+            eprintln!("{msg}");
         }
-    }
+        Some(msg)
+    } else {
+        None
+    };
 
     let metadata1 = ticket1.read()?;
     let metadata2 = ticket2.read()?;
@@ -131,11 +147,17 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
     links_updated.insert(ticket1.id.clone(), json!(metadata1.links));
     links_updated.insert(ticket2.id.clone(), json!(metadata2.links));
 
-    CommandOutput::new(json!({
+    let mut json_payload = json!({
         "action": "unlinked",
         "tickets": [&ticket1.id, &ticket2.id],
         "links_updated": links_updated,
-    }))
-    .with_text(format!("Removed link: {} <-> {}", ticket1.id, ticket2.id))
-    .print(output_json)
+    });
+
+    if let Some(ref warning) = asymmetric_warning {
+        json_payload["warnings"] = json!([warning]);
+    }
+
+    CommandOutput::new(json_payload)
+        .with_text(format!("Removed link: {} <-> {}", ticket1.id, ticket2.id))
+        .print(output_json)
 }
