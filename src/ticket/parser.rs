@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::error::Result;
-use crate::parser::{ParsedDocument, parse_document};
+use crate::parser::{RawParsedDocument, parse_document_raw};
 use crate::types::{
     CreatedAt, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
@@ -48,18 +48,18 @@ struct TicketFrontmatter {
 /// and converts it to TicketMetadata, extracting both frontmatter fields
 /// and body-derived fields (title, completion summary).
 pub fn parse(content: &str) -> Result<TicketMetadata> {
-    let doc = parse_document(content)?;
+    let doc = parse_document_raw(content)?;
     ticket_metadata_from_document(doc)
 }
 
-/// Convert a ParsedDocument to TicketMetadata.
+/// Convert a RawParsedDocument to TicketMetadata.
 ///
 /// This handles the ticket-specific conversion logic, including:
 /// - Deserializing frontmatter into strict TicketFrontmatter (validates required fields at parse time)
 /// - Mapping strict frontmatter to lenient TicketMetadata
 /// - Extracting title from the first H1 heading
 /// - Extracting completion summary from the `## Completion Summary` section
-fn ticket_metadata_from_document(doc: ParsedDocument) -> Result<TicketMetadata> {
+fn ticket_metadata_from_document(doc: RawParsedDocument) -> Result<TicketMetadata> {
     let frontmatter: TicketFrontmatter = doc.deserialize_frontmatter()?;
 
     let metadata = TicketMetadata {

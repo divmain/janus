@@ -26,7 +26,7 @@ use crate::hooks::{
     HookContext, HookEvent, run_post_hooks, run_post_hooks_async, run_pre_hooks,
     run_pre_hooks_async,
 };
-use crate::parser::parse_document;
+use crate::parser::parse_document_raw;
 use crate::parser::split_frontmatter;
 use crate::ticket::locator::TicketLocator;
 use crate::ticket::manipulator::{
@@ -404,7 +404,7 @@ impl Ticket {
     /// or an error if parsing fails.
     pub fn extract_section(&self, section_name: &str) -> Result<Option<String>> {
         let content = self.read_content()?;
-        let doc = parse_document(&content).map_err(|e| {
+        let doc = parse_document_raw(&content).map_err(|e| {
             JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", self.id, e))
         })?;
         doc.extract_section(section_name)
@@ -417,7 +417,7 @@ impl Ticket {
     /// or an error if parsing fails.
     pub fn extract_description(&self) -> Result<Option<String>> {
         let content = self.read_content()?;
-        let doc = parse_document(&content).map_err(|e| {
+        let doc = parse_document_raw(&content).map_err(|e| {
             JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", self.id, e))
         })?;
 
@@ -451,7 +451,7 @@ impl Ticket {
     /// If `content` is `None`, the section will be removed if it exists.
     pub fn update_section(&self, section_name: &str, content: Option<&str>) -> Result<()> {
         let raw_content = self.read_content()?;
-        let doc = parse_document(&raw_content).map_err(|e| {
+        let doc = parse_document_raw(&raw_content).map_err(|e| {
             JanusError::InvalidFormat(format!(
                 "Failed to parse ticket {} at {}: {}",
                 self.id,
@@ -477,7 +477,7 @@ impl Ticket {
     /// If `description` is `None`, the description will be removed.
     pub fn update_description(&self, description: Option<&str>) -> Result<()> {
         let raw_content = self.read_content()?;
-        let doc = parse_document(&raw_content).map_err(|e| {
+        let doc = parse_document_raw(&raw_content).map_err(|e| {
             JanusError::InvalidFormat(format!(
                 "Failed to parse ticket {} at {}: {}",
                 self.id,
