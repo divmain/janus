@@ -7,24 +7,14 @@ use crate::plan::types::PlanMetadata;
 use crate::types::{TicketMetadata, TicketSize, TicketSummary};
 use crate::utils::{parse_priority_filter, strip_priority_shorthand};
 
-/// Case-insensitive substring match without allocating a new lowercase string.
+/// Case-insensitive substring match.
 ///
-/// Compares by converting both sides to lowercase char-by-char. This avoids
-/// the allocation that `haystack.to_lowercase().contains(&needle)` would incur
-/// for every field on every ticket during search.
+/// Lowercases both haystack and needle via `str::to_lowercase` and
+/// delegates to `str::contains`. For search loops, callers should
+/// pre-compute `needle.to_lowercase()` once and pass the result here
+/// so that only the haystack allocation is per-iteration.
 fn contains_case_insensitive(haystack: &str, needle: &str) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-    // Fast path: if needle is longer than haystack, no match is possible
-    if needle.len() > haystack.len() {
-        return false;
-    }
-    let needle_lower: Vec<char> = needle.chars().flat_map(|c| c.to_lowercase()).collect();
-    let haystack_chars: Vec<char> = haystack.chars().flat_map(|c| c.to_lowercase()).collect();
-    haystack_chars
-        .windows(needle_lower.len())
-        .any(|window| window == needle_lower.as_slice())
+    haystack.to_lowercase().contains(&needle.to_lowercase())
 }
 
 /// Sort a slice by an optional string ID field, using `""` for `None`.
@@ -58,7 +48,7 @@ fn matches_search_query(
         return true;
     }
 
-    // Case-insensitive substring matching without per-field allocations
+    // Case-insensitive substring matching (needle is pre-lowercased by caller)
     let id_match = contains_case_insensitive(key, text_query);
 
     let title_match = ticket
@@ -209,8 +199,7 @@ impl TicketStore {
     /// Uses case-insensitive substring matching on: ticket_id, title, body, ticket_type.
     /// Supports priority shorthand (e.g., "p0 fix" filters to priority 0 and searches "fix").
     ///
-    /// Unlike `search_tickets`, this avoids cloning the full body and uses
-    /// allocation-free case-insensitive matching via `contains_case_insensitive`.
+    /// Unlike `search_tickets`, this avoids cloning the full body.
     pub fn search_ticket_summaries(&self, query: &str) -> Vec<TicketSummary> {
         let mut results: Vec<TicketSummary> = self
             .filter_tickets_by_query(query)
@@ -345,7 +334,7 @@ mod tests {
             id: Some(PlanId::new_unchecked("plan-c3d4")),
             title: Some("Feature Rollout".to_string()),
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-e5f6".to_string(),
+                "j-e5f6".to_string()
             ]))],
             ..Default::default()
         });
