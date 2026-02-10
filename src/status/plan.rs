@@ -75,9 +75,8 @@ pub fn compute_plan_status(
     ticket_map: &HashMap<String, TicketMetadata>,
 ) -> PlanStatus {
     let all_ticket_ids = metadata.all_tickets();
-    let total_count = all_ticket_ids.len();
 
-    if total_count == 0 {
+    if all_ticket_ids.is_empty() {
         return PlanStatus {
             status: TicketStatus::New,
             completed_count: 0,
@@ -97,6 +96,10 @@ pub fn compute_plan_status(
             statuses.push(status);
         }
     }
+
+    // Use resolvable ticket count as denominator so progress is consistent
+    // with status computation (which also only considers resolvable tickets)
+    let total_count = statuses.len();
 
     let completed_count = statuses
         .iter()
@@ -123,9 +126,7 @@ fn compute_phase_status_impl(
     ticket_map: &HashMap<String, TicketMetadata>,
     warn_missing: bool,
 ) -> PhaseStatus {
-    let total_count = phase.tickets.len();
-
-    if total_count == 0 {
+    if phase.tickets.is_empty() {
         return PhaseStatus {
             phase_number: phase.number.clone(),
             phase_name: phase.name.clone(),
@@ -151,6 +152,10 @@ fn compute_phase_status_impl(
             statuses.push(status);
         }
     }
+
+    // Use resolvable ticket count as denominator so progress is consistent
+    // with status computation (which also only considers resolvable tickets)
+    let total_count = statuses.len();
 
     let completed_count = statuses
         .iter()
@@ -415,7 +420,7 @@ mod tests {
         // Missing tickets are skipped, so we only see the one that exists
         assert_eq!(status.status, TicketStatus::Complete);
         assert_eq!(status.completed_count, 1);
-        assert_eq!(status.total_count, 2); // Total still includes missing
+        assert_eq!(status.total_count, 1); // Total only counts resolvable tickets
     }
 
     /// Helper to create a ticket metadata with a given status
@@ -662,8 +667,8 @@ mod tests {
         // Both existing tickets are complete, so status should be complete
         assert_eq!(status.status, TicketStatus::Complete);
         assert_eq!(status.completed_count, 2);
-        // total_count includes the missing ticket
-        assert_eq!(status.total_count, 3);
+        // total_count only counts resolvable tickets, consistent with status
+        assert_eq!(status.total_count, 2);
     }
 
     #[test]
