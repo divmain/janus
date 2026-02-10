@@ -158,7 +158,16 @@ impl TicketStore {
 
         let mut pruned = 0;
         for entry in fs::read_dir(&emb_dir)? {
-            let entry = entry?;
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!(
+                        "warning: failed to read directory entry in {}: {e}",
+                        emb_dir.display()
+                    );
+                    continue;
+                }
+            };
             let path = entry.path();
 
             if path.extension().is_some_and(|ext| ext == "bin") {
@@ -168,7 +177,13 @@ impl TicketStore {
                     .unwrap_or_default();
 
                 if !valid_keys.contains(&file_stem) {
-                    fs::remove_file(&path)?;
+                    if let Err(e) = fs::remove_file(&path) {
+                        eprintln!(
+                            "warning: failed to remove orphaned embedding {}: {e}",
+                            path.display()
+                        );
+                        continue;
+                    }
                     pruned += 1;
                 }
             }
