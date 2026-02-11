@@ -1,31 +1,12 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
+use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::types::{
-    tickets_items_dir, EntityType, TicketPriority, TicketSize, TicketStatus, TicketType,
+    EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
 };
 use crate::utils;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-/// Wrapper for priority that serializes as an integer
-#[derive(Debug, Clone, Copy)]
-struct PriorityAsU8(u8);
-
-impl Serialize for PriorityAsU8 {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_u8(self.0)
-    }
-}
-
-impl From<TicketPriority> for PriorityAsU8 {
-    fn from(p: TicketPriority) -> Self {
-        PriorityAsU8(p.as_num())
-    }
-}
 
 /// Temporary struct for serializing ticket frontmatter to YAML
 #[derive(Serialize)]
@@ -38,7 +19,7 @@ struct TicketFrontmatter {
     links: Vec<String>,
     created: String,
     r#type: String,
-    priority: PriorityAsU8,
+    priority: TicketPriority,
     #[serde(skip_serializing_if = "Option::is_none")]
     external_ref: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -236,7 +217,7 @@ impl TicketBuilder {
             links: vec![],
             created: now,
             r#type: ticket_type,
-            priority: priority_enum.into(),
+            priority: priority_enum,
             external_ref: self.external_ref,
             parent: self.parent,
             remote: self.remote,

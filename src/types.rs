@@ -401,7 +401,7 @@ enum_display_fromstr!(
     }
 );
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 pub enum TicketPriority {
     #[serde(rename = "0")]
     P0,
@@ -414,6 +414,15 @@ pub enum TicketPriority {
     P3,
     #[serde(rename = "4")]
     P4,
+}
+
+impl serde::Serialize for TicketPriority {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u8(self.as_num())
+    }
 }
 
 impl TicketPriority {
