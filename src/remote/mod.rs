@@ -538,7 +538,12 @@ where
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                     }
 
-                    errors.push(e.to_string());
+                    errors.push(format!(
+                        "Attempt {}/{}: {}",
+                        attempt + 1,
+                        config.max_attempts,
+                        e
+                    ));
                 }
             }
         }
