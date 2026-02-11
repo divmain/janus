@@ -1,6 +1,7 @@
 //! GitHub Issues provider implementation.
 
 use octocrab::Octocrab;
+use secrecy::SecretBox;
 use std::fmt;
 
 use crate::error::{JanusError, Result};
@@ -14,10 +15,24 @@ use super::{
 /// GitHub Issues provider
 pub struct GitHubProvider {
     client: Octocrab,
+    /// GitHub personal access token (stored securely for zeroization on drop)
+    #[allow(dead_code)]
+    token: SecretBox<String>,
     /// Default owner for creating issues
     default_owner: Option<String>,
     /// Default repo for creating issues
     default_repo: Option<String>,
+}
+
+impl fmt::Debug for GitHubProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GitHubProvider")
+            .field("client", &"<Octocrab>")
+            .field("token", &"[REDACTED]")
+            .field("default_owner", &self.default_owner)
+            .field("default_repo", &self.default_repo)
+            .finish()
+    }
 }
 
 impl GitHubProvider {
@@ -33,9 +48,12 @@ impl GitHubProvider {
         })?;
 
         let client = Octocrab::builder()
-            .personal_token(token)
+            .personal_token(token.clone())
             .build()
-            .map_err(|e| JanusError::Api(format!("Failed to create GitHub client: {e}")))?;
+            .map_err(|e| {
+                let scrubbed = scrub_token_from_error(&e.to_string(), &token);
+                JanusError::Api(format!("Failed to create GitHub client: {scrubbed}"))
+            })?;
 
         let (default_owner, default_repo) = if let Some(ref default) = config.default_remote {
             if default.platform == super::Platform::GitHub {
@@ -49,6 +67,7 @@ impl GitHubProvider {
 
         Ok(Self {
             client,
+            token: SecretBox::new(Box::new(token)),
             default_owner,
             default_repo,
         })
@@ -63,13 +82,18 @@ impl GitHubProvider {
             return Err(JanusError::Auth("GitHub token cannot be empty".to_string()));
         }
 
+        let token_owned = token.to_string();
         let client = Octocrab::builder()
-            .personal_token(token.to_string())
+            .personal_token(token_owned.clone())
             .build()
-            .map_err(|e| JanusError::Api(format!("Failed to create GitHub client: {e}")))?;
+            .map_err(|e| {
+                let scrubbed = scrub_token_from_error(&e.to_string(), &token_owned);
+                JanusError::Api(format!("Failed to create GitHub client: {scrubbed}"))
+            })?;
 
         Ok(Self {
             client,
+            token: SecretBox::new(Box::new(token_owned)),
             default_owner: None,
             default_repo: None,
         })
@@ -101,6 +125,47 @@ impl GitHubProvider {
 }
 
 impl GitHubProvider {}
+
+/// Scrub token patterns from error messages to prevent credential leakage.
+///
+/// This function removes potential token values from error messages as a defense-in-depth
+/// measure, even though Octocrab should not include tokens in error messages.
+fn scrub_token_from_error(error_msg: &str, token: &str) -> String {
+    // Common token patterns to scrub
+    let patterns = [
+        token.to_string(),
+        format!("Bearer {token}"),
+        format!("token {token}"),
+        format!("Authorization: {token}"),
+        format!("Authorization: Bearer {token}"),
+    ];
+
+    let mut result = error_msg.to_string();
+    for pattern in &patterns {
+        result = result.replace(pattern, "[REDACTED]");
+    }
+
+    // Apply regex-based scrubbing for all GitHub token patterns
+    scrub_github_tokens(&result)
+}
+
+/// Scrub common GitHub token patterns from a string using regex.
+///
+/// This provides defense-in-depth by removing any GitHub token patterns
+/// even when the specific token value is not known.
+fn scrub_github_tokens(input: &str) -> String {
+    // Regex for common GitHub token formats:
+    // - ghp_*, gho_*, ghu_*, ghs_*, ghr_* (classic tokens and OAuth)
+    // - github_pat_* (fine-grained personal access tokens)
+    // - v1.* or v2.* followed by hex (newer token formats)
+    static TOKEN_REGEX: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(
+            r"(gh[pousr]_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,}_[A-Za-z0-9_]*|v\d+\.[A-Fa-f0-9]{40,})"
+        ).expect("Valid regex pattern")
+    });
+
+    TOKEN_REGEX.replace_all(input, "[REDACTED]").to_string()
+}
 
 /// Wrapper for GitHub API errors that implements AsHttpError
 pub struct GitHubError {
@@ -158,7 +223,9 @@ impl From<GitHubError> for JanusError {
         }
 
         let message = error::build_github_error_message(&error.inner);
-        JanusError::Api(message)
+        // Scrub any potential token patterns from the error message
+        let scrubbed = scrub_github_tokens(&message);
+        JanusError::Api(scrubbed)
     }
 }
 
