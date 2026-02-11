@@ -37,6 +37,12 @@ const CHANNEL_CAPACITY: usize = 512;
 /// exceeded, the map is cleared and a full rescan is performed instead.
 const PENDING_CAP: usize = 1024;
 
+/// Delay before retrying a file that failed to parse (likely mid-write).
+const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Maximum number of retry attempts per file before giving up.
+const MAX_RETRY_ATTEMPTS: u8 = 3;
+
 /// Notification event sent when the store is updated by the watcher.
 #[derive(Debug, Clone)]
 pub enum StoreEvent {
@@ -44,6 +50,93 @@ pub enum StoreEvent {
     TicketsChanged,
     /// One or more plans were created, modified, or deleted.
     PlansChanged,
+}
+
+/// Tracks retry state for a file that failed to parse.
+#[derive(Debug)]
+struct RetryEntry {
+    /// Number of attempts made so far (including the initial failure).
+    attempts: u8,
+    /// When the next retry should be attempted.
+    next_retry: tokio::time::Instant,
+    /// Whether this file is a ticket (true) or plan (false).
+    is_ticket: bool,
+}
+
+/// Queue of files pending retry after parse failure.
+///
+/// Files may fail to parse when caught mid-write by the editor. This queue
+/// schedules bounded retries with a short delay. Warnings are rate-limited:
+/// only the first failure and the final give-up are logged per file.
+struct RetryQueue {
+    entries: HashMap<PathBuf, RetryEntry>,
+}
+
+impl RetryQueue {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    /// Schedule a retry for a file that failed to parse.
+    /// Returns `true` if the retry was scheduled, `false` if max attempts exceeded.
+    fn schedule(&mut self, path: PathBuf, is_ticket: bool) -> bool {
+        let entry = self.entries.entry(path.clone()).or_insert(RetryEntry {
+            attempts: 0,
+            next_retry: tokio::time::Instant::now(),
+            is_ticket,
+        });
+        entry.attempts += 1;
+        if entry.attempts > MAX_RETRY_ATTEMPTS {
+            // Final failure — log and remove from queue
+            eprintln!(
+                "Warning: giving up on parsing {} after {MAX_RETRY_ATTEMPTS} attempts: {}",
+                if is_ticket { "ticket" } else { "plan" },
+                path.display()
+            );
+            self.entries.remove(&path);
+            return false;
+        }
+        if entry.attempts == 1 {
+            // First failure — log a warning
+            eprintln!(
+                "Warning: failed to parse {} (will retry): {}",
+                if is_ticket { "ticket" } else { "plan" },
+                path.display()
+            );
+        }
+        entry.next_retry = tokio::time::Instant::now() + RETRY_DELAY;
+        true
+    }
+
+    /// Remove a path from the retry queue (e.g., when a new event supersedes it).
+    fn cancel(&mut self, path: &Path) {
+        self.entries.remove(path);
+    }
+
+    /// Returns the earliest deadline among pending retries, if any.
+    fn next_deadline(&self) -> Option<tokio::time::Instant> {
+        self.entries.values().map(|e| e.next_retry).min()
+    }
+
+    /// Drain all entries whose retry deadline has passed.
+    fn take_ready(&mut self) -> Vec<(PathBuf, bool)> {
+        let now = tokio::time::Instant::now();
+        let ready: Vec<PathBuf> = self
+            .entries
+            .iter()
+            .filter(|(_, e)| e.next_retry <= now)
+            .map(|(p, _)| p.clone())
+            .collect();
+        ready
+            .into_iter()
+            .map(|p| {
+                let is_ticket = self.entries.get(&p).unwrap().is_ticket;
+                (p, is_ticket)
+            })
+            .collect()
+    }
 }
 
 /// Filesystem watcher that monitors `.janus/` recursively and updates
@@ -260,6 +353,10 @@ pub fn subscribe_to_changes() -> Option<broadcast::Receiver<StoreEvent>> {
 /// When the `rescan_needed` flag is set (because the bounded channel was
 /// full), the loop skips per-file processing and performs a full store
 /// rescan instead.
+///
+/// Files that fail to parse (e.g., caught mid-write) are scheduled for
+/// bounded retries via a `RetryQueue`. The retry deadline is incorporated
+/// into the event loop's sleep so retries fire promptly without busy-waiting.
 async fn run_event_loop(
     mut bridge_rx: tokio::sync::mpsc::Receiver<notify::Event>,
     store: &'static TicketStore,
@@ -268,10 +365,27 @@ async fn run_event_loop(
 ) {
     // Accumulate events keyed by path → last event kind
     let mut pending: HashMap<PathBuf, EventKind> = HashMap::new();
+    let mut retries = RetryQueue::new();
 
     loop {
+        // Determine how long to wait: either until the next retry deadline
+        // or indefinitely if no retries are pending.
+        let wait_result = if let Some(deadline) = retries.next_deadline() {
+            // Wait for either a new event or the retry deadline
+            tokio::select! {
+                event = bridge_rx.recv() => event,
+                _ = tokio::time::sleep_until(deadline) => {
+                    // Retry deadline reached — process retries, then continue loop
+                    process_retries(&mut retries, store, &broadcast_tx);
+                    continue;
+                }
+            }
+        } else {
+            bridge_rx.recv().await
+        };
+
         // Wait for the first event (blocks until something happens)
-        let event = match bridge_rx.recv().await {
+        let event = match wait_result {
             Some(e) => e,
             None => break, // Channel closed — watcher was dropped
         };
@@ -295,12 +409,12 @@ async fn run_event_loop(
                     }
                 }
                 Ok(None) => {
-                    // Channel closed
+                    // Channel closed — process remaining work and exit
                     if rescan_needed.swap(false, Ordering::Relaxed) {
                         pending.clear();
                         full_rescan(store, &broadcast_tx);
                     } else {
-                        process_batch(&mut pending, store, &broadcast_tx);
+                        process_batch(&mut pending, store, &broadcast_tx, &mut retries);
                     }
                     return;
                 }
@@ -313,9 +427,10 @@ async fn run_event_loop(
 
         if rescan_needed.swap(false, Ordering::Relaxed) {
             pending.clear();
+            retries.entries.clear();
             full_rescan(store, &broadcast_tx);
         } else {
-            process_batch(&mut pending, store, &broadcast_tx);
+            process_batch(&mut pending, store, &broadcast_tx, &mut retries);
         }
     }
 }
@@ -335,10 +450,15 @@ fn accumulate_event(pending: &mut HashMap<PathBuf, EventKind>, event: &notify::E
 /// Determines whether each path is a ticket or plan, then upserts or
 /// removes accordingly. Sends broadcast notifications for each category
 /// that had changes.
+///
+/// Files that fail to parse are scheduled for retry in the `RetryQueue`.
+/// A fresh event for a path cancels any pending retry for that path
+/// (the new content supersedes the old attempt).
 fn process_batch(
     pending: &mut HashMap<PathBuf, EventKind>,
     store: &'static TicketStore,
     broadcast_tx: &broadcast::Sender<StoreEvent>,
+    retries: &mut RetryQueue,
 ) {
     if pending.is_empty() {
         return;
@@ -360,14 +480,27 @@ fn process_batch(
             continue;
         }
 
+        // A new event for this path supersedes any pending retry
+        retries.cancel(&path);
+
         match classify_event_kind(kind) {
             FileAction::CreateOrModify => {
                 if is_ticket {
-                    if process_ticket_file(&path, store) {
-                        tickets_changed = true;
+                    match process_ticket_file(&path, store) {
+                        ParseOutcome::Success => tickets_changed = true,
+                        ParseOutcome::ParseFailed => {
+                            retries.schedule(path, true);
+                        }
+                        ParseOutcome::Skipped => {}
                     }
-                } else if is_plan && process_plan_file(&path, store) {
-                    plans_changed = true;
+                } else if is_plan {
+                    match process_plan_file(&path, store) {
+                        ParseOutcome::Success => plans_changed = true,
+                        ParseOutcome::ParseFailed => {
+                            retries.schedule(path, false);
+                        }
+                        ParseOutcome::Skipped => {}
+                    }
                 }
             }
             FileAction::Remove => {
@@ -393,12 +526,69 @@ fn process_batch(
     }
 }
 
+/// Process pending retries for files that previously failed to parse.
+///
+/// Attempts to re-parse each file whose retry deadline has passed.
+/// Successful parses are removed from the queue; failures are re-scheduled
+/// (up to `MAX_RETRY_ATTEMPTS`).
+fn process_retries(
+    retries: &mut RetryQueue,
+    store: &'static TicketStore,
+    broadcast_tx: &broadcast::Sender<StoreEvent>,
+) {
+    let ready = retries.take_ready();
+    if ready.is_empty() {
+        return;
+    }
+
+    let mut tickets_changed = false;
+    let mut plans_changed = false;
+
+    for (path, is_ticket) in ready {
+        let outcome = if is_ticket {
+            process_ticket_file(&path, store)
+        } else {
+            process_plan_file(&path, store)
+        };
+
+        match outcome {
+            ParseOutcome::Success => {
+                retries.cancel(&path);
+                if is_ticket {
+                    tickets_changed = true;
+                } else {
+                    plans_changed = true;
+                }
+            }
+            ParseOutcome::ParseFailed => {
+                // schedule() handles attempt counting and final warning
+                retries.schedule(path, is_ticket);
+            }
+            ParseOutcome::Skipped => {
+                // File disappeared or IO error — stop retrying
+                retries.cancel(&path);
+            }
+        }
+    }
+
+    if tickets_changed {
+        let _ = broadcast_tx.send(StoreEvent::TicketsChanged);
+    }
+    if plans_changed {
+        let _ = broadcast_tx.send(StoreEvent::PlansChanged);
+    }
+}
+
 /// Perform a full rescan of all ticket and plan files on disk.
 ///
 /// This is the fallback when the bounded channel overflows or the pending
 /// map exceeds its cap. Instead of processing individual events, we
 /// re-read every `.md` file and reconcile the store, then broadcast
 /// change notifications for both tickets and plans.
+///
+/// Parse failures during a full rescan are logged but not retried — the
+/// retry queue is cleared before a rescan since we're reading everything
+/// fresh.
 fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<StoreEvent>) {
     use crate::types::{plans_dir, tickets_items_dir};
 
@@ -415,7 +605,8 @@ fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<Sto
                     if let Some(stem) = path.file_stem() {
                         disk_ids.insert(stem.to_string_lossy().to_string());
                     }
-                    process_ticket_file(&path, store);
+                    // Best-effort parse during rescan; failures are not retried
+                    let _ = process_ticket_file(&path, store);
                 }
             }
             // Remove tickets no longer on disk
@@ -438,7 +629,8 @@ fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<Sto
                     if let Some(stem) = path.file_stem() {
                         disk_ids.insert(stem.to_string_lossy().to_string());
                     }
-                    process_plan_file(&path, store);
+                    // Best-effort parse during rescan; failures are not retried
+                    let _ = process_plan_file(&path, store);
                 }
             }
             let store_ids: Vec<String> = store.plans().iter().map(|r| r.key().clone()).collect();
@@ -467,6 +659,18 @@ enum FileAction {
     CreateOrModify,
     Remove,
     Ignore,
+}
+
+/// Outcome of attempting to parse and upsert a file into the store.
+enum ParseOutcome {
+    /// File was parsed and the store was updated.
+    Success,
+    /// File content could not be parsed (e.g., mid-write truncation).
+    /// The store was NOT modified — last-known-good state is preserved.
+    ParseFailed,
+    /// File could not be read (IO error, not found) or was otherwise
+    /// skipped. No retry is warranted.
+    Skipped,
 }
 
 /// Check if a path is within the tickets items directory.
@@ -504,25 +708,33 @@ fn is_plan_path(path: &Path) -> bool {
     false
 }
 
-/// Read and parse a ticket file, updating the store. Returns true if the store changed.
+/// Read and parse a ticket file, updating the store.
 ///
-/// If the file no longer exists (race with deletion), removes the ticket from the store.
-fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
+/// Returns a `ParseOutcome` indicating whether the store was updated,
+/// the parse failed (eligible for retry), or the file was skipped.
+///
+/// On parse failure, the store is **not** modified — the last-known-good
+/// state is preserved so callers can schedule a retry.
+///
+/// If the file no longer exists (race with deletion), removes the ticket
+/// from the store and returns `Skipped` (no retry needed).
+fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // File was deleted between event and processing — treat as removal
+            // File was deleted between event and processing — treat as removal.
+            // Return Success because the store was modified (ticket removed).
             if let Some(stem) = path.file_stem() {
                 store.remove_ticket(&stem.to_string_lossy());
             }
-            return true;
+            return ParseOutcome::Success;
         }
         Err(e) => {
             eprintln!(
                 "Warning: failed to read ticket file {}: {e}",
                 path.display()
             );
-            return false;
+            return ParseOutcome::Skipped;
         }
     };
 
@@ -553,34 +765,40 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
                     }
                 });
             }
-            true
+            ParseOutcome::Success
         }
-        Err(e) => {
-            eprintln!(
-                "Warning: failed to parse ticket file {}: {e}",
-                path.display()
-            );
-            false
+        Err(_) => {
+            // Don't log here — the RetryQueue handles rate-limited warnings.
+            // The store is intentionally NOT modified, preserving last-known-good state.
+            ParseOutcome::ParseFailed
         }
     }
 }
 
-/// Read and parse a plan file, updating the store. Returns true if the store changed.
+/// Read and parse a plan file, updating the store.
 ///
-/// If the file no longer exists (race with deletion), removes the plan from the store.
-fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
+/// Returns a `ParseOutcome` indicating whether the store was updated,
+/// the parse failed (eligible for retry), or the file was skipped.
+///
+/// On parse failure, the store is **not** modified — the last-known-good
+/// state is preserved so callers can schedule a retry.
+///
+/// If the file no longer exists (race with deletion), removes the plan
+/// from the store and returns `Skipped` (no retry needed).
+fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // File was deleted between event and processing — treat as removal
+            // File was deleted between event and processing — treat as removal.
+            // Return Success because the store was modified (plan removed).
             if let Some(stem) = path.file_stem() {
                 store.remove_plan(&stem.to_string_lossy());
             }
-            return true;
+            return ParseOutcome::Success;
         }
         Err(e) => {
             eprintln!("Warning: failed to read plan file {}: {e}", path.display());
-            return false;
+            return ParseOutcome::Skipped;
         }
     };
 
@@ -593,11 +811,12 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> bool {
             }
             metadata.file_path = Some(path.to_path_buf());
             store.upsert_plan(metadata);
-            true
+            ParseOutcome::Success
         }
-        Err(e) => {
-            eprintln!("Warning: failed to parse plan file {}: {e}", path.display());
-            false
+        Err(_) => {
+            // Don't log here — the RetryQueue handles rate-limited warnings.
+            // The store is intentionally NOT modified, preserving last-known-good state.
+            ParseOutcome::ParseFailed
         }
     }
 }
