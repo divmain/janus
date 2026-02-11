@@ -46,13 +46,9 @@ pub fn events_file_path() -> PathBuf {
 /// Log an event to the events log file
 ///
 /// This function appends the event as a JSON line to `.janus/events.ndjson`.
-/// The operation is atomic - either the full line is written or nothing is.
-///
-/// # File Locking
-///
-/// On Unix systems, file locking via `flock` is used to ensure atomic writes
-/// when multiple processes may be writing concurrently. If locking fails,
-/// the write still proceeds (graceful degradation).
+/// The append is performed with `O_APPEND`, which is atomic for writes up to
+/// `PIPE_BUF` bytes on POSIX systems. Concurrent appenders follow
+/// last-writer-wins ordering — no advisory locking is performed.
 ///
 /// # Errors
 ///
@@ -102,20 +98,6 @@ fn log_event_impl(event: Event) -> std::io::Result<()> {
             )
         })?;
 
-    // Acquire exclusive lock on Unix
-    #[cfg(unix)]
-    {
-        use std::os::unix::io::AsRawFd;
-        let fd = file.as_raw_fd();
-        // LOCK_EX = exclusive lock, will block until acquired
-        // If locking fails, we still proceed with the write (graceful degradation)
-        let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
-        if ret == -1 {
-            let errno = std::io::Error::last_os_error();
-            eprintln!("Warning: failed to acquire file lock on events log: {errno}");
-        }
-    }
-
     // Serialize event to JSON (single line, no pretty printing)
     let json = serde_json::to_string(&event)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -126,7 +108,6 @@ fn log_event_impl(event: Event) -> std::io::Result<()> {
     // Ensure data is flushed to disk
     file.flush()?;
 
-    // Lock is automatically released when file is dropped
     Ok(())
 }
 

@@ -2275,7 +2275,6 @@ dependencies = [
  "iocraft",
  "janus-schema",
  "jiff",
- "libc",
  "notify",
  "octocrab",
  "once_cell",

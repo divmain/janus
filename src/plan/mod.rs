@@ -185,13 +185,8 @@ impl Plan {
     /// This method triggers `PreWrite` hook before writing, and `PostWrite` + `PlanUpdated`
     /// hooks after successful write.
     ///
-    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
-    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
-    /// the same plan simultaneously.
+    /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
     pub fn write(&self, content: &str) -> Result<()> {
-        // Hold an exclusive lock for the entire read-modify-write cycle.
-        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
-
         crate::fs::with_write_hooks(
             self.hook_context(),
             || self.write_raw(content),
@@ -210,7 +205,7 @@ impl Plan {
     /// Write the given metadata to the plan file
     ///
     /// Serializes the metadata and delegates to [`write()`], which handles
-    /// file locking and hook execution.
+    /// hook execution.
     pub fn write_metadata(&self, metadata: &PlanMetadata) -> Result<()> {
         let content = serialize_plan(metadata);
         self.write(&content)
@@ -230,12 +225,8 @@ impl Plan {
     /// Used internally when hooks should be handled at a higher level
     /// (e.g., plan creation where PlanCreated should be fired instead of PlanUpdated).
     ///
-    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
-    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
-    /// the same plan simultaneously.
+    /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
     pub(crate) fn write_without_hooks(&self, content: &str) -> Result<()> {
-        // Hold an exclusive lock for the entire read-modify-write cycle.
-        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
         self.write_raw(content)
     }
 

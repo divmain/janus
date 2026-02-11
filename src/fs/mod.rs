@@ -1,4 +1,14 @@
 //! Simple file I/O utilities with hook support
+//!
+//! # Concurrency Model
+//!
+//! All writes use atomic replace (write to a temp file, then rename onto the
+//! target). This guarantees readers never see a partially-written file.
+//! However, concurrent writers follow **last-writer-wins** semantics: if two
+//! processes perform overlapping read-modify-write cycles on the same file,
+//! one update may silently overwrite the other. No advisory locking is
+//! performed because atomic-replace swaps the file's inode, which makes
+//! `flock(2)`-style locks ineffective.
 
 use crate::error::{JanusError, Result};
 use crate::hooks::{
@@ -10,57 +20,6 @@ use std::path::Path;
 use tempfile::NamedTempFile;
 use tokio::fs as tokio_fs;
 
-/// RAII guard that holds an advisory file lock.
-///
-/// The lock is automatically released when the guard is dropped (the underlying
-/// file handle is closed). On non-Unix platforms, or if locking fails, this is
-/// a no-op — the guard still exists but holds no lock. This provides graceful
-/// degradation: concurrent safety on Unix, and no change in behavior elsewhere.
-#[allow(dead_code)]
-pub struct FileLockGuard {
-    // Holding the File keeps the flock active until drop.
-    _file: Option<std::fs::File>,
-}
-
-/// Acquire an advisory exclusive file lock on the given path.
-///
-/// Uses `flock(2)` with `LOCK_EX` on Unix to serialize concurrent
-/// read-modify-write operations on the same file. The lock is best-effort:
-/// if the file cannot be opened or locking fails, a no-op guard is returned
-/// and the caller proceeds without a lock (graceful degradation).
-///
-/// The returned [`FileLockGuard`] holds the lock until it is dropped.
-pub fn lock_file_exclusive(path: &Path) -> FileLockGuard {
-    #[cfg(unix)]
-    {
-        use std::os::unix::io::AsRawFd;
-
-        // Open or create a lock file alongside the target.
-        // We use the target file itself so the lock is per-ticket-file.
-        let file = match std::fs::OpenOptions::new().read(true).open(path) {
-            Ok(f) => f,
-            Err(_) => return FileLockGuard { _file: None },
-        };
-
-        let fd = file.as_raw_fd();
-        // LOCK_EX = exclusive lock, blocks until acquired.
-        // Safety: fd is a valid file descriptor owned by `file`.
-        let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
-        if ret != 0 {
-            // Locking failed — proceed without lock (graceful degradation).
-            return FileLockGuard { _file: None };
-        }
-
-        FileLockGuard { _file: Some(file) }
-    }
-
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-        FileLockGuard { _file: None }
-    }
-}
-
 /// Read file content with error handling
 pub fn read_file(path: &Path) -> Result<String> {
     std::fs::read_to_string(path).map_err(|e| JanusError::StorageError {
@@ -71,7 +30,11 @@ pub fn read_file(path: &Path) -> Result<String> {
     })
 }
 
-/// Write file content with error handling
+/// Write file content with error handling.
+///
+/// Uses atomic replace (temp file + rename) so readers never see partial
+/// writes. Concurrent writers use **last-writer-wins** semantics — no
+/// advisory locking is performed.
 pub fn write_file(path: &Path, content: &str) -> Result<()> {
     write_file_atomic(path, content)
 }
@@ -82,6 +45,9 @@ pub fn write_file(path: &Path, content: &str) -> Result<()> {
 /// The write is atomic: either the new content is fully written, or the
 /// original file remains unchanged. Uses `tempfile::NamedTempFile` to generate
 /// a unique temp filename, avoiding collisions from concurrent writes.
+///
+/// **Concurrency note**: no advisory locking is performed. Concurrent
+/// read-modify-write cycles follow last-writer-wins semantics.
 pub fn write_file_atomic(path: &Path, content: &str) -> Result<()> {
     ensure_parent_dir(path)?;
 
@@ -198,7 +164,10 @@ pub async fn read_file_async(path: &Path) -> Result<String> {
         })
 }
 
-/// Write file content with error handling (async version)
+/// Write file content with error handling (async version).
+///
+/// Uses atomic replace (temp file + rename) so readers never see partial
+/// writes. Concurrent writers use **last-writer-wins** semantics.
 pub async fn write_file_async(path: &Path, content: &str) -> Result<()> {
     write_file_async_atomic(path, content).await
 }
@@ -212,6 +181,9 @@ pub async fn write_file_async(path: &Path, content: &str) -> Result<()> {
 ///
 /// The synchronous I/O operations are wrapped in `spawn_blocking` to avoid
 /// blocking the async runtime.
+///
+/// **Concurrency note**: no advisory locking is performed. Concurrent
+/// read-modify-write cycles follow last-writer-wins semantics.
 pub async fn write_file_async_atomic(path: &Path, content: &str) -> Result<()> {
     let path = path.to_path_buf();
     let content = content.to_string();

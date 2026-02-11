@@ -104,9 +104,6 @@ parking_lot = "0.12"
 # Logging for production visibility
 tracing = "0.1"
 
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
 [build-dependencies]
 cynic-codegen = { version = "3", features = ["rkyv"] }
 
