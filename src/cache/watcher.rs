@@ -436,10 +436,9 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> bool {
                 tokio::spawn(async move {
                     // Get the global store singleton
                     if let Ok(store) = crate::cache::get_or_init_store().await {
-                        // Silently generate embedding - errors are logged internally
+                        // Log embedding failures for production visibility
                         if let Err(e) = store.ensure_embedding(&id_clone).await {
-                            #[cfg(debug_assertions)]
-                            eprintln!("Warning: Failed to generate embedding for {id_clone}: {e}");
+                            tracing::warn!("Failed to generate embedding for {id_clone}: {e}");
                         }
                     }
                 });

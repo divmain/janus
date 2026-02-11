@@ -180,9 +180,8 @@ pub async fn get_or_init_store() -> Result<&'static TicketStore> {
                         }
                     }
                     Err(e) => {
-                        // Silent error - just log in debug mode
-                        #[cfg(debug_assertions)]
-                        eprintln!("Warning: Failed to generate embeddings: {e}");
+                        // Log embedding failures for production visibility
+                        tracing::warn!("Failed to generate embeddings: {e}");
                     }
                 }
             }

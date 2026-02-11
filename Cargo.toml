@@ -100,6 +100,9 @@ unicase = "2"
 # Parking lot for poison-resistant mutexes (faster, no poisoning)
 parking_lot = "0.12"
 
+# Logging for production visibility
+tracing = "0.1"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
