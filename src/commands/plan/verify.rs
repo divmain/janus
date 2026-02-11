@@ -25,36 +25,44 @@ pub fn cmd_plan_verify(output_json: bool) -> Result<(bool, Vec<(String, String)>
     let failure_count = result.failure_count();
     let failures: Vec<(String, String)> = result.failed.clone();
 
-    if output_json {
-        CommandOutput::new(json!({
-            "valid": failure_count == 0,
-            "success_count": success_count,
-            "failure_count": failure_count,
-            "failures": result.failed.iter().map(|(f, e)| json!({
-                "file": f,
-                "error": e,
-            })).collect::<Vec<_>>(),
-        }))
-        .print(true)?;
-    } else {
-        println!("\n{}", "Plan Verification".bold());
-        println!("{}", "=================".bold());
-        println!();
-        println!("{} valid plan(s) found", success_count.to_string().green());
+    // Build JSON output
+    let json_output = json!({
+        "valid": failure_count == 0,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "failures": result.failed.iter().map(|(f, e)| json!({
+            "file": f,
+            "error": e,
+        })).collect::<Vec<_>>(),
+    });
 
-        if failure_count > 0 {
-            println!(
-                "{} plan file(s) with errors:\n",
-                failure_count.to_string().red()
-            );
-            for (file, error) in &result.failed {
-                println!("  {} {}", "✗".red(), file.cyan());
-                println!("    {}\n", error.dimmed());
-            }
-        } else {
-            println!("\n{} All plan files are valid!", "✓".green());
+    // Build text output
+    let mut text_output = String::new();
+
+    text_output.push_str(&format!("\n{}\n", "Plan Verification".bold()));
+    text_output.push_str(&format!("{}\n", "=================".bold()));
+    text_output.push('\n');
+    text_output.push_str(&format!(
+        "{} valid plan(s) found\n",
+        success_count.to_string().green()
+    ));
+
+    if failure_count > 0 {
+        text_output.push_str(&format!(
+            "{} plan file(s) with errors:\n\n",
+            failure_count.to_string().red()
+        ));
+        for (file, error) in &result.failed {
+            text_output.push_str(&format!("  {} {}\n", "✗".red(), file.cyan()));
+            text_output.push_str(&format!("    {}\n\n", error.dimmed()));
         }
+    } else {
+        text_output.push_str(&format!("\n{} All plan files are valid!", "✓".green()));
     }
+
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)?;
 
     Ok((failure_count == 0, failures))
 }

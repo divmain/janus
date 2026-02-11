@@ -1,6 +1,8 @@
 use owo_colors::OwoColorize;
 use serde::Serialize;
+use serde_json::json;
 
+use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
 use crate::status::is_dependency_satisfied;
@@ -26,12 +28,9 @@ pub async fn cmd_next(limit: usize, output_json: bool) -> Result<()> {
     let ticket_map = build_ticket_map().await?;
 
     if ticket_map.is_empty() {
-        if output_json {
-            println!("[]");
-        } else {
-            println!("No tickets found.");
-        }
-        return Ok(());
+        return CommandOutput::new(json!([]))
+            .with_text("No tickets found.")
+            .print(output_json);
     }
 
     // Check if all tickets are complete or cancelled
@@ -44,37 +43,32 @@ pub async fn cmd_next(limit: usize, output_json: bool) -> Result<()> {
     });
 
     if all_complete {
-        if output_json {
-            println!("[]");
-        } else {
-            println!("All tickets are complete. Nothing to work on.");
-        }
-        return Ok(());
+        return CommandOutput::new(json!([]))
+            .with_text("All tickets are complete. Nothing to work on.")
+            .print(output_json);
     }
 
     let finder = NextWorkFinder::new(&ticket_map);
     let work_items = finder.get_next_work(limit);
 
     if work_items.is_empty() {
-        if output_json {
-            println!("[]");
-        } else {
-            println!("No tickets ready to work on.");
-        }
-        return Ok(());
+        return CommandOutput::new(json!([]))
+            .with_text("No tickets ready to work on.")
+            .print(output_json);
     }
 
-    if output_json {
-        let json_items: Vec<WorkItemJson> = work_items
-            .iter()
-            .map(|item| work_item_to_json(item, &ticket_map))
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&json_items)?);
-    } else {
-        print_table(&work_items);
-    }
+    // Build JSON output
+    let json_items: Vec<WorkItemJson> = work_items
+        .iter()
+        .map(|item| work_item_to_json(item, &ticket_map))
+        .collect();
 
-    Ok(())
+    // Build text output
+    let text_output = format_table(&work_items);
+
+    CommandOutput::new(json!(json_items))
+        .with_text(text_output)
+        .print(output_json)
 }
 
 /// Convert a WorkItem to JSON representation
@@ -132,23 +126,26 @@ fn format_reason(reason: &InclusionReason) -> String {
     }
 }
 
-/// Print work items as a formatted table
-fn print_table(items: &[WorkItem]) {
+/// Format work items as a formatted table string
+fn format_table(items: &[WorkItem]) -> String {
     // Define column widths
     const ID_WIDTH: usize = 10;
     const PRIORITY_WIDTH: usize = 8;
     const STATUS_WIDTH: usize = 10;
     const TITLE_WIDTH: usize = 30;
 
-    // Print header
-    println!(
+    let mut lines: Vec<String> = Vec::new();
+
+    // Header line
+    lines.push(format!(
         "{:<ID_WIDTH$}  {:<PRIORITY_WIDTH$}  {:<STATUS_WIDTH$}  {:<TITLE_WIDTH$}  Reason",
         "ID", "Priority", "Status", "Title"
-    );
-    println!(
+    ));
+    // Separator line
+    lines.push(format!(
         "{:<ID_WIDTH$}  {:<PRIORITY_WIDTH$}  {:<STATUS_WIDTH$}  {:<TITLE_WIDTH$}  ─────────────────",
         "────────", "────────", "───────", "─────────────────────────────"
-    );
+    ));
 
     for item in items {
         let id = &item.ticket_id;
@@ -177,10 +174,12 @@ fn print_table(items: &[WorkItem]) {
             _ => status,
         };
 
-        println!(
+        lines.push(format!(
             "{colored_id:<ID_WIDTH$}  {colored_priority:<PRIORITY_WIDTH$}  {colored_status:<STATUS_WIDTH$}  {title:<TITLE_WIDTH$}  {reason}"
-        );
+        ));
     }
+
+    lines.join("\n")
 }
 
 /// Format the reason text for table display

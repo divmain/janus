@@ -26,41 +26,44 @@ pub fn cmd_doctor(output_json: bool) -> Result<(bool, Vec<(String, String)>)> {
     let failure_count = result.failure_count();
     let failures: Vec<(String, String)> = result.failed.clone();
 
-    if output_json {
-        let json_output = json!({
-            "valid": failure_count == 0,
-            "success_count": success_count,
-            "failure_count": failure_count,
-            "failures": result.failed.iter().map(|(f, e)| json!({
-                "file": f,
-                "error": e,
-            })).collect::<Vec<_>>(),
-        });
-        let _ = CommandOutput::new(json_output.clone())
-            .with_text(format!("{json_output}"))
-            .print(true);
-    } else {
-        println!("\n{}", "Doctor - Ticket Health Check".bold());
-        println!("{}", "==============================".bold());
-        println!();
-        println!(
-            "{} valid ticket(s) found",
-            success_count.to_string().green()
-        );
+    // Build JSON output
+    let json_output = json!({
+        "valid": failure_count == 0,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "failures": result.failed.iter().map(|(f, e)| json!({
+            "file": f,
+            "error": e,
+        })).collect::<Vec<_>>(),
+    });
 
-        if failure_count > 0 {
-            println!(
-                "{} ticket file(s) with errors:\n",
-                failure_count.to_string().red()
-            );
-            for (file, error) in &result.failed {
-                println!("  {} {}", "✗".red(), file.cyan());
-                println!("    {}\n", error.dimmed());
-            }
-        } else {
-            println!("\n{} All ticket files are valid!", "✓".green());
+    // Build text output
+    let mut text_output = String::new();
+
+    text_output.push_str(&format!("\n{}\n", "Doctor - Ticket Health Check".bold()));
+    text_output.push_str(&format!("{}\n", "==============================".bold()));
+    text_output.push('\n');
+    text_output.push_str(&format!(
+        "{} valid ticket(s) found\n",
+        success_count.to_string().green()
+    ));
+
+    if failure_count > 0 {
+        text_output.push_str(&format!(
+            "{} ticket file(s) with errors:\n\n",
+            failure_count.to_string().red()
+        ));
+        for (file, error) in &result.failed {
+            text_output.push_str(&format!("  {} {}\n", "✗".red(), file.cyan()));
+            text_output.push_str(&format!("    {}\n\n", error.dimmed()));
         }
+    } else {
+        text_output.push_str(&format!("\n{} All ticket files are valid!", "✓".green()));
     }
+
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)?;
 
     Ok((failure_count == 0, failures))
 }

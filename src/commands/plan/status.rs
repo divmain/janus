@@ -37,7 +37,8 @@ pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
         })
         .collect();
 
-    let output = json!({
+    // Build JSON output
+    let json_output = json!({
         "plan_id": plan.id,
         "title": metadata.title,
         "status": plan_status.status.to_string(),
@@ -47,22 +48,26 @@ pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
         "phases": phases_json,
     });
 
-    if output_json {
-        CommandOutput::new(output).print(output_json)?;
-        return Ok(());
-    }
+    // Build text output
+    let mut text_output = String::new();
 
     // Print header
     let title = metadata.title.as_deref().unwrap_or("Untitled");
     let plan_id = metadata.id.as_deref().unwrap_or(&plan.id);
-    println!("Plan: {} - {}", plan_id.cyan(), title);
-    println!("Status: {}", format_status_colored(plan_status.status));
-    println!("Progress: {} tickets", plan_status.progress_string());
+    text_output.push_str(&format!("Plan: {} - {}\n", plan_id.cyan(), title));
+    text_output.push_str(&format!(
+        "Status: {}\n",
+        format_status_colored(plan_status.status)
+    ));
+    text_output.push_str(&format!(
+        "Progress: {} tickets\n",
+        plan_status.progress_string()
+    ));
 
     // If phased, show breakdown by phase
     if metadata.is_phased() && !phase_statuses.is_empty() {
-        println!();
-        println!("Phases:");
+        text_output.push('\n');
+        text_output.push_str("Phases:\n");
 
         // Find max lengths for alignment
         let max_name_len = phase_statuses
@@ -75,16 +80,18 @@ pub async fn cmd_plan_status(id: &str, output_json: bool) -> Result<()> {
         for ps in &phase_statuses {
             let status_badge = format_status_colored(ps.status);
             let progress = format!("({}/{})", ps.completed_count, ps.total_count);
-            println!(
-                "  {}. {} {:width$} {}",
+            text_output.push_str(&format!(
+                "  {}. {} {:width$} {}\n",
                 ps.phase_number,
                 status_badge,
                 ps.phase_name,
                 progress.dimmed(),
                 width = max_name_len
-            );
+            ));
         }
     }
 
-    Ok(())
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)
 }

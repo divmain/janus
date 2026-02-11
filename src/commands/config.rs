@@ -6,7 +6,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
-use super::print_json;
+use super::CommandOutput;
 use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::remote::Platform;
@@ -45,82 +45,88 @@ fn mask_sensitive_value(value: &str) -> String {
 pub fn cmd_config_show(output_json: bool) -> Result<()> {
     let config = Config::load()?;
 
-    if output_json {
-        let default_remote_json = config.default_remote.as_ref().map(|d| {
-            json!({
-                "platform": d.platform.to_string(),
-                "org": d.org,
-                "repo": d.repo,
-            })
-        });
-
-        print_json(&json!({
-            "default_remote": default_remote_json,
-            "auth": {
-                "github_token_configured": config.github_token().is_some(),
-                "linear_api_key_configured": config.linear_api_key().is_some(),
-            },
-            "semantic_search": {
-                "enabled": config.semantic_search_enabled(),
-            },
-            "config_file": Config::config_path().to_string_lossy(),
-        }))?;
-        return Ok(());
-    }
-
-    println!("{}", "Configuration:".cyan().bold());
-    println!();
-
-    // Default remote
-    if let Some(ref default) = config.default_remote {
-        println!("{}:", "default_remote".cyan());
-        println!("  platform: {}", default.platform);
-        println!("  org: {}", default.org);
-        if let Some(ref repo) = default.repo {
-            println!("  repo: {repo}");
-        }
-    } else {
-        println!("{}: {}", "default_remote".cyan(), "not configured".dimmed());
-    }
-
-    println!();
-
-    // Auth status (don't show actual tokens)
-    println!("{}:", "auth".cyan());
+    let default_remote_json = config.default_remote.as_ref().map(|d| {
+        json!({
+            "platform": d.platform.to_string(),
+            "org": d.org,
+            "repo": d.repo,
+        })
+    });
 
     let github_configured = config.github_token().is_some();
     let linear_configured = config.linear_api_key().is_some();
 
-    println!(
-        "  github.token: {}",
-        if github_configured {
-            "configured".green().to_string()
-        } else {
-            "not configured".dimmed().to_string()
-        }
-    );
-    println!(
-        "  linear.api_key: {}",
-        if linear_configured {
-            "configured".green().to_string()
-        } else {
-            "not configured".dimmed().to_string()
-        }
-    );
+    // Build JSON output
+    let json_output = json!({
+        "default_remote": default_remote_json,
+        "auth": {
+            "github_token_configured": github_configured,
+            "linear_api_key_configured": linear_configured,
+        },
+        "semantic_search": {
+            "enabled": config.semantic_search_enabled(),
+        },
+        "config_file": Config::config_path().to_string_lossy(),
+    });
 
-    println!();
+    // Build text output
+    let mut text_output = String::new();
+
+    text_output.push_str(&format!("{}\n\n", "Configuration:".cyan().bold()));
+
+    // Default remote
+    if let Some(ref default) = config.default_remote {
+        text_output.push_str(&format!("{}:\n", "default_remote".cyan()));
+        text_output.push_str(&format!("  platform: {}\n", default.platform));
+        text_output.push_str(&format!("  org: {}\n", default.org));
+        if let Some(ref repo) = default.repo {
+            text_output.push_str(&format!("  repo: {repo}\n"));
+        }
+    } else {
+        text_output.push_str(&format!(
+            "{}: {}\n",
+            "default_remote".cyan(),
+            "not configured".dimmed()
+        ));
+    }
+
+    text_output.push('\n');
+
+    // Auth status (don't show actual tokens)
+    text_output.push_str(&format!("{}:\n", "auth".cyan()));
+
+    let github_status = if github_configured {
+        "configured".green().to_string()
+    } else {
+        "not configured".dimmed().to_string()
+    };
+    let linear_status = if linear_configured {
+        "configured".green().to_string()
+    } else {
+        "not configured".dimmed().to_string()
+    };
+
+    text_output.push_str(&format!("  github.token: {github_status}\n"));
+    text_output.push_str(&format!("  linear.api_key: {linear_status}\n"));
+
+    text_output.push('\n');
 
     // Semantic search status
-    println!("{}:", "semantic_search".cyan());
-    println!("  enabled: {}", config.semantic_search_enabled());
+    text_output.push_str(&format!("{}:\n", "semantic_search".cyan()));
+    text_output.push_str(&format!(
+        "  enabled: {}\n",
+        config.semantic_search_enabled()
+    ));
 
-    println!();
-    println!(
+    text_output.push('\n');
+    text_output.push_str(&format!(
         "{}",
         format!("Config file: {}", Config::config_path().display()).dimmed()
-    );
+    ));
 
-    Ok(())
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)
 }
 
 /// Set a configuration value
@@ -129,32 +135,28 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
 
     let mut config = Config::load()?;
 
-    match key {
+    let (json_output, text_output) = match key {
         "github.token" => {
             config.set_github_token(value.to_string());
             config.save()?;
-            if output_json {
-                print_json(&json!({
-                    "action": "config_set",
-                    "key": key,
-                    "success": true,
-                }))?;
-            } else {
-                println!("Set {}", "github.token".cyan());
-            }
+            let json = json!({
+                "action": "config_set",
+                "key": key,
+                "success": true,
+            });
+            let text = format!("Set {}", "github.token".cyan());
+            (json, text)
         }
         "linear.api_key" => {
             config.set_linear_api_key(value.to_string());
             config.save()?;
-            if output_json {
-                print_json(&json!({
-                    "action": "config_set",
-                    "key": key,
-                    "success": true,
-                }))?;
-            } else {
-                println!("Set {}", "linear.api_key".cyan());
-            }
+            let json = json!({
+                "action": "config_set",
+                "key": key,
+                "success": true,
+            });
+            let text = format!("Set {}", "linear.api_key".cyan());
+            (json, text)
         }
         "default.remote" => {
             // Format: "platform:org" or "platform:org/repo"
@@ -168,24 +170,25 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
             config.set_default_remote(platform, org.clone(), repo.clone());
             config.save()?;
 
-            if output_json {
-                print_json(&json!({
-                    "action": "config_set",
-                    "key": key,
-                    "value": value,
-                    "success": true,
-                }))?;
-            } else if let Some(r) = repo {
-                println!(
+            let json = json!({
+                "action": "config_set",
+                "key": key,
+                "value": value,
+                "success": true,
+            });
+
+            let text = if let Some(r) = repo {
+                format!(
                     "Set {} to {}:{}/{}",
                     "default.remote".cyan(),
                     platform,
                     org,
                     r
-                );
+                )
             } else {
-                println!("Set {} to {}:{}", "default.remote".cyan(), platform, org);
-            }
+                format!("Set {} to {}:{}", "default.remote".cyan(), platform, org)
+            };
+            (json, text)
         }
         "semantic_search.enabled" => {
             let enabled = value.parse::<bool>().map_err(|_| {
@@ -195,25 +198,25 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
             })?;
             config.set_semantic_search_enabled(enabled);
             config.save()?;
-            if output_json {
-                print_json(&json!({
-                    "action": "config_set",
-                    "key": key,
-                    "value": enabled,
-                    "success": true,
-                }))?;
-            } else {
-                println!("Set {} to {}", "semantic_search.enabled".cyan(), enabled);
-            }
+            let json = json!({
+                "action": "config_set",
+                "key": key,
+                "value": enabled,
+                "success": true,
+            });
+            let text = format!("Set {} to {}", "semantic_search.enabled".cyan(), enabled);
+            (json, text)
         }
         _ => {
             return Err(JanusError::Config(format!(
                 "unknown config key '{key}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled"
             )));
         }
-    }
+    };
 
-    Ok(())
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)
 }
 
 /// Parse a default_remote value like "github:myorg/myrepo" or "linear:myorg"
@@ -243,21 +246,18 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
 
     let config = Config::load()?;
 
-    match key {
+    let (json_output, text_output) = match key {
         "github.token" => {
             if let Some(token) = config.github_token() {
                 let masked = mask_sensitive_value(&token);
-                if output_json {
-                    let output = json!({
-                        "key": key,
-                        "value": masked,
-                        "configured": true,
-                        "masked": true,
-                    });
-                    println!("{}", serde_json::to_string_pretty(&output)?);
-                } else {
-                    println!("{masked} (masked - showing first 2 and last 2 characters)");
-                }
+                let json = json!({
+                    "key": key,
+                    "value": masked,
+                    "configured": true,
+                    "masked": true,
+                });
+                let text = format!("{masked} (masked - showing first 2 and last 2 characters)");
+                (json, text)
             } else {
                 return Err(JanusError::Config("github.token not set".to_string()));
             }
@@ -265,16 +265,14 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
         "linear.api_key" => {
             if let Some(api_key) = config.linear_api_key() {
                 let masked = mask_sensitive_value(&api_key);
-                if output_json {
-                    print_json(&json!({
-                        "key": key,
-                        "value": masked,
-                        "configured": true,
-                        "masked": true,
-                    }))?;
-                } else {
-                    println!("{masked} (masked - showing first 2 and last 2 characters)");
-                }
+                let json = json!({
+                    "key": key,
+                    "value": masked,
+                    "configured": true,
+                    "masked": true,
+                });
+                let text = format!("{masked} (masked - showing first 2 and last 2 characters)");
+                (json, text)
             } else {
                 return Err(JanusError::Config("linear.api_key not set".to_string()));
             }
@@ -286,39 +284,37 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
                 } else {
                     format!("{}:{}", default.platform, default.org)
                 };
-                if output_json {
-                    print_json(&json!({
-                        "key": key,
-                        "value": value,
-                        "configured": true,
-                    }))?;
-                } else {
-                    println!("{value}");
-                }
+                let json = json!({
+                    "key": key,
+                    "value": value,
+                    "configured": true,
+                });
+                let text = value;
+                (json, text)
             } else {
                 return Err(JanusError::Config("default.remote not set".to_string()));
             }
         }
         "semantic_search.enabled" => {
             let enabled = config.semantic_search_enabled();
-            if output_json {
-                print_json(&json!({
-                    "key": key,
-                    "value": enabled,
-                    "configured": true,
-                }))?;
-            } else {
-                println!("{enabled}");
-            }
+            let json = json!({
+                "key": key,
+                "value": enabled,
+                "configured": true,
+            });
+            let text = enabled.to_string();
+            (json, text)
         }
         _ => {
             return Err(JanusError::Config(format!(
                 "unknown config key '{key}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled"
             )));
         }
-    }
+    };
 
-    Ok(())
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)
 }
 
 #[cfg(test)]

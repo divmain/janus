@@ -19,7 +19,7 @@ use owo_colors::OwoColorize;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{CommandOutput, interactive, print_json};
+use super::{CommandOutput, interactive};
 use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
@@ -64,43 +64,50 @@ struct RecipeHooksConfig {
 pub fn cmd_hook_list(output_json: bool) -> Result<()> {
     let config = Config::load()?;
 
-    if output_json {
-        let mut scripts_map = serde_json::Map::new();
-        for (event, script) in &config.hooks.scripts {
-            scripts_map.insert(event.clone(), json!(script));
-        }
+    // Build JSON output
+    let mut scripts_map = serde_json::Map::new();
+    for (event, script) in &config.hooks.scripts {
+        scripts_map.insert(event.clone(), json!(script));
+    }
 
-        print_json(&json!({
-            "enabled": config.hooks.enabled,
-            "timeout": config.hooks.timeout,
-            "scripts": scripts_map,
-        }))?;
+    let json_output = json!({
+        "enabled": config.hooks.enabled,
+        "timeout": config.hooks.timeout,
+        "scripts": scripts_map,
+    });
+
+    // Build text output
+    let mut text_output = String::new();
+
+    let status = if config.hooks.enabled {
+        "enabled".green().to_string()
     } else {
-        let status = if config.hooks.enabled {
-            "enabled".green().to_string()
-        } else {
-            "disabled".red().to_string()
-        };
-        println!("Hooks: {status}");
-        println!("Timeout: {}s", config.hooks.timeout);
-        println!();
+        "disabled".red().to_string()
+    };
+    text_output.push_str(&format!("Hooks: {status}\n"));
+    text_output.push_str(&format!("Timeout: {}s\n", config.hooks.timeout));
+    text_output.push('\n');
 
-        if config.hooks.scripts.is_empty() {
-            println!("No hooks configured.");
-            println!();
-            println!("To add hooks, edit {} or run:", ".janus/config.yaml".cyan());
-            println!("  janus hook install <recipe>");
-        } else {
-            println!("Configured hooks:");
-            let mut events: Vec<_> = config.hooks.scripts.iter().collect();
-            events.sort_by_key(|(k, _)| *k);
-            for (event, script) in events {
-                println!("  {} → {}", event.cyan(), script);
-            }
+    if config.hooks.scripts.is_empty() {
+        text_output.push_str("No hooks configured.\n");
+        text_output.push('\n');
+        text_output.push_str(&format!(
+            "To add hooks, edit {} or run:\n",
+            ".janus/config.yaml".cyan()
+        ));
+        text_output.push_str("  janus hook install <recipe>\n");
+    } else {
+        text_output.push_str("Configured hooks:\n");
+        let mut events: Vec<_> = config.hooks.scripts.iter().collect();
+        events.sort_by_key(|(k, _)| *k);
+        for (event, script) in events {
+            text_output.push_str(&format!("  {} → {}\n", event.cyan(), script));
         }
     }
 
-    Ok(())
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)
 }
 
 /// Phase 1: Fetch hook scripts from GitHub
@@ -610,21 +617,17 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
     let log_path = janus_root().join("hooks.log");
 
     if !log_path.exists() {
-        if output_json {
-            print_json(&json!({
-                "entries": [],
-                "message": "No hook failures logged"
-            }))?;
-        } else {
-            println!("No hook failures logged.");
-            println!();
-            println!("The hook failure log will appear here after a post-hook fails.");
-            println!(
-                "Log file: {}",
-                crate::utils::format_relative_path(&log_path)
-            );
-        }
-        return Ok(());
+        let json_output = json!({
+            "entries": [],
+            "message": "No hook failures logged"
+        });
+        let text_output = format!(
+            "No hook failures logged.\n\nThe hook failure log will appear here after a post-hook fails.\nLog file: {}",
+            crate::utils::format_relative_path(&log_path)
+        );
+        return CommandOutput::new(json_output)
+            .with_text(text_output)
+            .print(output_json);
     }
 
     let content = fs::read_to_string(&log_path).map_err(|e| {
@@ -645,37 +648,41 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
         log_lines = log_lines[start..].to_vec();
     }
 
-    if output_json {
-        let entries: Vec<_> = log_lines
-            .iter()
-            .filter_map(|line| {
-                // Parse log format: "TIMESTAMP: post-hook 'NAME' failed: ERROR"
-                let parts: Vec<&str> = line.splitn(2, ": post-hook '").collect();
-                if parts.len() == 2 {
-                    let timestamp = parts[0];
-                    let rest: Vec<&str> = parts[1].splitn(2, "' failed: ").collect();
-                    if rest.len() == 2 {
-                        return Some(json!({
-                            "timestamp": timestamp,
-                            "hook": rest[0],
-                            "error": rest[1],
-                        }));
-                    }
+    // Build JSON output
+    let entries: Vec<_> = log_lines
+        .iter()
+        .filter_map(|line| {
+            // Parse log format: "TIMESTAMP: post-hook 'NAME' failed: ERROR"
+            let parts: Vec<&str> = line.splitn(2, ": post-hook '").collect();
+            if parts.len() == 2 {
+                let timestamp = parts[0];
+                let rest: Vec<&str> = parts[1].splitn(2, "' failed: ").collect();
+                if rest.len() == 2 {
+                    return Some(json!({
+                        "timestamp": timestamp,
+                        "hook": rest[0],
+                        "error": rest[1],
+                    }));
                 }
-                None
-            })
-            .collect();
+            }
+            None
+        })
+        .collect();
 
-        print_json(&json!({
-            "entries": entries,
-            "total": entries.len(),
-        }))?;
-    } else if log_lines.is_empty() {
-        println!("No entries in hook failure log.");
+    let json_output = json!({
+        "entries": entries,
+        "total": entries.len(),
+    });
+
+    // Build text output
+    let mut text_output = String::new();
+
+    if log_lines.is_empty() {
+        text_output.push_str("No entries in hook failure log.");
     } else {
         let count = log_lines.len();
-        println!("Hook Failure Log:");
-        println!();
+        text_output.push_str("Hook Failure Log:\n");
+        text_output.push('\n');
         for line in &log_lines {
             // Parse and colorize the output
             let parts: Vec<&str> = line.splitn(2, ": post-hook '").collect();
@@ -685,29 +692,32 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
                 if rest.len() == 2 {
                     let hook_name = rest[0];
                     let error = rest[1];
-                    println!(
-                        "{} {} {} {}",
+                    text_output.push_str(&format!(
+                        "{} {} {} {}\n",
                         timestamp.dimmed(),
                         hook_name.cyan(),
                         "failed:".red(),
                         error
-                    );
+                    ));
                 } else {
-                    println!("{line}");
+                    text_output.push_str(&format!("{line}\n"));
                 }
             } else {
-                println!("{line}");
+                text_output.push_str(&format!("{line}\n"));
             }
         }
-        println!();
-        println!("{count} entries shown");
+        text_output.push('\n');
+        text_output.push_str(&format!("{count} entries shown"));
         if lines.is_some() {
-            println!(
+            text_output.push('\n');
+            text_output.push_str(&format!(
                 "Log file: {}",
                 crate::utils::format_relative_path(&log_path)
-            );
+            ));
         }
     }
 
-    Ok(())
+    CommandOutput::new(json_output)
+        .with_text(text_output)
+        .print(output_json)
 }

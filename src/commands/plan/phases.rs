@@ -168,6 +168,7 @@ pub async fn cmd_plan_remove_phase(
     let idx = phase_idx.ok_or_else(|| JanusError::PhaseNotFound(phase.to_string()))?;
 
     let mut migrated_tickets = 0;
+    let mut migrate_target: Option<String> = None;
 
     // Check if phase has tickets
     if !phase_tickets.is_empty() {
@@ -181,9 +182,7 @@ pub async fn cmd_plan_remove_phase(
                 target_phase.add_ticket(ticket_id.clone());
             }
             migrated_tickets = phase_tickets.len();
-            if !output_json {
-                println!("Migrated {migrated_tickets} tickets to phase '{migrate_to}'");
-            }
+            migrate_target = Some(migrate_to.to_string());
         } else if !force {
             return Err(JanusError::PhaseNotEmpty(phase_name));
         }
@@ -198,6 +197,16 @@ pub async fn cmd_plan_remove_phase(
     // Log the event
     log_phase_removed(&plan.id, &phase_number, &phase_name, migrated_tickets);
 
+    // Build text output including migration info
+    let text_output = if let Some(target) = migrate_target {
+        format!(
+            "Migrated {migrated_tickets} tickets to phase '{target}'\nRemoved phase '{phase}' from plan {}",
+            plan.id
+        )
+    } else {
+        format!("Removed phase '{}' from plan {}", phase, plan.id)
+    };
+
     CommandOutput::new(json!({
         "plan_id": plan.id,
         "action": "phase_removed",
@@ -205,6 +214,6 @@ pub async fn cmd_plan_remove_phase(
         "phase_name": phase_name,
         "migrated_tickets": migrated_tickets,
     }))
-    .with_text(format!("Removed phase '{}' from plan {}", phase, plan.id))
+    .with_text(text_output)
     .print(output_json)
 }
