@@ -505,7 +505,7 @@ mod tests {
     use super::*;
     use crate::cache::TicketStore;
     use crate::cache::test_helpers::{make_plan_content, make_ticket_content};
-    use crate::test_guards::EnvGuard;
+    use crate::paths::JanusRootGuard;
 
     /// Set up a temporary Janus directory structure.
     fn setup_test_dir() -> TempDir {
@@ -574,12 +574,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn test_watcher_detects_ticket_creation() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -602,12 +601,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn test_watcher_detects_ticket_modification() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         // Pre-populate a ticket file and store
         let ticket_path = janus_root.join("items").join("j-mod1.md");
@@ -640,12 +638,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn test_watcher_detects_ticket_deletion() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         // Start the watcher FIRST on an empty store
         let store = leak_store(TicketStore::empty());
@@ -686,12 +683,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn test_watcher_detects_plan_creation() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -712,12 +708,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn test_watcher_multiple_subscribers() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = leak_store(TicketStore::empty());
         let (watcher, mut rx1) = StoreWatcher::start(store).expect("watcher should start");
@@ -736,12 +731,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn test_watcher_debounces_rapid_writes() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -779,12 +773,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn test_watcher_ignores_non_md_files() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = leak_store(TicketStore::empty());
         let (_watcher, mut rx) = StoreWatcher::start(store).expect("watcher should start");
@@ -805,13 +798,12 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_watcher_handles_missing_directories() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
         // Don't create the directories
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = leak_store(TicketStore::empty());
         // The watcher should start without error even if directories don't exist
@@ -853,7 +845,7 @@ mod tests {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         // Reset the global WATCHER singleton for this test by using
         // StoreWatcher::start directly and calling the global start_watching.

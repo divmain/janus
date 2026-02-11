@@ -3,7 +3,6 @@ mod common;
 
 use common::JanusTest;
 use janus::error::JanusError;
-use serial_test::serial;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
@@ -400,27 +399,10 @@ hooks:
 
 use janus::Config;
 use janus::commands::{cmd_hook_disable, cmd_hook_enable, cmd_hook_list, cmd_hook_run};
+use janus::paths::JanusRootGuard;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
-
-/// RAII guard that restores the current working directory on drop.
-struct CwdGuard {
-    original: std::path::PathBuf,
-}
-
-impl CwdGuard {
-    fn new() -> std::io::Result<Self> {
-        let original = std::env::current_dir()?;
-        Ok(Self { original })
-    }
-}
-
-impl Drop for CwdGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.original);
-    }
-}
 
 fn setup_test_env_hooks() -> TempDir {
     let temp_dir = TempDir::new().unwrap();
@@ -431,11 +413,9 @@ fn setup_test_env_hooks() -> TempDir {
 }
 
 #[test]
-#[serial]
 fn test_hook_list_no_config() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // Should succeed with default config
     let result = cmd_hook_list(false);
@@ -443,11 +423,9 @@ fn test_hook_list_no_config() {
 }
 
 #[test]
-#[serial]
 fn test_hook_list_with_config() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // Create config with hooks
     let config_content = r#"
@@ -466,11 +444,9 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_list_json() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     let config_content = r#"
 hooks:
@@ -487,11 +463,9 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_enable() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // Start with hooks disabled
     let config_content = r#"
@@ -510,11 +484,9 @@ hooks:
 }
 
 #[test]
-#[serial]
 fn test_hook_disable() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // Start with hooks enabled (default)
     let config_path = temp_dir.path().join(".janus/config.yaml");
@@ -529,33 +501,27 @@ fn test_hook_disable() {
 }
 
 #[test]
-#[serial]
 fn test_hook_enable_json() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     let result = cmd_hook_enable(true);
     assert!(result.is_ok());
 }
 
 #[test]
-#[serial]
 fn test_hook_disable_json() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     let result = cmd_hook_disable(true);
     assert!(result.is_ok());
 }
 
 #[tokio::test]
-#[serial]
 async fn test_hook_run_no_script_configured() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // No hooks configured
     let result = cmd_hook_run("post_write", None).await;
@@ -563,11 +529,9 @@ async fn test_hook_run_no_script_configured() {
 }
 
 #[tokio::test]
-#[serial]
 async fn test_hook_run_script_not_found() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // Configure a hook that points to non-existent script
     let config_content = r#"
@@ -584,12 +548,10 @@ hooks:
 }
 
 #[tokio::test]
-#[serial]
 #[cfg(unix)]
 async fn test_hook_run_success() {
-    let _cwd_guard = CwdGuard::new().unwrap();
     let temp_dir = setup_test_env_hooks();
-    std::env::set_current_dir(temp_dir.path()).unwrap();
+    let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // Create a successful hook script
     let hooks_dir = temp_dir.path().join(".janus/hooks");

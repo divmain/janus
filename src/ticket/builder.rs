@@ -1,7 +1,7 @@
 use crate::error::{JanusError, Result};
-use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
+use crate::hooks::{run_post_hooks, run_pre_hooks, HookContext, HookEvent};
 use crate::types::{
-    EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
+    tickets_items_dir, EntityType, TicketPriority, TicketSize, TicketStatus, TicketType,
 };
 use crate::utils;
 use serde::Serialize;
@@ -293,19 +293,14 @@ impl TicketBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use std::fs;
 
-    use crate::test_guards::CwdGuard;
+    use crate::paths::JanusRootGuard;
 
     #[test]
-    #[serial]
     fn test_builder_rejects_invalid_status() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_rejects_invalid_status");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
             .status("invalid_status")
@@ -318,13 +313,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_rejects_invalid_ticket_type() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_rejects_invalid_ticket_type");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
             .ticket_type("invalid_type")
@@ -337,13 +328,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_rejects_invalid_priority() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_rejects_invalid_priority");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
             .priority("999")
@@ -356,13 +343,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_accepts_valid_status() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_accepts_valid_status");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
             .status("complete")
@@ -373,13 +356,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_accepts_valid_ticket_type() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_accepts_valid_ticket_type");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
             .ticket_type("bug")
@@ -390,13 +369,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_accepts_valid_priority() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_accepts_valid_priority");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
             .priority("0")
@@ -407,13 +382,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_with_spawned_from() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_with_spawned_from");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test Spawned Ticket")
             .spawned_from(Some("j-parent"))
@@ -433,13 +404,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_without_spawning_fields() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp.path().join("test_builder_without_spawning_fields");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test Regular Ticket")
             .run_hooks(false)
@@ -456,15 +423,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_builder_spawned_from_with_depth_zero() {
         let temp = tempfile::TempDir::new().unwrap();
-        let repo_path = temp
-            .path()
-            .join("test_builder_spawned_from_with_depth_zero");
-        fs::create_dir_all(&repo_path).unwrap();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         // Create a ticket spawned from a root ticket (depth 0)
         let result = TicketBuilder::new("Test Spawned From Root")

@@ -67,65 +67,6 @@ pub fn backspace() -> TerminalEvent {
     key_press(KeyCode::Backspace)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_key_press() {
-        let event = key_press(KeyCode::Enter);
-        match event {
-            TerminalEvent::Key(key) => {
-                assert_eq!(key.code, KeyCode::Enter);
-                assert_eq!(key.kind, KeyEventKind::Press);
-            }
-            _ => panic!("Expected Key event"),
-        }
-    }
-
-    #[test]
-    fn test_key_release() {
-        let event = key_release(KeyCode::Enter);
-        match event {
-            TerminalEvent::Key(key) => {
-                assert_eq!(key.code, KeyCode::Enter);
-                assert_eq!(key.kind, KeyEventKind::Release);
-            }
-            _ => panic!("Expected Key event"),
-        }
-    }
-
-    #[test]
-    fn test_resize() {
-        let event = resize(80, 24);
-        match event {
-            TerminalEvent::Resize(w, h) => {
-                assert_eq!(w, 80);
-                assert_eq!(h, 24);
-            }
-            _ => panic!("Expected Resize event"),
-        }
-    }
-
-    #[test]
-    fn test_char_key() {
-        let event = char_key('q');
-        match event {
-            TerminalEvent::Key(key) => {
-                assert_eq!(key.code, KeyCode::Char('q'));
-            }
-            _ => panic!("Expected Key event"),
-        }
-    }
-
-    #[test]
-    fn test_escape() {
-        let event = escape();
-        match event {
-            TerminalEvent::Key(key) => {
-                assert_eq!(key.code, KeyCode::Esc);
-            }
-            _ => panic!("Expected Key event"),
-        }
-    }
-}
+// Note: Self-tests for this module have been intentionally removed.
+// This module is included via #[path] into every test binary, so any tests
+// here would be duplicated 10+ times across all test binaries.

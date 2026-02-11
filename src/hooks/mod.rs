@@ -172,11 +172,10 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
-    use serial_test::serial;
     use tempfile::TempDir;
 
     use crate::error::JanusError;
-    use crate::test_guards::CwdGuard;
+    use crate::paths::JanusRootGuard;
 
     fn setup_test_env() -> TempDir {
         let temp_dir = TempDir::new().unwrap();
@@ -227,12 +226,10 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_run_pre_hooks_no_config() {
         // When there's no config file, hooks should succeed silently
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         let context = HookContext::new()
             .with_event(HookEvent::PreWrite)
@@ -245,11 +242,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_run_post_hooks_no_config() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         let context = HookContext::new()
             .with_event(HookEvent::PostWrite)
@@ -262,11 +257,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_hooks_disabled() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create config with hooks disabled
         let config_content = r#"
@@ -288,11 +281,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_hook_script_not_found() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create config pointing to non-existent script
         let config_content = r#"
@@ -313,11 +304,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_pre_hook_success() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a successful hook script
         let hooks_dir = temp_dir.path().join(".janus/hooks");
@@ -345,11 +334,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_pre_hook_failure() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a failing hook script
         let hooks_dir = temp_dir.path().join(".janus/hooks");
@@ -376,11 +363,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_post_hook_receives_env_vars() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a hook script that writes env vars to a file
         let hooks_dir = temp_dir.path().join(".janus/hooks");
@@ -428,11 +413,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_hook_timeout() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a hook script that sleeps
         let hooks_dir = temp_dir.path().join(".janus/hooks");
@@ -492,11 +475,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_pre_hook_failure_aborts_operation() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a failing hook script with specific exit code and error message
         let hooks_dir = temp_dir.path().join(".janus/hooks");
@@ -542,11 +523,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_post_hook_failure_continues() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a file to track that the hook ran
         let marker_file = temp_dir.path().join("hook_ran.txt");
@@ -590,11 +569,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_pre_hook_timeout_with_exit_code() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a hook script that sleeps
         let hooks_dir = temp_dir.path().join(".janus/hooks");
@@ -630,11 +607,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_hook_script_not_found_error() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create config pointing to non-existent script
         let config_content = r#"
@@ -677,11 +652,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_hook_script_with_path_separator() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create config with script containing path separator
         let config_content = r#"
@@ -704,11 +677,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_hook_script_with_windows_path_separator() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create config with script containing Windows path separator
         let config_content = "hooks:\n  enabled: true\n  scripts:\n    pre_write: \"..\\\\..\\\\windows\\\\system32\"\n";
@@ -726,11 +697,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_hook_script_with_null_byte() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create config with script containing null byte
         let config_content =
@@ -753,11 +722,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_post_hook_failure_logged() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a failing post-hook script
         let hooks_dir = temp_dir.path().join(".janus/hooks");
@@ -804,11 +771,9 @@ hooks:
     }
 
     #[test]
-    #[serial]
     fn test_multiple_post_hook_failures_logged() {
         let temp_dir = setup_test_env();
-        let _cwd_guard = CwdGuard::new().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
+        let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
         // Create a failing post-hook script
         let hooks_dir = temp_dir.path().join(".janus/hooks");

@@ -411,12 +411,11 @@ fn bytes_to_f32_vec(data: &[u8]) -> Option<Vec<f32>> {
 mod tests {
     use std::collections::HashSet;
 
-    use serial_test::serial;
     use tempfile::TempDir;
 
     use super::*;
     use crate::cache::TicketStore;
-    use crate::test_guards::EnvGuard;
+    use crate::paths::JanusRootGuard;
     use crate::types::TicketId;
     use crate::types::{TicketMetadata, TicketStatus};
 
@@ -480,14 +479,13 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_save_and_load_embedding() {
         let tmp = TempDir::new().unwrap();
         let janus = tmp.path().join(".janus");
         let items_dir = janus.join("items");
         std::fs::create_dir_all(&items_dir).unwrap();
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus);
 
         // Create a ticket file
         let ticket_path = items_dir.join("j-test.md");
@@ -531,14 +529,13 @@ status: new
     }
 
     #[test]
-    #[serial]
     fn test_prune_orphaned() {
         let tmp = TempDir::new().unwrap();
         let janus = tmp.path().join(".janus");
         let emb_dir = janus.join("embeddings");
         std::fs::create_dir_all(&emb_dir).unwrap();
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus);
 
         // Create some .bin files
         std::fs::write(emb_dir.join("valid1.bin"), b"data").unwrap();
@@ -561,13 +558,12 @@ status: new
     }
 
     #[test]
-    #[serial]
     fn test_prune_orphaned_no_dir() {
         let tmp = TempDir::new().unwrap();
         let janus = tmp.path().join(".janus");
         // Don't create the embeddings dir
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus);
 
         let pruned = TicketStore::prune_orphaned(&HashSet::new()).expect("prune should succeed");
         assert_eq!(pruned, 0);
@@ -608,13 +604,12 @@ status: new
     }
 
     #[test]
-    #[serial]
     fn test_load_embeddings_no_dir() {
         let tmp = TempDir::new().unwrap();
         let janus = tmp.path().join(".janus");
         // Don't create the embeddings dir
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus);
 
         let store = TicketStore::empty();
         store.upsert_ticket(TicketMetadata {
@@ -643,14 +638,13 @@ status: new
     }
 
     #[test]
-    #[serial]
     fn test_load_embeddings_rejects_wrong_dimension() {
         let tmp = TempDir::new().unwrap();
         let janus = tmp.path().join(".janus");
         let items_dir = janus.join("items");
         std::fs::create_dir_all(&items_dir).unwrap();
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus);
 
         // Create a ticket file
         let ticket_path = items_dir.join("j-dim.md");
@@ -687,14 +681,13 @@ status: new
     }
 
     #[test]
-    #[serial]
     fn test_load_embeddings_rejects_non_finite_values() {
         let tmp = TempDir::new().unwrap();
         let janus = tmp.path().join(".janus");
         let items_dir = janus.join("items");
         std::fs::create_dir_all(&items_dir).unwrap();
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus);
 
         // Create a ticket file
         let ticket_path = items_dir.join("j-nan.md");

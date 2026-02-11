@@ -100,7 +100,11 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
         .file_stem()
         .and_then(|s| {
             let id = s.to_string_lossy().into_owned();
-            if id.is_empty() { None } else { Some(id) }
+            if id.is_empty() {
+                None
+            } else {
+                Some(id)
+            }
         })
         .ok_or_else(|| {
             JanusError::InvalidFormat(format!(
@@ -304,9 +308,7 @@ pub fn strip_priority_shorthand(query: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-
-    use crate::test_guards::CwdGuard;
+    use crate::paths::JanusRootGuard;
 
     #[test]
     fn test_iso_date_format() {
@@ -479,12 +481,10 @@ mod tests {
                 "Filename '{}' should be rejected as reserved",
                 name
             );
-            assert!(
-                result
-                    .unwrap_err()
-                    .to_string()
-                    .contains("reserved device name")
-            );
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("reserved device name"));
         }
     }
 
@@ -514,19 +514,15 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_ensure_gitignore_creates_file() {
-        let _cwd_guard = CwdGuard::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_gitignore_create");
-        std::fs::create_dir_all(&repo_path).unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
-
-        // Create the .janus directory
-        std::fs::create_dir_all(".janus").unwrap();
+        let janus_dir = repo_path.join(".janus");
+        std::fs::create_dir_all(&janus_dir).unwrap();
+        let _guard = JanusRootGuard::new(&janus_dir);
 
         // Ensure .gitignore doesn't exist yet
-        let gitignore_path = PathBuf::from(".janus/.gitignore");
+        let gitignore_path = janus_dir.join(".gitignore");
         assert!(!gitignore_path.exists());
 
         // Call ensure_gitignore
@@ -540,17 +536,15 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_ensure_gitignore_does_not_overwrite_existing() {
-        let _cwd_guard = CwdGuard::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_gitignore_no_overwrite");
-        std::fs::create_dir_all(&repo_path).unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let janus_dir = repo_path.join(".janus");
+        std::fs::create_dir_all(&janus_dir).unwrap();
+        let _guard = JanusRootGuard::new(&janus_dir);
 
-        // Create the .janus directory and a custom .gitignore
-        std::fs::create_dir_all(".janus").unwrap();
-        let gitignore_path = PathBuf::from(".janus/.gitignore");
+        // Create a custom .gitignore
+        let gitignore_path = janus_dir.join(".gitignore");
         let custom_content = "# Custom gitignore\nconfig.yaml\nembeddings/\nmy-custom-entry\n";
         std::fs::write(&gitignore_path, custom_content).unwrap();
 
@@ -563,19 +557,18 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_ensure_dir_creates_gitignore() {
-        let _cwd_guard = CwdGuard::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_ensure_dir_gitignore");
-        std::fs::create_dir_all(&repo_path).unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let janus_dir = repo_path.join(".janus");
+        std::fs::create_dir_all(&janus_dir).unwrap();
+        let _guard = JanusRootGuard::new(&janus_dir);
 
         // Call ensure_dir which creates .janus/items/
         ensure_dir().unwrap();
 
         // Verify .gitignore was also created
-        let gitignore_path = PathBuf::from(".janus/.gitignore");
+        let gitignore_path = janus_dir.join(".gitignore");
         assert!(gitignore_path.exists());
         let contents = std::fs::read_to_string(&gitignore_path).unwrap();
         assert!(contents.contains("config.yaml"));

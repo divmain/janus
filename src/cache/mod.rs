@@ -360,12 +360,11 @@ Plan description.
 
 #[cfg(test)]
 mod tests {
-    use serial_test::serial;
     use tempfile::TempDir;
 
     use super::test_helpers::{make_plan_content, make_ticket_content};
     use super::*;
-    use crate::test_guards::EnvGuard;
+    use crate::paths::JanusRootGuard;
     use crate::types::{PlanId, TicketId};
     use crate::types::{TicketPriority, TicketStatus, TicketType};
 
@@ -411,12 +410,11 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_init_from_disk() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = TicketStore::init().expect("init should succeed");
 
@@ -440,13 +438,12 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_init_with_missing_dirs() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
         // Don't create the directories
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = TicketStore::init().expect("init should succeed even with missing dirs");
         assert_eq!(store.tickets.len(), 0);
@@ -454,7 +451,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_init_with_invalid_file() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
@@ -476,7 +472,7 @@ mod tests {
         )
         .unwrap();
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = TicketStore::init().expect("init should succeed despite parse errors");
         // Only the valid ticket should be loaded
@@ -485,7 +481,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_init_with_mismatched_id() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
@@ -501,7 +496,7 @@ mod tests {
         )
         .unwrap();
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = TicketStore::init().expect("init should succeed");
 
@@ -629,12 +624,11 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_file_paths_populated() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
-        let _env_guard = unsafe { EnvGuard::set("JANUS_ROOT", janus_root.to_str().unwrap()) };
+        let _guard = JanusRootGuard::new(&janus_root);
 
         let store = TicketStore::init().expect("init should succeed");
 

@@ -92,9 +92,7 @@ pub fn generate_unique_id_with_prefix(prefix: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-
-    use crate::test_guards::CwdGuard;
+    use crate::paths::JanusRootGuard;
 
     #[test]
     fn test_generate_unique_id_with_prefix_format() {
@@ -207,13 +205,12 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_generated_id_is_file_safe() {
-        let _cwd_guard = CwdGuard::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
         let repo_path = temp.path().join("test_generated_id_safe");
-        std::fs::create_dir_all(&repo_path).unwrap();
-        std::env::set_current_dir(&repo_path).unwrap();
+        let janus_dir = repo_path.join(".janus");
+        std::fs::create_dir_all(&janus_dir).unwrap();
+        let _guard = JanusRootGuard::new(&janus_dir);
 
         let prefixes = vec!["task", "bug", "feature", "my-prefix", "test_under"];
 

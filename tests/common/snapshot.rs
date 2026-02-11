@@ -56,13 +56,6 @@ pub fn assert_tui_snapshot_impl(name: &str, output: &str) {
     });
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tui_snapshot_filters() {
-        let filters = tui_snapshot_filters();
-        assert_eq!(filters.len(), 3);
-    }
-}
+// Note: Self-tests for this module have been intentionally removed.
+// This module is included via #[path] into every test binary, so any tests
+// here would be duplicated 10+ times across all test binaries.
