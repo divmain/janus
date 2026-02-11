@@ -90,8 +90,12 @@ impl TicketStore {
             })
             .collect();
 
-        // Now iterate the snapshot and insert into embeddings without holding
-        // any tickets map guards.
+        // Phase 2: Perform all disk I/O (mtime lookups, file reads), collecting
+        // valid (id, vector) pairs into a local Vec. This keeps filesystem work
+        // separate from DashMap inserts, reducing contention for concurrent
+        // readers (watcher upserts, TUI reads).
+        let mut loaded: Vec<(String, Vec<f32>)> = Vec::new();
+
         for (id, file_path) in ticket_info {
             let mtime_ns = match file_mtime_ns(&file_path) {
                 Some(ns) => ns,
@@ -119,9 +123,15 @@ impl TicketStore {
                         continue;
                     }
 
-                    self.embeddings().insert(id, vector);
+                    loaded.push((id, vector));
                 }
             }
+        }
+
+        // Phase 3: Batch-insert into embeddings DashMap now that all disk I/O
+        // is complete.
+        for (id, vector) in loaded {
+            self.embeddings().insert(id, vector);
         }
     }
 
@@ -262,34 +272,53 @@ impl TicketStore {
         let emb_dir = embeddings_dir();
         let bin_path = emb_dir.join(format!("{key}.bin"));
 
-        if bin_path.exists() {
-            // Embedding already exists on disk - load it into memory
-            if let Ok(data) = fs::read(&bin_path) {
+        // Phase 1: Perform all disk I/O and .await without touching DashMaps.
+        // This avoids holding DashMap guards (even briefly) while doing blocking
+        // filesystem work, which would increase contention for concurrent readers
+        // (watcher upserts, TUI reads).
+        let final_embedding = if bin_path.exists() {
+            // Embedding already exists on disk - attempt to load it
+            let loaded = fs::read(&bin_path).ok().and_then(|data| {
                 let expected_bytes = EMBEDDING_DIMENSIONS * 4;
-                if data.len() == expected_bytes {
-                    if let Some(vector) = bytes_to_f32_vec(&data) {
-                        // Validate no NaN/infinity
-                        if !vector.iter().any(|v| !v.is_finite()) {
-                            self.embeddings().insert(ticket_id.to_string(), vector);
-                            return Ok(());
-                        }
-                    }
+                if data.len() != expected_bytes {
+                    return None;
+                }
+                let vector = bytes_to_f32_vec(&data)?;
+                // Validate no NaN/infinity
+                if vector.iter().any(|v| !v.is_finite()) {
+                    return None;
+                }
+                Some(vector)
+            });
+
+            match loaded {
+                Some(vector) => vector,
+                None => {
+                    // Loading failed, fall through to regeneration
+                    let embedding =
+                        crate::embedding::model::generate_ticket_embedding(&title, body.as_deref())
+                            .await
+                            .map_err(|e| format!("Failed to generate embedding: {e}"))?;
+                    Self::save_embedding(&key, &embedding)
+                        .map_err(|e| format!("Failed to save embedding: {e}"))?;
+                    embedding
                 }
             }
-            // If loading failed, fall through to regeneration
-        }
+        } else {
+            // Generate new embedding
+            let embedding =
+                crate::embedding::model::generate_ticket_embedding(&title, body.as_deref())
+                    .await
+                    .map_err(|e| format!("Failed to generate embedding: {e}"))?;
+            Self::save_embedding(&key, &embedding)
+                .map_err(|e| format!("Failed to save embedding: {e}"))?;
+            embedding
+        };
 
-        // Generate new embedding
-        let embedding = crate::embedding::model::generate_ticket_embedding(&title, body.as_deref())
-            .await
-            .map_err(|e| format!("Failed to generate embedding: {e}"))?;
-
-        // Save to disk
-        Self::save_embedding(&key, &embedding)
-            .map_err(|e| format!("Failed to save embedding: {e}"))?;
-
-        // Insert into in-memory store (CRITICAL for TUI freshness)
-        self.embeddings().insert(ticket_id.to_string(), embedding);
+        // Phase 2: Insert into in-memory store only after all I/O is complete.
+        // (CRITICAL for TUI freshness)
+        self.embeddings()
+            .insert(ticket_id.to_string(), final_embedding);
 
         Ok(())
     }
@@ -344,10 +373,15 @@ impl TicketStore {
 
             let texts_ref: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
 
-            // Generate batch embeddings
+            // Generate batch embeddings (awaits model inference)
             match model.embed_batch(&texts_ref).await {
                 Ok(embeddings) => {
-                    // Save each embedding
+                    // Phase 1: Perform all disk I/O first, collecting successfully
+                    // saved (id, embedding) pairs into a local Vec. This keeps
+                    // filesystem work separate from DashMap operations, reducing
+                    // contention for concurrent readers (watcher upserts, TUI reads).
+                    let mut saved: Vec<(String, Vec<f32>)> = Vec::with_capacity(embeddings.len());
+
                     for (i, (id, file_path, _, _)) in batch.iter().enumerate() {
                         if let Some(embedding) = embeddings.get(i) {
                             // Get current mtime (may have changed)
@@ -356,15 +390,20 @@ impl TicketStore {
                             if let Some(mtime) = mtime_ns {
                                 let key = TicketStore::embedding_key(file_path, mtime);
 
-                                // Save and update memory
                                 if TicketStore::save_embedding(&key, embedding).is_ok() {
-                                    // Check ticket still exists before inserting
-                                    if self.tickets().contains_key(id.as_str()) {
-                                        self.embeddings().insert(id.clone(), embedding.clone());
-                                        generated += 1;
-                                    }
+                                    saved.push((id.clone(), embedding.clone()));
                                 }
                             }
+                        }
+                    }
+
+                    // Phase 2: Batch-insert into DashMaps now that all disk I/O
+                    // is complete. Check ticket still exists before inserting to
+                    // guard against concurrent deletions.
+                    for (id, embedding) in saved {
+                        if self.tickets().contains_key(id.as_str()) {
+                            self.embeddings().insert(id, embedding);
+                            generated += 1;
                         }
                     }
                 }
