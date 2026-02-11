@@ -12,7 +12,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use notify::{EventKind, RecursiveMode, Watcher};
 use tokio::sync::broadcast;
@@ -26,6 +27,15 @@ use super::TicketStore;
 
 /// Duration to wait for additional events before processing a batch.
 const DEBOUNCE_DURATION: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// Capacity of the bounded channel bridging `notify` events to the tokio
+/// event loop. When the channel is full, the watcher callback sets a
+/// "rescan needed" flag instead of enqueuing individual events.
+const CHANNEL_CAPACITY: usize = 512;
+
+/// Maximum number of entries in the pending event map. When this cap is
+/// exceeded, the map is cleared and a full rescan is performed instead.
+const PENDING_CAP: usize = 1024;
 
 /// Notification event sent when the store is updated by the watcher.
 #[derive(Debug, Clone)]
@@ -74,15 +84,29 @@ impl StoreWatcher {
     /// noisy to be practical.
     pub fn start(store: &'static TicketStore) -> Result<(Self, broadcast::Receiver<StoreEvent>)> {
         let (broadcast_tx, broadcast_rx) = broadcast::channel(64);
-        let (bridge_tx, bridge_rx) = tokio::sync::mpsc::unbounded_channel::<notify::Event>();
+        let (bridge_tx, bridge_rx) = tokio::sync::mpsc::channel::<notify::Event>(CHANNEL_CAPACITY);
+
+        // Shared flag: when the bounded channel is full, the notify callback
+        // sets this to `true` instead of blocking. The event loop checks the
+        // flag before each batch and performs a full rescan when set.
+        let rescan_needed = Arc::new(AtomicBool::new(false));
 
         // Create the notify watcher with a callback that bridges to tokio
         let watcher = {
             let tx = bridge_tx;
+            let rescan = Arc::clone(&rescan_needed);
             notify::RecommendedWatcher::new(
                 move |res: std::result::Result<notify::Event, notify::Error>| match res {
                     Ok(event) => {
-                        let _ = tx.send(event);
+                        if tx.try_send(event).is_err() {
+                            // Channel full — flag a rescan instead of dropping events silently
+                            if !rescan.swap(true, Ordering::Relaxed) {
+                                eprintln!(
+                                    "Warning: watcher channel full (capacity {CHANNEL_CAPACITY}), \
+                                     coalescing into full rescan"
+                                );
+                            }
+                        }
                     }
                     Err(e) => {
                         eprintln!("Warning: filesystem watcher error: {e}");
@@ -120,8 +144,9 @@ impl StoreWatcher {
 
         // Spawn the background debounce + process task
         let task_tx = broadcast_tx.clone();
+        let task_rescan = Arc::clone(&rescan_needed);
         tokio::spawn(async move {
-            run_event_loop(bridge_rx, store, task_tx).await;
+            run_event_loop(bridge_rx, store, task_tx, task_rescan).await;
         });
 
         Ok((
@@ -231,10 +256,15 @@ pub fn subscribe_to_changes() -> Option<broadcast::Receiver<StoreEvent>> {
 
 /// Background event loop: receives notify events, debounces them, and
 /// processes batched changes against the store.
+///
+/// When the `rescan_needed` flag is set (because the bounded channel was
+/// full), the loop skips per-file processing and performs a full store
+/// rescan instead.
 async fn run_event_loop(
-    mut bridge_rx: tokio::sync::mpsc::UnboundedReceiver<notify::Event>,
+    mut bridge_rx: tokio::sync::mpsc::Receiver<notify::Event>,
     store: &'static TicketStore,
     broadcast_tx: broadcast::Sender<StoreEvent>,
+    rescan_needed: Arc<AtomicBool>,
 ) {
     // Accumulate events keyed by path → last event kind
     let mut pending: HashMap<PathBuf, EventKind> = HashMap::new();
@@ -254,10 +284,24 @@ async fn run_event_loop(
             match tokio::time::timeout(DEBOUNCE_DURATION, bridge_rx.recv()).await {
                 Ok(Some(e)) => {
                     accumulate_event(&mut pending, &e);
+                    // Check pending cap while draining
+                    if pending.len() > PENDING_CAP {
+                        eprintln!(
+                            "Warning: pending event map exceeded cap ({PENDING_CAP} entries), \
+                             coalescing into full rescan"
+                        );
+                        pending.clear();
+                        rescan_needed.store(true, Ordering::Relaxed);
+                    }
                 }
                 Ok(None) => {
                     // Channel closed
-                    process_batch(&mut pending, store, &broadcast_tx);
+                    if rescan_needed.swap(false, Ordering::Relaxed) {
+                        pending.clear();
+                        full_rescan(store, &broadcast_tx);
+                    } else {
+                        process_batch(&mut pending, store, &broadcast_tx);
+                    }
                     return;
                 }
                 Err(_) => {
@@ -267,7 +311,12 @@ async fn run_event_loop(
             }
         }
 
-        process_batch(&mut pending, store, &broadcast_tx);
+        if rescan_needed.swap(false, Ordering::Relaxed) {
+            pending.clear();
+            full_rescan(store, &broadcast_tx);
+        } else {
+            process_batch(&mut pending, store, &broadcast_tx);
+        }
     }
 }
 
@@ -342,6 +391,67 @@ fn process_batch(
     if plans_changed {
         let _ = broadcast_tx.send(StoreEvent::PlansChanged);
     }
+}
+
+/// Perform a full rescan of all ticket and plan files on disk.
+///
+/// This is the fallback when the bounded channel overflows or the pending
+/// map exceeds its cap. Instead of processing individual events, we
+/// re-read every `.md` file and reconcile the store, then broadcast
+/// change notifications for both tickets and plans.
+fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<StoreEvent>) {
+    use crate::types::{plans_dir, tickets_items_dir};
+
+    eprintln!("Warning: performing full rescan of .janus/ directory");
+
+    let items_dir = tickets_items_dir();
+    if items_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&items_dir) {
+            // Collect IDs currently on disk so we can detect deletions
+            let mut disk_ids = std::collections::HashSet::new();
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "md") {
+                    if let Some(stem) = path.file_stem() {
+                        disk_ids.insert(stem.to_string_lossy().to_string());
+                    }
+                    process_ticket_file(&path, store);
+                }
+            }
+            // Remove tickets no longer on disk
+            let store_ids: Vec<String> = store.tickets().iter().map(|r| r.key().clone()).collect();
+            for id in store_ids {
+                if !disk_ids.contains(&id) {
+                    store.remove_ticket(&id);
+                }
+            }
+        }
+    }
+
+    let p_dir = plans_dir();
+    if p_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&p_dir) {
+            let mut disk_ids = std::collections::HashSet::new();
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "md") {
+                    if let Some(stem) = path.file_stem() {
+                        disk_ids.insert(stem.to_string_lossy().to_string());
+                    }
+                    process_plan_file(&path, store);
+                }
+            }
+            let store_ids: Vec<String> = store.plans().iter().map(|r| r.key().clone()).collect();
+            for id in store_ids {
+                if !disk_ids.contains(&id) {
+                    store.remove_plan(&id);
+                }
+            }
+        }
+    }
+
+    let _ = broadcast_tx.send(StoreEvent::TicketsChanged);
+    let _ = broadcast_tx.send(StoreEvent::PlansChanged);
 }
 
 /// Classify a notify event kind into one of our simplified actions.
