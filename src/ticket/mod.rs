@@ -220,26 +220,37 @@ impl Ticket {
         )
     }
 
-    /// Check if a value exists in an array field (deps or links).
-    pub fn has_in_array_field(&self, field: &str, value: &str) -> Result<bool> {
-        let _field_enum: ArrayField = field.parse()?;
-        let raw_content = self.read_content()?;
-
+    /// Extract an array field from raw content with fallback to tolerant parsing.
+    ///
+    /// Attempts strict YAML parsing first. If that fails (e.g., due to unknown fields),
+    /// prints a warning and falls back to tolerant extraction that only parses
+    /// the requested field.
+    fn extract_array_field_with_fallback(
+        &self,
+        raw_content: &str,
+        field: &str,
+        operation: &str,
+    ) -> Result<Vec<String>> {
         // Try strict parse first, fall back to tolerant path
-        let current_array = match parse(&raw_content) {
+        match parse(raw_content) {
             Ok(metadata) => {
                 let field_enum: ArrayField = field.parse()?;
-                Self::get_array_field(&metadata, field_enum)?.clone()
+                Ok(Self::get_array_field(&metadata, field_enum)?.clone())
             }
             Err(e) => {
                 eprintln!(
-                    "Warning: ticket '{}' has validation issues ({}); using tolerant read for field '{}'",
-                    self.id, e, field
+                    "Warning: ticket '{}' has validation issues ({}); using tolerant {} for field '{}'",
+                    self.id, e, operation, field
                 );
-                Self::extract_array_field_tolerant(&raw_content, field)?
+                Self::extract_array_field_tolerant(raw_content, field)
             }
-        };
+        }
+    }
 
+    /// Check if a value exists in an array field (deps or links).
+    pub fn has_in_array_field(&self, field: &str, value: &str) -> Result<bool> {
+        let raw_content = self.read_content()?;
+        let current_array = self.extract_array_field_with_fallback(&raw_content, field, "read")?;
         Ok(current_array.contains(&value.to_string()))
     }
 
@@ -259,27 +270,11 @@ impl Ticket {
     where
         F: FnOnce(&Vec<String>) -> Vec<String>,
     {
-        let _field_enum: ArrayField = field.parse()?;
-
         // Hold an exclusive lock for the entire read-modify-write cycle.
         let _lock = crate::fs::lock_file_exclusive(&self.file_path);
 
         let raw_content = self.read_content()?;
-
-        // Try strict parse first, fall back to tolerant path
-        let current_array = match parse(&raw_content) {
-            Ok(metadata) => {
-                let field_enum: ArrayField = field.parse()?;
-                Self::get_array_field(&metadata, field_enum)?.clone()
-            }
-            Err(e) => {
-                eprintln!(
-                    "Warning: ticket '{}' has validation issues ({}); using tolerant edit for field '{}'",
-                    self.id, e, field
-                );
-                Self::extract_array_field_tolerant(&raw_content, field)?
-            }
-        };
+        let current_array = self.extract_array_field_with_fallback(&raw_content, field, "edit")?;
 
         if !should_mutate(&current_array) {
             return Ok(false);
