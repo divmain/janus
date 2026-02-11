@@ -9,7 +9,7 @@ use iocraft::prelude::{Handler, State};
 
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::{EditFormState, EditMode};
-use crate::tui::search::{FilteredTicket, filter_tickets};
+use crate::tui::search::{filter_tickets, FilteredTicket};
 use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -93,9 +93,25 @@ impl<'a> BoardHandlerContext<'a> {
             .unwrap_or(false);
 
         if !cache_valid {
-            // Recompute cache
-            let tickets_read = self.all_tickets.read();
-            let filtered = filter_tickets(&tickets_read, &current_query);
+            // Use orchestrator results if available (includes merged fuzzy + semantic results)
+            // Otherwise fall back to filtering directly
+            let filtered = if let Some(results) = self.search_orchestrator.get_results() {
+                results
+            } else if current_query.is_empty() {
+                self.all_tickets
+                    .read()
+                    .iter()
+                    .map(|t| FilteredTicket {
+                        ticket: std::sync::Arc::new(t.clone()),
+                        score: 0,
+                        title_indices: vec![],
+                        is_semantic: false,
+                    })
+                    .collect()
+            } else {
+                let tickets_read = self.all_tickets.read();
+                filter_tickets(&tickets_read, &current_query)
+            };
 
             let column_tickets: Vec<Vec<FilteredTicket>> = COLUMNS
                 .iter()
