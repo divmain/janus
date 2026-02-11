@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use dashmap::DashMap;
 use notify::{EventKind, RecursiveMode, Watcher};
 use tokio::sync::broadcast;
 
@@ -24,6 +25,48 @@ use crate::ticket::parse_ticket;
 use crate::types::janus_root;
 
 use super::TicketStore;
+
+/// Global map tracking tickets recently edited by the TUI itself.
+/// Used to suppress redundant watcher broadcasts for self-initiated changes.
+/// Maps ticket ID to the timestamp when it was marked as recently edited.
+static RECENTLY_EDITED: OnceLock<Arc<DashMap<String, std::time::Instant>>> = OnceLock::new();
+
+/// Get or initialize the recently edited tracking map.
+fn get_recently_edited() -> Arc<DashMap<String, std::time::Instant>> {
+    RECENTLY_EDITED
+        .get_or_init(|| Arc::new(DashMap::new()))
+        .clone()
+}
+
+/// Mark a ticket ID as "recently edited" by the TUI.
+/// This suppresses watcher broadcasts for this ticket for RECENTLY_EDITED_TTL seconds.
+pub fn mark_recently_edited(ticket_id: &str) {
+    let map = get_recently_edited();
+    map.insert(ticket_id.to_string(), std::time::Instant::now());
+}
+
+/// Check if a ticket ID was recently edited (and the TTL hasn't expired).
+fn is_recently_edited(ticket_id: &str) -> bool {
+    let map = get_recently_edited();
+    
+    // Clean up expired entries while we're checking
+    let now = std::time::Instant::now();
+    let expired: Vec<String> = map
+        .iter()
+        .filter(|e| now.duration_since(*e.value()) > RECENTLY_EDITED_TTL)
+        .map(|e| e.key().clone())
+        .collect();
+    for key in expired {
+        map.remove(&key);
+    }
+    
+    // Check if this ticket is still in the map
+    if let Some(entry) = map.get(ticket_id) {
+        return now.duration_since(*entry.value()) <= RECENTLY_EDITED_TTL;
+    }
+    
+    false
+}
 
 /// Duration to wait for additional events before processing a batch.
 const DEBOUNCE_DURATION: std::time::Duration = std::time::Duration::from_millis(150);
@@ -42,6 +85,10 @@ const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// Maximum number of retry attempts per file before giving up.
 const MAX_RETRY_ATTEMPTS: u8 = 3;
+
+/// Time-to-live for recently edited entries. Tickets marked as recently edited
+/// will suppress watcher broadcasts for this duration to prevent redundant UI updates.
+const RECENTLY_EDITED_TTL: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Notification event sent when the store is updated by the watcher.
 #[derive(Debug, Clone)]
@@ -454,6 +501,9 @@ fn accumulate_event(pending: &mut HashMap<PathBuf, EventKind>, event: &notify::E
 /// Files that fail to parse are scheduled for retry in the `RetryQueue`.
 /// A fresh event for a path cancels any pending retry for that path
 /// (the new content supersedes the old attempt).
+///
+/// Note: Tickets marked as "recently edited" (within RECENTLY_EDITED_TTL seconds
+/// by the TUI itself) will not trigger a broadcast, preventing redundant UI updates.
 fn process_batch(
     pending: &mut HashMap<PathBuf, EventKind>,
     store: &'static TicketStore,
@@ -464,7 +514,7 @@ fn process_batch(
         return;
     }
 
-    let mut tickets_changed = false;
+    let mut changed_ticket_ids: Vec<String> = Vec::new();
     let mut plans_changed = false;
 
     for (path, kind) in pending.drain() {
@@ -487,7 +537,11 @@ fn process_batch(
             FileAction::CreateOrModify => {
                 if is_ticket {
                     match process_ticket_file(&path, store) {
-                        ParseOutcome::Success => tickets_changed = true,
+                        ParseOutcome::Success => {
+                            if let Some(id) = path.file_stem() {
+                                changed_ticket_ids.push(id.to_string_lossy().to_string());
+                            }
+                        }
                         ParseOutcome::ParseFailed => {
                             retries.schedule(path, true);
                         }
@@ -507,7 +561,7 @@ fn process_batch(
                 if let Some(id) = path.file_stem().map(|s| s.to_string_lossy().to_string()) {
                     if is_ticket {
                         store.remove_ticket(&id);
-                        tickets_changed = true;
+                        changed_ticket_ids.push(id);
                     } else if is_plan {
                         store.remove_plan(&id);
                         plans_changed = true;
@@ -518,9 +572,21 @@ fn process_batch(
         }
     }
 
-    if tickets_changed {
+    // Filter out recently edited tickets (suppressed by TUI-initiated changes)
+    let non_suppressed_ids: Vec<String> = changed_ticket_ids
+        .into_iter()
+        .filter(|id| !is_recently_edited(id))
+        .collect();
+    
+    // Only broadcast if there are non-suppressed ticket changes
+    if !non_suppressed_ids.is_empty() {
+        // If only a single ticket changed and it's not suppressed, we could
+        // emit a more specific event in the future. For now, use the generic event.
         let _ = broadcast_tx.send(StoreEvent::TicketsChanged);
     }
+    // Note: Suppressed broadcasts (for recently edited tickets) are intentionally silent
+    // to avoid interfering with the TUI display.
+    
     if plans_changed {
         let _ = broadcast_tx.send(StoreEvent::PlansChanged);
     }
@@ -541,7 +607,7 @@ fn process_retries(
         return;
     }
 
-    let mut tickets_changed = false;
+    let mut changed_ticket_ids: Vec<String> = Vec::new();
     let mut plans_changed = false;
 
     for (path, is_ticket) in ready {
@@ -555,7 +621,9 @@ fn process_retries(
             ParseOutcome::Success => {
                 retries.cancel(&path);
                 if is_ticket {
-                    tickets_changed = true;
+                    if let Some(id) = path.file_stem() {
+                        changed_ticket_ids.push(id.to_string_lossy().to_string());
+                    }
                 } else {
                     plans_changed = true;
                 }
@@ -571,7 +639,13 @@ fn process_retries(
         }
     }
 
-    if tickets_changed {
+    // Filter out recently edited tickets (suppressed by TUI-initiated changes)
+    let non_suppressed_ids: Vec<String> = changed_ticket_ids
+        .into_iter()
+        .filter(|id| !is_recently_edited(id))
+        .collect();
+    
+    if !non_suppressed_ids.is_empty() {
         let _ = broadcast_tx.send(StoreEvent::TicketsChanged);
     }
     if plans_changed {

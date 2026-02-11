@@ -171,17 +171,55 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     }
 
     // Handle edit form result using shared EditFormState
+    // Stores the ticket_id that needs granular refresh (avoids full reload flickering)
+    let mut pending_ticket_refresh: State<Option<String>> = hooks.use_state(|| None);
     {
         let mut edit_state = EditFormState {
             mode: &mut edit_mode,
             result: &mut edit_result,
         };
-        if edit_state.handle_result() {
-            needs_reload.set(true);
+        if let Some(refresh_id) = edit_state.handle_result() {
+            if refresh_id == "__NEW_TICKET__" {
+                // New ticket created - trigger full reload to show it
+                needs_reload.set(true);
+            } else {
+                // Existing ticket edited - use granular refresh
+                pending_ticket_refresh.set(Some(refresh_id));
+            }
         }
     }
 
+    // Async handler for granular ticket refresh (replaces full reload for single edits)
+    let refresh_single_handler: Handler<String> = hooks.use_async_handler({
+        let mut toast = toast;
+        let mut all_tickets = all_tickets;
+        let mut pending_setter = pending_ticket_refresh;
+        move |ticket_id: String| {
+            async move {
+                // Refresh the specific ticket in the store first
+                crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
+                // Then refresh in the local tickets list
+                let current = all_tickets.read().clone();
+                let tickets =
+                    crate::tui::repository::TicketRepository::refresh_single_ticket(
+                        current, &ticket_id,
+                    )
+                    .await;
+                all_tickets.set(tickets);
+                pending_setter.set(None);
+                toast.set(Some(Toast::success(format!("Saved {ticket_id}"))));
+            }
+        }
+    });
+
     let is_editing = !matches!(*edit_mode.read(), EditMode::None);
+
+    // Trigger granular refresh when a ticket edit completes
+    // This avoids the flickering caused by the is_loading toggle during full reload
+    let pending_id = pending_ticket_refresh.read().clone();
+    if let Some(ticket_id) = pending_id {
+        refresh_single_handler(ticket_id);
+    }
 
     // Compute filtered tickets
     let query_str = search_query.to_string();

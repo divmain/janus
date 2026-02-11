@@ -3,6 +3,7 @@
 //! This module provides a service layer for editing tickets, handling both
 //! new ticket creation and existing ticket updates in a unified interface.
 
+use crate::cache::mark_recently_edited;
 use crate::error::Result;
 use crate::tui::services::TicketService;
 use crate::types::{TicketPriority, TicketStatus, TicketType};
@@ -18,6 +19,9 @@ impl TicketEditService {
     ///
     /// If ticket_id is Some, updates the existing ticket.
     /// If ticket_id is None, creates a new ticket.
+    ///
+    /// Note: This function marks edited tickets as "recently edited" to suppress
+    /// redundant watcher broadcasts and prevent UI flickering.
     pub async fn save(
         ticket_id: Option<&str>,
         title: &str,
@@ -28,8 +32,12 @@ impl TicketEditService {
     ) -> Result<()> {
         if let Some(id) = ticket_id {
             TicketService::update_ticket(id, title, status, ticket_type, priority, body).await?;
+            // Mark as recently edited to suppress watcher broadcast (prevents flicker)
+            mark_recently_edited(id);
         } else {
-            TicketService::create_ticket(title, status, ticket_type, priority, body)?;
+            let new_id = TicketService::create_ticket(title, status, ticket_type, priority, body)?;
+            // Mark the newly created ticket as recently edited
+            mark_recently_edited(&new_id);
         }
         Ok(())
     }
