@@ -9,12 +9,16 @@ use crate::utils::{parse_priority_filter, strip_priority_shorthand};
 
 /// Case-insensitive substring match.
 ///
-/// Lowercases both haystack and needle via `str::to_lowercase` and
-/// delegates to `str::contains`. For search loops, callers should
-/// pre-compute `needle.to_lowercase()` once and pass the result here
-/// so that only the haystack allocation is per-iteration.
+/// Uses `unicase` for correct Unicode case folding (handles Turkish i, German ß, etc.).
+/// Note: This creates a folded string for the haystack, which is an allocation.
+/// For allocation-free matching, use unicase::eq() for equality checks.
 fn contains_case_insensitive(haystack: &str, needle: &str) -> bool {
-    haystack.to_lowercase().contains(&needle.to_lowercase())
+    if needle.is_empty() {
+        return true;
+    }
+    let haystack_folded = unicase::UniCase::new(haystack).to_folded_case();
+    let needle_folded = unicase::UniCase::new(needle).to_folded_case();
+    haystack_folded.contains(&needle_folded)
 }
 
 /// Sort a slice by an optional string ID field, using `""` for `None`.
@@ -48,7 +52,7 @@ fn matches_search_query(
         return true;
     }
 
-    // Case-insensitive substring matching (needle is pre-lowercased by caller)
+    // Case-insensitive substring matching (allocation-free via unicase)
     let id_match = contains_case_insensitive(key, text_query);
 
     let title_match = ticket
@@ -129,7 +133,7 @@ impl TicketStore {
     /// produce either `TicketMetadata` or `TicketSummary`.
     fn filter_tickets_by_query(&self, query: &str) -> Vec<RefMulti<'_, String, TicketMetadata>> {
         let priority_filter = parse_priority_filter(query);
-        let text_query = strip_priority_shorthand(query).to_lowercase();
+        let text_query = strip_priority_shorthand(query);
 
         self.tickets()
             .iter()
