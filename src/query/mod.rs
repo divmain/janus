@@ -336,14 +336,29 @@ impl TicketQueryBuilder {
             .filter(|t| self.filters.iter().all(|f| f.matches(t, &context)))
             .collect();
 
-        // Apply OR filter groups
-        for or_group in self.or_filter_groups {
-            let or_matches: Vec<TicketMetadata> = filtered
-                .iter()
-                .filter(|t| or_group.iter().any(|f| f.matches(t, &context)))
-                .cloned()
-                .collect();
-            filtered = or_matches;
+        // Apply OR filter groups as a union across all groups
+        if !self.or_filter_groups.is_empty() {
+            use std::collections::HashSet;
+
+            use crate::types::TicketId;
+
+            // Collect all tickets that match ANY filter in ANY group
+            // We iterate over filtered (the AND results), not the original tickets
+            let mut matched_ids: HashSet<TicketId> = HashSet::new();
+
+            for or_group in &self.or_filter_groups {
+                // Check which filtered tickets match ANY filter in this group
+                for ticket in &filtered {
+                    if or_group.iter().any(|f| f.matches(ticket, &context)) {
+                        if let Some(id) = &ticket.id {
+                            matched_ids.insert(id.clone());
+                        }
+                    }
+                }
+            }
+
+            // Keep only filtered tickets that matched any OR group
+            filtered.retain(|t| t.id.as_ref().is_some_and(|id| matched_ids.contains(id)));
         }
 
         // Sort using local sort function
