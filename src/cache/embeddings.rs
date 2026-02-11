@@ -233,18 +233,23 @@ impl TicketStore {
     ///
     /// Returns silently on error (errors logged to stderr in debug builds only)
     pub async fn ensure_embedding(&self, ticket_id: &str) -> Result<(), String> {
-        // Get ticket from store
-        let ticket = self
-            .tickets()
-            .get(ticket_id)
-            .ok_or_else(|| format!("Ticket '{ticket_id}' not found in store"))?;
+        // Snapshot required fields from the tickets DashMap into owned locals,
+        // then drop the guard before touching the embeddings DashMap.
+        // This prevents AB/BA lock-order inversion deadlocks.
+        let (file_path, title, body) = {
+            let ticket = self
+                .tickets()
+                .get(ticket_id)
+                .ok_or_else(|| format!("Ticket '{ticket_id}' not found in store"))?;
 
-        let file_path = ticket
-            .file_path
-            .clone()
-            .ok_or_else(|| format!("Ticket '{ticket_id}' has no file_path"))?;
-        let title = ticket.title.clone().unwrap_or_default();
-        let body = ticket.body.clone();
+            let file_path = ticket
+                .file_path
+                .clone()
+                .ok_or_else(|| format!("Ticket '{ticket_id}' has no file_path"))?;
+            let title = ticket.title.clone().unwrap_or_default();
+            let body = ticket.body.clone();
+            (file_path, title, body)
+        }; // ticket guard (Ref) dropped here
 
         // Get current mtime (fresh, not cached)
         let mtime_ns = file_mtime_ns(&file_path)
@@ -296,11 +301,11 @@ impl TicketStore {
     pub async fn ensure_all_embeddings(&self) -> Result<(usize, usize), String> {
         use crate::embedding::model::{EMBEDDING_BATCH_SIZE, get_embedding_model};
 
-        // Collect tickets needing embeddings
-        let tickets_to_embed: Vec<(String, std::path::PathBuf, String, Option<String>)> = self
+        // Two-phase collection to avoid nested DashMap guards:
+        // Phase 1: Snapshot all candidate ticket data from the tickets DashMap.
+        let all_candidates: Vec<(String, std::path::PathBuf, String, Option<String>)> = self
             .tickets()
             .iter()
-            .filter(|entry| !self.has_embedding_for(entry.key()))
             .filter_map(|entry| {
                 let ticket = entry.value();
                 let id = entry.key().clone();
@@ -310,6 +315,13 @@ impl TicketStore {
                 Some((id, file_path, title, body))
             })
             .collect();
+        // Phase 2: Filter against the embeddings DashMap now that all tickets
+        // guards are released, preventing AB/BA lock-order inversion deadlocks.
+        let tickets_to_embed: Vec<(String, std::path::PathBuf, String, Option<String>)> =
+            all_candidates
+                .into_iter()
+                .filter(|(id, _, _, _)| !self.has_embedding_for(id))
+                .collect();
 
         let total = tickets_to_embed.len();
         if total == 0 {

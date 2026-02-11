@@ -269,19 +269,23 @@ mod tests {
     fn naive_sorted_search(store: &TicketStore, query: &[f32], limit: usize) -> Vec<(String, f32)> {
         use crate::embedding::model::cosine_similarity;
 
-        let mut scored: Vec<(String, f32)> = store
+        // Phase 1: Snapshot embedding data into owned locals so all embeddings
+        // DashMap shard locks are released before touching the tickets DashMap.
+        let scored_candidates: Vec<(String, f32)> = store
             .embeddings()
             .iter()
-            .filter_map(|entry| {
+            .map(|entry| {
                 let ticket_id = entry.key().clone();
                 let similarity = cosine_similarity(query, entry.value());
-                // Only include if ticket metadata exists
-                if store.tickets().contains_key(&ticket_id) {
-                    Some((ticket_id, similarity))
-                } else {
-                    None
-                }
+                (ticket_id, similarity)
             })
+            .collect();
+
+        // Phase 2: Filter against tickets DashMap now that embeddings guards
+        // are released, preventing AB/BA lock-order inversion deadlocks.
+        let mut scored: Vec<(String, f32)> = scored_candidates
+            .into_iter()
+            .filter(|(ticket_id, _)| store.tickets().contains_key(ticket_id.as_str()))
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
