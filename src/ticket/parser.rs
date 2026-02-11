@@ -10,7 +10,7 @@ use crate::types::{
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TicketFrontmatter {
-    id: String,
+    id: TicketId,
     uuid: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<TicketStatus>,
@@ -19,7 +19,7 @@ struct TicketFrontmatter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     links: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    created: Option<String>,
+    created: Option<CreatedAt>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     ticket_type: Option<TicketType>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -63,12 +63,12 @@ fn ticket_metadata_from_document(frontmatter_raw: &str, body: &str) -> Result<Ti
     let frontmatter: TicketFrontmatter = serde_yaml_ng::from_str(frontmatter_raw)?;
 
     let metadata = TicketMetadata {
-        id: Some(TicketId::new_unchecked(frontmatter.id)),
+        id: Some(frontmatter.id),
         uuid: Some(frontmatter.uuid),
         status: frontmatter.status,
         deps: frontmatter.deps,
         links: frontmatter.links,
-        created: frontmatter.created.map(CreatedAt::new_unchecked),
+        created: frontmatter.created,
         ticket_type: frontmatter.ticket_type,
         priority: frontmatter.priority,
         size: frontmatter.size,

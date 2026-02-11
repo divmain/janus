@@ -60,10 +60,10 @@ static PLAN_FILE_PHASE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// that external tools or future versions adding new fields won't brick files.
 #[derive(Debug, Deserialize)]
 struct PlanFrontmatter {
-    id: Option<String>,
+    id: Option<crate::types::PlanId>,
     uuid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    created: Option<String>,
+    created: Option<crate::types::CreatedAt>,
     /// Unknown/extra YAML keys are captured here for round-trip preservation.
     #[serde(flatten)]
     extra: HashMap<String, serde_yaml_ng::Value>,
@@ -119,11 +119,9 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<PlanMetadata> {
         .map_err(|e| JanusError::InvalidFormat(format!("YAML parsing error: {e}")))?;
 
     let metadata = PlanMetadata {
-        id: frontmatter.id.map(crate::types::PlanId::new_unchecked),
+        id: frontmatter.id,
         uuid: frontmatter.uuid,
-        created: frontmatter
-            .created
-            .map(crate::types::CreatedAt::new_unchecked),
+        created: frontmatter.created,
         extra_frontmatter: if frontmatter.extra.is_empty() {
             None
         } else {
@@ -1208,11 +1206,11 @@ More details.
 
     #[test]
     fn test_parse_yaml_frontmatter() {
-        let yaml = "id: plan-test\nuuid: abc-123\ncreated: 2024-01-01";
+        let yaml = "id: plan-test\nuuid: abc-123\ncreated: 2024-01-01T00:00:00Z";
         let metadata = parse_yaml_frontmatter(yaml).unwrap();
         assert_eq!(metadata.id.as_deref(), Some("plan-test"));
         assert_eq!(metadata.uuid, Some("abc-123".to_string()));
-        assert_eq!(metadata.created.as_deref(), Some("2024-01-01"));
+        assert_eq!(metadata.created.as_deref(), Some("2024-01-01T00:00:00Z"));
     }
 
     // ==================== Integration Tests ====================

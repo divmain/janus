@@ -686,10 +686,12 @@ fn test_flow_sequence_with_many_items() {
 fn test_yaml_type_coercion_edge_cases() {
     // YAML has surprising type coercion: "yes" → bool, "1.0" → float, etc.
     // Verify these don't crash the TicketMetadata deserialization.
+    // Note: parent is a TicketId which requires <prefix>-<hash> format,
+    // so we use a valid ticket ID here. The other fields are plain strings.
     let yaml = r#"id: j-test
 status: new
 priority: 2
-parent: "yes"
+parent: "j-yes1"
 external-ref: "no"
 spawn-context: "null"
 remote: "1.0""#;
@@ -700,7 +702,7 @@ remote: "1.0""#;
         .deserialize_frontmatter()
         .expect("quoted values should deserialize as strings");
 
-    assert_eq!(meta.parent.as_deref(), Some("yes"));
+    assert_eq!(meta.parent.as_deref(), Some("j-yes1"));
     assert_eq!(meta.external_ref, Some("no".to_string()));
     assert_eq!(meta.spawn_context, Some("null".to_string()));
     assert_eq!(meta.remote, Some("1.0".to_string()));
@@ -710,6 +712,8 @@ remote: "1.0""#;
 fn test_yaml_unquoted_boolean_coercion() {
     // Unquoted "yes"/"no"/"on"/"off" are booleans in YAML 1.1
     // serde_yaml_ng follows YAML 1.2 which doesn't coerce these, but let's verify
+    // Note: parent is a TicketId which validates format, so even if YAML coerces
+    // "yes" to a string, it will be rejected by TicketId validation (no hyphen).
     let yaml = r#"id: j-test
 parent: yes
 external-ref: no"#;
@@ -718,6 +722,7 @@ external-ref: no"#;
     let parsed = parse_document(&doc).expect("unquoted booleans should parse");
 
     // Typed deserialization may or may not succeed depending on YAML version behavior
+    // With validating TicketId, "yes" will be rejected as an invalid ID format
     let result: Result<TicketMetadata, _> = parsed.deserialize_frontmatter();
     match result {
         Ok(_) | Err(_) => {} // no crash = pass

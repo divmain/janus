@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 
 use crate::error::JanusError;
@@ -22,9 +23,19 @@ pub use crate::paths::{janus_root, plans_dir, tickets_items_dir};
 ///
 /// Serializes transparently as a plain string in YAML/JSON for backward
 /// compatibility.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct TicketId(String);
+
+impl<'de> Deserialize<'de> for TicketId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        TicketId::new(&s).map_err(de::Error::custom)
+    }
+}
 
 impl TicketId {
     /// Create a `TicketId` from a string, validating the format.
@@ -132,9 +143,19 @@ impl Borrow<str> for TicketId {
 ///
 /// Serializes transparently as a plain string in YAML/JSON for backward
 /// compatibility.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct PlanId(String);
+
+impl<'de> Deserialize<'de> for PlanId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        PlanId::new(&s).map_err(de::Error::custom)
+    }
+}
 
 impl PlanId {
     /// Create a `PlanId` from a string, validating the format.
@@ -234,9 +255,19 @@ impl Borrow<str> for PlanId {
 ///
 /// Serializes transparently as a plain string in YAML/JSON for backward
 /// compatibility.
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct CreatedAt(String);
+
+impl<'de> Deserialize<'de> for CreatedAt {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        CreatedAt::new(&s).map_err(de::Error::custom)
+    }
+}
 
 impl CreatedAt {
     /// Create a `CreatedAt` from a string, validating that it's a parseable timestamp.
