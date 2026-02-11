@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use crate::cache::get_or_init_store;
 use crate::error::{JanusError, Result};
-use crate::types::tickets_items_dir;
+use crate::types::{TicketId, tickets_items_dir};
 use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
 
 fn validate_partial_id(id: &str) -> Result<String> {
@@ -43,7 +43,9 @@ async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
             // Partial match via store (store is authoritative, no filesystem fallback)
             let matches = store.find_by_partial_id(partial_id);
             match matches.len() {
-                0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+                0 => Err(JanusError::TicketNotFound(TicketId::new_unchecked(
+                    partial_id,
+                ))),
                 1 => Ok(dir.join(format!("{}.md", &matches[0]))),
                 _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
             }
@@ -72,7 +74,9 @@ fn find_ticket_by_id_filesystem(partial_id: &str, dir: &std::path::Path) -> Resu
     let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
 
     match matches.len() {
-        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        0 => Err(JanusError::TicketNotFound(TicketId::new_unchecked(
+            partial_id,
+        ))),
         1 => Ok(dir.join(matches[0])),
         _ => Err(JanusError::AmbiguousId(
             partial_id.to_string(),

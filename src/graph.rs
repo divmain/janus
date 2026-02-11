@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::{JanusError, Result};
-use crate::types::TicketMetadata;
+use crate::types::{TicketId, TicketMetadata};
 
 /// Resolve a partial ID to a full ID using an in-memory HashMap
 ///
@@ -43,7 +43,9 @@ pub fn resolve_id_from_map<T>(
         .collect();
 
     match matches.len() {
-        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        0 => Err(JanusError::TicketNotFound(TicketId::new_unchecked(
+            partial_id,
+        ))),
         1 => Ok(matches[0].clone()),
         _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
     }

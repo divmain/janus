@@ -21,7 +21,7 @@ use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
-use crate::types::{EntityType, TicketMetadata, plans_dir};
+use crate::types::{EntityType, PlanId, TicketMetadata, plans_dir};
 use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
 
 // Re-export status computation functions
@@ -68,7 +68,7 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
             // Partial match via store (store is authoritative, no filesystem fallback)
             let matches = store.find_plan_by_partial_id(partial_id);
             match matches.len() {
-                0 => Err(JanusError::PlanNotFound(partial_id.to_string())),
+                0 => Err(JanusError::PlanNotFound(PlanId::new_unchecked(partial_id))),
                 1 => Ok(dir.join(format!("{}.md", &matches[0]))),
                 _ => Err(JanusError::AmbiguousPlanId(partial_id.to_string(), matches)),
             }
@@ -97,7 +97,7 @@ fn find_plan_by_id_filesystem(partial_id: &str, dir: &std::path::Path) -> Result
     let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
 
     match matches.len() {
-        0 => Err(JanusError::PlanNotFound(partial_id.to_string())),
+        0 => Err(JanusError::PlanNotFound(PlanId::new_unchecked(partial_id))),
         1 => Ok(dir.join(matches[0])),
         _ => Err(JanusError::AmbiguousPlanId(
             partial_id.to_string(),

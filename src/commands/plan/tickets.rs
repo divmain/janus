@@ -23,7 +23,9 @@ fn resolve_after_id(partial_id: &str, tickets: &[String]) -> Result<String> {
     let matches: Vec<&String> = tickets.iter().filter(|t| t.contains(partial_id)).collect();
 
     match matches.len() {
-        0 => Err(JanusError::TicketNotFound(partial_id.to_string())),
+        0 => Err(JanusError::TicketNotFound(TicketId::new_unchecked(
+            partial_id,
+        ))),
         1 => Ok(matches[0].clone()),
         _ => Err(JanusError::AmbiguousId(
             partial_id.to_string(),
@@ -80,7 +82,9 @@ pub async fn cmd_plan_add_ticket(
         if let Some(after_id) = after {
             let resolved_after = resolve_after_id(after_id, &phase_obj.ticket_list.tickets)?;
             if !phase_obj.add_ticket_after(&resolved_ticket_id, &resolved_after) {
-                return Err(JanusError::TicketNotFound(after_id.to_string()));
+                return Err(JanusError::TicketNotFound(TicketId::new_unchecked(
+                    after_id,
+                )));
             }
             added_position = phase_obj
                 .ticket_list
@@ -116,7 +120,9 @@ pub async fn cmd_plan_add_ticket(
                     .unwrap();
                 added_position = Some(pos);
             } else {
-                return Err(JanusError::TicketNotFound(after_id.to_string()));
+                return Err(JanusError::TicketNotFound(TicketId::new_unchecked(
+                    after_id,
+                )));
             }
         } else if let Some(pos) = position {
             let index = pos.saturating_sub(1);
@@ -268,7 +274,9 @@ pub async fn cmd_plan_move_ticket(
     if let Some(after_id) = after {
         let resolved_after = resolve_after_id(after_id, &target_phase.ticket_list.tickets)?;
         if !target_phase.add_ticket_after(&resolved_id, &resolved_after) {
-            return Err(JanusError::TicketNotFound(after_id.to_string()));
+            return Err(JanusError::TicketNotFound(TicketId::new_unchecked(
+                after_id,
+            )));
         }
     } else if let Some(pos) = position {
         target_phase.add_ticket_at_position(&resolved_id, pos);

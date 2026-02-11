@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::types::{PlanId, TicketId};
+
 /// Generic helper to format error messages with a prefix, a key, and a list of items
 fn format_error_with_list(prefix: &str, key: &str, label: &str, items: &[String]) -> String {
     format!("{prefix} '{key}': {label} {}", items.join(", "))
@@ -89,13 +91,13 @@ pub struct GraphQlError {
 #[derive(Error, Debug)]
 pub enum JanusError {
     #[error("ticket '{0}' not found")]
-    TicketNotFound(String),
+    TicketNotFound(TicketId),
 
     #[error("{}", format_ambiguous_id(.0, .1))]
     AmbiguousId(String, Vec<String>),
 
     #[error("plan '{0}' not found")]
-    PlanNotFound(String),
+    PlanNotFound(PlanId),
 
     #[error(
         "invalid ticket ID '{0}': must contain only alphanumeric characters, hyphens, and underscores"
