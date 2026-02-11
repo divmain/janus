@@ -94,11 +94,9 @@ impl<'a> NextWorkFinder<'a> {
                 break;
             }
 
-            let ticket_id = ticket
-                .id
-                .as_ref()
-                .map(|id| id.to_string())
-                .unwrap_or_default();
+            let Some(ticket_id) = ticket.id_str() else {
+                continue; // Skip tickets without IDs - they can't participate in dependency graphs
+            };
 
             // Skip if already visited (might have been added as a dependency of another blocked ticket)
             if visited.contains(&ticket_id) {
@@ -157,11 +155,9 @@ impl<'a> NextWorkFinder<'a> {
                 break;
             }
 
-            let ticket_id = ticket
-                .id
-                .as_ref()
-                .map(|id| id.to_string())
-                .unwrap_or_default();
+            let Some(ticket_id) = ticket.id_str() else {
+                continue; // Skip tickets without IDs - they can't participate in dependency graphs
+            };
 
             if visited.contains(&ticket_id) {
                 continue;
@@ -208,15 +204,12 @@ impl<'a> NextWorkFinder<'a> {
     /// Compute the dependency depth for a ticket (length of longest dependency chain)
     /// A ready ticket has depth 0, a ticket depending on a ready ticket has depth 1, etc.
     fn dependency_depth(&self, ticket: &TicketMetadata) -> usize {
+        let Some(start_id) = ticket.id_str() else {
+            return 0; // Tickets without IDs have no depth
+        };
+
         let mut max_depth = 0;
-        let mut stack = vec![(
-            ticket
-                .id
-                .as_ref()
-                .map(|id| id.to_string())
-                .unwrap_or_default(),
-            0,
-        )];
+        let mut stack = vec![(start_id, 0)];
         let mut visited = HashSet::new();
 
         while let Some((current_id, current_depth)) = stack.pop() {
@@ -251,14 +244,12 @@ impl<'a> NextWorkFinder<'a> {
         target_id: &str,
         visited: &HashSet<String>,
     ) -> Vec<(String, String)> {
+        let Some(start_id) = ticket.id_str() else {
+            return Vec::new(); // Tickets without IDs have no dependencies to collect
+        };
+
         let mut result = Vec::new();
-        let mut stack = vec![
-            ticket
-                .id
-                .as_ref()
-                .map(|id| id.to_string())
-                .unwrap_or_default(),
-        ];
+        let mut stack = vec![start_id];
         let mut local_visited = HashSet::new();
 
         while let Some(current_id) = stack.pop() {

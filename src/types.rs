@@ -735,6 +735,11 @@ impl TicketData for TicketMetadata {
 }
 
 impl TicketMetadata {
+    /// Get the ticket ID as a String, returning None if no ID exists
+    pub fn id_str(&self) -> Option<String> {
+        self.id.as_ref().map(|id| id.to_string())
+    }
+
     /// Parse the `created` field as a jiff::Timestamp.
     ///
     /// Returns `Some(Timestamp)` if the field is present and valid,
