@@ -4,7 +4,6 @@ use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::log_field_updated;
 use crate::ticket::Ticket;
-use std::str::FromStr;
 
 use crate::types::{TicketPriority, TicketSize, TicketStatus, TicketType};
 
@@ -21,53 +20,50 @@ const SUPPORTED_FIELDS: &[&str] = &[
     "description",
 ];
 
-/// Validate a priority value
-fn validate_priority(value: &str) -> Result<TicketPriority> {
-    value.parse().map_err(|_| JanusError::InvalidFieldValue {
-        field: "priority".to_string(),
-        value: value.to_string(),
-        valid_values: TicketPriority::ALL_STRINGS
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-    })
+macro_rules! define_validator {
+    ($name:ident, $type:ty, $field:expr, $strings:expr, $doc:expr) => {
+        #[doc = $doc]
+        fn $name(value: &str) -> Result<$type> {
+            value.parse().map_err(|_| JanusError::InvalidFieldValue {
+                field: $field.to_string(),
+                value: value.to_string(),
+                valid_values: $strings.iter().map(|s| s.to_string()).collect(),
+            })
+        }
+    };
 }
 
-/// Validate a ticket type value
-fn validate_type(value: &str) -> Result<TicketType> {
-    value.parse().map_err(|_| JanusError::InvalidFieldValue {
-        field: "type".to_string(),
-        value: value.to_string(),
-        valid_values: TicketType::ALL_STRINGS
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-    })
-}
+define_validator!(
+    validate_priority,
+    TicketPriority,
+    "priority",
+    TicketPriority::ALL_STRINGS,
+    "Validate a priority value"
+);
 
-/// Validate a status value
-fn validate_status(value: &str) -> Result<TicketStatus> {
-    TicketStatus::from_str(value).map_err(|_| JanusError::InvalidFieldValue {
-        field: "status".to_string(),
-        value: value.to_string(),
-        valid_values: TicketStatus::ALL_STRINGS
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-    })
-}
+define_validator!(
+    validate_type,
+    TicketType,
+    "type",
+    TicketType::ALL_STRINGS,
+    "Validate a ticket type value"
+);
 
-/// Validate a size value
-fn validate_size(value: &str) -> Result<TicketSize> {
-    value.parse().map_err(|_| JanusError::InvalidFieldValue {
-        field: "size".to_string(),
-        value: value.to_string(),
-        valid_values: TicketSize::ALL_STRINGS
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-    })
-}
+define_validator!(
+    validate_status,
+    TicketStatus,
+    "status",
+    TicketStatus::ALL_STRINGS,
+    "Validate a status value"
+);
+
+define_validator!(
+    validate_size,
+    TicketSize,
+    "size",
+    TicketSize::ALL_STRINGS,
+    "Validate a size value"
+);
 
 /// Validate a parent ticket exists and is not self-referencing
 async fn validate_parent(value: &str, ticket: &Ticket) -> Result<String> {
