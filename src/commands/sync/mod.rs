@@ -1,3 +1,4 @@
+pub mod sanitize;
 pub mod sync_executor;
 pub mod sync_strategy;
 pub mod sync_ui;
@@ -67,13 +68,15 @@ fn create_ticket_from_remote(
 
     let priority = remote_issue.priority.unwrap_or(2);
 
+    let title = sanitize::sanitize_remote_title(&remote_issue.title)?;
+
     let body = if remote_issue.body.is_empty() {
         None
     } else {
-        Some(remote_issue.body.clone())
+        Some(sanitize::sanitize_remote_body(&remote_issue.body)?)
     };
 
-    let (id, _file_path) = TicketBuilder::new(&remote_issue.title)
+    let (id, _file_path) = TicketBuilder::new(&title)
         .description(body)
         .prefix(prefix)
         .ticket_type_enum(TicketType::Task)
