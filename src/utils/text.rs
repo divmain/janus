@@ -16,6 +16,45 @@ pub fn truncate_string(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Break a long word into chunks that fit within the specified width.
+/// Returns a tuple of (completed_lines, remaining_partial_line).
+fn break_long_word(
+    word: &str,
+    width: usize,
+    max_lines: usize,
+    current_lines_count: usize,
+) -> (Vec<String>, Option<String>) {
+    let mut completed = Vec::new();
+    let mut chars = word.chars();
+    let mut current = String::new();
+
+    while chars.as_str().chars().count() > 0 {
+        let chunk: String = chars.by_ref().take(width).collect();
+        if chunk.is_empty() {
+            break;
+        }
+
+        let remaining_lines = max_lines.saturating_sub(current_lines_count + completed.len());
+
+        if remaining_lines <= 1 && chars.as_str().chars().count() > 0 {
+            // This is the last allowed line and there's more text
+            completed.push(truncate_string(&chunk, width));
+            return (completed, None);
+        }
+
+        if chars.as_str().chars().count() > 0 {
+            completed.push(chunk);
+            if current_lines_count + completed.len() >= max_lines {
+                return (completed, None);
+            }
+        } else {
+            current = chunk;
+        }
+    }
+
+    (completed, Some(current).filter(|s| !s.is_empty()))
+}
+
 /// Wrap text into multiple lines, breaking at word boundaries.
 ///
 /// Returns up to `max_lines` lines, with "..." appended to the last line
@@ -45,28 +84,14 @@ pub fn wrap_text_lines(text: &str, width: usize, max_lines: usize) -> Vec<String
                 current_line = word.to_string();
             } else {
                 // Word is longer than width, need to break it
-                let mut chars = word.chars();
-                while chars.as_str().chars().count() > 0 {
-                    let chunk: String = chars.by_ref().take(width).collect();
-                    if chunk.is_empty() {
-                        break;
-                    }
-
-                    if lines.len() + 1 >= max_lines && chars.as_str().chars().count() > 0 {
-                        // This is the last allowed line and there's more text
-                        lines.push(truncate_string(&chunk, width));
-                        return add_ellipsis_if_truncated(lines, true, width);
-                    }
-
-                    if chars.as_str().chars().count() > 0 {
-                        lines.push(chunk);
-                        if lines.len() >= max_lines {
-                            return add_ellipsis_if_truncated(lines, true, width);
-                        }
-                    } else {
-                        current_line = chunk;
-                    }
+                let (completed, remaining) = break_long_word(word, width, max_lines, lines.len());
+                if remaining.is_none() {
+                    // Early return due to line limits
+                    lines.extend(completed);
+                    return add_ellipsis_if_truncated(lines, true, width);
                 }
+                lines.extend(completed);
+                current_line = remaining.unwrap_or_default();
             }
         } else if current_len + 1 + word_len <= width {
             // Word fits on current line with a space
@@ -85,28 +110,14 @@ pub fn wrap_text_lines(text: &str, width: usize, max_lines: usize) -> Vec<String
                 current_line = word.to_string();
             } else {
                 // Word is longer than width, need to break it
-                current_line = String::new();
-                let mut chars = word.chars();
-                while chars.as_str().chars().count() > 0 {
-                    let chunk: String = chars.by_ref().take(width).collect();
-                    if chunk.is_empty() {
-                        break;
-                    }
-
-                    if lines.len() + 1 >= max_lines && chars.as_str().chars().count() > 0 {
-                        lines.push(truncate_string(&chunk, width));
-                        return add_ellipsis_if_truncated(lines, true, width);
-                    }
-
-                    if chars.as_str().chars().count() > 0 {
-                        lines.push(chunk);
-                        if lines.len() >= max_lines {
-                            return add_ellipsis_if_truncated(lines, true, width);
-                        }
-                    } else {
-                        current_line = chunk;
-                    }
+                let (completed, remaining) = break_long_word(word, width, max_lines, lines.len());
+                if remaining.is_none() {
+                    // Early return due to line limits
+                    lines.extend(completed);
+                    return add_ellipsis_if_truncated(lines, true, width);
                 }
+                lines.extend(completed);
+                current_line = remaining.unwrap_or_default();
             }
         }
     }
