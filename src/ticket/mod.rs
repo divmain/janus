@@ -18,16 +18,16 @@ pub use repository::{
 
 pub use self::validate::enforce_filename_authority;
 
-use std::collections::HashMap;
-
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::{
     HookContext, HookEvent, run_post_hooks, run_post_hooks_async, run_pre_hooks,
     run_pre_hooks_async,
 };
-use crate::parser::parse_document_raw;
-use crate::parser::split_frontmatter;
+use crate::parser::{
+    extract_section_from_body, parse_document_raw, remove_section_from_body, split_frontmatter,
+    update_section_in_body,
+};
 use crate::ticket::locator::TicketLocator;
 use crate::ticket::manipulator::{
     remove_field as remove_field_from_content, update_field as update_field_in_content,
@@ -40,155 +40,6 @@ use serde_json;
 use serde_yaml_ng;
 use std::path::PathBuf;
 use tokio::fs as tokio_fs;
-
-use regex::Regex;
-use std::sync::LazyLock;
-use std::sync::Mutex;
-
-/// Cache for compiled section regexes to avoid recompilation on every call.
-static SECTION_REGEX_CACHE: LazyLock<Mutex<HashMap<String, Regex>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Extract a named section from the body (case-insensitive).
-/// Returns the content between the section header and the next H2 or end of document.
-fn extract_section_from_body(body: &str, section_name: &str) -> Result<Option<String>> {
-    let pattern = format!(
-        r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
-        regex::escape(section_name)
-    );
-
-    // Try to get from cache first, otherwise compile and cache
-    let section_re = {
-        let cache = SECTION_REGEX_CACHE.lock().unwrap();
-        if let Some(cached) = cache.get(&pattern) {
-            cached.clone()
-        } else {
-            drop(cache); // Release lock before compilation
-            let re = Regex::new(&pattern).map_err(|e| {
-                JanusError::ParseError(format!(
-                    "failed to compile section regex for '{section_name}': {e}"
-                ))
-            })?;
-            let mut cache = SECTION_REGEX_CACHE.lock().unwrap();
-            cache.insert(pattern.clone(), re.clone());
-            re
-        }
-    };
-
-    Ok(section_re.captures(body).map(|caps| {
-        caps.get(1)
-            .map(|m| m.as_str().trim().to_string())
-            .unwrap_or_default()
-    }))
-}
-
-/// Update or add a section in the document body.
-fn update_section_in_body(body: &str, section_name: &str, section_content: &str) -> Result<String> {
-    let pattern = format!(
-        r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
-        regex::escape(section_name)
-    );
-
-    // Try to get from cache first, otherwise compile and cache
-    let section_re = {
-        let cache = SECTION_REGEX_CACHE.lock().unwrap();
-        if let Some(cached) = cache.get(&pattern) {
-            cached.clone()
-        } else {
-            drop(cache); // Release lock before compilation
-            let re = Regex::new(&pattern).map_err(|e| {
-                JanusError::ParseError(format!(
-                    "failed to compile section regex for '{section_name}': {e}"
-                ))
-            })?;
-            let mut cache = SECTION_REGEX_CACHE.lock().unwrap();
-            cache.insert(pattern.clone(), re.clone());
-            re
-        }
-    };
-
-    if let Some(caps) = section_re.captures(body) {
-        // Section exists - replace its content
-        let full_match = caps.get(0).ok_or_else(|| {
-            JanusError::ParseError(format!(
-                "regex full match missing when updating section '{section_name}'"
-            ))
-        })?;
-        let content_match = caps.get(1).ok_or_else(|| {
-            JanusError::ParseError(format!(
-                "regex capture group missing when updating section '{section_name}'"
-            ))
-        })?;
-
-        let before = &body[..full_match.start()];
-        let after = &body[content_match.end()..];
-
-        // Build the new section
-        let new_section = format!("## {section_name}\n\n{section_content}");
-
-        // Handle spacing after the section
-        let after_trimmed = after.trim_start_matches('\n');
-        let separator = if after_trimmed.is_empty() {
-            "\n".to_string()
-        } else {
-            format!("\n\n{after_trimmed}")
-        };
-
-        Ok(format!("{before}{new_section}{separator}"))
-    } else {
-        // Section doesn't exist - append it
-        let trimmed_body = body.trim_end();
-        Ok(format!(
-            "{trimmed_body}\n\n## {section_name}\n\n{section_content}\n"
-        ))
-    }
-}
-
-/// Remove a section from the document body (case-insensitive).
-fn remove_section_from_body(body: &str, section_name: &str) -> String {
-    let section_name_lower = section_name.to_lowercase();
-    let lines: Vec<&str> = body.split('\n').collect();
-
-    // Find the line index of the target section header
-    let header_idx = lines.iter().position(|line| {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("## ") {
-            rest.trim().to_lowercase() == section_name_lower
-        } else {
-            false
-        }
-    });
-
-    let Some(header_idx) = header_idx else {
-        // Section not found, return body unchanged
-        return body.to_string();
-    };
-
-    // Find the end of the section: next H2 heading or end of document
-    let end_idx = lines[header_idx + 1..]
-        .iter()
-        .position(|line| {
-            let trimmed = line.trim_start();
-            trimmed.starts_with("## ")
-        })
-        .map(|rel| header_idx + 1 + rel)
-        .unwrap_or(lines.len());
-
-    // Build the result: lines before the section + lines after the section
-    let mut result_lines: Vec<&str> = Vec::with_capacity(lines.len());
-    result_lines.extend_from_slice(&lines[..header_idx]);
-    result_lines.extend_from_slice(&lines[end_idx..]);
-
-    // Clean up: collapse excessive blank lines at the join point
-    let mut result = result_lines.join("\n");
-
-    // Remove runs of more than 2 consecutive newlines (preserve paragraph breaks)
-    while result.contains("\n\n\n") {
-        result = result.replace("\n\n\n", "\n\n");
-    }
-
-    result
-}
 
 /// A ticket represents a task, bug, feature, or chore stored as a markdown file.
 ///

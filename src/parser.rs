@@ -10,12 +10,175 @@ use serde::de::DeserializeOwned;
 use serde_yaml_ng as yaml;
 
 use crate::error::{JanusError, Result};
+
 /// Cache for compiled section regexes to avoid recompilation on every call.
 /// The key is the regex pattern string, the value is the compiled Regex.
+/// Uses DashMap for concurrent access without locking.
 static SECTION_REGEX_CACHE: LazyLock<DashMap<String, Regex>> = LazyLock::new(DashMap::new);
 
 pub static TITLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid"));
+
+/// Extract a named section from the body (case-insensitive).
+/// Returns the content between the section header and the next H2 or end of document.
+///
+/// This is the shared implementation used by both `ParsedDocument::extract_section`
+/// and other modules. Uses a DashMap-based cache for thread-safe concurrent access.
+pub fn extract_section_from_body(body: &str, section_name: &str) -> Result<Option<String>> {
+    let pattern = format!(
+        r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
+        regex::escape(section_name)
+    );
+
+    // Try to get from cache first, otherwise compile and cache
+    let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
+        cached.clone()
+    } else {
+        let re = Regex::new(&pattern).map_err(|e| {
+            JanusError::ParseError(format!(
+                "failed to compile section regex for '{section_name}': {e}"
+            ))
+        })?;
+        SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
+        re
+    };
+
+    Ok(section_re.captures(body).map(|caps| {
+        caps.get(1)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default()
+    }))
+}
+
+/// Update or add a section in the document body.
+///
+/// If the section exists, its content is replaced. If it doesn't exist,
+/// the section is appended to the end of the body.
+///
+/// # Arguments
+/// * `body` - The document body content
+/// * `section_name` - The name of the section to update (case-insensitive)
+/// * `section_content` - The new content for the section (without the header)
+///
+/// # Returns
+/// The updated body content
+///
+/// This is the shared implementation used by both `ParsedDocument::update_section`
+/// and other modules.
+pub fn update_section_in_body(
+    body: &str,
+    section_name: &str,
+    section_content: &str,
+) -> Result<String> {
+    let pattern = format!(
+        r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
+        regex::escape(section_name)
+    );
+
+    // Try to get from cache first, otherwise compile and cache
+    let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
+        cached.clone()
+    } else {
+        let re = Regex::new(&pattern).map_err(|e| {
+            JanusError::ParseError(format!(
+                "failed to compile section regex for '{section_name}': {e}"
+            ))
+        })?;
+        SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
+        re
+    };
+
+    if let Some(caps) = section_re.captures(body) {
+        // Section exists - replace its content
+        let full_match = caps.get(0).ok_or_else(|| {
+            JanusError::ParseError(format!(
+                "regex full match missing when updating section '{section_name}'"
+            ))
+        })?;
+        let content_match = caps.get(1).ok_or_else(|| {
+            JanusError::ParseError(format!(
+                "regex capture group missing when updating section '{section_name}'"
+            ))
+        })?;
+
+        let before = &body[..full_match.start()];
+        let after = &body[content_match.end()..];
+
+        // Build the new section
+        let new_section = format!("## {section_name}\n\n{section_content}");
+
+        // Handle spacing after the section
+        let after_trimmed = after.trim_start_matches('\n');
+        let separator = if after_trimmed.is_empty() {
+            "\n".to_string()
+        } else {
+            format!("\n\n{after_trimmed}")
+        };
+
+        Ok(format!("{before}{new_section}{separator}"))
+    } else {
+        // Section doesn't exist - append it
+        let trimmed_body = body.trim_end();
+        Ok(format!(
+            "{trimmed_body}\n\n## {section_name}\n\n{section_content}\n"
+        ))
+    }
+}
+
+/// Remove a section from the document body (case-insensitive).
+///
+/// Uses a deterministic line scanner to find the `## {section_name}` header
+/// and remove all lines from the header up to (but not including) the next
+/// H2 heading or end of document. Returns the updated body string.
+///
+/// If the section does not exist, the body is returned unchanged.
+///
+/// This is the shared implementation used by both `ParsedDocument::remove_section`
+/// and other modules.
+pub fn remove_section_from_body(body: &str, section_name: &str) -> String {
+    let section_name_lower = section_name.to_lowercase();
+    let lines: Vec<&str> = body.split('\n').collect();
+
+    // Find the line index of the target section header
+    let header_idx = lines.iter().position(|line| {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("## ") {
+            rest.trim().to_lowercase() == section_name_lower
+        } else {
+            false
+        }
+    });
+
+    let Some(header_idx) = header_idx else {
+        // Section not found, return body unchanged
+        return body.to_string();
+    };
+
+    // Find the end of the section: next H2 heading or end of document
+    let end_idx = lines[header_idx + 1..]
+        .iter()
+        .position(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("## ")
+        })
+        .map(|rel| header_idx + 1 + rel)
+        .unwrap_or(lines.len());
+
+    // Build the result: lines before the section + lines after the section
+    let mut result_lines: Vec<&str> = Vec::with_capacity(lines.len());
+    result_lines.extend_from_slice(&lines[..header_idx]);
+    result_lines.extend_from_slice(&lines[end_idx..]);
+
+    // Clean up: collapse excessive blank lines at the join point
+    let mut result = result_lines.join("\n");
+
+    // Remove runs of more than 2 consecutive newlines (preserve paragraph breaks)
+    while result.contains("\n\n\n") {
+        result = result.replace("\n\n\n", "\n\n");
+    }
+
+    result
+}
 
 // Core frontmatter parsing using comrak's AST-based approach.
 //
@@ -131,29 +294,7 @@ impl ParsedDocument {
     /// Extract a named section from the body (case-insensitive).
     /// Returns the content between the section header and the next H2 or end of document.
     pub fn extract_section(&self, section_name: &str) -> Result<Option<String>> {
-        let pattern = format!(
-            r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
-            regex::escape(section_name)
-        );
-
-        // Try to get from cache first, otherwise compile and cache
-        let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
-            cached.clone()
-        } else {
-            let re = Regex::new(&pattern).map_err(|e| {
-                JanusError::ParseError(format!(
-                    "failed to compile section regex for '{section_name}': {e}"
-                ))
-            })?;
-            SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
-            re
-        };
-
-        Ok(section_re.captures(&self.body).map(|caps| {
-            caps.get(1)
-                .map(|m| m.as_str().trim().to_string())
-                .unwrap_or_default()
-        }))
+        extract_section_from_body(&self.body, section_name)
     }
 
     /// Update or add a section in the document body.
@@ -168,59 +309,7 @@ impl ParsedDocument {
     /// # Returns
     /// The full updated document content (frontmatter + body)
     pub fn update_section(&self, section_name: &str, section_content: &str) -> Result<String> {
-        let pattern = format!(
-            r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
-            regex::escape(section_name)
-        );
-
-        // Try to get from cache first, otherwise compile and cache
-        let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
-            cached.clone()
-        } else {
-            let re = Regex::new(&pattern).map_err(|e| {
-                JanusError::ParseError(format!(
-                    "failed to compile section regex for '{section_name}': {e}"
-                ))
-            })?;
-            SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
-            re
-        };
-
-        if let Some(caps) = section_re.captures(&self.body) {
-            // Section exists - replace its content
-            let full_match = caps.get(0).ok_or_else(|| {
-                JanusError::ParseError(format!(
-                    "regex full match missing when updating section '{section_name}'"
-                ))
-            })?;
-            let content_match = caps.get(1).ok_or_else(|| {
-                JanusError::ParseError(format!(
-                    "regex capture group missing when updating section '{section_name}'"
-                ))
-            })?;
-
-            let before = &self.body[..full_match.start()];
-            let after = &self.body[content_match.end()..];
-
-            // Build the new section
-            let new_section = format!("## {section_name}\n\n{section_content}");
-
-            // Handle spacing after the section
-            let after_trimmed = after.trim_start_matches('\n');
-            let separator = if after_trimmed.is_empty() {
-                "\n".to_string()
-            } else {
-                format!("\n\n{after_trimmed}")
-            };
-
-            Ok(format!("{before}{new_section}{separator}"))
-        } else {
-            // Section doesn't exist - append it
-            let trimmed_body = self.body.trim_end();
-            Ok(format!(
-                "{trimmed_body}\n\n## {section_name}\n\n{section_content}\n"
-            ))
-        }
+        update_section_in_body(&self.body, section_name, section_content)
     }
 
     /// Remove a section from the document body (case-insensitive).
@@ -231,48 +320,7 @@ impl ParsedDocument {
     ///
     /// If the section does not exist, the body is returned unchanged.
     pub fn remove_section(&self, section_name: &str) -> String {
-        let section_name_lower = section_name.to_lowercase();
-        let lines: Vec<&str> = self.body.split('\n').collect();
-
-        // Find the line index of the target section header
-        let header_idx = lines.iter().position(|line| {
-            let trimmed = line.trim_start();
-            if let Some(rest) = trimmed.strip_prefix("## ") {
-                rest.trim().to_lowercase() == section_name_lower
-            } else {
-                false
-            }
-        });
-
-        let Some(header_idx) = header_idx else {
-            // Section not found, return body unchanged
-            return self.body.clone();
-        };
-
-        // Find the end of the section: next H2 heading or end of document
-        let end_idx = lines[header_idx + 1..]
-            .iter()
-            .position(|line| {
-                let trimmed = line.trim_start();
-                trimmed.starts_with("## ")
-            })
-            .map(|rel| header_idx + 1 + rel)
-            .unwrap_or(lines.len());
-
-        // Build the result: lines before the section + lines after the section
-        let mut result_lines: Vec<&str> = Vec::with_capacity(lines.len());
-        result_lines.extend_from_slice(&lines[..header_idx]);
-        result_lines.extend_from_slice(&lines[end_idx..]);
-
-        // Clean up: collapse excessive blank lines at the join point
-        let mut result = result_lines.join("\n");
-
-        // Remove runs of more than 2 consecutive newlines (preserve paragraph breaks)
-        while result.contains("\n\n\n") {
-            result = result.replace("\n\n\n", "\n\n");
-        }
-
-        result
+        remove_section_from_body(&self.body, section_name)
     }
 
     /// Deserialize the frontmatter into a specific type.

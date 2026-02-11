@@ -96,48 +96,8 @@ fn extract_title(body: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
-/// Extract a named section from the body (case-insensitive).
-/// Returns the content between the section header and the next H2 or end of document.
-fn extract_section(body: &str, section_name: &str) -> Result<Option<String>> {
-    use crate::error::JanusError;
-    use regex::Regex;
-    use std::collections::HashMap;
-    use std::sync::LazyLock;
-    use std::sync::Mutex;
-
-    // Cache for compiled section regexes
-    static SECTION_REGEX_CACHE: LazyLock<Mutex<HashMap<String, Regex>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
-
-    let pattern = format!(
-        r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
-        regex::escape(section_name)
-    );
-
-    // Try to get from cache first, otherwise compile and cache
-    let section_re = {
-        let cache = SECTION_REGEX_CACHE.lock().unwrap();
-        if let Some(cached) = cache.get(&pattern) {
-            cached.clone()
-        } else {
-            drop(cache); // Release lock before compilation
-            let re = Regex::new(&pattern).map_err(|e| {
-                JanusError::ParseError(format!(
-                    "failed to compile section regex for '{section_name}': {e}"
-                ))
-            })?;
-            let mut cache = SECTION_REGEX_CACHE.lock().unwrap();
-            cache.insert(pattern.clone(), re.clone());
-            re
-        }
-    };
-
-    Ok(section_re.captures(body).map(|caps| {
-        caps.get(1)
-            .map(|m| m.as_str().trim().to_string())
-            .unwrap_or_default()
-    }))
-}
+// Re-export the shared section extraction function from parser module
+pub use crate::parser::extract_section_from_body as extract_section;
 
 #[cfg(test)]
 mod tests {
