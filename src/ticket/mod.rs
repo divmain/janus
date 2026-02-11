@@ -416,26 +416,22 @@ impl Ticket {
             JanusError::InvalidFormat(format!("Failed to parse ticket {}: {}", self.id, e))
         })?;
 
-        // Get body without title
-        let title_end = body.find('\n').unwrap_or(0);
-        let after_title = &body[title_end..].trim_start();
+        // Get content after the title (first line)
+        let after_title = body
+            .split_once('\n')
+            .map(|(_, rest)| rest.trim_start())
+            .unwrap_or("");
 
-        // Find first H2 or end of document
-        if let Some(h2_pos) = after_title.find("\n## ") {
-            let desc = after_title[..h2_pos].trim();
-            if desc.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(desc.to_string()))
-            }
+        // Find first H2 or use all remaining content
+        let desc = after_title
+            .split_once("\n## ")
+            .map(|(before, _)| before.trim())
+            .unwrap_or_else(|| after_title.trim());
+
+        if desc.is_empty() {
+            Ok(None)
         } else {
-            // No H2 sections, everything after title is description
-            let desc = after_title.trim();
-            if desc.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(desc.to_string()))
-            }
+            Ok(Some(desc.to_string()))
         }
     }
 
