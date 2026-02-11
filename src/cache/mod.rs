@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use tokio::sync::OnceCell;
@@ -9,6 +10,73 @@ use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
 use crate::ticket::parse_ticket;
 use crate::types::{TicketMetadata, plans_dir, tickets_items_dir};
+
+/// A warning that occurred during store initialization.
+#[derive(Debug, Clone)]
+pub struct InitWarning {
+    /// The file path associated with the warning (if applicable)
+    pub file_path: Option<PathBuf>,
+    /// The warning message
+    pub message: String,
+    /// The type of entity (ticket or plan)
+    pub entity_type: String,
+}
+
+/// Collection of warnings captured during initialization.
+#[derive(Debug, Clone, Default)]
+pub struct InitWarnings {
+    warnings: Arc<std::sync::Mutex<Vec<InitWarning>>>,
+}
+
+impl InitWarnings {
+    /// Create a new empty warning collection.
+    fn new() -> Self {
+        Self {
+            warnings: Arc::new(std::sync::Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Add a warning to the collection.
+    fn add(&self, warning: InitWarning) {
+        if let Ok(mut guard) = self.warnings.lock() {
+            guard.push(warning);
+        }
+    }
+
+    /// Get all warnings as a vector.
+    pub fn get_all(&self) -> Vec<InitWarning> {
+        self.warnings
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    /// Get the count of warnings.
+    pub fn count(&self) -> usize {
+        self.warnings.lock().map(|g| g.len()).unwrap_or(0)
+    }
+
+    /// Check if there are any warnings.
+    pub fn is_empty(&self) -> bool {
+        self.count() == 0
+    }
+
+    /// Get ticket warnings only.
+    pub fn ticket_warnings(&self) -> Vec<InitWarning> {
+        self.get_all()
+            .into_iter()
+            .filter(|w| w.entity_type == "ticket")
+            .collect()
+    }
+
+    /// Get plan warnings only.
+    pub fn plan_warnings(&self) -> Vec<InitWarning> {
+        self.get_all()
+            .into_iter()
+            .filter(|w| w.entity_type == "plan")
+            .collect()
+    }
+}
 
 /// Trait for entity metadata that can be loaded from files.
 ///
@@ -71,6 +139,8 @@ pub struct TicketStore {
     tickets: DashMap<String, TicketMetadata>,
     plans: DashMap<String, PlanMetadata>,
     embeddings: DashMap<String, Vec<f32>>,
+    /// Warnings captured during initialization
+    init_warnings: InitWarnings,
 }
 
 /// Global singleton for the ticket store.
@@ -129,6 +199,7 @@ impl TicketStore {
             tickets: DashMap::new(),
             plans: DashMap::new(),
             embeddings: DashMap::new(),
+            init_warnings: InitWarnings::new(),
         }
     }
 
@@ -188,7 +259,11 @@ impl TicketStore {
         let entries = match fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(e) => {
-                eprintln!("Warning: failed to read {entity_name}s directory: {e}");
+                self.init_warnings.add(InitWarning {
+                    file_path: Some(dir.to_path_buf()),
+                    message: format!("Failed to read {entity_name}s directory: {e}"),
+                    entity_type: entity_name.to_string(),
+                });
                 return;
             }
         };
@@ -196,10 +271,11 @@ impl TicketStore {
         for entry in entries.filter_map(|entry| match entry {
             Ok(e) => Some(e),
             Err(e) => {
-                eprintln!(
-                    "Warning: failed to read directory entry in {}: {e}",
-                    dir.display()
-                );
+                self.init_warnings.add(InitWarning {
+                    file_path: Some(dir.to_path_buf()),
+                    message: format!("Failed to read directory entry: {e}"),
+                    entity_type: entity_name.to_string(),
+                });
                 None
             }
         }) {
@@ -212,10 +288,13 @@ impl TicketStore {
                                 let stem_str = stem.to_string_lossy();
                                 match metadata.id() {
                                     Some(frontmatter_id) if frontmatter_id != stem_str.as_ref() => {
-                                        eprintln!(
-                                            "Warning: {entity_name} file '{stem_str}' has frontmatter id '{frontmatter_id}' — \
-                                             using filename stem as authoritative ID",
-                                        );
+                                        self.init_warnings.add(InitWarning {
+                                            file_path: Some(path.clone()),
+                                            message: format!(
+                                                "Frontmatter id '{frontmatter_id}' doesn't match filename '{stem_str}' — using filename as authoritative ID"
+                                            ),
+                                            entity_type: entity_name.to_string(),
+                                        });
                                         metadata.set_id(stem_str.to_string());
                                     }
                                     None => {
@@ -232,17 +311,19 @@ impl TicketStore {
                             }
                         }
                         Err(e) => {
-                            eprintln!(
-                                "Warning: failed to parse {entity_name} {}: {e}",
-                                path.display()
-                            );
+                            self.init_warnings.add(InitWarning {
+                                file_path: Some(path.clone()),
+                                message: format!("Failed to parse {entity_name} file: {e}"),
+                                entity_type: entity_name.to_string(),
+                            });
                         }
                     },
                     Err(e) => {
-                        eprintln!(
-                            "Warning: failed to read {entity_name} {}: {e}",
-                            path.display()
-                        );
+                        self.init_warnings.add(InitWarning {
+                            file_path: Some(path.clone()),
+                            message: format!("Failed to read {entity_name} file: {e}"),
+                            entity_type: entity_name.to_string(),
+                        });
                     }
                 }
             }
@@ -308,6 +389,15 @@ impl TicketStore {
     /// Get a reference to the plans DashMap (for use by query modules).
     pub(crate) fn plans(&self) -> &DashMap<String, PlanMetadata> {
         &self.plans
+    }
+
+    /// Get the initialization warnings captured during store loading.
+    ///
+    /// Returns a copy of all warnings that occurred while parsing ticket and plan files.
+    /// These warnings indicate files that were skipped due to errors, ID mismatches, or
+    /// other non-fatal issues during initialization.
+    pub fn get_init_warnings(&self) -> InitWarnings {
+        self.init_warnings.clone()
     }
 }
 
@@ -643,5 +733,88 @@ mod tests {
         assert!(plan.file_path.is_some());
         let file_path = plan.file_path.as_ref().unwrap();
         assert!(file_path.ends_with("plan-x1y2.md"));
+    }
+
+    #[test]
+    fn test_init_warnings_captured() {
+        let tmp = TempDir::new().expect("failed to create temp dir");
+        let janus_root = tmp.path().join(".janus");
+        let items_dir = janus_root.join("items");
+
+        fs::create_dir_all(&items_dir).unwrap();
+
+        // Write a valid ticket
+        fs::write(
+            items_dir.join("j-good.md"),
+            make_ticket_content("j-good", "Good Ticket"),
+        )
+        .unwrap();
+
+        // Write an invalid ticket file
+        fs::write(
+            items_dir.join("j-bad.md"),
+            "this is not a valid ticket file",
+        )
+        .unwrap();
+
+        // Write a ticket with mismatched ID
+        fs::write(
+            items_dir.join("j-mismatch.md"),
+            make_ticket_content("j-wrong-id", "Mismatched Ticket"),
+        )
+        .unwrap();
+
+        let _guard = JanusRootGuard::new(&janus_root);
+
+        let store = TicketStore::init().expect("init should succeed despite errors");
+
+        // Verify the valid ticket was loaded
+        assert_eq!(store.tickets.len(), 2); // j-good and j-mismatch
+        assert!(store.tickets.contains_key("j-good"));
+        assert!(store.tickets.contains_key("j-mismatch")); // keyed by filename
+
+        // Verify warnings were captured
+        let warnings = store.get_init_warnings();
+        assert!(!warnings.is_empty(), "should have captured warnings");
+
+        // Should have 2 warnings: 1 for parse error, 1 for ID mismatch
+        let all_warnings = warnings.get_all();
+        assert_eq!(all_warnings.len(), 2, "should have 2 warnings");
+
+        // Check ticket-specific warnings
+        let ticket_warnings = warnings.ticket_warnings();
+        assert_eq!(ticket_warnings.len(), 2, "should have 2 ticket warnings");
+
+        // Verify one warning is for the parse error
+        let parse_error = all_warnings
+            .iter()
+            .any(|w| w.message.contains("Failed to parse"));
+        assert!(parse_error, "should have a parse error warning");
+
+        // Verify one warning is for the ID mismatch
+        let id_mismatch = all_warnings
+            .iter()
+            .any(|w| w.message.contains("Frontmatter id"));
+        assert!(id_mismatch, "should have an ID mismatch warning");
+    }
+
+    #[test]
+    fn test_init_warnings_empty_when_all_valid() {
+        let tmp = setup_test_dir();
+        let janus_root = tmp.path().join(".janus");
+
+        let _guard = JanusRootGuard::new(&janus_root);
+
+        let store = TicketStore::init().expect("init should succeed");
+
+        // No warnings should be captured for valid files
+        let warnings = store.get_init_warnings();
+        assert!(
+            warnings.is_empty(),
+            "should have no warnings for valid files"
+        );
+        assert_eq!(warnings.count(), 0);
+        assert!(warnings.ticket_warnings().is_empty());
+        assert!(warnings.plan_warnings().is_empty());
     }
 }

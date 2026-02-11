@@ -216,6 +216,58 @@ pub fn ticket_minimal_json_with_exists(
     })
 }
 
+/// Display initialization warnings from the store if any occurred.
+///
+/// This should be called by commands that use the store and are in text (non-JSON) mode.
+/// The warnings inform users about files that were skipped during store initialization
+/// due to parse errors, IO errors, or other non-fatal issues.
+///
+/// # Arguments
+/// * `store` - The initialized ticket store
+///
+/// # Example
+/// ```ignore
+/// let store = get_or_init_store().await?;
+/// if !output_json {
+///     display_init_warnings(&store);
+/// }
+/// ```
+pub fn display_init_warnings(store: &crate::cache::TicketStore) {
+    let warnings = store.get_init_warnings();
+    let ticket_warnings = warnings.ticket_warnings();
+    let plan_warnings = warnings.plan_warnings();
+    let total_skipped = ticket_warnings.len() + plan_warnings.len();
+
+    if total_skipped == 0 {
+        return;
+    }
+
+    let ticket_count = store.get_all_tickets().len();
+    let plan_count = store.get_all_plans().len();
+
+    eprintln!(
+        "Loaded {ticket_count} tickets and {plan_count} plans ({total_skipped} files skipped due to errors)"
+    );
+
+    // Show detailed warnings in debug mode
+    #[cfg(debug_assertions)]
+    {
+        for warning in ticket_warnings.iter().chain(plan_warnings.iter()) {
+            let file_str = warning
+                .file_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            eprintln!(
+                "  Warning [{entity}]: {file_str}: {message}",
+                entity = warning.entity_type,
+                file_str = file_str,
+                message = warning.message
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
