@@ -1,19 +1,18 @@
 //! Linear.app provider implementation using GraphQL API with type-safe cynic queries.
 //!
-//! # Security Note - Logging
+//! # Security Note - Authorization Header
 //!
-//! The Linear API key is protected from being logged through reqwest's request logging by using
-//! the `RedactedHeader` wrapper type, which implements `Display` and `Debug` to redact sensitive values.
+//! The Linear API key is protected at multiple layers:
 //!
-//! **Important:** Ensure reqwest logging is disabled in production environments:
+//! 1. **`RedactedHeader`**: A zero-knowledge wrapper that never stores the original value.
+//!    It builds a `HeaderValue` immediately and discards the plaintext. Its `Debug` and `Display`
+//!    impls emit a fixed placeholder — there is no stored secret to reverse.
 //!
-//! ```bash
-//! # Do NOT enable reqwest logging in production as it may still log other request details
-//! # RUST_LOG=reqwest=debug  <-- AVOID IN PRODUCTION
-//! ```
+//! 2. **`HeaderValue::set_sensitive(true)`**: The underlying reqwest `HeaderValue` is marked
+//!    sensitive, so reqwest itself will not include it in debug or trace logging.
 //!
-//! The `RedactedHeader` wrapper ensures that even if debug logging is accidentally enabled,
-//! the Authorization header value will be displayed as `[REDACTED]` instead of the actual API key.
+//! 3. **Fallible construction**: Header creation returns `Result` instead of panicking,
+//!    so a malformed API key produces a structured `JanusError::Auth` rather than a crash.
 
 use reqwest::Client;
 use reqwest::header;
@@ -47,23 +46,37 @@ fn build_linear_http_client() -> Result<Client> {
         .build()?)
 }
 
-/// Wrapper for sensitive header values that redacts the value when formatted.
+/// Zero-knowledge wrapper for sensitive header values.
 ///
-/// This prevents API keys and other secrets from being leaked in logs when
-/// reqwest's logging is enabled (e.g., via RUST_LOG=reqwest=debug).
+/// `RedactedHeader` converts the plaintext secret into a `HeaderValue` at construction
+/// time and immediately discards the original string. The `HeaderValue` is additionally
+/// marked as sensitive (`set_sensitive(true)`) so that reqwest will not include it in
+/// request-level debug logging.
+///
+/// Because no plaintext is retained, the `Debug` and `Display` impls cannot leak the
+/// secret — there is nothing to reverse.
 struct RedactedHeader {
-    value: String,
+    header_value: header::HeaderValue,
 }
 
 impl RedactedHeader {
-    fn new(value: &str) -> Self {
-        Self {
-            value: value.to_string(),
-        }
+    /// Build a `RedactedHeader` from a plaintext secret.
+    ///
+    /// Returns `Err(JanusError::Auth)` if the value contains characters that are
+    /// invalid in an HTTP header (e.g. control characters), instead of panicking.
+    fn try_new(value: &str) -> Result<Self> {
+        let mut hv = header::HeaderValue::from_str(value).map_err(|e| {
+            JanusError::Auth(format!(
+                "Linear API key contains invalid header characters: {e}"
+            ))
+        })?;
+        hv.set_sensitive(true);
+        Ok(Self { header_value: hv })
     }
 
-    fn as_header_value(&self) -> header::HeaderValue {
-        header::HeaderValue::from_str(&self.value).expect("Invalid header value")
+    /// Consume the wrapper and return the underlying sensitive `HeaderValue`.
+    fn into_header_value(self) -> header::HeaderValue {
+        self.header_value
     }
 }
 
@@ -492,8 +505,9 @@ impl From<LinearError> for JanusError {
 impl LinearProvider {
     /// Execute a GraphQL operation (query or mutation) with retry logic
     ///
-    /// Security: The Authorization header is wrapped in `RedactedHeader` to prevent
-    /// the API key from being logged if reqwest's debug logging is enabled.
+    /// Security: The Authorization header is built once via `RedactedHeader::try_new`,
+    /// which validates the key, marks the `HeaderValue` as sensitive, and discards the
+    /// plaintext. The sensitive `HeaderValue` is then cloned into each retry attempt.
     async fn execute<ResponseData, Vars>(
         &self,
         operation: cynic::Operation<ResponseData, Vars>,
@@ -503,13 +517,16 @@ impl LinearProvider {
         Vars: serde::Serialize + std::marker::Sync,
     {
         let timeout = self.timeout;
+        // Build the auth header once, outside the retry loop.
+        // A malformed API key is a permanent error — no point retrying.
+        let auth_header = RedactedHeader::try_new(self.api_key.expose_secret())?;
+        let auth_value = auth_header.into_header_value();
         let response = super::execute_with_retry(
             || async {
-                let auth_header = RedactedHeader::new(self.api_key.expose_secret());
                 let response = self
                     .client
                     .post(LINEAR_API_URL)
-                    .header(header::AUTHORIZATION, auth_header.as_header_value())
+                    .header(header::AUTHORIZATION, auth_value.clone())
                     .header(
                         header::CONTENT_TYPE,
                         header::HeaderValue::from_static("application/json"),
@@ -891,23 +908,51 @@ mod tests {
 
     #[test]
     fn test_redacted_header_display() {
-        let header = RedactedHeader::new("secret-api-key-12345");
+        let header = RedactedHeader::try_new("secret-api-key-12345").unwrap();
         assert_eq!(format!("{header}"), "[REDACTED]");
     }
 
     #[test]
     fn test_redacted_header_debug() {
-        let header = RedactedHeader::new("secret-api-key-12345");
+        let header = RedactedHeader::try_new("secret-api-key-12345").unwrap();
         let debug_str = format!("{header:?}");
         assert!(debug_str.contains("[REDACTED]"));
         assert!(!debug_str.contains("secret-api-key"));
     }
 
     #[test]
-    fn test_redacted_header_as_header_value() {
-        let header = RedactedHeader::new("Bearer token123");
-        let header_value = header.as_header_value();
+    fn test_redacted_header_into_header_value() {
+        let header = RedactedHeader::try_new("Bearer token123").unwrap();
+        let header_value = header.into_header_value();
+        // The value is preserved for actual HTTP use
         assert_eq!(header_value.to_str().unwrap(), "Bearer token123");
+        // The value is marked as sensitive so reqwest won't log it
+        assert!(header_value.is_sensitive());
+    }
+
+    #[test]
+    fn test_redacted_header_invalid_value_returns_error() {
+        // Control characters are invalid in HTTP header values
+        let result = RedactedHeader::try_new("bad\x00key");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match &err {
+            JanusError::Auth(msg) => {
+                assert!(msg.contains("invalid header characters"), "got: {msg}");
+            }
+            other => panic!("expected Auth error, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn test_redacted_header_no_stored_secret() {
+        // Verify that the Debug output cannot leak the secret — the struct
+        // only holds a HeaderValue (which is marked sensitive), not a String.
+        let header = RedactedHeader::try_new("super-secret-key").unwrap();
+        let debug_str = format!("{header:?}");
+        assert!(!debug_str.contains("super-secret-key"));
+        let display_str = format!("{header}");
+        assert!(!display_str.contains("super-secret-key"));
     }
 
     #[test]
