@@ -55,6 +55,9 @@ enum FetchResult {
 }
 
 /// Fetch remote issues from the given provider with optional query filters
+///
+/// This operation is wrapped with a timeout from config (default 30 seconds)
+/// to prevent indefinite hanging if the remote provider is unresponsive.
 async fn fetch_remote_issues_with_query(platform: Platform, query: RemoteQuery) -> FetchResult {
     let config = match crate::config::Config::load() {
         Ok(c) => c,
@@ -63,20 +66,45 @@ async fn fetch_remote_issues_with_query(platform: Platform, query: RemoteQuery) 
         }
     };
 
-    let result = match platform {
-        Platform::GitHub => match crate::remote::github::GitHubProvider::from_config(&config) {
-            Ok(provider) => provider.list_issues(&query).await,
-            Err(e) => Err(e),
-        },
-        Platform::Linear => match crate::remote::linear::LinearProvider::from_config(&config) {
-            Ok(provider) => provider.list_issues(&query).await,
-            Err(e) => Err(e),
-        },
+    let timeout = config.remote_timeout();
+
+    let fetch_operation = async {
+        match platform {
+            Platform::GitHub => match crate::remote::github::GitHubProvider::from_config(&config) {
+                Ok(provider) => provider.list_issues(&query).await,
+                Err(e) => Err(e),
+            },
+            Platform::Linear => match crate::remote::linear::LinearProvider::from_config(&config) {
+                Ok(provider) => provider.list_issues(&query).await,
+                Err(e) => Err(e),
+            },
+        }
+    };
+
+    let result = match tokio::time::timeout(timeout, fetch_operation).await {
+        Ok(result) => result,
+        Err(_) => {
+            return FetchResult::Error(
+                "TimeoutError".to_string(),
+                format!(
+                    "Remote operation timed out after {} seconds",
+                    timeout.as_secs()
+                ),
+            );
+        }
     };
 
     match result {
         Ok(issues) => FetchResult::Success(issues),
-        Err(e) => FetchResult::Error("FetchError".to_string(), e.to_string()),
+        Err(e) => {
+            // Check if it's a timeout error from the inner retry mechanism
+            let error_msg = if let crate::error::JanusError::RemoteTimeout { seconds } = &e {
+                format!("Remote operation timed out after {seconds} seconds")
+            } else {
+                e.to_string()
+            };
+            FetchResult::Error("FetchError".to_string(), error_msg)
+        }
     }
 }
 

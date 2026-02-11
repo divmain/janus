@@ -36,6 +36,14 @@ pub struct Config {
     /// Semantic search configuration
     #[serde(default, skip_serializing_if = "SemanticSearchConfig::is_default")]
     pub semantic_search: SemanticSearchConfig,
+
+    /// Remote operation timeout in seconds (default: 30)
+    #[serde(default = "default_remote_timeout")]
+    pub remote_timeout: u64,
+}
+
+fn default_remote_timeout() -> u64 {
+    30
 }
 
 /// Authentication configuration
@@ -283,6 +291,16 @@ impl Config {
     /// Set semantic search enabled status
     pub fn set_semantic_search_enabled(&mut self, enabled: bool) {
         self.semantic_search.enabled = enabled;
+    }
+
+    /// Get the remote operation timeout duration
+    pub fn remote_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.remote_timeout)
+    }
+
+    /// Set the remote operation timeout in seconds
+    pub fn set_remote_timeout(&mut self, seconds: u64) {
+        self.remote_timeout = seconds;
     }
 }
 

@@ -378,6 +378,8 @@ pub struct LinearProvider {
     default_team_id: Option<String>,
     /// Cache mapping external issue identifier (e.g., "ENG-123") to internal UUID for mutations
     issue_id_cache: Arc<RwLock<HashMap<String, String>>>,
+    /// Timeout for remote operations
+    timeout: std::time::Duration,
 }
 
 impl LinearProvider {
@@ -407,6 +409,7 @@ impl LinearProvider {
             default_org,
             default_team_id: None,
             issue_id_cache: Arc::new(RwLock::new(HashMap::new())),
+            timeout: config.remote_timeout(),
         })
     }
 
@@ -422,6 +425,7 @@ impl LinearProvider {
             default_org: None,
             default_team_id: None,
             issue_id_cache: Arc::new(RwLock::new(HashMap::new())),
+            timeout: std::time::Duration::from_secs(30),
         }
     }
 
@@ -498,36 +502,43 @@ impl LinearProvider {
         ResponseData: serde::de::DeserializeOwned + 'static,
         Vars: serde::Serialize + std::marker::Sync,
     {
-        let response = super::execute_with_retry(|| async {
-            let auth_header = RedactedHeader::new(self.api_key.expose_secret());
-            let response = self
-                .client
-                .post(LINEAR_API_URL)
-                .header(header::AUTHORIZATION, auth_header.as_header_value())
-                .header(
-                    header::CONTENT_TYPE,
-                    header::HeaderValue::from_static("application/json"),
-                )
-                .json(&operation)
-                .send()
-                .await?;
+        let timeout = self.timeout;
+        let response = super::execute_with_retry(
+            || async {
+                let auth_header = RedactedHeader::new(self.api_key.expose_secret());
+                let response = self
+                    .client
+                    .post(LINEAR_API_URL)
+                    .header(header::AUTHORIZATION, auth_header.as_header_value())
+                    .header(
+                        header::CONTENT_TYPE,
+                        header::HeaderValue::from_static("application/json"),
+                    )
+                    .json(&operation)
+                    .send()
+                    .await?;
 
-            let status = response.status();
+                let status = response.status();
 
-            if !status.is_success() {
-                let retry_after = response
-                    .headers()
-                    .get("Retry-After")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|s| s.parse::<u64>().ok());
-                let error =
-                    super::error::ApiError::with_status(format!("HTTP {status}"), "Linear", status)
-                        .with_retry_after(retry_after.unwrap_or(60));
-                return Err(LinearError { inner: error });
-            }
+                if !status.is_success() {
+                    let retry_after = response
+                        .headers()
+                        .get("Retry-After")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.parse::<u64>().ok());
+                    let error = super::error::ApiError::with_status(
+                        format!("HTTP {status}"),
+                        "Linear",
+                        status,
+                    )
+                    .with_retry_after(retry_after.unwrap_or(60));
+                    return Err(LinearError { inner: error });
+                }
 
-            Ok(response)
-        })
+                Ok(response)
+            },
+            Some(timeout),
+        )
         .await?;
 
         let result: GraphQlResponse<ResponseData, ErrorExtensions> = response.json().await?;

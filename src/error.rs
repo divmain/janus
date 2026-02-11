@@ -415,6 +415,9 @@ pub enum JanusError {
     #[error("embedding generation timed out after {seconds} seconds")]
     EmbeddingTimeout { seconds: u64 },
 
+    #[error("remote operation timed out after {seconds} seconds")]
+    RemoteTimeout { seconds: u64 },
+
     #[error("blocking task failed: {0}")]
     BlockingTaskFailed(String),
 

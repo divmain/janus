@@ -494,7 +494,14 @@ impl Default for RetryConfig {
     }
 }
 
-async fn execute_with_retry<T, E, F, Fut>(operation: F) -> Result<T>
+/// Execute an operation with retry logic and optional timeout
+///
+/// The timeout applies to the entire operation (all retry attempts combined).
+/// If the timeout is exceeded, a `RemoteTimeout` error is returned.
+async fn execute_with_retry<T, E, F, Fut>(
+    operation: F,
+    timeout: Option<std::time::Duration>,
+) -> Result<T>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = std::result::Result<T, E>>,
@@ -503,41 +510,56 @@ where
     let config = RetryConfig::default();
     let mut errors: Vec<String> = Vec::new();
 
-    for attempt in 0..config.max_attempts {
-        let fut = operation();
-        match fut.await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                let should_retry = if let Some((status, _retry_after)) = e.as_http_error() {
-                    attempt < config.max_attempts - 1
-                        && (status.as_u16() == 429 || status.is_server_error())
-                } else {
-                    e.is_transient() && attempt < config.max_attempts - 1
-                };
+    // Create the retry operation
+    let retry_operation = async {
+        for attempt in 0..config.max_attempts {
+            let fut = operation();
+            match fut.await {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    let should_retry = if let Some((status, _retry_after)) = e.as_http_error() {
+                        attempt < config.max_attempts - 1
+                            && (status.as_u16() == 429 || status.is_server_error())
+                    } else {
+                        e.is_transient() && attempt < config.max_attempts - 1
+                    };
 
-                if !should_retry {
-                    return Err(e.into());
+                    if !should_retry {
+                        return Err(e.into());
+                    }
+
+                    if let Some((status, retry_after)) = e.as_http_error()
+                        && status.as_u16() == 429
+                    {
+                        let delay = retry_after.unwrap_or(60);
+                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                    } else {
+                        let delay_ms = config.base_delay.as_millis() as u64 * 2u64.pow(attempt);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    }
+
+                    errors.push(e.to_string());
                 }
-
-                if let Some((status, retry_after)) = e.as_http_error()
-                    && status.as_u16() == 429
-                {
-                    let delay = retry_after.unwrap_or(60);
-                    tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-                } else {
-                    let delay_ms = config.base_delay.as_millis() as u64 * 2u64.pow(attempt);
-                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                }
-
-                errors.push(e.to_string());
             }
         }
-    }
 
-    Err(JanusError::RetryFailed {
-        attempts: config.max_attempts,
-        errors,
-    })
+        Err(JanusError::RetryFailed {
+            attempts: config.max_attempts,
+            errors,
+        })
+    };
+
+    // Apply timeout if specified
+    if let Some(timeout_duration) = timeout {
+        match tokio::time::timeout(timeout_duration, retry_operation).await {
+            Ok(result) => result,
+            Err(_) => Err(JanusError::RemoteTimeout {
+                seconds: timeout_duration.as_secs(),
+            }),
+        }
+    } else {
+        retry_operation.await
+    }
 }
 
 /// Common interface for remote providers

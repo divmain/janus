@@ -22,6 +22,8 @@ pub struct GitHubProvider {
     default_owner: Option<String>,
     /// Default repo for creating issues
     default_repo: Option<String>,
+    /// Timeout for remote operations
+    timeout: std::time::Duration,
 }
 
 impl fmt::Debug for GitHubProvider {
@@ -70,6 +72,7 @@ impl GitHubProvider {
             token: SecretBox::new(Box::new(token)),
             default_owner,
             default_repo,
+            timeout: config.remote_timeout(),
         })
     }
 
@@ -96,6 +99,7 @@ impl GitHubProvider {
             token: SecretBox::new(Box::new(token_owned)),
             default_owner: None,
             default_repo: None,
+            timeout: std::time::Duration::from_secs(30),
         })
     }
 
@@ -249,13 +253,17 @@ impl RemoteProvider for GitHubProvider {
             };
 
             let client = self.client.clone();
-            let issue = super::execute_with_retry(|| async {
-                client
-                    .issues(owner, repo)
-                    .get(issue_number)
-                    .await
-                    .map_err(GitHubError::from)
-            })
+            let timeout = self.timeout;
+            let issue = super::execute_with_retry(
+                || async {
+                    client
+                        .issues(owner, repo)
+                        .get(issue_number)
+                        .await
+                        .map_err(GitHubError::from)
+                },
+                Some(timeout),
+            )
             .await
             .map_err(|e| {
                 if let JanusError::Api(msg) = &e
@@ -284,15 +292,19 @@ impl RemoteProvider for GitHubProvider {
             let repo = repo.to_string();
 
             let client = self.client.clone();
-            let issue = super::execute_with_retry(|| async {
-                client
-                    .issues(&owner, &repo)
-                    .create(&title)
-                    .body(&body)
-                    .send()
-                    .await
-                    .map_err(GitHubError::from)
-            })
+            let timeout = self.timeout;
+            let issue = super::execute_with_retry(
+                || async {
+                    client
+                        .issues(&owner, &repo)
+                        .create(&title)
+                        .body(&body)
+                        .send()
+                        .await
+                        .map_err(GitHubError::from)
+                },
+                Some(timeout),
+            )
             .await?;
 
             Ok(RemoteRef::GitHub {
@@ -340,21 +352,25 @@ impl RemoteProvider for GitHubProvider {
             let client = self.client.clone();
             let owner = owner.to_string();
             let repo = repo.to_string();
+            let timeout = self.timeout;
 
-            let _ = super::execute_with_retry(|| async {
-                let issues = client.issues(&owner, &repo);
-                let mut builder = issues.update(issue_number);
-                if let Some(t) = &title {
-                    builder = builder.title(t);
-                }
-                if let Some(b) = &body {
-                    builder = builder.body(b);
-                }
-                if let Some(s) = &state {
-                    builder = builder.state(s.clone());
-                }
-                builder.send().await.map_err(GitHubError::from)
-            })
+            let _ = super::execute_with_retry(
+                || async {
+                    let issues = client.issues(&owner, &repo);
+                    let mut builder = issues.update(issue_number);
+                    if let Some(t) = &title {
+                        builder = builder.title(t);
+                    }
+                    if let Some(b) = &body {
+                        builder = builder.body(b);
+                    }
+                    if let Some(s) = &state {
+                        builder = builder.state(s.clone());
+                    }
+                    builder.send().await.map_err(GitHubError::from)
+                },
+                Some(timeout),
+            )
             .await?;
 
             Ok(())
@@ -372,15 +388,19 @@ impl RemoteProvider for GitHubProvider {
             let owner = owner.to_string();
             let repo = repo.to_string();
 
-            let result = super::execute_with_retry(|| async {
-                client
-                    .issues(&owner, &repo)
-                    .list()
-                    .per_page(query.limit.min(100) as u8)
-                    .send()
-                    .await
-                    .map_err(GitHubError::from)
-            })
+            let timeout = self.timeout;
+            let result = super::execute_with_retry(
+                || async {
+                    client
+                        .issues(&owner, &repo)
+                        .list()
+                        .per_page(query.limit.min(100) as u8)
+                        .send()
+                        .await
+                        .map_err(GitHubError::from)
+                },
+                Some(timeout),
+            )
             .await?;
 
             let issues: Vec<RemoteIssue> = result
@@ -407,16 +427,20 @@ impl RemoteProvider for GitHubProvider {
             let owner = owner.to_string();
             let repo = repo.to_string();
             let query_str = format!("repo:{owner}/{repo} is:issue {text}");
+            let timeout = self.timeout;
 
-            let result = super::execute_with_retry(|| async {
-                client
-                    .search()
-                    .issues_and_pull_requests(&query_str)
-                    .per_page(limit.min(100) as u8)
-                    .send()
-                    .await
-                    .map_err(GitHubError::from)
-            })
+            let result = super::execute_with_retry(
+                || async {
+                    client
+                        .search()
+                        .issues_and_pull_requests(&query_str)
+                        .per_page(limit.min(100) as u8)
+                        .send()
+                        .await
+                        .map_err(GitHubError::from)
+                },
+                Some(timeout),
+            )
             .await?;
 
             let issues: Vec<RemoteIssue> = result
