@@ -751,8 +751,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         }
     });
 
-    // Filter modal click handlers
-    let filter_status_click_handler = hooks.use_async_handler({
+    // Filter modal click handler
+    let filter_limit_click_handler = hooks.use_async_handler({
         clone_states!(filter_state);
         move |()| {
             let mut filter_state = filter_state.clone();
@@ -760,33 +760,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 let state = filter_state.read().clone();
                 if let Some(mut s) = state {
                     s.focused_field = 0;
-                    s.toggle_status();
-                    filter_state.set(Some(s));
-                }
-            }
-        }
-    });
-    let filter_assignee_click_handler = hooks.use_async_handler({
-        clone_states!(filter_state);
-        move |()| {
-            let mut filter_state = filter_state.clone();
-            async move {
-                let state = filter_state.read().clone();
-                if let Some(mut s) = state {
-                    s.focused_field = 1;
-                    filter_state.set(Some(s));
-                }
-            }
-        }
-    });
-    let filter_labels_click_handler = hooks.use_async_handler({
-        clone_states!(filter_state);
-        move |()| {
-            let mut filter_state = filter_state.clone();
-            async move {
-                let state = filter_state.read().clone();
-                if let Some(mut s) = state {
-                    s.focused_field = 2;
                     filter_state.set(Some(s));
                 }
             }
@@ -1134,9 +1107,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
             // Modal overlays
             ModalOverlays(
                 filter_state: filter_state_clone,
-                on_filter_status_click: Some(filter_status_click_handler.clone()),
-                on_filter_assignee_click: Some(filter_assignee_click_handler.clone()),
-                on_filter_labels_click: Some(filter_labels_click_handler.clone()),
+                on_filter_limit_click: Some(filter_limit_click_handler.clone()),
                 show_help_modal: modal_visibility_ref.show_help,
                 help_modal_scroll: modal_visibility_ref.help_scroll,
                 on_help_scroll_up: Some(help_scroll_up_handler.clone()),

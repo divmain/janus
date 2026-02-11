@@ -406,24 +406,17 @@ impl IssueUpdates {
     }
 }
 
-/// Query parameters for listing/filtering remote issues
+/// Query parameters for listing remote issues
+///
+/// Note: Only `limit` is supported by all providers. The `cursor` field
+/// is used by Linear for pagination. Other filtering must be done client-side
+/// after fetching results.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RemoteQuery {
-    pub search: Option<String>,
-    pub assignee: Option<String>,
-    pub status: Option<RemoteStatusFilter>,
-    pub labels: Option<Vec<String>>,
-    pub since: Option<String>,
-    pub team: Option<String>,
-    pub project: Option<String>,
-    pub priority: Option<Vec<u8>>,
-    pub cycle: Option<String>,
-    pub milestone: Option<String>,
-    pub creator: Option<String>,
+    /// Maximum number of issues to return (supported by all providers)
     pub limit: u32,
+    /// Pagination cursor (Linear only)
     pub cursor: Option<String>,
-    pub sort_by: Option<SortField>,
-    pub sort_direction: Option<SortDirection>,
 }
 
 impl RemoteQuery {
@@ -433,32 +426,6 @@ impl RemoteQuery {
             ..Default::default()
         }
     }
-}
-
-/// Remote status filter
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RemoteStatusFilter {
-    Open,
-    Closed,
-    All,
-}
-
-/// Sort field for remote issues
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum SortField {
-    Created,
-    #[default]
-    Updated,
-    Priority,
-}
-
-/// Sort direction
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum SortDirection {
-    Asc,
-    #[default]
-    Desc,
 }
 
 /// Trait for extracting HTTP error information
@@ -789,21 +756,13 @@ mod tests {
     }
 
     #[test]
-    fn test_remote_query_with_filters() {
+    fn test_remote_query_with_cursor() {
         let mut query = RemoteQuery::new();
-        query.limit = 100;
-        query.search = Some("test".to_string());
-        query.status = Some(RemoteStatusFilter::Open);
+        query.limit = 50;
+        query.cursor = Some("abc123".to_string());
 
-        assert_eq!(query.limit, 100);
-        assert_eq!(query.search, Some("test".to_string()));
-        assert_eq!(query.status, Some(RemoteStatusFilter::Open));
-    }
-
-    #[test]
-    fn test_sort_field_defaults() {
-        assert_eq!(SortDirection::default(), SortDirection::Desc);
-        assert_eq!(SortField::default(), SortField::Updated);
+        assert_eq!(query.limit, 50);
+        assert_eq!(query.cursor, Some("abc123".to_string()));
     }
 
     #[test]

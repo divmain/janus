@@ -1,10 +1,12 @@
 //! Filter modal for remote TUI
 //!
-//! Provides advanced filtering of remote issues by status, assignee, labels, etc.
+//! Provides pagination controls for remote issue listing.
+//! Note: Server-side filtering is not supported by remote providers.
+//! All filtering must be done client-side after fetching results.
 
 use iocraft::prelude::*;
 
-use crate::remote::{RemoteQuery, RemoteStatusFilter};
+use crate::remote::RemoteQuery;
 use crate::tui::components::{
     Clickable, ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth,
 };
@@ -12,12 +14,8 @@ use crate::tui::components::{
 /// Filter modal state
 #[derive(Debug, Clone, Default)]
 pub struct FilterState {
-    /// Current status filter
-    pub status: Option<RemoteStatusFilter>,
-    /// Assignee filter
-    pub assignee: String,
-    /// Labels filter (comma-separated)
-    pub labels: String,
+    /// Page size limit
+    pub limit: u32,
     /// Current focused field index
     pub focused_field: usize,
 }
@@ -26,13 +24,7 @@ impl FilterState {
     /// Create a new filter state from an existing query
     pub fn from_query(query: &RemoteQuery) -> Self {
         Self {
-            status: query.status,
-            assignee: query.assignee.clone().unwrap_or_default(),
-            labels: query
-                .labels
-                .as_ref()
-                .map(|l| l.join(", "))
-                .unwrap_or_default(),
+            limit: query.limit,
             focused_field: 0,
         }
     }
@@ -40,63 +32,41 @@ impl FilterState {
     /// Convert to a RemoteQuery
     pub fn to_query(&self, base: &RemoteQuery) -> RemoteQuery {
         let mut query = base.clone();
-        query.status = self.status;
-        query.assignee = if self.assignee.is_empty() {
-            None
-        } else {
-            Some(self.assignee.clone())
-        };
-        query.labels = if self.labels.is_empty() {
-            None
-        } else {
-            Some(
-                self.labels
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
-            )
-        };
+        query.limit = self.limit;
         query
     }
 
-    /// Number of filterable fields
-    pub const FIELD_COUNT: usize = 3;
+    /// Number of configurable fields
+    pub const FIELD_COUNT: usize = 1;
 
-    /// Move focus to next field
+    /// Move focus to next field (no-op with only one field)
     pub fn focus_next(&mut self) {
-        self.focused_field = (self.focused_field + 1) % Self::FIELD_COUNT;
+        // With only one field, focus doesn't change
     }
 
-    /// Move focus to previous field
+    /// Move focus to previous field (no-op with only one field)
     pub fn focus_prev(&mut self) {
-        if self.focused_field == 0 {
-            self.focused_field = Self::FIELD_COUNT - 1;
-        } else {
-            self.focused_field -= 1;
-        }
+        // With only one field, focus doesn't change
     }
 
-    /// Toggle status filter value
-    pub fn toggle_status(&mut self) {
-        self.status = match self.status {
-            None => Some(RemoteStatusFilter::Open),
-            Some(RemoteStatusFilter::Open) => Some(RemoteStatusFilter::Closed),
-            Some(RemoteStatusFilter::Closed) => Some(RemoteStatusFilter::All),
-            Some(RemoteStatusFilter::All) => None,
-        };
+    /// Increase limit
+    pub fn increase_limit(&mut self) {
+        self.limit = (self.limit + 10).min(100);
     }
 
-    /// Check if any filter is active
+    /// Decrease limit
+    pub fn decrease_limit(&mut self) {
+        self.limit = self.limit.saturating_sub(10).max(10);
+    }
+
+    /// Check if any filter is active (always false now since we only have limit)
     pub fn has_active_filters(&self) -> bool {
-        self.status.is_some() || !self.assignee.is_empty() || !self.labels.is_empty()
+        false
     }
 
-    /// Clear all filters
+    /// Reset to defaults
     pub fn clear(&mut self) {
-        self.status = None;
-        self.assignee.clear();
-        self.labels.clear();
+        self.limit = 100;
     }
 }
 
@@ -106,12 +76,8 @@ pub struct FilterModalProps {
     pub state: FilterState,
     /// Handler invoked when modal is closed via X button
     pub on_close: Option<Handler<()>>,
-    /// Handler invoked when status field is clicked (focus + toggle)
-    pub on_status_click: Option<Handler<()>>,
-    /// Handler invoked when assignee field is clicked (focus)
-    pub on_assignee_click: Option<Handler<()>>,
-    /// Handler invoked when labels field is clicked (focus)
-    pub on_labels_click: Option<Handler<()>>,
+    /// Handler invoked when limit field is clicked
+    pub on_limit_click: Option<Handler<()>>,
 }
 
 /// Filter modal component
@@ -119,97 +85,41 @@ pub struct FilterModalProps {
 pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
     let state = &props.state;
 
-    let status_str = match state.status {
-        None => "All",
-        Some(RemoteStatusFilter::Open) => "Open",
-        Some(RemoteStatusFilter::Closed) => "Closed",
-        Some(RemoteStatusFilter::All) => "All",
-    };
-
-    // Determine visual styles based on focus state
-    let status_focused = state.focused_field == 0;
-    let assignee_focused = state.focused_field == 1;
-    let labels_focused = state.focused_field == 2;
+    let limit_focused = state.focused_field == 0;
 
     element! {
         ModalOverlay() {
             ModalContainer(
                 width: Some(ModalWidth::Fixed(60)),
-                height: Some(ModalHeight::Fixed(16)),
+                height: Some(ModalHeight::Fixed(10)),
                 border_color: Some(ModalBorderColor::Info),
-                title: Some("Filter Remote Issues".to_string()),
-                footer_text: Some("Tab/j/k: navigate | Enter: toggle/edit | x: clear | Esc: cancel".to_string()),
+                title: Some("Remote Query Settings".to_string()),
+                footer_text: Some("Tab: focus | +/-: adjust | r: reset | Enter/Esc: close".to_string()),
                 on_close: props.on_close.clone(),
             ) {
-                // Status field - clickable to focus and toggle
+                Text(content: "Note: Server-side filtering is not supported.")
+                Text(content: "Use client-side search (/) after fetching results.")
+                Text(content: "")
+
+                // Limit field - clickable to focus
                 Clickable(
-                    on_click: props.on_status_click.clone(),
+                    on_click: props.on_limit_click.clone(),
                 ) {
                     View(
                         width: 100pct,
                         flex_direction: FlexDirection::Row,
-                        background_color: if status_focused { Some(Color::DarkBlue) } else { None },
+                        background_color: if limit_focused { Some(Color::DarkBlue) } else { None },
                     ) {
                         Text(
-                            content: "Status: ",
-                            color: if status_focused { Color::Yellow } else { Color::White },
+                            content: "Page Size: ",
+                            color: if limit_focused { Color::Yellow } else { Color::White },
                         )
                         Text(
-                            content: format!("[{}]", status_str),
+                            content: format!("[{}]", state.limit),
                             color: Color::Cyan,
                         )
                         Text(
-                            content: if status_focused { " (click or Enter to toggle)" } else { "" },
-                            color: Color::DarkGrey,
-                        )
-                    }
-                }
-                Text(content: "")
-
-                // Assignee field - clickable to focus
-                Clickable(
-                    on_click: props.on_assignee_click.clone(),
-                ) {
-                    View(
-                        width: 100pct,
-                        flex_direction: FlexDirection::Row,
-                        background_color: if assignee_focused { Some(Color::DarkBlue) } else { None },
-                    ) {
-                        Text(
-                            content: "Assignee: ",
-                            color: if assignee_focused { Color::Yellow } else { Color::White },
-                        )
-                        Text(
-                            content: if state.assignee.is_empty() { "(any)" } else { &state.assignee },
-                            color: if state.assignee.is_empty() { Color::DarkGrey } else { Color::Cyan },
-                        )
-                        Text(
-                            content: if assignee_focused { " (Enter to apply)" } else { "" },
-                            color: Color::DarkGrey,
-                        )
-                    }
-                }
-                Text(content: "")
-
-                // Labels field - clickable to focus
-                Clickable(
-                    on_click: props.on_labels_click.clone(),
-                ) {
-                    View(
-                        width: 100pct,
-                        flex_direction: FlexDirection::Row,
-                        background_color: if labels_focused { Some(Color::DarkBlue) } else { None },
-                    ) {
-                        Text(
-                            content: "Labels: ",
-                            color: if labels_focused { Color::Yellow } else { Color::White },
-                        )
-                        Text(
-                            content: if state.labels.is_empty() { "(any)" } else { &state.labels },
-                            color: if state.labels.is_empty() { Color::DarkGrey } else { Color::Cyan },
-                        )
-                        Text(
-                            content: if labels_focused { " (Enter to apply)" } else { "" },
+                            content: if limit_focused { " (+/- to adjust)" } else { "" },
                             color: Color::DarkGrey,
                         )
                     }

@@ -15,12 +15,8 @@ use crate::tui::remote::sync_preview::{SyncPreview, SyncPreviewState};
 pub struct ModalOverlaysProps {
     /// Filter modal state (Some if modal should be shown)
     pub filter_state: Option<FilterState>,
-    /// Handler for filter modal status field click (focus + toggle)
-    pub on_filter_status_click: Option<Handler<()>>,
-    /// Handler for filter modal assignee field click (focus)
-    pub on_filter_assignee_click: Option<Handler<()>>,
-    /// Handler for filter modal labels field click (focus)
-    pub on_filter_labels_click: Option<Handler<()>>,
+    /// Handler for filter modal limit field click
+    pub on_filter_limit_click: Option<Handler<()>>,
     /// Whether to show the help modal
     pub show_help_modal: bool,
     /// Help modal scroll offset
@@ -59,9 +55,7 @@ pub fn ModalOverlays(props: &ModalOverlaysProps) -> impl Into<AnyElement<'static
                     FilterModal(
                         state: state_clone,
                         on_close: None,
-                        on_status_click: props.on_filter_status_click.clone(),
-                        on_assignee_click: props.on_filter_assignee_click.clone(),
-                        on_labels_click: props.on_filter_labels_click.clone(),
+                        on_limit_click: props.on_filter_limit_click.clone(),
                     )
                 }
             }))
