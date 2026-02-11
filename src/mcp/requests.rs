@@ -123,6 +123,16 @@ impl CreateTicketRequest {
     /// Returns Ok if valid, Err with message if invalid.
     pub(crate) fn validate(&self) -> Result<(), String> {
         validate_title(&self.title)?;
+
+        // Validate priority range (0-4)
+        if let Some(p) = self.priority {
+            if p > 4 {
+                return Err(format!(
+                    "Priority must be between 0 (highest) and 4 (lowest), got {p}"
+                ));
+            }
+        }
+
         if let Some(ref desc) = self.description {
             validate_description(desc, "Description")?;
         }
