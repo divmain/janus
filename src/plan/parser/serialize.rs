@@ -31,32 +31,51 @@ use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection, Tick
 pub fn serialize_plan(metadata: &PlanMetadata) -> String {
     let mut output = String::new();
 
-    // 1. Generate YAML frontmatter
-    output.push_str("---\n");
+    // 1. Generate YAML frontmatter by building a single mapping
+    // This ensures complex values (sequences, maps, multiline strings) are properly serialized
+    let mut frontmatter_mapping = serde_yaml_ng::Mapping::new();
+
+    // Add known fields
     if let Some(ref id) = metadata.id {
-        output.push_str(&format!("id: {id}\n"));
+        frontmatter_mapping.insert(
+            serde_yaml_ng::Value::String("id".to_string()),
+            serde_yaml_ng::Value::String(id.as_ref().to_string()),
+        );
     }
     if let Some(ref uuid) = metadata.uuid {
-        output.push_str(&format!("uuid: {uuid}\n"));
+        frontmatter_mapping.insert(
+            serde_yaml_ng::Value::String("uuid".to_string()),
+            serde_yaml_ng::Value::String(uuid.clone()),
+        );
     }
     if let Some(ref created) = metadata.created {
-        output.push_str(&format!("created: {created}\n"));
+        frontmatter_mapping.insert(
+            serde_yaml_ng::Value::String("created".to_string()),
+            serde_yaml_ng::Value::String(created.as_ref().to_string()),
+        );
     }
-    // Write any extra/unknown frontmatter fields for round-trip preservation
+
+    // Add extra/unknown frontmatter fields for round-trip preservation
     if let Some(ref extra) = metadata.extra_frontmatter {
         let mut keys: Vec<&String> = extra.keys().collect();
         keys.sort(); // deterministic output order
         for key in keys {
             let value = &extra[key];
-            // This value was parsed from YAML, so it should always serialize successfully.
-            // If it fails, it's a bug in serde_yaml_ng that we should catch immediately.
-            let yaml_str = serde_yaml_ng::to_string(value)
-                .expect("serde_yaml_ng::Value should always serialize");
-            let yaml_str = yaml_str.trim_end();
-            output.push_str(&format!("{key}: {yaml_str}\n"));
+            frontmatter_mapping.insert(serde_yaml_ng::Value::String(key.clone()), value.clone());
         }
     }
-    output.push_str("---\n");
+
+    // Serialize the complete frontmatter mapping
+    if !frontmatter_mapping.is_empty() {
+        let yaml_str = serde_yaml_ng::to_string(&frontmatter_mapping)
+            .expect("frontmatter mapping should always serialize");
+        output.push_str("---\n");
+        output.push_str(&yaml_str);
+        // serde_yaml_ng output ends with a newline, add the closing ---
+        output.push_str("---\n");
+    } else {
+        output.push_str("---\n---\n");
+    }
 
     // 2. Generate H1 title
     if let Some(ref title) = metadata.title {

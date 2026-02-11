@@ -48,7 +48,7 @@ pub fn mark_recently_edited(ticket_id: &str) {
 /// Check if a ticket ID was recently edited (and the TTL hasn't expired).
 fn is_recently_edited(ticket_id: &str) -> bool {
     let map = get_recently_edited();
-    
+
     // Clean up expired entries while we're checking
     let now = std::time::Instant::now();
     let expired: Vec<String> = map
@@ -59,12 +59,12 @@ fn is_recently_edited(ticket_id: &str) -> bool {
     for key in expired {
         map.remove(&key);
     }
-    
+
     // Check if this ticket is still in the map
     if let Some(entry) = map.get(ticket_id) {
         return now.duration_since(*entry.value()) <= RECENTLY_EDITED_TTL;
     }
-    
+
     false
 }
 
@@ -577,7 +577,7 @@ fn process_batch(
         .into_iter()
         .filter(|id| !is_recently_edited(id))
         .collect();
-    
+
     // Only broadcast if there are non-suppressed ticket changes
     if !non_suppressed_ids.is_empty() {
         // If only a single ticket changed and it's not suppressed, we could
@@ -586,7 +586,7 @@ fn process_batch(
     }
     // Note: Suppressed broadcasts (for recently edited tickets) are intentionally silent
     // to avoid interfering with the TUI display.
-    
+
     if plans_changed {
         let _ = broadcast_tx.send(StoreEvent::PlansChanged);
     }
@@ -644,7 +644,7 @@ fn process_retries(
         .into_iter()
         .filter(|id| !is_recently_edited(id))
         .collect();
-    
+
     if !non_suppressed_ids.is_empty() {
         let _ = broadcast_tx.send(StoreEvent::TicketsChanged);
     }

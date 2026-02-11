@@ -200,11 +200,10 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                 crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
                 // Then refresh in the local tickets list
                 let current = all_tickets.read().clone();
-                let tickets =
-                    crate::tui::repository::TicketRepository::refresh_single_ticket(
-                        current, &ticket_id,
-                    )
-                    .await;
+                let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
+                    current, &ticket_id,
+                )
+                .await;
                 all_tickets.set(tickets);
                 pending_setter.set(None);
                 toast.set(Some(Toast::success(format!("Saved {ticket_id}"))));

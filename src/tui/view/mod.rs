@@ -320,7 +320,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
     // Handle edit form result using shared EditFormState
     // Stores the ticket_id that needs granular refresh (avoids full reload flickering)
-        let mut pending_ticket_refresh: State<Option<String>> = hooks.use_state(|| None);
+    let mut pending_ticket_refresh: State<Option<String>> = hooks.use_state(|| None);
     {
         let mut edit_state = EditFormState {
             mode: &mut edit_mode,
@@ -348,11 +348,10 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
                 // Then refresh in the local tickets list
                 let current = all_tickets.read().clone();
-                let tickets =
-                    crate::tui::repository::TicketRepository::refresh_single_ticket(
-                        current, &ticket_id,
-                    )
-                    .await;
+                let tickets = crate::tui::repository::TicketRepository::refresh_single_ticket(
+                    current, &ticket_id,
+                )
+                .await;
                 all_tickets.set(tickets);
                 pending_setter.set(None);
                 toast.set(Some(Toast::success(format!("Saved {ticket_id}"))));
