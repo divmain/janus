@@ -388,3 +388,109 @@ pub(super) fn log_hook_failure(hook_name: &str, error: &JanusError) {
         }
     }
 }
+
+/// Result of executing a hook script.
+#[derive(Debug)]
+pub struct HookExecutionResult {
+    /// Whether the hook succeeded
+    pub success: bool,
+    /// Exit code (None if process was killed or didn't exit normally)
+    pub exit_code: Option<i32>,
+    /// Standard output from the hook
+    pub stdout: String,
+    /// Standard error from the hook
+    pub stderr: String,
+    /// Environment variables that were set
+    pub env_vars: HashMap<String, String>,
+}
+
+/// Execute a hook script and return detailed results.
+///
+/// This is the primary hook execution API used by both the internal hook system
+/// and the CLI "hook run" command. It provides complete execution logic including:
+/// - Script name validation (path traversal prevention)
+/// - Path resolution and security checks
+/// - Environment variable construction
+/// - Timeout enforcement
+/// - Output capture
+///
+/// # Arguments
+/// * `event` - The hook event being run
+/// * `script_name` - The name of the script (relative to .janus/hooks/)
+/// * `context` - The context to pass to the hook script
+/// * `timeout_secs` - Timeout in seconds (0 for no timeout)
+///
+/// # Returns
+/// * `Ok(HookExecutionResult)` with execution details
+/// * `Err` if the script is not found or security checks fail
+pub async fn execute_hook_with_result(
+    event: HookEvent,
+    script_name: &str,
+    context: &HookContext,
+    timeout_secs: u64,
+) -> Result<HookExecutionResult> {
+    let (script_path, env_vars, j_root) = prepare_hook_execution(event, script_name, context)?;
+
+    let mut cmd = TokioCommand::new(&script_path);
+    cmd.envs(&env_vars);
+    cmd.current_dir(&j_root);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    if timeout_secs == 0 {
+        // No timeout - just run and collect output
+        let output = cmd.output().await?;
+        let success = output.status.success();
+        let exit_code = output.status.code();
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+        Ok(HookExecutionResult {
+            success,
+            exit_code,
+            stdout,
+            stderr,
+            env_vars,
+        })
+    } else {
+        // With timeout
+        let mut child = cmd.spawn()?;
+
+        match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
+            Ok(Ok(status)) => {
+                let output = child.wait_with_output().await?;
+                let success = status.success();
+                let exit_code = status.code();
+                let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+                Ok(HookExecutionResult {
+                    success,
+                    exit_code,
+                    stdout,
+                    stderr,
+                    env_vars,
+                })
+            }
+            Ok(Err(e)) => Err(JanusError::Io(e)),
+            Err(_) => {
+                // Timeout occurred
+                if let Err(e) = child.kill().await {
+                    eprintln!("Warning: failed to kill timed-out hook '{script_name}': {e}");
+                }
+                // Give it a moment to clean up
+                match timeout(Duration::from_secs(5), child.wait()).await {
+                    Ok(_) => {}
+                    Err(_) => {
+                        eprintln!("Warning: hook '{script_name}' did not terminate after SIGKILL")
+                    }
+                }
+
+                Err(JanusError::HookTimeout {
+                    hook_name: script_name.to_string(),
+                    seconds: timeout_secs,
+                })
+            }
+        }
+    }
+}

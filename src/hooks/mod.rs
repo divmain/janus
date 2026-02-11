@@ -32,7 +32,7 @@
 mod runner;
 pub mod types;
 
-pub use runner::context_to_env;
+pub use runner::{HookExecutionResult, context_to_env, execute_hook_with_result};
 pub use types::{HookContext, HookEvent};
 
 pub use crate::types::EntityType;

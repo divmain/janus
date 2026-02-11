@@ -13,8 +13,6 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
-use tokio::process::Command as TokioCommand;
-
 use owo_colors::OwoColorize;
 use serde::Deserialize;
 use serde_json::json;
@@ -23,14 +21,11 @@ use super::{CommandOutput, interactive};
 use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
-use crate::hooks::{HookContext, context_to_env};
+use crate::hooks::{HookContext, execute_hook_with_result};
 use crate::ticket::Ticket;
 use crate::types::EntityType;
 use crate::types::janus_root;
 use crate::utils::is_stdin_tty;
-
-/// The directory within .janus where hook scripts are stored.
-const HOOKS_DIR: &str = "hooks";
 
 /// Base URL for GitHub API
 const GITHUB_API_BASE: &str = "https://api.github.com/repos/divmain/janus/contents/hook_recipes";
@@ -463,7 +458,12 @@ fn fetch_files_recursive<'a>(
     })
 }
 
-/// Run a hook manually for testing
+/// Run a hook manually for testing.
+///
+/// This is a thin CLI wrapper around the shared hook runner. All execution
+/// logic (validation, environment, timeout, output handling) is delegated to
+/// the runner module; this function only handles UX concerns like formatting
+/// output and displaying environment variables.
 pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
     let hook_event: HookEvent = event.parse()?;
 
@@ -478,25 +478,6 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
                 "No hook configured for event '{event}'. Configure it in .janus/config.yaml"
             ))
         })?;
-
-    let j_root = janus_root();
-    let hooks_dir = j_root.join(HOOKS_DIR).canonicalize()?;
-    let script_path = hooks_dir.join(script_name);
-
-    if !script_path.exists() {
-        return Err(JanusError::HookScriptNotFound(script_path));
-    }
-
-    // Canonicalize the script path to resolve any symlinks
-    let script_path = script_path.canonicalize()?;
-
-    // Security check: ensure the canonicalized script path is still within the hooks directory
-    if !script_path.starts_with(&hooks_dir) {
-        return Err(JanusError::HookSecurity(format!(
-            "Script path '{}' resolves outside hooks directory",
-            crate::utils::format_relative_path(&script_path)
-        )));
-    }
 
     // Build context
     let mut context = HookContext::new().with_event(hook_event);
@@ -519,41 +500,36 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
         }
     }
 
-    // Build environment variables
-    let env_vars = context_to_env(&context, &j_root);
-
     println!("Running hook: {} → {}", event.cyan(), script_name);
     println!();
+
+    // Execute the hook using the shared runner (with timeout enforcement)
+    let result =
+        execute_hook_with_result(hook_event, script_name, &context, config.hooks.timeout).await?;
+
     println!("Environment variables:");
-    let mut sorted_vars: Vec<_> = env_vars.iter().collect();
+    let mut sorted_vars: Vec<_> = result.env_vars.iter().collect();
     sorted_vars.sort_by_key(|(k, _)| *k);
     for (key, value) in sorted_vars {
         println!("  {}={}", key.dimmed(), value);
     }
     println!();
 
-    // Execute the script
-    let output = TokioCommand::new(&script_path)
-        .envs(env_vars)
-        .current_dir(&j_root)
-        .output()
-        .await?;
-
     // Print output
-    if !output.stdout.is_empty() {
+    if !result.stdout.is_empty() {
         println!("stdout:");
-        println!("{}", String::from_utf8_lossy(&output.stdout));
+        println!("{}", result.stdout);
     }
 
-    if !output.stderr.is_empty() {
+    if !result.stderr.is_empty() {
         println!("stderr:");
-        println!("{}", String::from_utf8_lossy(&output.stderr).red());
+        println!("{}", result.stderr.red());
     }
 
-    if output.status.success() {
+    if result.success {
         println!("{} Hook completed successfully", "✓".green());
     } else {
-        let exit_code = output.status.code().unwrap_or(-1);
+        let exit_code = result.exit_code.unwrap_or(-1);
         println!(
             "{} Hook failed with exit code {}",
             "✗".red(),
