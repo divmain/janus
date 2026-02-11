@@ -3,8 +3,9 @@
 //! This module provides a flexible, composable way to filter tickets using
 //! the builder pattern and trait-based filters.
 
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+
+use dashmap::DashSet;
 
 use crate::error::Result;
 use crate::status::{all_deps_satisfied, has_unsatisfied_dep};
@@ -18,7 +19,7 @@ pub use sort::{SortField, sort_by_created, sort_by_id, sort_by_priority, sort_ti
 /// Context passed to filters containing shared state
 pub struct TicketFilterContext {
     pub ticket_map: HashMap<String, TicketMetadata>,
-    pub warned_dangling: RefCell<HashSet<String>>,
+    pub warned_dangling: DashSet<String>,
 }
 
 impl TicketFilterContext {
@@ -28,7 +29,7 @@ impl TicketFilterContext {
     pub fn new(ticket_map: HashMap<String, TicketMetadata>) -> Self {
         Self {
             ticket_map,
-            warned_dangling: RefCell::new(HashSet::new()),
+            warned_dangling: DashSet::new(),
         }
     }
 
@@ -43,8 +44,7 @@ impl TicketFilterContext {
     /// Warn about a dangling dependency if we haven't already warned about it.
     /// Returns true if this is a new dangling dependency that was just warned about.
     pub fn warn_dangling(&self, ticket_id: &str, dep_id: &str) -> bool {
-        let mut warned = self.warned_dangling.borrow_mut();
-        if warned.insert(dep_id.to_string()) {
+        if self.warned_dangling.insert(dep_id.to_string()) {
             eprintln!("Warning: Ticket {ticket_id} references dangling dependency {dep_id}");
             true
         } else {
@@ -368,8 +368,9 @@ impl Default for TicketQueryBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
+
+    use dashmap::DashSet;
 
     use super::*;
     use crate::types::TicketId;
@@ -385,7 +386,7 @@ mod tests {
     fn empty_context() -> TicketFilterContext {
         TicketFilterContext {
             ticket_map: HashMap::new(),
-            warned_dangling: RefCell::new(HashSet::new()),
+            warned_dangling: DashSet::new(),
         }
     }
 

@@ -248,8 +248,9 @@ async fn cmd_ls_next_in_plan(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::collections::HashMap;
+
+    use dashmap::DashSet;
 
     use super::*;
     use crate::query::{SpawningFilter, TicketFilter, TicketFilterContext};
@@ -267,7 +268,7 @@ mod tests {
     fn empty_context() -> TicketFilterContext {
         TicketFilterContext {
             ticket_map: HashMap::new(),
-            warned_dangling: RefCell::new(HashSet::new()),
+            warned_dangling: DashSet::new(),
         }
     }
 
