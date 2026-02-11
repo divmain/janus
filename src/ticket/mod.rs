@@ -615,7 +615,7 @@ impl Ticket {
             remove_section_from_body(&body, section_name)
         };
 
-        let new_content = format!("---\n{}\n---\n{}", frontmatter_raw, updated_body);
+        let new_content = format!("---\n{frontmatter_raw}\n---\n{updated_body}");
         self.write(&new_content)
     }
 
@@ -658,7 +658,7 @@ impl Ticket {
             }
         };
 
-        let new_content = format!("---\n{}\n---\n{}", frontmatter_raw, new_body);
+        let new_content = format!("---\n{frontmatter_raw}\n---\n{new_body}");
         self.write(&new_content)
     }
 
