@@ -52,17 +52,5 @@ pub fn read_stdin() -> io::Result<String> {
 
 /// Check if stdin is a TTY (interactive)
 pub fn is_stdin_tty() -> bool {
-    atty_check()
-}
-
-#[cfg(unix)]
-fn atty_check() -> bool {
-    use std::os::unix::io::AsRawFd;
-    unsafe { libc::isatty(std::io::stdin().as_raw_fd()) != 0 }
-}
-
-#[cfg(not(unix))]
-fn atty_check() -> bool {
-    // On non-Unix, assume it's a TTY
-    true
+    atty::is(atty::Stream::Stdin)
 }

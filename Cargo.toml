@@ -21,6 +21,7 @@ path = "src/main.rs"
 janus-schema = { path = "crates/janus-schema" }
 
 # External dependencies
+atty = "0.2"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 serde = { version = "1", features = ["derive"] }
