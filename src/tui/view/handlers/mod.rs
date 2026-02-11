@@ -14,9 +14,79 @@ pub use context::{
     ViewData, ViewHandlerContext,
 };
 
-use iocraft::prelude::{KeyCode, KeyModifiers};
+use iocraft::prelude::{KeyCode, KeyModifiers, State};
 
+use crate::error::Result;
+use crate::tui::components::Toast;
+use crate::tui::repository::TicketRepository;
 use crate::tui::state::Pane;
+use crate::types::TicketMetadata;
+
+/// Execute a ticket operation with standardized success/error handling and refresh.
+///
+/// This helper abstracts the common pattern in TUI async handlers:
+/// 1. Execute the operation
+/// 2. Show success toast on Ok
+/// 3. Show error toast on Err
+/// 4. Refresh the ticket in the store
+/// 5. Refresh the ticket in the local list
+///
+/// # Type Parameters
+/// * `T` - The result type of the operation (used for success message generation)
+///
+/// # Arguments
+/// * `operation` - The async operation to execute
+/// * `ticket_id` - The ID of the ticket being modified
+/// * `toast_setter` - State setter for displaying toast notifications
+/// * `tickets_setter` - State setter for the ticket list
+/// * `success_toast` - Function to generate success toast from result
+/// * `error_toast` - Function to generate error message from error
+pub async fn execute_ticket_op<T>(
+    operation: impl std::future::Future<Output = Result<T>>,
+    ticket_id: &str,
+    toast_setter: &mut State<Option<Toast>>,
+    tickets_setter: &mut State<Vec<TicketMetadata>>,
+    success_toast: impl FnOnce(&T) -> Toast,
+    error_toast: impl FnOnce(&crate::error::JanusError) -> String,
+) {
+    match operation.await {
+        Ok(ref result) => {
+            toast_setter.set(Some(success_toast(result)));
+            // Refresh the mutated ticket in the store, then update in-place
+            TicketRepository::refresh_ticket_in_store(ticket_id).await;
+            let current = tickets_setter.read().clone();
+            let tickets = TicketRepository::refresh_single_ticket(current, ticket_id).await;
+            tickets_setter.set(tickets);
+        }
+        Err(e) => {
+            toast_setter.set(Some(Toast::error(error_toast(&e))));
+        }
+    }
+}
+
+/// Simplified version for operations that return `Result<()>`.
+///
+/// Uses static success and error messages.
+pub async fn execute_ticket_op_simple(
+    operation: impl std::future::Future<Output = Result<()>>,
+    ticket_id: &str,
+    toast_setter: &mut State<Option<Toast>>,
+    tickets_setter: &mut State<Vec<TicketMetadata>>,
+    success_message: impl AsRef<str>,
+    error_prefix: impl AsRef<str>,
+) {
+    let success_msg = success_message.as_ref().to_string();
+    let error_prefix = error_prefix.as_ref().to_string();
+    execute_ticket_op(
+        operation,
+        ticket_id,
+        toast_setter,
+        tickets_setter,
+        |_| Toast::success(&success_msg),
+        |e| format!("{error_prefix}: {e}"),
+    )
+    .await;
+}
 
 /// Result from handling an event
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

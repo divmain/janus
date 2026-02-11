@@ -120,6 +120,44 @@ fn build_hook_error(
     }
 }
 
+/// Check command output and return error if the command failed.
+///
+/// Shared helper for both sync and async no-timeout paths.
+fn check_output(output: &std::process::Output, script_name: &str, is_pre_hook: bool) -> Result<()> {
+    if !output.status.success() {
+        let exit_code = output.status.code().unwrap_or(-1);
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        return Err(build_hook_error(
+            script_name,
+            exit_code,
+            stderr,
+            is_pre_hook,
+        ));
+    }
+    Ok(())
+}
+
+/// Check exit status and return error if the process failed.
+///
+/// Shared helper for both sync and async timeout paths.
+fn check_status(
+    status: &std::process::ExitStatus,
+    stderr: &str,
+    script_name: &str,
+    is_pre_hook: bool,
+) -> Result<()> {
+    if !status.success() {
+        let exit_code = status.code().unwrap_or(-1);
+        return Err(build_hook_error(
+            script_name,
+            exit_code,
+            stderr.to_string(),
+            is_pre_hook,
+        ));
+    }
+    Ok(())
+}
+
 /// Execute a hook script with the given context.
 ///
 /// # Arguments
@@ -149,17 +187,7 @@ pub(super) fn execute_hook(
 
     if timeout_secs == 0 {
         let output = cmd.output()?;
-
-        if !output.status.success() {
-            let exit_code = output.status.code().unwrap_or(-1);
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            return Err(build_hook_error(
-                script_name,
-                exit_code,
-                stderr,
-                is_pre_hook,
-            ));
-        }
+        check_output(&output, script_name, is_pre_hook)?;
     } else {
         let mut child = cmd
             .stdout(std::process::Stdio::piped())
@@ -169,17 +197,12 @@ pub(super) fn execute_hook(
         match child.wait_timeout(Duration::from_secs(timeout_secs))? {
             Some(status) => {
                 let output = child.wait_with_output()?;
-
-                if !status.success() {
-                    let exit_code = status.code().unwrap_or(-1);
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    return Err(build_hook_error(
-                        script_name,
-                        exit_code,
-                        stderr,
-                        is_pre_hook,
-                    ));
-                }
+                check_status(
+                    &status,
+                    &String::from_utf8_lossy(&output.stderr),
+                    script_name,
+                    is_pre_hook,
+                )?;
             }
             None => {
                 if let Err(e) = child.kill() {
@@ -235,17 +258,7 @@ pub(super) async fn execute_hook_async(
 
     if timeout_secs == 0 {
         let output = cmd.output().await?;
-
-        if !output.status.success() {
-            let exit_code = output.status.code().unwrap_or(-1);
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            return Err(build_hook_error(
-                script_name,
-                exit_code,
-                stderr,
-                is_pre_hook,
-            ));
-        }
+        check_output(&output, script_name, is_pre_hook)?;
     } else {
         let mut child = cmd
             .stdout(std::process::Stdio::piped())
@@ -255,17 +268,12 @@ pub(super) async fn execute_hook_async(
         match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
             Ok(Ok(status)) => {
                 let output = child.wait_with_output().await?;
-
-                if !status.success() {
-                    let exit_code = status.code().unwrap_or(-1);
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    return Err(build_hook_error(
-                        script_name,
-                        exit_code,
-                        stderr,
-                        is_pre_hook,
-                    ));
-                }
+                check_status(
+                    &status,
+                    &String::from_utf8_lossy(&output.stderr),
+                    script_name,
+                    is_pre_hook,
+                )?;
             }
             Ok(Err(e)) => {
                 return Err(JanusError::Io(e));

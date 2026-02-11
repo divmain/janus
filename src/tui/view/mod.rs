@@ -128,29 +128,15 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
             async move {
-                match TicketService::cycle_status(&ticket_id).await {
-                    Ok(_) => {
-                        toast_setter.set(Some(Toast::success(format!(
-                            "Status cycled for {ticket_id}"
-                        ))));
-                        // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
-                            &ticket_id,
-                        )
-                        .await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets =
-                            crate::tui::repository::TicketRepository::refresh_single_ticket(
-                                current, &ticket_id,
-                            )
-                            .await;
-                        all_tickets_setter.set(tickets);
-                    }
-                    Err(e) => {
-                        toast_setter
-                            .set(Some(Toast::error(format!("Failed to cycle status: {e}"))));
-                    }
-                }
+                handlers::execute_ticket_op(
+                    TicketService::cycle_status(&ticket_id),
+                    &ticket_id,
+                    &mut toast_setter,
+                    &mut all_tickets_setter,
+                    |_| Toast::success(format!("Status cycled for {ticket_id}")),
+                    |e| format!("Failed to cycle status: {e}"),
+                )
+                .await;
             }
         }
     });
@@ -163,33 +149,22 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
             async move {
-                match TicketService::mark_triaged(&ticket_id, triaged).await {
-                    Ok(_) => {
+                handlers::execute_ticket_op(
+                    TicketService::mark_triaged(&ticket_id, triaged),
+                    &ticket_id,
+                    &mut toast_setter,
+                    &mut all_tickets_setter,
+                    |_| {
                         let msg = if triaged {
                             format!("Marked {ticket_id} as triaged")
                         } else {
                             format!("Unmarked {ticket_id} as triaged")
                         };
-                        toast_setter.set(Some(Toast::success(msg)));
-                        // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
-                            &ticket_id,
-                        )
-                        .await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets =
-                            crate::tui::repository::TicketRepository::refresh_single_ticket(
-                                current, &ticket_id,
-                            )
-                            .await;
-                        all_tickets_setter.set(tickets);
-                    }
-                    Err(e) => {
-                        toast_setter.set(Some(Toast::error(format!(
-                            "Failed to mark as triaged: {e}"
-                        ))));
-                    }
-                }
+                        Toast::success(msg)
+                    },
+                    |e| format!("Failed to mark as triaged: {e}"),
+                )
+                .await;
             }
         }
     });
@@ -202,29 +177,15 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
             async move {
-                match TicketService::set_status(&ticket_id, crate::types::TicketStatus::Cancelled)
-                    .await
-                {
-                    Ok(_) => {
-                        toast_setter.set(Some(Toast::success(format!("Cancelled {ticket_id}"))));
-                        // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
-                            &ticket_id,
-                        )
-                        .await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets =
-                            crate::tui::repository::TicketRepository::refresh_single_ticket(
-                                current, &ticket_id,
-                            )
-                            .await;
-                        all_tickets_setter.set(tickets);
-                    }
-                    Err(e) => {
-                        toast_setter
-                            .set(Some(Toast::error(format!("Failed to cancel ticket: {e}"))));
-                    }
-                }
+                handlers::execute_ticket_op_simple(
+                    TicketService::set_status(&ticket_id, crate::types::TicketStatus::Cancelled),
+                    &ticket_id,
+                    &mut toast_setter,
+                    &mut all_tickets_setter,
+                    format!("Cancelled {ticket_id}"),
+                    "Failed to cancel ticket",
+                )
+                .await;
             }
         }
     });
@@ -237,27 +198,15 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
             async move {
-                match TicketService::add_note(&ticket_id, &note).await {
-                    Ok(_) => {
-                        toast_setter
-                            .set(Some(Toast::success(format!("Added note to {ticket_id}"))));
-                        // Refresh the mutated ticket in the store, then update in-place
-                        crate::tui::repository::TicketRepository::refresh_ticket_in_store(
-                            &ticket_id,
-                        )
-                        .await;
-                        let current = all_tickets_setter.read().clone();
-                        let tickets =
-                            crate::tui::repository::TicketRepository::refresh_single_ticket(
-                                current, &ticket_id,
-                            )
-                            .await;
-                        all_tickets_setter.set(tickets);
-                    }
-                    Err(e) => {
-                        toast_setter.set(Some(Toast::error(format!("Failed to add note: {e}"))));
-                    }
-                }
+                handlers::execute_ticket_op_simple(
+                    TicketService::add_note(&ticket_id, &note),
+                    &ticket_id,
+                    &mut toast_setter,
+                    &mut all_tickets_setter,
+                    format!("Added note to {ticket_id}"),
+                    "Failed to add note",
+                )
+                .await;
             }
         }
     });

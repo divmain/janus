@@ -549,6 +549,46 @@ impl Ticket {
 
         Ok(())
     }
+
+    /// Find a ticket and update a field in one operation.
+    ///
+    /// This is a convenience method for the common pattern of finding a ticket
+    /// by ID and immediately updating one of its fields.
+    ///
+    /// # Arguments
+    /// * `partial_id` - The partial ticket ID to find
+    /// * `field` - The field name to update
+    /// * `value` - The new value for the field
+    ///
+    /// # Returns
+    /// `Ok(())` if the operation succeeded
+    pub async fn find_and_update_field(partial_id: &str, field: &str, value: &str) -> Result<()> {
+        let ticket = Self::find(partial_id).await?;
+        ticket.update_field(field, value)?;
+        Ok(())
+    }
+
+    /// Find a ticket and apply a modification function to its content.
+    ///
+    /// This is a more flexible version that allows arbitrary modifications
+    /// to the ticket content while handling the find/modify/write cycle.
+    ///
+    /// # Arguments
+    /// * `partial_id` - The partial ticket ID to find
+    /// * `modify` - A function that takes the current content and returns the modified content
+    ///
+    /// # Returns
+    /// `Ok(())` if the operation succeeded
+    pub async fn find_and_modify<F>(partial_id: &str, modify: F) -> Result<()>
+    where
+        F: FnOnce(String) -> Result<String>,
+    {
+        let ticket = Self::find(partial_id).await?;
+        let content = ticket.read_content()?;
+        let new_content = modify(content)?;
+        ticket.write(&new_content)?;
+        Ok(())
+    }
 }
 
 impl Entity for Ticket {
