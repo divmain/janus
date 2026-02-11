@@ -112,45 +112,7 @@ pub fn extract_id_from_path(file_path: &Path, entity_type: &str) -> Result<Strin
             ))
         })?;
 
-    // Validate the extracted ID
-    validate_identifier(&id, entity_type)?;
-
     Ok(id)
-}
-
-/// Validate an identifier string (alphanumeric, hyphens, and underscores only)
-///
-/// This is a generic validation function used by both ticket ID and prefix validators.
-/// It trims whitespace, checks for non-empty strings, and validates that only
-/// alphanumeric characters, hyphens, and underscores are present.
-///
-/// # Arguments
-///
-/// * `s` - The string to validate
-/// * `name` - A descriptive name for the identifier (used in error messages)
-///
-/// # Returns
-///
-/// * `Ok(String)` - The trimmed, validated identifier
-/// * `Err(JanusError)` - An error describing what went wrong
-pub fn validate_identifier(s: &str, name: &str) -> Result<String> {
-    let trimmed = s.trim();
-
-    if trimmed.is_empty() {
-        return Err(JanusError::ValidationEmpty(name.to_string()));
-    }
-
-    if !trimmed
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(JanusError::ValidationInvalidCharacters(
-            name.to_string(),
-            trimmed.to_string(),
-        ));
-    }
-
-    Ok(trimmed.to_string())
 }
 
 /// Get the git user.name config value

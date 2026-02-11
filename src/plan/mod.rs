@@ -22,9 +22,7 @@ use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
 use crate::types::{EntityType, PlanId, TicketMetadata, plans_dir};
-use crate::utils::{
-    extract_id_from_path, find_markdown_files, find_markdown_files_from_path, validate_identifier,
-};
+use crate::utils::{extract_id_from_path, find_markdown_files, find_markdown_files_from_path};
 
 // Re-export status computation functions
 pub use crate::status::plan::{
@@ -54,9 +52,18 @@ fn find_plans() -> Vec<String> {
 pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
     let dir = plans_dir();
 
-    // Validate ID before any path construction
-    validate_identifier(partial_id, "Plan ID")
-        .map_err(|_| JanusError::InvalidPlanId(partial_id.to_string()))?;
+    // Validate ID before any path construction (character-level only)
+    let trimmed = partial_id.trim();
+    if trimmed.is_empty() {
+        return Err(JanusError::InvalidPlanId(partial_id.to_string()));
+    }
+    // Check for invalid characters (alphanumeric, hyphens, and underscores only)
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(JanusError::InvalidPlanId(partial_id.to_string()));
+    }
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {

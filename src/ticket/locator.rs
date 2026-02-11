@@ -9,14 +9,21 @@ use std::path::PathBuf;
 use crate::cache::get_or_init_store;
 use crate::error::{JanusError, Result};
 use crate::types::{TicketId, tickets_items_dir};
-use crate::utils::{extract_id_from_path, find_markdown_files_from_path, validate_identifier};
+use crate::utils::{extract_id_from_path, find_markdown_files_from_path};
 
 fn validate_partial_id(id: &str) -> Result<String> {
-    validate_identifier(id, "Ticket ID").map_err(|e| match e {
-        JanusError::ValidationEmpty(_) => JanusError::EmptyTicketId,
-        JanusError::ValidationInvalidCharacters(_, _) => JanusError::InvalidTicketIdCharacters,
-        _ => e,
-    })
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return Err(JanusError::EmptyTicketId);
+    }
+    // Check for invalid characters (alphanumeric, hyphens, and underscores only)
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(JanusError::InvalidTicketIdCharacters);
+    }
+    Ok(trimmed.to_string())
 }
 
 /// Find a ticket by partial ID.
@@ -27,9 +34,18 @@ fn validate_partial_id(id: &str) -> Result<String> {
 async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
     let dir = tickets_items_dir();
 
-    // Validate ID before any path construction
-    validate_identifier(partial_id, "Ticket ID")
-        .map_err(|_| JanusError::InvalidTicketId(partial_id.to_string()))?;
+    // Validate ID before any path construction (character-level only)
+    let trimmed = partial_id.trim();
+    if trimmed.is_empty() {
+        return Err(JanusError::InvalidTicketId(partial_id.to_string()));
+    }
+    // Check for invalid characters (alphanumeric, hyphens, and underscores only)
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(JanusError::InvalidTicketId(partial_id.to_string()));
+    }
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {

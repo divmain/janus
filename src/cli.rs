@@ -1329,11 +1329,37 @@ fn parse_status(s: &str) -> Result<TicketStatus, String> {
 }
 
 fn parse_partial_id(s: &str) -> Result<String, String> {
-    crate::utils::validate_identifier(s, "ID").map_err(|e| e.to_string())
+    // Character-level validation only - allows partial IDs
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Err("ID cannot be empty".to_string());
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!(
+            "ID '{trimmed}' contains invalid characters. Use only letters, numbers, hyphens, and underscores"
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
 fn parse_plan_id(s: &str) -> Result<String, String> {
-    crate::utils::validate_identifier(s, "Plan ID").map_err(|e| e.to_string())
+    // Character-level validation only - allows partial plan IDs
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Err("Plan ID cannot be empty".to_string());
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!(
+            "Plan ID '{trimmed}' contains invalid characters. Use only letters, numbers, hyphens, and underscores"
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
 fn parse_bool_strict(s: &str) -> Result<bool, String> {

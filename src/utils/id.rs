@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::error::{JanusError, Result};
 use crate::types::tickets_items_dir;
 
-use super::{validate_filename, validate_identifier};
+use super::validate_filename;
 
 /// Generate a random hex hash of the specified length
 ///
@@ -47,20 +47,26 @@ pub fn validate_prefix(prefix: &str) -> Result<()> {
         ));
     }
 
-    // Use the generic identifier validator, preserving specific error context
-    validate_identifier(prefix, "Prefix").map_err(|e| match e {
-        JanusError::ValidationEmpty(_) => JanusError::InvalidPrefix(
+    // Validate prefix format: non-empty and only alphanumeric, hyphens, underscores
+    let trimmed = prefix.trim();
+    if trimmed.is_empty() {
+        return Err(JanusError::InvalidPrefix(
             prefix.to_string(),
             "Prefix cannot be empty or only whitespace".to_string(),
-        ),
-        JanusError::ValidationInvalidCharacters(_, value) => JanusError::InvalidPrefix(
+        ));
+    }
+
+    if !trimmed
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(JanusError::InvalidPrefix(
             prefix.to_string(),
             format!(
-                "Prefix '{value}' contains invalid characters. Use only letters, numbers, hyphens, and underscores"
+                "Prefix '{trimmed}' contains invalid characters. Use only letters, numbers, hyphens, and underscores"
             ),
-        ),
-        other => other,
-    })?;
+        ));
+    }
 
     Ok(())
 }
