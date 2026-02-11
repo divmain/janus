@@ -2,12 +2,13 @@
 //!
 //! Displays detailed information about a selected ticket including
 //! metadata, dependencies, links, and body content.
+//!
+//! **No disk I/O happens here.** The caller is responsible for loading
+//! and caching the ticket body and passing it via props.
 
 use iocraft::prelude::*;
 
 use crate::display::format_date_for_display;
-use crate::parser::extract_ticket_body;
-use crate::ticket::Ticket;
 use crate::tui::components::{Clickable, TextViewer};
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
@@ -17,6 +18,8 @@ use crate::types::TicketMetadata;
 pub struct TicketDetailProps {
     /// The ticket to display (None shows empty state)
     pub ticket: Option<TicketMetadata>,
+    /// Pre-loaded body content (caller is responsible for caching)
+    pub body: String,
     /// Whether the detail pane has focus
     pub has_focus: bool,
     /// Scroll offset for the body content
@@ -107,18 +110,8 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
     };
     let parent_str = parent.unwrap_or_else(|| "-".to_string());
 
-    // Try to read the body content
-    let body = if let Some(file_path) = &ticket.file_path {
-        match Ticket::new(file_path.clone()) {
-            Ok(ticket_handle) => match ticket_handle.read_content() {
-                Ok(content) => extract_ticket_body(&content).unwrap_or_default(),
-                Err(_) => "(error: could not read file)".to_string(),
-            },
-            Err(_) => "(error: invalid ticket path)".to_string(),
-        }
-    } else {
-        "(file_path is None)".to_string()
-    };
+    // Use the pre-loaded body content from props (no disk I/O in render)
+    let body = props.body.clone();
 
     element! {
         View(

@@ -7,6 +7,8 @@ pub mod handlers;
 pub mod modals;
 pub mod model;
 
+use std::path::PathBuf;
+
 use iocraft::prelude::*;
 
 use crate::parser::extract_ticket_body;
@@ -67,6 +69,11 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut active_pane = hooks.use_state(|| Pane::List);
     let mut should_exit = hooks.use_state(|| false);
     let mut needs_reload = hooks.use_state(|| false);
+
+    // Cached detail body content — loaded once on selection change, not on every render.
+    // The cache key is the file path; when it changes we reload from disk.
+    let mut cached_body = hooks.use_state(String::new);
+    let mut cached_body_path: State<Option<PathBuf>> = hooks.use_state(|| None);
 
     // Triage mode state
     let is_triage_mode = hooks.use_state(|| false);
@@ -306,6 +313,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     if needs_reload.get() && !is_loading.get() {
         needs_reload.set(false);
         is_loading.set(true);
+        // Invalidate the cached body so it's re-read from the (possibly updated) file.
+        cached_body_path.set(None);
         load_handler.clone()(());
     }
 
@@ -352,28 +361,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         .get(selected_index.get())
         .map(|ft| ft.ticket.as_ref().clone());
 
-    // Compute max detail scroll (body line count - 1, or 0 if no body)
-    let current_max_detail_scroll = if let Some(ref ticket) = selected_ticket {
-        if let Some(ref file_path) = ticket.file_path {
-            match Ticket::new(file_path.clone()) {
-                Ok(ticket_handle) => match ticket_handle.read_content() {
-                    Ok(content) => extract_ticket_body(&content)
-                        .map(|body| body.lines().count().saturating_sub(1))
-                        .unwrap_or(0),
-                    Err(_) => 0,
-                },
-                Err(_) => 0,
-            }
-        } else {
-            0
-        }
-    } else {
-        0
-    };
-
-    // Update max_detail_scroll state and reset detail scroll if ticket changed
-    if max_detail_scroll.get() != current_max_detail_scroll {
-        max_detail_scroll.set(current_max_detail_scroll);
+    // Cache body content: only read from disk when the selected ticket changes.
+    // This avoids disk I/O on every render frame.
+    let current_file_path = selected_ticket.as_ref().and_then(|t| t.file_path.clone());
+    if cached_body_path.read().as_ref() != current_file_path.as_ref() {
+        // Selection changed — reload body from disk once and cache it.
+        cached_body_path.set(current_file_path.clone());
+        let body = load_ticket_body(current_file_path.as_ref());
+        let line_count = body.lines().count().saturating_sub(1);
+        cached_body.set(body);
+        max_detail_scroll.set(line_count);
         detail_scroll_offset.set(0);
     }
 
@@ -872,6 +869,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                                         ) {
                                             TicketDetail(
                                                 ticket: selected_ticket.clone(),
+                                                body: cached_body.read().clone(),
                                                 has_focus: active_pane.get() == Pane::Detail && !is_editing,
                                                 scroll_offset: detail_scroll_offset.get(),
                                                 on_scroll_up: Some(detail_scroll_up_handler.clone()),
@@ -938,4 +936,21 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             })
         }
     }
+}
+
+/// Load the body content of a ticket from disk.
+///
+/// This is called once per selection change (not per render).
+/// Returns an empty string if the path is `None` or if reading fails.
+fn load_ticket_body(file_path: Option<&PathBuf>) -> String {
+    let Some(file_path) = file_path else {
+        return String::new();
+    };
+    let Ok(ticket) = Ticket::new(file_path.clone()) else {
+        return String::new();
+    };
+    let Ok(content) = ticket.read_content() else {
+        return String::new();
+    };
+    extract_ticket_body(&content).unwrap_or_default()
 }
