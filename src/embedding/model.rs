@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use directories::BaseDirs;
 use fastembed::{EmbeddingModel as FastembedModel, InitOptions, TextEmbedding};
@@ -15,6 +16,9 @@ pub const EMBEDDING_MODEL_NAME: &str = "jinaai/jina-embeddings-v2-base-code";
 /// Batch size for embedding generation operations.
 /// Processing in batches improves throughput while controlling memory usage.
 pub const EMBEDDING_BATCH_SIZE: usize = 32;
+
+/// Timeout for embedding generation (30 seconds)
+pub const EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Wrapper around the fastembed TextEmbedding model with lazy loading.
 ///

@@ -1,17 +1,12 @@
 use serde_json::json;
 use std::fs;
-use std::time::Duration;
 use tokio::time::timeout;
 
 use super::CommandOutput;
 use crate::cache::get_or_init_store;
+use crate::embedding::model::{EMBEDDING_BATCH_SIZE, EMBEDDING_MODEL_NAME, EMBEDDING_TIMEOUT};
 use crate::error::Result;
 use crate::events::log_cache_rebuilt;
-
-use crate::embedding::model::{EMBEDDING_BATCH_SIZE, EMBEDDING_MODEL_NAME};
-
-/// Timeout for embedding generation per ticket (30 seconds)
-const EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
     let store = get_or_init_store().await?;
