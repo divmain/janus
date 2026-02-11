@@ -2,10 +2,9 @@
 
 use serde_json::json;
 
-use crate::commands::CommandOutput;
+use crate::commands::{CommandOutput, open_in_editor_for_entity};
 use crate::error::Result;
 use crate::plan::Plan;
-use crate::utils::{is_stdin_tty, open_in_editor};
 
 /// Open a plan in the default editor
 ///
@@ -24,15 +23,5 @@ pub async fn cmd_plan_edit(id: &str, output_json: bool) -> Result<()> {
         .print(output_json);
     }
 
-    if is_stdin_tty() {
-        open_in_editor(&plan.file_path)?;
-    } else {
-        // Non-interactive mode: just print the file path
-        println!(
-            "Edit plan file: {}",
-            crate::utils::format_relative_path(&plan.file_path)
-        );
-    }
-
-    Ok(())
+    open_in_editor_for_entity("plan", &plan.file_path, output_json)
 }

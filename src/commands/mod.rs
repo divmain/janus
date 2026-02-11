@@ -57,9 +57,47 @@ pub use status::{cmd_close, cmd_reopen, cmd_start, cmd_status};
 pub use sync::{cmd_adopt, cmd_push, cmd_remote_link, cmd_sync};
 pub use view::cmd_view;
 
+use std::path::Path;
+
 use crate::error::Result;
 use crate::types::{TicketMetadata, TicketSize};
+use crate::utils::{format_relative_path, is_stdin_tty, open_in_editor};
 use serde_json::json;
+
+/// Open a file in the default editor with appropriate messaging for the entity type.
+///
+/// This helper eliminates the duplicate TTY checking and messaging logic between
+/// ticket and plan edit commands.
+///
+/// # Arguments
+/// * `entity_type` - The type of entity being edited (e.g., "ticket", "plan")
+/// * `file_path` - The path to the file to open
+/// * `output_json` - If true, skip editor opening (JSON output already handled)
+///
+/// # Errors
+/// Returns an error if the editor fails to open
+pub fn open_in_editor_for_entity(
+    entity_type: &str,
+    file_path: &Path,
+    output_json: bool,
+) -> Result<()> {
+    if output_json {
+        return Ok(());
+    }
+
+    if is_stdin_tty() {
+        open_in_editor(file_path)?;
+    } else {
+        // Non-interactive mode: just print the file path
+        println!(
+            "Edit {} file: {}",
+            entity_type,
+            format_relative_path(file_path)
+        );
+    }
+
+    Ok(())
+}
 
 /// Format a size value for display
 /// Returns the size string if present, "-" if None
