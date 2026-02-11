@@ -10,6 +10,7 @@ use crate::tui::components::{
     ModalBorderColor, ModalContainer, ModalHeight, ModalOverlay, ModalWidth, NoteModalData,
 };
 use crate::tui::theme::theme;
+use crate::utils::truncate_string;
 
 // =============================================================================
 // Note Input Modal
@@ -122,11 +123,7 @@ pub fn CancelConfirmModal<'a>(
     let theme = theme();
 
     // Truncate title if too long
-    let display_title = if props.ticket_title.len() > 40 {
-        format!("{}...", &props.ticket_title[..37])
-    } else {
-        props.ticket_title.clone()
-    };
+    let display_title = truncate_string(&props.ticket_title, 40);
 
     element! {
         ModalOverlay() {
@@ -226,15 +223,22 @@ pub fn StoreErrorModal<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::truncate_string;
+
     #[test]
     fn test_title_truncation() {
         let long_title = "This is a very long ticket title that should be truncated for display";
-        let truncated = if long_title.len() > 40 {
-            format!("{}...", &long_title[..37])
-        } else {
-            long_title.to_string()
-        };
-        assert!(truncated.len() <= 43); // 40 chars + "..."
+        let truncated = truncate_string(long_title, 40);
+        assert!(truncated.chars().count() <= 40);
         assert!(truncated.ends_with("..."));
+    }
+
+    #[test]
+    fn test_title_truncation_multibyte() {
+        // Ensure multi-byte characters don't cause panics
+        let multibyte_title =
+            "これは非常に長いチケットのタイトルで、表示のために切り詰められるべきです";
+        let truncated = truncate_string(multibyte_title, 40);
+        assert!(truncated.chars().count() <= 40);
     }
 }

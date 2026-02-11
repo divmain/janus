@@ -14,6 +14,7 @@ use crate::tui::remote::filter::{FilteredLocalTicket, FilteredRemoteIssue};
 use crate::tui::remote::state::ViewMode;
 use crate::tui::theme::theme;
 use crate::types::TicketMetadata;
+use crate::utils::truncate_string;
 
 /// Props for the ListPane component
 #[derive(Default, Props)]
@@ -172,11 +173,7 @@ fn render_remote_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
                         RemoteStatus::Custom(s) => s.clone(),
                     };
 
-                    let title_display = if issue.title.len() > 25 {
-                        format!("{}...", &issue.title[..22])
-                    } else {
-                        issue.title.clone()
-                    };
+                    let title_display = truncate_string(&issue.title, 25);
 
                     element! {
                         Clickable(
@@ -268,11 +265,7 @@ fn render_local_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
                     let link_indicator = if ticket.remote.is_some() { "⟷" } else { " " };
 
                     let title = ticket.title.as_deref().unwrap_or("(no title)");
-                    let title_display = if title.len() > 25 {
-                        format!("{}...", &title[..22])
-                    } else {
-                        title.to_string()
-                    };
+                    let title_display = truncate_string(title, 25);
 
                     let status_str = match status {
                         crate::types::TicketStatus::New => "new",
