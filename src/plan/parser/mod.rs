@@ -197,10 +197,14 @@ fn collect_document_sections<'a>(
                         title = Some(heading_text.trim().to_string());
                     }
                     2 => {
-                        // Finalize any pending H3 into the last H2
+                        // Finalize any pending H3 into the last H2 (or preamble if no H2)
                         if let Some(h3) = current_h3.take() {
                             if let Some(last_h2) = h2_sections.last_mut() {
                                 last_h2.h3_sections.push(h3);
+                            } else {
+                                // No H2 yet - treat as preamble content
+                                preamble.push_str(&format!("\n### {}\n\n", h3.heading));
+                                preamble.push_str(&h3.content);
                             }
                         }
                         // Start new H2 section
@@ -215,6 +219,10 @@ fn collect_document_sections<'a>(
                         if let Some(h3) = current_h3.take() {
                             if let Some(last_h2) = h2_sections.last_mut() {
                                 last_h2.h3_sections.push(h3);
+                            } else {
+                                // No H2 yet - treat as preamble content
+                                preamble.push_str(&format!("\n### {}\n\n", h3.heading));
+                                preamble.push_str(&h3.content);
                             }
                         }
                         // Start new H3 subsection
@@ -237,10 +245,14 @@ fn collect_document_sections<'a>(
         }
     }
 
-    // Finalize any pending H3 into the last H2
+    // Finalize any pending H3 into the last H2 (or preamble if no H2)
     if let Some(h3) = current_h3.take() {
         if let Some(last_h2) = h2_sections.last_mut() {
             last_h2.h3_sections.push(h3);
+        } else {
+            // No H2 yet - treat as preamble content
+            preamble.push_str(&format!("\n### {}\n\n", h3.heading));
+            preamble.push_str(&h3.content);
         }
     }
 
@@ -2372,5 +2384,169 @@ The following schema will be used:
         assert!(new_desc.contains("Primary key"));
         assert!(new_desc.contains("Display name"));
         assert_eq!(new_phases[0].ticket_list.tickets, vec!["j-a1b2", "j-c3d4"]);
+    }
+
+    // ==================== H3 Before H2 Data Loss Prevention Tests ====================
+
+    #[test]
+    fn test_h3_before_first_h2_is_preserved_in_preamble() {
+        // H3 content before any H2 should be preserved as part of the preamble/description
+        let content = r#"---
+id: plan-h3-first
+uuid: 550e8400-e29b-41d4-a716-446655440100
+created: 2024-01-01T00:00:00Z
+---
+# Plan with H3 Before H2
+
+Initial description text.
+
+### Early Subsection
+
+This H3 appears before any H2 and should be preserved.
+
+More content in the early subsection.
+
+## Acceptance Criteria
+
+- First criterion
+
+## Phase 1: First Phase
+
+### Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        // Title should be correct
+        assert_eq!(metadata.title, Some("Plan with H3 Before H2".to_string()));
+
+        // Description should contain both the initial text AND the H3 content
+        let description = metadata.description.as_ref().unwrap();
+        assert!(description.contains("Initial description text"));
+        assert!(description.contains("### Early Subsection"));
+        assert!(description.contains("This H3 appears before any H2"));
+        assert!(description.contains("More content in the early subsection"));
+
+        // Acceptance criteria should still work
+        assert_eq!(metadata.acceptance_criteria.len(), 1);
+        assert_eq!(metadata.acceptance_criteria[0], "First criterion");
+
+        // Phase should still work
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+        assert_eq!(phases[0].name, "First Phase");
+        assert_eq!(phases[0].ticket_list.tickets, vec!["j-a1b2"]);
+    }
+
+    #[test]
+    fn test_multiple_h3s_before_first_h2_all_preserved() {
+        // Multiple H3s before any H2 should all be preserved in preamble
+        let content = r#"---
+id: plan-multi-h3
+uuid: 550e8400-e29b-41d4-a716-446655440101
+created: 2024-01-01T00:00:00Z
+---
+# Plan with Multiple Early H3s
+
+### First Early H3
+
+Content for first early H3.
+
+### Second Early H3
+
+Content for second early H3.
+
+## Phase 1: Implementation
+
+### Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        // Description should contain both H3 sections
+        let description = metadata.description.as_ref().unwrap();
+        assert!(description.contains("### First Early H3"));
+        assert!(description.contains("Content for first early H3"));
+        assert!(description.contains("### Second Early H3"));
+        assert!(description.contains("Content for second early H3"));
+
+        // Phase should still work
+        let phases = metadata.phases();
+        assert_eq!(phases.len(), 1);
+        assert_eq!(phases[0].name, "Implementation");
+    }
+
+    #[test]
+    fn test_h3_at_end_no_h2_is_preserved() {
+        // H3 at the very end with no H2 at all should be preserved
+        let content = r#"---
+id: plan-h3-end
+uuid: 550e8400-e29b-41d4-a716-446655440102
+created: 2024-01-01T00:00:00Z
+---
+# Plan with H3 at End
+
+Description here.
+
+### Final Section
+
+This H3 is at the end with no H2 parent.
+"#;
+
+        let metadata = parse_plan_content(content).unwrap();
+
+        // Description should contain the H3 content
+        let description = metadata.description.as_ref().unwrap();
+        assert!(description.contains("Description here"));
+        assert!(description.contains("### Final Section"));
+        assert!(description.contains("This H3 is at the end"));
+
+        // No phases or sections
+        assert!(metadata.phases().is_empty());
+        assert!(metadata.sections.is_empty());
+    }
+
+    #[test]
+    fn test_h3_before_h2_roundtrip_preserved() {
+        // Verify H3 content before H2 survives round-trip serialization
+        let original = r#"---
+id: plan-roundtrip
+uuid: 550e8400-e29b-41d4-a716-446655440103
+created: 2024-01-01T00:00:00Z
+---
+# Roundtrip Test Plan
+
+Initial text.
+
+### Early Section
+
+Early H3 content.
+
+## Phase 1: Test
+
+### Tickets
+
+1. j-a1b2
+"#;
+
+        let metadata = parse_plan_content(original).unwrap();
+
+        // Verify initial parse
+        let description = metadata.description.as_ref().unwrap();
+        assert!(description.contains("### Early Section"));
+        assert!(description.contains("Early H3 content"));
+
+        // Serialize and re-parse
+        let serialized = serialize_plan(&metadata);
+        let reparsed = parse_plan_content(&serialized).unwrap();
+
+        // Verify round-trip preserved the early H3
+        let reparsed_desc = reparsed.description.as_ref().unwrap();
+        assert!(reparsed_desc.contains("### Early Section"));
+        assert!(reparsed_desc.contains("Early H3 content"));
     }
 }
