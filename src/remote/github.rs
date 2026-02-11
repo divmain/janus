@@ -233,6 +233,71 @@ impl From<GitHubError> for JanusError {
     }
 }
 
+/// Wrapper that distinguishes HTTP 404 (not-found) from other GitHub errors.
+///
+/// Used by `fetch_issue` to detect not-found via structured status codes
+/// before errors are converted into generic `JanusError` strings.
+enum NotFoundOrOther {
+    NotFound(GitHubError),
+    Other(GitHubError),
+}
+
+impl fmt::Display for NotFoundOrOther {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NotFoundOrOther::NotFound(e) | NotFoundOrOther::Other(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl AsHttpError for NotFoundOrOther {
+    fn as_http_error(&self) -> Option<(reqwest::StatusCode, Option<u64>)> {
+        match self {
+            NotFoundOrOther::NotFound(e) | NotFoundOrOther::Other(e) => e.as_http_error(),
+        }
+    }
+
+    fn is_transient(&self) -> bool {
+        match self {
+            NotFoundOrOther::NotFound(_) => false,
+            NotFoundOrOther::Other(e) => e.is_transient(),
+        }
+    }
+
+    fn is_rate_limited(&self) -> bool {
+        match self {
+            NotFoundOrOther::NotFound(_) => false,
+            NotFoundOrOther::Other(e) => e.is_rate_limited(),
+        }
+    }
+
+    fn get_retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            NotFoundOrOther::NotFound(_) => None,
+            NotFoundOrOther::Other(e) => e.get_retry_after(),
+        }
+    }
+}
+
+impl From<NotFoundOrOther> for JanusError {
+    fn from(error: NotFoundOrOther) -> Self {
+        match error {
+            NotFoundOrOther::NotFound(e) => {
+                // Extract the remote_ref info from the error context is not possible here,
+                // so we produce a generic RemoteIssueNotFound. The caller in fetch_issue
+                // will see this variant and keep it as-is.
+                //
+                // We still need a placeholder - the actual ref string is set by the
+                // map_err in fetch_issue. Use the underlying error message as context.
+                let message = super::error::build_github_error_message(&e.inner);
+                let scrubbed = scrub_github_tokens(&message);
+                JanusError::RemoteIssueNotFound(scrubbed)
+            }
+            NotFoundOrOther::Other(e) => JanusError::from(e),
+        }
+    }
+}
+
 impl RemoteProvider for GitHubProvider {
     fn fetch_issue<'a>(
         &'a self,
@@ -254,25 +319,40 @@ impl RemoteProvider for GitHubProvider {
 
             let client = self.client.clone();
             let timeout = self.timeout;
+            let remote_ref_str = remote_ref.to_string();
             let issue = super::execute_with_retry(
                 || async {
                     client
                         .issues(owner, repo)
                         .get(issue_number)
                         .await
-                        .map_err(GitHubError::from)
+                        .map_err(|e| {
+                            let gh_err = GitHubError::from(e);
+                            // Check for 404 via structured status code before
+                            // the error is converted to a generic JanusError
+                            if let Some((status, _)) = gh_err.as_http_error() {
+                                if status == reqwest::StatusCode::NOT_FOUND {
+                                    return NotFoundOrOther::NotFound(gh_err);
+                                }
+                            }
+                            NotFoundOrOther::Other(gh_err)
+                        })
                 },
                 Some(timeout),
             )
             .await
-            .map_err(|e| {
-                if let JanusError::Api(msg) = &e
-                    && msg.contains("404")
-                {
-                    JanusError::RemoteIssueNotFound(remote_ref.to_string())
-                } else {
-                    e
+            .map_err(|e| match e {
+                // Structured 404 detected via status code — use the proper ref
+                JanusError::RemoteIssueNotFound(_) => {
+                    JanusError::RemoteIssueNotFound(remote_ref_str.clone())
                 }
+                // Fallback: check error message for "404" in case the
+                // structured status code was unavailable (e.g. non-GitHub
+                // error variant from octocrab)
+                JanusError::Api(ref msg) if msg.contains("404") => {
+                    JanusError::RemoteIssueNotFound(remote_ref_str.clone())
+                }
+                other => other,
             })?;
 
             Ok(self.convert_github_issue(&issue))
