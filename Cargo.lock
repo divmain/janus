@@ -2259,6 +2259,7 @@ dependencies = [
  "octocrab",
  "once_cell",
  "owo-colors",
+ "parking_lot",
  "rand 0.9.2",
  "regex",
  "reqwest",

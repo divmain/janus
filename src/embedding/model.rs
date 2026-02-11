@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use directories::BaseDirs;
 use fastembed::{EmbeddingModel as FastembedModel, InitOptions, TextEmbedding};
+use parking_lot::Mutex;
 use tokio::sync::OnceCell;
 
 use crate::config::Config;
@@ -17,9 +18,13 @@ pub const EMBEDDING_BATCH_SIZE: usize = 32;
 
 /// Wrapper around the fastembed TextEmbedding model with lazy loading.
 ///
-/// Uses `std::sync::Mutex` (not `tokio::sync::Mutex`) because the embedding
+/// Uses `parking_lot::Mutex` (not `tokio::sync::Mutex`) because the embedding
 /// inference is CPU-bound and always runs inside `spawn_blocking`. This avoids
 /// holding an async mutex while blocking the tokio executor thread.
+///
+/// `parking_lot::Mutex` is chosen over `std::sync::Mutex` because it:
+/// - Does not implement poisoning (`.lock()` never panics)
+/// - Is more compact and faster than the standard library implementation
 ///
 /// The inner model is wrapped in `Arc<Mutex<_>>` so it can be moved into
 /// `spawn_blocking` closures which require `'static` captured values.
@@ -69,9 +74,7 @@ impl EmbeddingModel {
         let inner = Arc::clone(&self.inner);
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = inner
-                .lock()
-                .map_err(|e| format!("Embedding model mutex poisoned: {e}"))?;
+            let mut guard = inner.lock();
             let embeddings = guard.embed(vec![&text], None).map_err(|e| format!("{e}"))?;
             embeddings
                 .into_iter()
@@ -91,9 +94,7 @@ impl EmbeddingModel {
         let inner = Arc::clone(&self.inner);
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = inner
-                .lock()
-                .map_err(|e| format!("Embedding model mutex poisoned: {e}"))?;
+            let mut guard = inner.lock();
             let texts_ref: Vec<&str> = texts_owned.iter().map(|s| s.as_str()).collect();
             guard.embed(texts_ref, None).map_err(|e| format!("{e}"))
         })

@@ -94,6 +94,9 @@ dashmap = "6"
 notify = "8"
 blake3 = "1"
 
+# Parking lot for poison-resistant mutexes (faster, no poisoning)
+parking_lot = "0.12"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
