@@ -393,6 +393,9 @@ pub enum JanusError {
     #[error("EOF on stdin")]
     EofOnStdin,
 
+    #[error("Not an interactive terminal: {0}")]
+    NotInteractive(String),
+
     #[error("Invalid graph format '{0}'. Must be 'dot' or 'mermaid'")]
     InvalidGraphFormat(String),
 

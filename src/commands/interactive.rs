@@ -6,6 +6,7 @@
 use std::io::{self, Write};
 
 use crate::error::{JanusError, Result};
+use crate::utils::is_stdin_tty;
 
 /// Prompt user for yes/no confirmation
 ///
@@ -25,6 +26,11 @@ use crate::error::{JanusError, Result};
 /// }
 /// ```
 pub fn confirm(prompt: &str) -> Result<bool> {
+    if !is_stdin_tty() {
+        return Err(JanusError::NotInteractive(
+            "confirm() requires an interactive terminal".to_string(),
+        ));
+    }
     print!("{prompt}? [y/N] ");
     io::stdout().flush()?;
 
@@ -51,6 +57,11 @@ pub fn confirm(prompt: &str) -> Result<bool> {
 /// let choice = select_option("Choose an action", &options, Some(0)).unwrap();
 /// ```
 pub fn select_option(prompt: &str, options: &[&str], default: Option<usize>) -> Result<usize> {
+    if !is_stdin_tty() {
+        return Err(JanusError::NotInteractive(
+            "select_option() requires an interactive terminal".to_string(),
+        ));
+    }
     loop {
         if let Some(idx) = default {
             print!("{} [0-{}] (default {}): ", prompt, options.len() - 1, idx);
@@ -104,6 +115,11 @@ pub fn select_option(prompt: &str, options: &[&str], default: Option<usize>) -> 
 /// let name = prompt_text("Enter your name", Some("Guest")).unwrap();
 /// ```
 pub fn prompt_text(prompt: &str, default: Option<&str>) -> Result<String> {
+    if !is_stdin_tty() {
+        return Err(JanusError::NotInteractive(
+            "prompt_text() requires an interactive terminal".to_string(),
+        ));
+    }
     if let Some(d) = default {
         print!("{prompt} [{d}]: ");
     } else {
@@ -146,6 +162,11 @@ pub fn prompt_choice(
     choices: &[(&str, &str)],
     default: Option<&str>,
 ) -> Result<usize> {
+    if !is_stdin_tty() {
+        return Err(JanusError::NotInteractive(
+            "prompt_choice() requires an interactive terminal".to_string(),
+        ));
+    }
     loop {
         let default_str = default
             .map(|d| format!(" (default {d})"))
