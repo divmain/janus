@@ -13,7 +13,7 @@ pub use parser::parse as parse_ticket;
 
 pub use repository::{
     TicketLoadResult, build_ticket_map, find_tickets, get_all_children_counts, get_all_tickets,
-    get_all_tickets_from_disk, get_all_tickets_with_map, get_children_count, get_file_mtime,
+    get_all_tickets_from_disk, get_all_tickets_with_map, get_children_count,
 };
 
 pub use self::validate::enforce_filename_authority;

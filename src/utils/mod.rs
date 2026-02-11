@@ -29,8 +29,10 @@ use std::fs;
 #[cfg(test)]
 use std::path::PathBuf;
 
-// Re-export DirScanner for convenience
-pub use dir_scanner::DirScanner;
+// Re-export dir_scanner functions for convenience
+pub use dir_scanner::{
+    find_markdown_files, find_markdown_files_from_path, get_file_mtime, scan_with_mtime,
+};
 
 /// Format a path for display by making it relative to the janus root directory.
 ///

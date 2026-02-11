@@ -8,10 +8,9 @@ use crate::cache::get_or_init_store;
 use crate::ticket::enforce_filename_authority;
 use crate::ticket::parse_ticket;
 use crate::types::LoadResult;
-use crate::utils::DirScanner;
+use crate::utils::find_markdown_files;
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 
 /// Result of loading tickets from disk, including both successes and failures
 pub type TicketLoadResult = LoadResult<TicketMetadata>;
@@ -46,7 +45,7 @@ impl TicketLoadResult {
 pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
     use crate::types::tickets_items_dir;
 
-    DirScanner::find_markdown_files(tickets_items_dir())
+    find_markdown_files(tickets_items_dir())
 }
 
 /// Get all tickets from the in-memory store.
@@ -149,11 +148,6 @@ pub async fn get_all_tickets_with_map()
         .filter_map(|m| m.id.clone().map(|id| (id.to_string(), m.clone())))
         .collect();
     Ok((result.items, map))
-}
-
-/// Get file modification time
-pub fn get_file_mtime(path: &Path) -> Option<std::time::SystemTime> {
-    DirScanner::get_file_mtime(path)
 }
 
 /// Get the count of tickets spawned from a given ticket.

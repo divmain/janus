@@ -22,7 +22,9 @@ use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
 use crate::types::{EntityType, PlanId, TicketMetadata, plans_dir};
-use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
+use crate::utils::{
+    extract_id_from_path, find_markdown_files, find_markdown_files_from_path, validate_identifier,
+};
 
 // Re-export status computation functions
 pub use crate::status::plan::{
@@ -38,7 +40,7 @@ pub use crate::plan::parser::{
 
 /// Find all plan files in the plans directory
 fn find_plans() -> Vec<String> {
-    DirScanner::find_markdown_files(plans_dir()).unwrap_or_else(|e| {
+    find_markdown_files(plans_dir()).unwrap_or_else(|e| {
         eprintln!("Warning: failed to read plans directory: {e}");
         Vec::new()
     })
@@ -82,7 +84,7 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
 
 /// Filesystem-based find implementation for plans (fallback when store unavailable).
 fn find_plan_by_id_filesystem(partial_id: &str, dir: &std::path::Path) -> Result<PathBuf> {
-    let files = DirScanner::find_markdown_files_from_path(dir).unwrap_or_else(|e| {
+    let files = find_markdown_files_from_path(dir).unwrap_or_else(|e| {
         eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);
         Vec::new()
     });

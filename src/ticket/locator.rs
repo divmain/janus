@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::cache::get_or_init_store;
 use crate::error::{JanusError, Result};
 use crate::types::{TicketId, tickets_items_dir};
-use crate::utils::{DirScanner, extract_id_from_path, validate_identifier};
+use crate::utils::{extract_id_from_path, find_markdown_files_from_path, validate_identifier};
 
 fn validate_partial_id(id: &str) -> Result<String> {
     validate_identifier(id, "Ticket ID").map_err(|e| match e {
@@ -59,7 +59,7 @@ async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
 
 /// Filesystem-based find implementation for tickets (fallback when store unavailable).
 fn find_ticket_by_id_filesystem(partial_id: &str, dir: &std::path::Path) -> Result<PathBuf> {
-    let files = DirScanner::find_markdown_files_from_path(dir).unwrap_or_else(|e| {
+    let files = find_markdown_files_from_path(dir).unwrap_or_else(|e| {
         eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);
         Vec::new()
     });
