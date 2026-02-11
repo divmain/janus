@@ -227,7 +227,13 @@ impl Plan {
     ///
     /// Used internally when hooks should be handled at a higher level
     /// (e.g., plan creation where PlanCreated should be fired instead of PlanUpdated).
+    ///
+    /// Uses advisory file locking (`flock`) to serialize concurrent access on Unix,
+    /// preventing lost updates when multiple processes (e.g., MCP tool calls) modify
+    /// the same plan simultaneously.
     pub(crate) fn write_without_hooks(&self, content: &str) -> Result<()> {
+        // Hold an exclusive lock for the entire read-modify-write cycle.
+        let _lock = crate::fs::lock_file_exclusive(&self.file_path);
         self.write_raw(content)
     }
 
