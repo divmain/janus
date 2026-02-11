@@ -612,12 +612,32 @@ impl LinearProvider {
             .ok_or_else(|| JanusError::Api("No teams found in Linear workspace".to_string()))
     }
 
-    /// Check if an error is a NOT_FOUND error from Linear API
+    /// Check if an error is a NOT_FOUND error from Linear API.
+    ///
+    /// Linear surfaces not-found conditions in two ways:
+    /// 1. As a plain `Api` error containing `"[NOT_FOUND]"` (legacy/fallback).
+    /// 2. As `GraphQlErrors` where one or more errors carry a `NOT_FOUND` extension
+    ///    code, or a message indicating the entity was not found (e.g. "Entity not found").
     fn is_not_found_error(error: &JanusError) -> bool {
-        if let JanusError::Api(msg) = error {
-            msg.contains("[NOT_FOUND]")
-        } else {
-            false
+        match error {
+            JanusError::Api(msg) => msg.contains("[NOT_FOUND]"),
+            JanusError::GraphQlErrors { errors, .. } => errors.iter().any(|e| {
+                // Check extension code first (most reliable signal)
+                if let Some(code) = &e.code {
+                    let code_upper = code.to_uppercase();
+                    if code_upper == "NOT_FOUND" || code_upper == "ENTITY_NOT_FOUND" {
+                        return true;
+                    }
+                }
+                // Fall back to message-based detection
+                let msg_lower = e.message.to_lowercase();
+                msg_lower.contains("entity not found")
+                    || msg_lower.contains("not found")
+                        && (msg_lower.contains("issue")
+                            || msg_lower.contains("entity")
+                            || msg_lower.contains("resource"))
+            }),
+            _ => false,
         }
     }
 }
@@ -1198,5 +1218,156 @@ mod tests {
         assert_eq!(converted.due_date, None);
         assert_eq!(converted.creator, None);
         assert_eq!(converted.created_at, "2023-12-01T00:00:00Z");
+    }
+
+    #[test]
+    fn test_is_not_found_error_api_legacy() {
+        // Legacy path: Api error with [NOT_FOUND] marker
+        let err = JanusError::Api("[NOT_FOUND] Issue not found".to_string());
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_api_no_marker() {
+        let err = JanusError::Api("some other API error".to_string());
+        assert!(!LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_extension_code() {
+        // GraphQL error with NOT_FOUND extension code
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "Something went wrong".to_string(),
+                code: Some("NOT_FOUND".to_string()),
+                path: Some("issue".to_string()),
+            }],
+            partial_data: false,
+        };
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_entity_not_found_code() {
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "Something went wrong".to_string(),
+                code: Some("ENTITY_NOT_FOUND".to_string()),
+                path: None,
+            }],
+            partial_data: false,
+        };
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_case_insensitive_code() {
+        // Extension codes should be matched case-insensitively
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "error".to_string(),
+                code: Some("not_found".to_string()),
+                path: None,
+            }],
+            partial_data: false,
+        };
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_entity_not_found_message() {
+        // GraphQL error with "Entity not found" in message, no extension code
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "Entity not found".to_string(),
+                code: None,
+                path: Some("issue".to_string()),
+            }],
+            partial_data: false,
+        };
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_issue_not_found_message() {
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "Issue not found for the given ID".to_string(),
+                code: None,
+                path: None,
+            }],
+            partial_data: false,
+        };
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_resource_not_found_message() {
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "Resource not found".to_string(),
+                code: None,
+                path: None,
+            }],
+            partial_data: false,
+        };
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_unrelated_error() {
+        // GraphQL error that is NOT a not-found condition
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "Internal server error".to_string(),
+                code: Some("INTERNAL_ERROR".to_string()),
+                path: None,
+            }],
+            partial_data: false,
+        };
+        assert!(!LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_multiple_errors_one_not_found() {
+        // Multiple GraphQL errors, at least one is not-found
+        let err = JanusError::GraphQlErrors {
+            errors: vec![
+                crate::error::GraphQlError {
+                    message: "Rate limit exceeded".to_string(),
+                    code: Some("RATE_LIMITED".to_string()),
+                    path: None,
+                },
+                crate::error::GraphQlError {
+                    message: "Entity not found".to_string(),
+                    code: Some("NOT_FOUND".to_string()),
+                    path: Some("issue".to_string()),
+                },
+            ],
+            partial_data: false,
+        };
+        assert!(LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_graphql_generic_not_found_no_entity() {
+        // A message saying "not found" but without entity/issue/resource context
+        // should NOT match (too generic, could be anything)
+        let err = JanusError::GraphQlErrors {
+            errors: vec![crate::error::GraphQlError {
+                message: "Field not found on type Query".to_string(),
+                code: None,
+                path: None,
+            }],
+            partial_data: false,
+        };
+        assert!(!LinearProvider::is_not_found_error(&err));
+    }
+
+    #[test]
+    fn test_is_not_found_error_other_variant() {
+        // Non-Api, non-GraphQL error variants should return false
+        let err = JanusError::Auth("unauthorized".to_string());
+        assert!(!LinearProvider::is_not_found_error(&err));
     }
 }
