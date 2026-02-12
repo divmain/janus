@@ -6,6 +6,7 @@
 //! Key events are first mapped to a `RemoteAction` by the `keymap` module,
 //! then dispatched to the appropriate handler function.
 
+pub mod async_handlers;
 mod confirm_mode;
 pub mod context;
 mod filter_mode;
@@ -19,6 +20,7 @@ mod remote_ops;
 mod search_mode;
 mod selection;
 mod sync;
+pub mod sync_handlers;
 
 pub use context::HandlerContext;
 
