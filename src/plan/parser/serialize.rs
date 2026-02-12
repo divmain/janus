@@ -2,6 +2,7 @@
 //!
 //! Serializes `PlanMetadata` structures back to markdown format for writing to disk.
 
+use crate::JanusError;
 use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection, TicketsSection};
 
 /// Serialize a PlanMetadata back to markdown format for writing to disk.
@@ -28,7 +29,7 @@ use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection, Tick
 ///
 /// Note: Exact whitespace/formatting from the original document is **not**
 /// guaranteed to be preserved. The goal is **information preservation**.
-pub fn serialize_plan(metadata: &PlanMetadata) -> String {
+pub fn serialize_plan(metadata: &PlanMetadata) -> crate::Result<String> {
     let mut output = String::new();
 
     // 1. Generate YAML frontmatter by building a single mapping
@@ -68,7 +69,7 @@ pub fn serialize_plan(metadata: &PlanMetadata) -> String {
     // Serialize the complete frontmatter mapping
     if !frontmatter_mapping.is_empty() {
         let yaml_str = serde_yaml_ng::to_string(&frontmatter_mapping)
-            .expect("frontmatter mapping should always serialize");
+            .map_err(|e| JanusError::InternalError(format!("YAML serialization failed: {e}")))?;
         output.push_str("---\n");
         output.push_str(&yaml_str);
         // serde_yaml_ng output ends with a newline, add the closing ---
@@ -136,7 +137,7 @@ pub fn serialize_plan(metadata: &PlanMetadata) -> String {
         }
     }
 
-    output
+    Ok(output)
 }
 
 /// Serialize a phase to markdown format.
@@ -365,7 +366,7 @@ mod tests {
             extra_frontmatter: None,
         };
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify key components
         assert!(serialized.contains("---"));
@@ -410,7 +411,7 @@ mod tests {
             extra_frontmatter: None,
         };
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify structure
         assert!(serialized.contains("# Phased Plan"));
@@ -460,7 +461,7 @@ mod tests {
                 "1. How often should we sync?",
             )));
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify ordering
         let overview_pos = serialized.find("## Overview").unwrap();
@@ -562,7 +563,7 @@ This is the plan description.
         let metadata = parse_plan_content(original).unwrap();
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Parse again
         let reparsed = parse_plan_content(&serialized).unwrap();
@@ -620,7 +621,7 @@ Implement the core logic.
         let metadata = parse_plan_content(original).unwrap();
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Parse again
         let reparsed = parse_plan_content(&serialized).unwrap();
@@ -693,7 +694,7 @@ fn example() {
         let metadata = parse_plan_content(original).unwrap();
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Parse again
         let reparsed = parse_plan_content(&serialized).unwrap();
@@ -765,7 +766,7 @@ Last section.
 "#;
 
         let metadata = parse_plan_content(original).unwrap();
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         let reparsed = parse_plan_content(&serialized).unwrap();
 
         // Verify section types match in order
@@ -854,7 +855,7 @@ Implement sync logic.
 "#;
 
         let metadata = parse_plan_content(original).unwrap();
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         let reparsed = parse_plan_content(&serialized).unwrap();
 
         // Core fields
@@ -947,7 +948,7 @@ They should survive a round-trip without data loss.
         );
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify custom subsections appear in serialized output
         assert!(serialized.contains("### Implementation Notes"));
@@ -1027,7 +1028,7 @@ Background research phase.
         assert!(phases[0].success_criteria.is_empty());
         assert!(phases[0].ticket_list.tickets.is_empty());
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         assert!(serialized.contains("### References"));
         assert!(serialized.contains("### Open Questions"));
         assert!(serialized.contains("cache eviction policy"));
@@ -1076,7 +1077,7 @@ This approach has limitations with large datasets.
 "#;
 
         let metadata = parse_plan_content(original).unwrap();
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         let reparsed = parse_plan_content(&serialized).unwrap();
 
         let phases = reparsed.phases();
@@ -1129,7 +1130,7 @@ This approach has limitations with large datasets.
             extra_frontmatter: None,
         };
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Default order: Success Criteria, Tickets, then extras
         let sc_pos = serialized.find("### Success Criteria").unwrap();
@@ -1182,7 +1183,7 @@ Ticket j-a1b2 must be completed before j-c3d4 because of API dependency.
         }
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify serialized output contains subsections
         assert!(serialized.contains("### Ordering Notes"));
@@ -1236,7 +1237,7 @@ created: 2024-01-01T00:00:00Z
 "#;
 
         let metadata = parse_plan_content(original).unwrap();
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         let reparsed = parse_plan_content(&serialized).unwrap();
 
         assert!(reparsed.is_simple());
@@ -1322,7 +1323,7 @@ Run the full integration suite before merging.
         );
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify serialized output contains the H3 subsections
         assert!(serialized.contains("## Acceptance Criteria"));
@@ -1410,7 +1411,7 @@ created: 2024-01-01T00:00:00Z
         assert!(phases[0].success_criteria[1].contains("`cache_init()`"));
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify serialized output contains formatting
         assert!(
@@ -1472,7 +1473,7 @@ created: 2024-01-01T00:00:00Z
         assert_eq!(metadata.acceptance_criteria.len(), 2);
         assert!(metadata.acceptance_criteria_extra.is_empty());
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         let reparsed = parse_plan_content(&serialized).unwrap();
 
         assert_eq!(reparsed.acceptance_criteria, metadata.acceptance_criteria);
@@ -1507,7 +1508,7 @@ Important testing information that must not be lost.
             "Testing Notes"
         );
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // The section should still be emitted because of the extra subsections
         assert!(serialized.contains("## Acceptance Criteria"));
@@ -1574,7 +1575,7 @@ Additional context about testing requirements...
         );
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Prose is preserved in serialized output
         assert!(
@@ -1640,7 +1641,7 @@ Example response:
         assert!(raw.contains(r#""status": "ok""#));
 
         // Round-trip preserves the code block
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         assert!(
             serialized.contains("json"),
             "Serialized should contain json code fence, got: {}",
@@ -1681,7 +1682,7 @@ Example response:
             extra_frontmatter: None,
         };
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Falls back to generating from list items
         assert!(serialized.contains("- First criterion"));
@@ -1732,7 +1733,7 @@ Reliability requirements:
         assert!(raw.contains("Reliability requirements:"));
 
         // Serialize and verify prose survives
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         assert!(serialized.contains("Performance requirements:"));
         assert!(serialized.contains("Reliability requirements:"));
 
@@ -1803,7 +1804,7 @@ Run the validation script to confirm.
         );
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Prose is preserved in serialized output
         assert!(
@@ -1877,7 +1878,7 @@ curl -s http://localhost:8080/health | jq .status
         );
 
         // Round-trip preserves the code block
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         assert!(serialized.contains("Example validation:"));
         assert!(serialized.contains("curl"));
 
@@ -1929,7 +1930,7 @@ Reliability requirements:
         assert!(raw.contains("Reliability requirements:"));
 
         // Serialize and verify prose survives
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         assert!(serialized.contains("Performance requirements:"));
         assert!(serialized.contains("Reliability requirements:"));
 
@@ -1967,7 +1968,7 @@ Reliability requirements:
             extra_frontmatter: None,
         };
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Falls back to generating from list items
         assert!(serialized.contains("### Success Criteria"));
@@ -2024,7 +2025,7 @@ created: 2024-01-01T00:00:00Z
         assert!(raw.contains("optional: low priority"));
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Descriptions preserved in serialized output
         assert!(
@@ -2087,7 +2088,7 @@ created: 2024-01-01T00:00:00Z
         }
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Descriptions preserved in serialized output
         assert!(
@@ -2141,7 +2142,7 @@ created: 2024-01-01T00:00:00Z
         };
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Verify Design section present in serialized output
         assert!(
@@ -2244,7 +2245,7 @@ created: 2024-01-01T00:00:00Z
             extra_frontmatter: None,
         };
 
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Falls back to generating numbered list from ticket IDs
         assert!(

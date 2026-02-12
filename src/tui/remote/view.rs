@@ -22,12 +22,12 @@ use super::error_toast::Toast;
 use super::filter::{FilteredLocalTicket, FilteredRemoteIssue, filter_remote_issues};
 use super::filter_modal::FilterState;
 use super::handlers::{
-    HandlerContext, sync_handlers,
+    HandlerContext,
     async_handlers::{
-        create_fetch_handler, create_link_handler, create_push_handler,
-        create_search_fetch_handler, create_sync_apply_handler,
-        create_unlink_handler, FetchResult,
+        FetchResult, create_fetch_handler, create_link_handler, create_push_handler,
+        create_search_fetch_handler, create_sync_apply_handler, create_unlink_handler,
     },
+    sync_handlers,
     sync_handlers::create_sync_fetch_handler,
 };
 use super::link_mode::LinkModeState;
@@ -112,11 +112,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         &last_fetch_result,
     );
 
-    let search_fetch_handler = create_search_fetch_handler(
-        &mut hooks,
-        &fetch_handler,
-        &filter_config,
-    );
+    let search_fetch_handler =
+        create_search_fetch_handler(&mut hooks, &fetch_handler, &filter_config);
 
     let push_handler = create_push_handler(
         &mut hooks,

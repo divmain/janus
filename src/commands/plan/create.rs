@@ -55,7 +55,7 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
     }
 
     // Serialize and write the plan
-    let content = serialize_plan(&metadata);
+    let content = serialize_plan(&metadata)?;
     let plan = Plan::with_id(&id)?;
 
     // Build hook context for plan creation

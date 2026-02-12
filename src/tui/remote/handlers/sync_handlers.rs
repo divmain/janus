@@ -4,15 +4,13 @@
 //! These handlers work together to manage the sync preview flow.
 
 use futures::stream::{self, StreamExt};
-use iocraft::prelude::{Handler, Hooks, State};
 use iocraft::hooks::UseAsyncHandler;
+use iocraft::prelude::{Handler, Hooks, State};
 
 use crate::remote::{Platform, RemoteQuery};
 
 use super::super::error_toast::Toast;
-use super::super::operations::{
-    build_sync_changes, fetch_remote_issue_for_ticket,
-};
+use super::super::operations::{build_sync_changes, fetch_remote_issue_for_ticket};
 use super::super::sync_preview::{SyncChangeWithContext, SyncPreviewState};
 
 /// Factory for creating the sync fetch handler
@@ -56,9 +54,7 @@ pub fn create_sync_fetch_handler(
 
             let results: Vec<_> = stream::iter(owned_ticket_ids)
                 .map(|ticket_id| async {
-                    let result =
-                        fetch_remote_issue_for_ticket(&ticket_id, platform)
-                            .await;
+                    let result = fetch_remote_issue_for_ticket(&ticket_id, platform).await;
                     (ticket_id, result)
                 })
                 .buffer_unordered(5)
@@ -67,30 +63,26 @@ pub fn create_sync_fetch_handler(
 
             for (ticket_id, fetch_result) in results {
                 match fetch_result {
-                    Ok((metadata, issue)) => {
-                        match build_sync_changes(&metadata, &issue) {
-                            Ok(changes) => {
-                                let remote_ref = metadata.remote.clone().unwrap_or_default();
+                    Ok((metadata, issue)) => match build_sync_changes(&metadata, &issue) {
+                        Ok(changes) => {
+                            let remote_ref = metadata.remote.clone().unwrap_or_default();
 
-                                for change in changes {
-                                    all_changes.push(SyncChangeWithContext {
-                                        ticket_id: ticket_id.clone(),
-                                        remote_ref: remote_ref.clone(),
-                                        change,
-                                        decision: None,
-                                    });
-                                }
-                            }
-                            Err(e) => {
-                                error_messages.push(format!(
-                                    "Failed to build sync changes for {ticket_id}: {e}"
-                                ));
+                            for change in changes {
+                                all_changes.push(SyncChangeWithContext {
+                                    ticket_id: ticket_id.clone(),
+                                    remote_ref: remote_ref.clone(),
+                                    change,
+                                    decision: None,
+                                });
                             }
                         }
-                    }
+                        Err(e) => {
+                            error_messages
+                                .push(format!("Failed to build sync changes for {ticket_id}: {e}"));
+                        }
+                    },
                     Err(e) => {
-                        error_messages
-                            .push(format!("Failed to fetch remote for {ticket_id}: {e}"));
+                        error_messages.push(format!("Failed to fetch remote for {ticket_id}: {e}"));
                     }
                 }
             }

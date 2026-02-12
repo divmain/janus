@@ -1576,7 +1576,7 @@ priority_override: 5
         );
 
         // Serialize and re-parse to verify round-trip
-        let serialized = crate::plan::parser::serialize::serialize_plan(&metadata);
+        let serialized = crate::plan::parser::serialize::serialize_plan(&metadata).unwrap();
         assert!(serialized.contains("custom_tool: external-tool-v2"));
         assert!(serialized.contains("priority_override: 5"));
 
@@ -2314,7 +2314,7 @@ created: 2024-01-01T00:00:00Z
         assert!(freeform[0].content.contains("Single ticket lookup"));
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // The serialized output should contain the table
         assert!(serialized.contains("Operation"));
@@ -2371,7 +2371,7 @@ The following schema will be used:
         assert!(desc.contains("Primary key"));
 
         // Serialize
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
 
         // Re-parse and verify round-trip
         let reparsed = parse_plan_content(&serialized).unwrap();
@@ -2541,7 +2541,7 @@ Early H3 content.
         assert!(description.contains("Early H3 content"));
 
         // Serialize and re-parse
-        let serialized = serialize_plan(&metadata);
+        let serialized = serialize_plan(&metadata).unwrap();
         let reparsed = parse_plan_content(&serialized).unwrap();
 
         // Verify round-trip preserved the early H3

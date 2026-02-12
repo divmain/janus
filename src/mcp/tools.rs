@@ -827,7 +827,7 @@ impl JanusTools {
         }
 
         // Write updated plan
-        let content = serialize_plan(&metadata);
+        let content = serialize_plan(&metadata).map_err(|e| e.to_string())?;
         plan.write(&content).map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately

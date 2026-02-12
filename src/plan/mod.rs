@@ -214,7 +214,7 @@ impl Plan {
     /// Serializes the metadata and delegates to [`write()`], which handles
     /// hook execution.
     pub fn write_metadata(&self, metadata: &PlanMetadata) -> Result<()> {
-        let content = serialize_plan(metadata);
+        let content = serialize_plan(metadata)?;
         self.write(&content)
     }
 
@@ -223,7 +223,7 @@ impl Plan {
     /// Used when hooks should be handled at a higher level (e.g., plan import
     /// where PlanCreated should be fired instead of PlanUpdated).
     pub(crate) fn write_metadata_without_hooks(&self, metadata: &PlanMetadata) -> Result<()> {
-        let content = serialize_plan(metadata);
+        let content = serialize_plan(metadata)?;
         self.write_without_hooks(&content)
     }
 

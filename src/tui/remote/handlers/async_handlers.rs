@@ -7,8 +7,8 @@
 //! call `hooks.use_async_handler()` internally.
 
 use futures::stream;
-use iocraft::prelude::{Handler, Hooks, State};
 use iocraft::hooks::UseAsyncHandler;
+use iocraft::prelude::{Handler, Hooks, State};
 
 use crate::remote::{Platform, RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
@@ -84,8 +84,7 @@ pub fn create_fetch_handler(
                     ))));
 
                     // Store error result for status bar display
-                    last_fetch_result
-                        .set(Some((FetchResult::Error(err_type, err_msg), is_search)));
+                    last_fetch_result.set(Some((FetchResult::Error(err_type, err_msg), is_search)));
                 }
             }
 
@@ -319,10 +318,7 @@ pub fn create_unlink_handler(
 }
 
 /// Fetch remote issues from the given provider with optional query filters
-async fn fetch_remote_issues_with_query(
-    platform: Platform,
-    query: RemoteQuery,
-) -> FetchResult {
+async fn fetch_remote_issues_with_query(platform: Platform, query: RemoteQuery) -> FetchResult {
     let config = match crate::config::Config::load() {
         Ok(c) => c,
         Err(e) => {
