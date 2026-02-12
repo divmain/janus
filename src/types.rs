@@ -793,6 +793,28 @@ impl TicketMetadata {
     pub fn item_type(&self) -> EntityType {
         EntityType::Ticket
     }
+
+    /// Convert deps strings to validated TicketId values.
+    ///
+    /// Returns a Vec of valid TicketIds, filtering out any malformed IDs.
+    /// This provides type safety at use-site without breaking deserialization.
+    pub fn deps_as_ticket_ids(&self) -> Vec<TicketId> {
+        self.deps
+            .iter()
+            .filter_map(|id| TicketId::new(id).ok())
+            .collect()
+    }
+
+    /// Convert links strings to validated TicketId values.
+    ///
+    /// Returns a Vec of valid TicketIds, filtering out any malformed IDs.
+    /// This provides type safety at use-site without breaking deserialization.
+    pub fn links_as_ticket_ids(&self) -> Vec<TicketId> {
+        self.links
+            .iter()
+            .filter_map(|id| TicketId::new(id).ok())
+            .collect()
+    }
 }
 
 /// Shared ticket data interface for types that contain ticket metadata.
