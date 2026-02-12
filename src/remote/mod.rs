@@ -211,6 +211,55 @@ impl FromStr for RemoteRef {
     }
 }
 
+/// Search debounce duration in milliseconds for text search queries
+pub const SEARCH_DEBOUNCE_MS: u64 = 500;
+
+/// Paginated result wrapper for remote provider queries
+#[derive(Debug, Clone)]
+pub struct PaginatedResult<T> {
+    /// Items returned in this page
+    pub items: Vec<T>,
+    /// Total count of all items across all pages (if available from provider)
+    pub total_count: Option<u64>,
+    /// Whether more pages are available
+    pub has_more: bool,
+    /// Cursor for fetching the next page (provider-specific opaque string)
+    pub next_cursor: Option<String>,
+    /// Page number for the next page (1-based, for providers that use page-based pagination)
+    pub next_page: Option<u32>,
+}
+
+impl<T> PaginatedResult<T> {
+    /// Create a new paginated result
+    pub fn new(items: Vec<T>, has_more: bool) -> Self {
+        Self {
+            items,
+            total_count: None,
+            has_more,
+            next_cursor: None,
+            next_page: None,
+        }
+    }
+
+    /// Set total count
+    pub fn with_total_count(mut self, count: u64) -> Self {
+        self.total_count = Some(count);
+        self
+    }
+
+    /// Set next cursor
+    pub fn with_next_cursor(mut self, cursor: String) -> Self {
+        self.next_cursor = Some(cursor);
+        self
+    }
+
+    /// Set next page number
+    pub fn with_next_page(mut self, page: u32) -> Self {
+        self.next_page = Some(page);
+        self
+    }
+}
+
 /// Normalized remote issue data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteIssue {
@@ -413,17 +462,37 @@ impl IssueUpdates {
 /// after fetching results.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RemoteQuery {
-    /// Maximum number of issues to return (supported by all providers)
+    /// Maximum number of issues to return per page (supported by all providers)
     pub limit: u32,
-    /// Pagination cursor (Linear only)
+    /// Pagination cursor (provider-specific opaque string)
     pub cursor: Option<String>,
+    /// Maximum number of pages to fetch (to prevent runaway pagination)
+    pub max_pages: u32,
+    /// Search text for text-based filtering (provider-specific implementation)
+    pub search_text: Option<String>,
 }
 
 impl RemoteQuery {
+    /// Create a new query with default values
+    ///
+    /// Defaults: limit=100, max_pages=5
     pub fn new() -> Self {
         Self {
             limit: 100,
+            max_pages: 5,
             ..Default::default()
+        }
+    }
+
+    /// Create a new query for search mode
+    ///
+    /// Sets search_text and resets pagination cursors
+    pub fn with_search(text: &str) -> Self {
+        Self {
+            limit: 100,
+            max_pages: 5,
+            search_text: Some(text.to_string()),
+            cursor: None,
         }
     }
 }
@@ -557,18 +626,28 @@ pub trait RemoteProvider: Send + Sync {
         updates: IssueUpdates,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>>;
 
-    /// List issues from the remote platform with filtering
-    fn list_issues<'a>(
+    /// Browse issues from the remote platform with pagination
+    ///
+    /// Fetches up to `query.max_pages` pages (default 5 = 500 issues).
+    /// Use this for browsing when no search text is provided.
+    fn browse_issues<'a>(
         &'a self,
         query: &'a RemoteQuery,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>;
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<PaginatedResult<RemoteIssue>>> + Send + 'a>,
+    >;
 
-    /// Search for issues by text
-    fn search_issues<'a>(
+    /// Search for issues by text across all issues
+    ///
+    /// Uses the remote platform's native search API. Results are not capped.
+    /// This is used when the user types in the search box.
+    fn search_remote<'a>(
         &'a self,
         text: &str,
-        limit: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>;
+        query: &'a RemoteQuery,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<PaginatedResult<RemoteIssue>>> + Send + 'a>,
+    >;
 }
 
 /// Enum wrapping all remote provider implementations
@@ -753,6 +832,9 @@ mod tests {
     fn test_remote_query_default_limit() {
         let query = RemoteQuery::new();
         assert_eq!(query.limit, 100);
+        assert_eq!(query.max_pages, 5);
+        assert!(query.cursor.is_none());
+        assert!(query.search_text.is_none());
     }
 
     #[test]
@@ -763,6 +845,41 @@ mod tests {
 
         assert_eq!(query.limit, 50);
         assert_eq!(query.cursor, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_remote_query_with_search() {
+        let query = RemoteQuery::with_search("bug fix");
+        assert_eq!(query.limit, 100);
+        assert_eq!(query.max_pages, 5);
+        assert_eq!(query.search_text, Some("bug fix".to_string()));
+        assert!(query.cursor.is_none());
+    }
+
+    #[test]
+    fn test_paginated_result_basic() {
+        let items: Vec<u32> = vec![1, 2, 3];
+        let result = PaginatedResult::new(items.clone(), true);
+
+        assert_eq!(result.items, items);
+        assert!(result.has_more);
+        assert!(result.total_count.is_none());
+        assert!(result.next_cursor.is_none());
+        assert!(result.next_page.is_none());
+    }
+
+    #[test]
+    fn test_paginated_result_with_metadata() {
+        let items: Vec<u32> = vec![1, 2, 3];
+        let result = PaginatedResult::new(items, false)
+            .with_total_count(100)
+            .with_next_cursor("cursor123".to_string())
+            .with_next_page(2);
+
+        assert!(!result.has_more);
+        assert_eq!(result.total_count, Some(100));
+        assert_eq!(result.next_cursor, Some("cursor123".to_string()));
+        assert_eq!(result.next_page, Some(2));
     }
 
     #[test]

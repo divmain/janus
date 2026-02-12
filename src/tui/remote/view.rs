@@ -9,6 +9,10 @@
 
 use std::collections::HashSet;
 
+/// Debounce delay for remote search input in milliseconds
+/// This prevents excessive API calls while typing
+const REMOTE_SEARCH_DEBOUNCE_MS: u64 = 500;
+
 /// Macro to reduce boilerplate in async handlers by consolidating State cloning.
 ///
 /// This macro simplifies the repetitive pattern where each async handler needs
@@ -27,7 +31,7 @@ use futures::stream::{self, StreamExt};
 use iocraft::prelude::*;
 
 use crate::remote::Platform;
-use crate::remote::{RemoteIssue, RemoteProvider, RemoteQuery};
+use crate::remote::{PaginatedResult, RemoteIssue, RemoteProvider, RemoteQuery};
 use crate::ticket::get_all_tickets_from_disk;
 use crate::tui::components::{Clickable, InlineSearchBox};
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
@@ -47,16 +51,22 @@ use super::shortcuts::{ModalVisibility, compute_shortcuts};
 use super::state::ViewMode;
 use super::sync_preview::SyncPreviewState;
 
-/// Result from async fetch operation
+/// Result from async fetch operation with pagination metadata
 #[derive(Clone)]
 enum FetchResult {
-    Success(Vec<RemoteIssue>),
+    Success(PaginatedResult<RemoteIssue>),
     Error(String, String), // (error_type, error_message)
 }
 
 /// Fetch remote issues from the given provider with optional query filters
 ///
-/// This operation is wrapped with a timeout from config (default 30 seconds)
+/// This operation supports dual-mode fetching:
+/// - Browse mode: When query.search_text is None, calls browse_issues() to fetch
+///   up to max_pages (default 5 = 500 issues) for browsing recent issues.
+/// - Search mode: When query.search_text is Some, calls search_remote() to perform
+///   server-side text search across all issues.
+///
+/// The operation is wrapped with a timeout from config (default 30 seconds)
 /// to prevent indefinite hanging if the remote provider is unresponsive.
 async fn fetch_remote_issues_with_query(platform: Platform, query: RemoteQuery) -> FetchResult {
     let config = match crate::config::Config::load() {
@@ -67,15 +77,30 @@ async fn fetch_remote_issues_with_query(platform: Platform, query: RemoteQuery) 
     };
 
     let timeout = config.remote_timeout();
+    let is_search_mode = query.search_text.is_some();
 
     let fetch_operation = async {
         match platform {
             Platform::GitHub => match crate::remote::github::GitHubProvider::from_config(&config) {
-                Ok(provider) => provider.list_issues(&query).await,
+                Ok(provider) => {
+                    if is_search_mode {
+                        let text = query.search_text.as_ref().unwrap();
+                        provider.search_remote(text, &query).await
+                    } else {
+                        provider.browse_issues(&query).await
+                    }
+                }
                 Err(e) => Err(e),
             },
             Platform::Linear => match crate::remote::linear::LinearProvider::from_config(&config) {
-                Ok(provider) => provider.list_issues(&query).await,
+                Ok(provider) => {
+                    if is_search_mode {
+                        let text = query.search_text.as_ref().unwrap();
+                        provider.search_remote(text, &query).await
+                    } else {
+                        provider.browse_issues(&query).await
+                    }
+                }
                 Err(e) => Err(e),
             },
         }
@@ -95,7 +120,7 @@ async fn fetch_remote_issues_with_query(platform: Platform, query: RemoteQuery) 
     };
 
     match result {
-        Ok(issues) => FetchResult::Success(issues),
+        Ok(paginated) => FetchResult::Success(paginated),
         Err(e) => {
             // Check if it's a timeout error from the inner retry mechanism
             let error_msg = if let crate::error::JanusError::RemoteTimeout { seconds } = &e {
@@ -154,6 +179,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     // Last error info (for error detail modal) - stores (type, message)
     let last_error: State<Option<(String, String)>> = hooks.use_state(|| None);
 
+    // Last fetch result for status bar display (stores PaginatedResult with search mode info)
+    let last_fetch_result: State<Option<(FetchResult, bool)>> = hooks.use_state(|| None);
+
     // Search state - search_query is separate for InlineSearchBox compatibility
     let search_query = hooks.use_state(String::new);
     let mut search_ui: State<super::state::SearchUiData> = hooks.use_state(Default::default);
@@ -172,23 +200,49 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Async fetch handler for refreshing remote issues
     let fetch_handler: Handler<(Platform, RemoteQuery)> = hooks.use_async_handler({
-        clone_states!(remote_issues, view_display, toast, last_error);
+        clone_states!(
+            remote_issues,
+            view_display,
+            toast,
+            last_error,
+            last_fetch_result
+        );
         move |(platform, query): (Platform, RemoteQuery)| {
             let mut remote_issues = remote_issues.clone();
             let mut view_display = view_display.clone();
             let mut toast = toast.clone();
             let mut last_error = last_error.clone();
+            let mut last_fetch_result = last_fetch_result.clone();
             async move {
+                let is_search = query.search_text.is_some();
                 let result = fetch_remote_issues_with_query(platform, query).await;
                 match result {
-                    FetchResult::Success(issues) => {
-                        remote_issues.set(issues);
+                    FetchResult::Success(paginated) => {
+                        let items = paginated.items.clone();
+                        remote_issues.set(items.clone());
+
+                        // Show info toast about results
+                        let msg = if is_search {
+                            format!("Found {} matches", items.len())
+                        } else if paginated.has_more {
+                            format!("Loaded {} issues (more available)", items.len())
+                        } else {
+                            format!("Loaded {} issues", items.len())
+                        };
+                        toast.set(Some(Toast::info(msg)));
+
+                        // Store result for status bar display
+                        last_fetch_result.set(Some((FetchResult::Success(paginated), is_search)));
                     }
                     FetchResult::Error(err_type, err_msg) => {
-                        last_error.set(Some((err_type, err_msg.clone())));
+                        last_error.set(Some((err_type.clone(), err_msg.clone())));
                         toast.set(Some(Toast::error(format!(
                             "Failed to fetch remote issues: {err_msg}"
                         ))));
+
+                        // Store error result for status bar display
+                        last_fetch_result
+                            .set(Some((FetchResult::Error(err_type, err_msg), is_search)));
                     }
                 }
                 // Update loading state within view_display struct
@@ -199,8 +253,41 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         }
     });
 
+    // Search orchestrator with debounce for remote search
+    // This triggers a debounced fetch when search text changes
+    let search_fetch_handler: Handler<String> = hooks.use_async_handler({
+        clone_states!(fetch_handler, filter_config);
+        move |search_text: String| {
+            let fetch_handler = fetch_handler.clone();
+            let filter_config = filter_config.clone();
+            async move {
+                // Debounce wait to prevent excessive API calls while typing
+                tokio::time::sleep(tokio::time::Duration::from_millis(
+                    REMOTE_SEARCH_DEBOUNCE_MS,
+                ))
+                .await;
+
+                let filter_config_ref = filter_config.read();
+                let current_provider = filter_config_ref.provider;
+                let mut query = filter_config_ref.active_filters.clone();
+
+                // Set search text if not empty, otherwise clear it (browse mode)
+                if !search_text.is_empty() {
+                    query.search_text = Some(search_text);
+                } else {
+                    query.search_text = None;
+                }
+
+                fetch_handler((current_provider, query));
+            }
+        }
+    });
+
     // Track if we've started the initial fetch
     let mut fetch_started = hooks.use_state(|| false);
+
+    // Track last search query for remote search debounce
+    let mut last_remote_search_query: State<String> = hooks.use_state(String::new);
 
     // Trigger initial fetch on startup
     if !fetch_started.get() {
@@ -209,6 +296,21 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         let current_provider = filter_config_ref.provider;
         let current_query = filter_config_ref.active_filters.clone();
         fetch_handler.clone()((current_provider, current_query));
+    }
+
+    // Trigger debounced remote search when query changes in remote view mode
+    let view_display_for_search = view_display.read();
+    let current_view_for_search = view_display_for_search.active_view;
+    drop(view_display_for_search);
+
+    if current_view_for_search == ViewMode::Remote {
+        let current_query = search_query.to_string();
+        let last_query = last_remote_search_query.to_string();
+
+        if current_query != last_query {
+            last_remote_search_query.set(current_query.clone());
+            search_fetch_handler.clone()(current_query);
+        }
     }
 
     // Clone fetch_handler for use in event handlers
@@ -1005,6 +1107,41 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     let detail_scroll_ref = detail_scroll.read();
     let filter_config_ref = filter_config.read();
     let modal_visibility_ref = modal_visibility.read();
+    let last_fetch_result_ref = last_fetch_result.read();
+
+    // Compute status message for remote view
+    let status_message = if current_view == ViewMode::Remote {
+        last_fetch_result_ref
+            .as_ref()
+            .and_then(|(result, is_search)| {
+                match result {
+                    FetchResult::Success(paginated) => {
+                        let count = paginated.items.len();
+                        let query_str = search_query.to_string();
+                        if *is_search {
+                            // Search mode
+                            if let Some(total) = paginated.total_count {
+                                Some(format!(
+                                    "Found {total} matches for '{query_str}' ({count} shown)"
+                                ))
+                            } else {
+                                Some(format!("Found {count} matches for '{query_str}'"))
+                            }
+                        } else {
+                            // Browse mode
+                            if paginated.has_more {
+                                Some(format!("Showing {count} issues (more available)"))
+                            } else {
+                                Some(format!("Showing {count} issues"))
+                            }
+                        }
+                    }
+                    FetchResult::Error(_, _) => None, // Don't show status on error
+                }
+            })
+    } else {
+        None
+    };
 
     // Render the UI using sub-components
     element! {
@@ -1102,6 +1239,7 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                 view_mode: current_view,
                 local_count: local_sel_count,
                 remote_count: remote_sel_count,
+                status_message: status_message.clone(),
             )
 
             // Modal overlays

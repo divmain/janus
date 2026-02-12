@@ -28,8 +28,8 @@ use crate::error::{JanusError, Result};
 use crate::config::Config;
 
 use super::{
-    AsHttpError, IssueUpdates, Platform, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef,
-    RemoteStatus,
+    AsHttpError, IssueUpdates, PaginatedResult, Platform, RemoteIssue, RemoteProvider, RemoteQuery,
+    RemoteRef, RemoteStatus,
 };
 
 const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
@@ -791,49 +791,69 @@ impl RemoteProvider for LinearProvider {
         })
     }
 
-    fn list_issues<'a>(
+    fn browse_issues<'a>(
         &'a self,
         query: &'a RemoteQuery,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<PaginatedResult<RemoteIssue>>> + Send + 'a>,
+    > {
         Box::pin(async move {
-            let operation = IssuesQuery::build(IssuesQueryVariables {
-                first: Some(query.limit as i32),
-                after: query.cursor.clone(),
-                filter: None,
-            });
+            let max_pages = query.max_pages.max(1);
+            let first = query.limit.min(100) as i32;
+            let mut all_issues: Vec<RemoteIssue> = Vec::new();
+            let mut cursor: Option<String> = None;
+            let mut has_more = false;
 
-            let response = self.execute(operation).await?;
+            for _page in 0..max_pages {
+                let variables = IssuesQueryVariables {
+                    first: Some(first),
+                    after: cursor.clone(),
+                    filter: None, // No filter in browse mode
+                };
 
-            let mut cache = self.issue_id_cache.write().await;
-            let issues: Vec<RemoteIssue> = response
-                .issues
-                .nodes
-                .into_iter()
-                .map(|issue| {
-                    let internal_id = issue.id.clone().into_inner();
-                    let external_id = issue.identifier.clone();
-                    cache.insert(external_id, internal_id);
-                    self.convert_linear_issue(issue)
-                })
-                .collect();
+                let operation = IssuesQuery::build(variables);
+                let response = self.execute(operation).await?;
 
-            Ok(issues)
+                let issues = response.issues;
+                for node in issues.nodes {
+                    all_issues.push(self.convert_linear_issue(node));
+                }
+
+                // Check if there are more pages
+                has_more = issues.page_info.has_next_page;
+                cursor = issues.page_info.end_cursor.clone();
+
+                if !has_more || cursor.is_none() {
+                    break;
+                }
+            }
+
+            Ok(PaginatedResult {
+                items: all_issues,
+                total_count: None, // Linear doesn't provide total count
+                has_more,
+                next_cursor: cursor,
+                next_page: None, // Linear uses cursors
+            })
         })
     }
 
-    fn search_issues<'a>(
+    fn search_remote<'a>(
         &'a self,
         text: &str,
-        limit: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
-    {
+        query: &'a RemoteQuery,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<PaginatedResult<RemoteIssue>>> + Send + 'a>,
+    > {
         let text = text.to_string();
         Box::pin(async move {
-            // Use Linear's server-side filtering with IssueFilter.
-            // We search title, description, and identifier using case-insensitive contains.
-            // The filter uses OR logic: match if any of the fields contain the search text.
+            let first = query.limit.min(100) as i32;
+            let mut all_issues: Vec<RemoteIssue> = Vec::new();
+            let mut cursor: Option<String> = None;
+            // Track pagination state
+            let mut has_more: bool;
 
+            // Build filter for search
             let title_filter = IssueFilter {
                 title: Some(StringComparator {
                     contains_ignore_case: Some(text.clone()),
@@ -844,7 +864,7 @@ impl RemoteProvider for LinearProvider {
 
             let description_filter = IssueFilter {
                 description: Some(NullableStringComparator {
-                    contains_ignore_case: Some(text),
+                    contains_ignore_case: Some(text.clone()),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -856,28 +876,37 @@ impl RemoteProvider for LinearProvider {
                 ..Default::default()
             };
 
-            let operation = IssuesQuery::build(IssuesQueryVariables {
-                first: Some(limit as i32),
-                after: None,
-                filter: Some(filter),
-            });
+            // Fetch all matching pages (no limit)
+            loop {
+                let variables = IssuesQueryVariables {
+                    first: Some(first),
+                    after: cursor.clone(),
+                    filter: Some(filter.clone()),
+                };
 
-            let response = self.execute(operation).await?;
+                let operation = IssuesQuery::build(variables);
+                let response = self.execute(operation).await?;
 
-            let mut cache = self.issue_id_cache.write().await;
-            let issues: Vec<RemoteIssue> = response
-                .issues
-                .nodes
-                .into_iter()
-                .map(|issue| {
-                    let internal_id = issue.id.clone().into_inner();
-                    let external_id = issue.identifier.clone();
-                    cache.insert(external_id, internal_id);
-                    self.convert_linear_issue(issue)
-                })
-                .collect();
+                let issues = response.issues;
+                for node in issues.nodes {
+                    all_issues.push(self.convert_linear_issue(node));
+                }
 
-            Ok(issues)
+                has_more = issues.page_info.has_next_page;
+                cursor = issues.page_info.end_cursor.clone();
+
+                if !has_more || cursor.is_none() {
+                    break;
+                }
+            }
+
+            Ok(PaginatedResult {
+                items: all_issues,
+                total_count: None,
+                has_more,
+                next_cursor: cursor,
+                next_page: None,
+            })
         })
     }
 }

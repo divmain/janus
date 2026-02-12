@@ -45,6 +45,9 @@ octocrab = "0.48"
 # HTTP client for Linear API
 reqwest = { version = "0.12", features = ["json"] }
 
+# HTTP types (Uri, etc.) - used by octocrab integration
+http = "1"
+
 # Type-safe GraphQL client
 cynic = "3"
 

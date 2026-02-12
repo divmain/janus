@@ -2271,6 +2271,7 @@ dependencies = [
  "fastembed",
  "futures",
  "fuzzy-matcher",
+ "http",
  "insta",
  "iocraft",
  "janus-schema",

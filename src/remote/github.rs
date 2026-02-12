@@ -1,5 +1,6 @@
 //! GitHub Issues provider implementation.
 
+use http::Uri;
 use octocrab::Octocrab;
 use secrecy::SecretBox;
 use std::fmt;
@@ -9,7 +10,8 @@ use crate::error::{JanusError, Result};
 use crate::config::Config;
 
 use super::{
-    AsHttpError, IssueUpdates, RemoteIssue, RemoteProvider, RemoteQuery, RemoteRef, RemoteStatus,
+    AsHttpError, IssueUpdates, PaginatedResult, RemoteIssue, RemoteProvider, RemoteQuery,
+    RemoteRef, RemoteStatus,
 };
 
 /// GitHub Issues provider
@@ -457,49 +459,107 @@ impl RemoteProvider for GitHubProvider {
         })
     }
 
-    fn list_issues<'a>(
+    fn browse_issues<'a>(
         &'a self,
         query: &'a RemoteQuery,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<PaginatedResult<RemoteIssue>>> + Send + 'a>,
+    > {
         Box::pin(async move {
             let (owner, repo) = self.get_default_owner_repo()?;
             let client = self.client.clone();
             let owner = owner.to_string();
             let repo = repo.to_string();
-
             let timeout = self.timeout;
+            let max_pages = query.max_pages.max(1); // At least 1 page
+            let per_page = query.limit.min(100) as u8;
+
             let result = super::execute_with_retry(
                 || async {
                     client
                         .issues(&owner, &repo)
                         .list()
-                        .per_page(query.limit.min(100) as u8)
+                        .per_page(per_page)
                         .send()
                         .await
                         .map_err(GitHubError::from)
                 },
                 Some(timeout),
             )
-            .await?;
+            .await;
 
-            let issues: Vec<RemoteIssue> = result
-                .items
-                .into_iter()
-                .filter(|issue| issue.pull_request.is_none())
-                .map(|issue| self.convert_github_issue(&issue))
-                .collect();
+            match result {
+                Ok(first_page) => {
+                    let mut all_issues: Vec<RemoteIssue> = first_page
+                        .items
+                        .iter()
+                        .map(|issue| self.convert_github_issue(issue))
+                        .collect();
 
-            Ok(issues)
+                    let mut current_page = first_page;
+                    let mut pages_fetched = 1u32;
+                    let mut has_more = false;
+                    let mut next_page_num: Option<u32> = None;
+
+                    // Fetch additional pages up to max_pages
+                    while pages_fetched < max_pages {
+                        match client.get_page(&current_page.next).await {
+                            Ok(Some(page)) => {
+                                pages_fetched += 1;
+                                all_issues.extend(
+                                    page.items.iter().map(|i| self.convert_github_issue(i)),
+                                );
+
+                                // Check if there are more pages
+                                has_more = page.next.is_some();
+                                if has_more {
+                                    next_page_num = Some(pages_fetched + 1);
+                                }
+
+                                current_page = page;
+                            }
+                            Ok(None) => {
+                                has_more = false;
+                                break;
+                            }
+                            Err(e) => {
+                                // Partial failure - return what we have with warning
+                                eprintln!(
+                                    "Warning: Failed to fetch page {}: {}",
+                                    pages_fetched + 1,
+                                    e
+                                );
+                                break;
+                            }
+                        }
+                    }
+
+                    // Check if there are more pages beyond what we fetched
+                    if pages_fetched >= max_pages && current_page.next.is_some() {
+                        has_more = true;
+                        next_page_num = Some(max_pages + 1);
+                    }
+
+                    Ok(PaginatedResult {
+                        items: all_issues,
+                        total_count: None, // GitHub list API doesn't provide total
+                        has_more,
+                        next_cursor: None, // GitHub uses page numbers
+                        next_page: next_page_num,
+                    })
+                }
+                Err(e) => Err(e),
+            }
         })
     }
 
-    fn search_issues<'a>(
+    fn search_remote<'a>(
         &'a self,
         text: &str,
-        limit: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RemoteIssue>>> + Send + 'a>>
-    {
+        query: &'a RemoteQuery,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<PaginatedResult<RemoteIssue>>> + Send + 'a>,
+    > {
         let text = text.to_string();
         Box::pin(async move {
             let (owner, repo) = self.get_default_owner_repo()?;
@@ -508,49 +568,147 @@ impl RemoteProvider for GitHubProvider {
             let repo = repo.to_string();
             let query_str = format!("repo:{owner}/{repo} is:issue {text}");
             let timeout = self.timeout;
+            let per_page = query.limit.min(100) as u8;
 
             let result = super::execute_with_retry(
                 || async {
                     client
                         .search()
                         .issues_and_pull_requests(&query_str)
-                        .per_page(limit.min(100) as u8)
+                        .per_page(per_page)
                         .send()
                         .await
                         .map_err(GitHubError::from)
                 },
                 Some(timeout),
             )
-            .await?;
+            .await;
 
-            let issues: Vec<RemoteIssue> = result
-                .items
-                .into_iter()
-                .filter(|item| item.pull_request.is_none())
-                .map(|issue| RemoteIssue {
-                    id: issue.number.to_string(),
-                    title: issue.title.clone(),
-                    body: issue.body.clone().unwrap_or_default(),
-                    status: match issue.state {
-                        octocrab::models::IssueState::Open => RemoteStatus::Open,
-                        octocrab::models::IssueState::Closed => RemoteStatus::Closed,
-                        _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
-                    },
-                    priority: None,
-                    assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
-                    updated_at: issue.updated_at.to_rfc3339(),
-                    url: issue.html_url.to_string(),
-                    labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
-                    team: None,
-                    project: None,
-                    milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
-                    due_date: None,
-                    created_at: issue.created_at.to_rfc3339(),
-                    creator: Some(issue.user.login.clone()),
-                })
-                .collect();
+            match result {
+                Ok(first_page) => {
+                    let total_count = Some(first_page.total_count.unwrap_or(0));
+                    // Save the next page URI before consuming items
+                    let mut next_page_uri: Option<Uri> = first_page.next.clone();
 
-            Ok(issues)
+                    let mut all_issues: Vec<RemoteIssue> = first_page
+                        .items
+                        .into_iter()
+                        .filter(|item| item.pull_request.is_none()) // Exclude PRs
+                        .map(|issue| RemoteIssue {
+                            id: issue.number.to_string(),
+                            title: issue.title.clone(),
+                            body: issue.body.clone().unwrap_or_default(),
+                            status: match issue.state {
+                                octocrab::models::IssueState::Open => RemoteStatus::Open,
+                                octocrab::models::IssueState::Closed => RemoteStatus::Closed,
+                                _ => RemoteStatus::Custom(format!("{:?}", issue.state)),
+                            },
+                            priority: None,
+                            assignee: issue.assignee.as_ref().map(|a| a.login.clone()),
+                            updated_at: issue.updated_at.to_rfc3339(),
+                            url: issue.html_url.to_string(),
+                            labels: issue.labels.iter().map(|l| l.name.clone()).collect(),
+                            team: None,
+                            project: None,
+                            milestone: issue.milestone.as_ref().map(|m| m.title.clone()),
+                            due_date: None,
+                            created_at: issue.created_at.to_rfc3339(),
+                            creator: Some(issue.user.login.clone()),
+                        })
+                        .collect();
+
+                    let mut has_more = next_page_uri.is_some();
+
+                    // For search, we fetch all pages (no max limit)
+                    // but be careful not to loop forever
+                    loop {
+                        if next_page_uri.is_none() {
+                            break;
+                        }
+
+                        match client
+                            .get_page::<octocrab::models::issues::Issue>(&Some(
+                                next_page_uri.clone().unwrap(),
+                            ))
+                            .await
+                        {
+                            Ok(Some(page)) => {
+                                all_issues.extend(
+                                    page.items
+                                        .into_iter()
+                                        .filter(|item: &octocrab::models::issues::Issue| {
+                                            item.pull_request.is_none()
+                                        })
+                                        .map(|issue| RemoteIssue {
+                                            id: issue.number.to_string(),
+                                            title: issue.title.clone(),
+                                            body: issue.body.clone().unwrap_or_default(),
+                                            status: match issue.state {
+                                                octocrab::models::IssueState::Open => {
+                                                    RemoteStatus::Open
+                                                }
+                                                octocrab::models::IssueState::Closed => {
+                                                    RemoteStatus::Closed
+                                                }
+                                                _ => RemoteStatus::Custom(format!(
+                                                    "{:?}",
+                                                    issue.state
+                                                )),
+                                            },
+                                            priority: None,
+                                            assignee: issue
+                                                .assignee
+                                                .as_ref()
+                                                .map(|a| a.login.clone()),
+                                            updated_at: issue.updated_at.to_rfc3339(),
+                                            url: issue.html_url.to_string(),
+                                            labels: issue
+                                                .labels
+                                                .iter()
+                                                .map(|l| l.name.clone())
+                                                .collect(),
+                                            team: None,
+                                            project: None,
+                                            milestone: issue
+                                                .milestone
+                                                .as_ref()
+                                                .map(|m| m.title.clone()),
+                                            due_date: None,
+                                            created_at: issue.created_at.to_rfc3339(),
+                                            creator: Some(issue.user.login.clone()),
+                                        }),
+                                );
+
+                                has_more = page.next.is_some();
+                                next_page_uri = page.next;
+
+                                if !has_more {
+                                    break;
+                                }
+                            }
+                            Ok(None) => {
+                                has_more = false;
+                                break;
+                            }
+                            Err(e) => {
+                                // Partial failure in search - return what we have
+                                eprintln!("Warning: Search pagination failed: {e}");
+                                has_more = true; // Assume there might be more
+                                break;
+                            }
+                        }
+                    }
+
+                    Ok(PaginatedResult {
+                        items: all_issues,
+                        total_count,
+                        has_more,
+                        next_cursor: None,
+                        next_page: None,
+                    })
+                }
+                Err(e) => Err(e),
+            }
         })
     }
 }
