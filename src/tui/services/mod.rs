@@ -114,9 +114,9 @@ impl TicketService {
 
         let (id, _path) = TicketBuilder::new(title)
             .description(description)
-            .status_enum(status)
-            .ticket_type_enum(ticket_type)
-            .priority_enum(priority)
+            .status(status)
+            .ticket_type(ticket_type)
+            .priority(priority)
             .run_hooks(false)
             .build()?;
 

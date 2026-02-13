@@ -4,8 +4,9 @@ use crate::error::{JanusError, Result};
 use crate::remote::Platform;
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef};
 use crate::ticket::TicketBuilder;
-use crate::types::{TicketMetadata, TicketType};
+use crate::types::{TicketMetadata, TicketPriority, TicketType};
 use std::collections::HashSet;
+use std::str::FromStr;
 use thiserror::Error;
 use url::Url;
 
@@ -480,7 +481,7 @@ fn build_remote_ref_from_issue(issue: &RemoteIssue) -> Result<RemoteRef> {
 /// Create a local ticket from a remote issue
 fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef) -> Result<String> {
     let status = remote_issue.status.to_ticket_status();
-    let priority = remote_issue.priority.unwrap_or(2);
+    let priority = TicketPriority::from_str(&remote_issue.priority.unwrap_or(2).to_string())?;
 
     let sanitized_title = sanitize_for_yaml(&remote_issue.title);
     let sanitized_body = sanitize_for_yaml(&remote_issue.body);
@@ -497,9 +498,9 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
 
     let (id, _path) = TicketBuilder::new(&sanitized_title)
         .description(body)
-        .status_enum(status)
-        .ticket_type_enum(TicketType::Task)
-        .priority(priority.to_string())
+        .status(status)
+        .ticket_type(TicketType::Task)
+        .priority(priority)
         .remote(Some(remote_ref.to_string()))
         .run_hooks(false)
         .build()?;

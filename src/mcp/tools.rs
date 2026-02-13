@@ -299,13 +299,13 @@ impl JanusTools {
 
         if let Some(ref t) = request.ticket_type {
             let tt = TicketType::from_str(t).map_err(|_| format!("Invalid ticket type: {t}"))?;
-            builder = builder.ticket_type_enum(tt);
+            builder = builder.ticket_type(tt);
         }
 
         if let Some(p) = request.priority {
             let pp = TicketPriority::from_str(&p.to_string())
                 .map_err(|_| format!("Priority must be 0-4, got {p}"))?;
-            builder = builder.priority_enum(pp);
+            builder = builder.priority(pp);
         }
 
         // Parse and set size if provided

@@ -6,7 +6,6 @@ use crate::types::{
 use crate::utils;
 use serde::Serialize;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 /// Temporary struct for serializing ticket frontmatter to YAML
 #[derive(Serialize)]
@@ -43,9 +42,9 @@ pub struct TicketBuilder {
     design: Option<String>,
     acceptance: Option<String>,
     prefix: Option<String>,
-    ticket_type: Option<String>,
-    status: Option<String>,
-    priority: Option<String>,
+    ticket_type: Option<TicketType>,
+    status: Option<TicketStatus>,
+    priority: Option<TicketPriority>,
     external_ref: Option<String>,
     parent: Option<String>,
     remote: Option<String>,
@@ -104,33 +103,18 @@ impl TicketBuilder {
         self
     }
 
-    pub fn ticket_type(mut self, ticket_type: impl Into<String>) -> Self {
-        self.ticket_type = Some(ticket_type.into());
+    pub fn ticket_type(mut self, ticket_type: TicketType) -> Self {
+        self.ticket_type = Some(ticket_type);
         self
     }
 
-    pub fn ticket_type_enum(mut self, ticket_type: TicketType) -> Self {
-        self.ticket_type = Some(ticket_type.to_string());
+    pub fn status(mut self, status: TicketStatus) -> Self {
+        self.status = Some(status);
         self
     }
 
-    pub fn status(mut self, status: impl Into<String>) -> Self {
-        self.status = Some(status.into());
-        self
-    }
-
-    pub fn status_enum(mut self, status: TicketStatus) -> Self {
-        self.status = Some(status.to_string());
-        self
-    }
-
-    pub fn priority(mut self, priority: impl Into<String>) -> Self {
-        self.priority = Some(priority.into());
-        self
-    }
-
-    pub fn priority_enum(mut self, priority: TicketPriority) -> Self {
-        self.priority = Some(priority.to_string());
+    pub fn priority(mut self, priority: TicketPriority) -> Self {
+        self.priority = Some(priority);
         self
     }
 
@@ -199,25 +183,19 @@ impl TicketBuilder {
 
         let uuid = self.uuid.unwrap_or_else(utils::generate_uuid);
         let now = self.created.unwrap_or_else(utils::iso_date);
-        let status = self.status.unwrap_or_else(|| "new".to_string());
-        let ticket_type = self.ticket_type.unwrap_or_else(|| "task".to_string());
-        let priority = self.priority.unwrap_or_else(|| "2".to_string());
-
-        TicketStatus::from_str(&status).map_err(|_| JanusError::InvalidStatus(status.clone()))?;
-        TicketType::from_str(&ticket_type)
-            .map_err(|_| JanusError::InvalidTicketType(ticket_type.clone()))?;
-        let priority_enum = TicketPriority::from_str(&priority)
-            .map_err(|_| JanusError::InvalidPriority(priority.clone()))?;
+        let status = self.status.unwrap_or_default();
+        let ticket_type = self.ticket_type.unwrap_or_default();
+        let priority = self.priority.unwrap_or_default();
 
         let frontmatter_data = TicketFrontmatter {
             id: id.clone(),
             uuid,
-            status,
+            status: status.to_string(),
             deps: vec![],
             links: vec![],
             created: now,
-            r#type: ticket_type,
-            priority: priority_enum,
+            r#type: ticket_type.to_string(),
+            priority,
             external_ref: self.external_ref,
             parent: self.parent,
             remote: self.remote,
@@ -279,57 +257,12 @@ mod tests {
     use crate::paths::JanusRootGuard;
 
     #[test]
-    fn test_builder_rejects_invalid_status() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
-
-        let result = TicketBuilder::new("Test")
-            .status("invalid_status")
-            .run_hooks(false)
-            .build();
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(err, JanusError::InvalidStatus(_)));
-    }
-
-    #[test]
-    fn test_builder_rejects_invalid_ticket_type() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
-
-        let result = TicketBuilder::new("Test")
-            .ticket_type("invalid_type")
-            .run_hooks(false)
-            .build();
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("invalid ticket type"));
-    }
-
-    #[test]
-    fn test_builder_rejects_invalid_priority() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
-
-        let result = TicketBuilder::new("Test")
-            .priority("999")
-            .run_hooks(false)
-            .build();
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("invalid priority"));
-    }
-
-    #[test]
     fn test_builder_accepts_valid_status() {
         let temp = tempfile::TempDir::new().unwrap();
         let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
-            .status("complete")
+            .status(TicketStatus::Complete)
             .run_hooks(false)
             .build();
 
@@ -342,7 +275,7 @@ mod tests {
         let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
-            .ticket_type("bug")
+            .ticket_type(TicketType::Bug)
             .run_hooks(false)
             .build();
 
@@ -355,7 +288,7 @@ mod tests {
         let _guard = JanusRootGuard::new(temp.path().join(".janus"));
 
         let result = TicketBuilder::new("Test")
-            .priority("0")
+            .priority(TicketPriority::P0)
             .run_hooks(false)
             .build();
 

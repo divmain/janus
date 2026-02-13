@@ -16,7 +16,8 @@ use crate::error::{JanusError, Result};
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef, create_provider};
 use crate::ticket::extract_body;
 use crate::ticket::{Ticket, TicketBuilder};
-use crate::types::TicketType;
+use crate::types::{TicketPriority, TicketType};
+use std::str::FromStr;
 
 pub async fn cmd_adopt(
     remote_ref_str: &str,
@@ -66,7 +67,7 @@ fn create_ticket_from_remote(
 ) -> Result<String> {
     let status = remote_issue.status.to_ticket_status();
 
-    let priority = remote_issue.priority.unwrap_or(2);
+    let priority = TicketPriority::from_str(&remote_issue.priority.unwrap_or(2).to_string())?;
 
     let title = sanitize::sanitize_remote_title(&remote_issue.title)?;
 
@@ -79,9 +80,9 @@ fn create_ticket_from_remote(
     let (id, _file_path) = TicketBuilder::new(&title)
         .description(body)
         .prefix(prefix)
-        .ticket_type_enum(TicketType::Task)
-        .status_enum(status)
-        .priority(priority.to_string())
+        .ticket_type(TicketType::Task)
+        .status(status)
+        .priority(priority)
         .remote(Some(remote_ref.to_string()))
         .run_hooks(false)
         .build()?;
