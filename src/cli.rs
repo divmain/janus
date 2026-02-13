@@ -1312,10 +1312,12 @@ fn parse_status(s: &str) -> Result<TicketStatus, String> {
 }
 
 fn parse_partial_id(s: &str) -> Result<String, String> {
-    // Character-level validation only - allows partial IDs
     let trimmed = s.trim();
     if trimmed.is_empty() {
         return Err("ID cannot be empty".to_string());
+    }
+    if trimmed.starts_with('-') {
+        return Err("ID cannot start with hyphen".to_string());
     }
     if !trimmed
         .chars()
