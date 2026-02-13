@@ -191,6 +191,108 @@ fn create_verification_ticket(
     Ok(id)
 }
 
+/// Context for importing a plan, produced by prepare_import
+struct ImportContext {
+    plan: ImportablePlan,
+    new_count: usize,
+    complete_count: usize,
+}
+
+/// Results from executing the import, produced by the processing phase
+struct ImportResults {
+    plan_id: String,
+    uuid: String,
+    title: String,
+    now: String,
+    created_ticket_ids: Vec<String>,
+    verification_ticket_id: Option<String>,
+}
+
+/// Prepare the import by reading input, parsing, and validating
+///
+/// # Arguments
+/// * `input` - File path or "-" for stdin
+/// * `title_override` - Override the extracted title
+///
+/// # Returns
+/// The import context containing the parsed plan and task counts
+async fn prepare_import(input: &str, title_override: Option<&str>) -> Result<ImportContext> {
+    // Read content from file or stdin
+    let content = if input == "-" {
+        let mut buffer = String::new();
+        std::io::stdin().read_to_string(&mut buffer)?;
+        buffer
+    } else {
+        fs::read_to_string(input).map_err(|e| {
+            JanusError::Io(std::io::Error::new(
+                e.kind(),
+                format!("Failed to read plan import file at {input}: {e}"),
+            ))
+        })?
+    };
+
+    // Parse the importable plan
+    let mut plan = parse_importable_plan(&content)?;
+
+    // Apply title override if provided
+    if let Some(title) = title_override {
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err(JanusError::EmptyPlanTitle);
+        }
+        if trimmed.len() > 200 {
+            return Err(JanusError::PlanTitleTooLong {
+                max: 200,
+                actual: trimmed.len(),
+            });
+        }
+        plan.title = trimmed.to_string();
+    }
+
+    // Check for duplicate plan title
+    check_duplicate_plan_title(&plan.title).await?;
+
+    // Calculate task counts
+    let new_count = plan.all_tasks().iter().filter(|t| !t.is_complete).count();
+    let complete_count = plan.all_tasks().iter().filter(|t| t.is_complete).count();
+
+    Ok(ImportContext {
+        plan,
+        new_count,
+        complete_count,
+    })
+}
+
+/// Finalize the import by generating and printing the output
+///
+/// # Arguments
+/// * `results` - The import results containing all created artifacts
+/// * `plan` - The importable plan (for is_phased check)
+/// * `output_json` - If true, output result as JSON
+fn finalize_import(
+    results: &ImportResults,
+    plan: &ImportablePlan,
+    output_json: bool,
+) -> Result<()> {
+    let tickets_created: Vec<serde_json::Value> = results
+        .created_ticket_ids
+        .iter()
+        .map(|id| json!({ "id": id }))
+        .collect();
+
+    CommandOutput::new(json!({
+        "id": results.plan_id,
+        "uuid": results.uuid,
+        "title": results.title,
+        "created": results.now,
+        "is_phased": plan.is_phased(),
+        "tickets_created": tickets_created,
+        "verification_ticket": results.verification_ticket_id,
+    }))
+    .with_text(&results.plan_id)
+    .print(output_json)
+}
+
 /// Import a plan from a markdown file
 ///
 /// # Arguments
@@ -208,46 +310,16 @@ pub async fn cmd_plan_import(
     prefix: Option<&str>,
     output_json: bool,
 ) -> Result<()> {
-    // 1. Read content from file or stdin
-    let content = if input == "-" {
-        let mut buffer = String::new();
-        std::io::stdin().read_to_string(&mut buffer)?;
-        buffer
-    } else {
-        fs::read_to_string(input).map_err(|e| {
-            JanusError::Io(std::io::Error::new(
-                e.kind(),
-                format!("Failed to read plan import file at {input}: {e}"),
-            ))
-        })?
-    };
+    // Phase 1: Prepare (input parsing, validation)
+    let context = prepare_import(input, title_override).await?;
+    let ImportContext {
+        plan,
+        new_count,
+        complete_count,
+    } = &context;
 
-    // 2. Parse the importable plan
-    let mut plan = parse_importable_plan(&content)?;
-
-    // 3. Apply title override if provided
-    if let Some(title) = title_override {
-        let trimmed = title.trim();
-        if trimmed.is_empty() {
-            return Err(JanusError::EmptyPlanTitle);
-        }
-        if trimmed.len() > 200 {
-            return Err(JanusError::PlanTitleTooLong {
-                max: 200,
-                actual: trimmed.len(),
-            });
-        }
-        plan.title = trimmed.to_string();
-    }
-
-    // 4. Check for duplicate plan title
-    check_duplicate_plan_title(&plan.title).await?;
-
-    // 5. If dry-run, print summary and return
+    // Phase 2: If dry-run, print summary and return
     if dry_run {
-        let new_count = plan.all_tasks().iter().filter(|t| !t.is_complete).count();
-        let complete_count = plan.all_tasks().iter().filter(|t| t.is_complete).count();
-
         return CommandOutput::new(json!({
             "dry_run": true,
             "valid": true,
@@ -276,11 +348,11 @@ pub async fn cmd_plan_import(
                 }
             }
         }))
-        .with_text(format_import_summary(&plan))
+        .with_text(format_import_summary(plan))
         .print(output_json);
     }
 
-    // 6. Create all tickets
+    // Phase 3: Process (create tickets and plan)
     ensure_plans_dir()?;
 
     let mut created_ticket_ids: Vec<String> = Vec::new();
@@ -293,7 +365,7 @@ pub async fn cmd_plan_import(
         }
     }
 
-    // 7. Create verification ticket if acceptance criteria exist
+    // Create verification ticket if acceptance criteria exist
     let verification_ticket_id = if !plan.acceptance_criteria.is_empty() {
         Some(create_verification_ticket(
             &plan.acceptance_criteria,
@@ -304,7 +376,7 @@ pub async fn cmd_plan_import(
         None
     };
 
-    // 8. Generate plan metadata
+    // Generate plan metadata
     let plan_id = generate_plan_id()?;
     let uuid = generate_uuid();
     let now = iso_date();
@@ -323,7 +395,7 @@ pub async fn cmd_plan_import(
         extra_frontmatter: None,
     };
 
-    // 9. Include design section as a free-form section if present
+    // Include design section as a free-form section if present
     if let Some(ref design) = plan.design {
         metadata
             .sections
@@ -333,7 +405,7 @@ pub async fn cmd_plan_import(
             )));
     }
 
-    // 10. Include implementation preamble as a free-form section if present
+    // Include implementation preamble as a free-form section if present
     if let Some(ref preamble) = plan.implementation_preamble {
         metadata
             .sections
@@ -343,7 +415,7 @@ pub async fn cmd_plan_import(
             )));
     }
 
-    // 11. Build sections with ticket IDs
+    // Build sections with ticket IDs
     let mut ticket_idx = 0;
     for import_phase in &plan.phases {
         let mut phase = Phase::new(import_phase.number.clone(), import_phase.name.clone());
@@ -372,37 +444,30 @@ pub async fn cmd_plan_import(
         metadata.sections.push(PlanSection::Phase(phase));
     }
 
-    // 12. Write plan with exactly-once hook semantics:
-    //     PreWrite -> write -> PostWrite -> PlanCreated
+    // Write plan with exactly-once hook semantics:
+    // PreWrite -> write -> PostWrite -> PlanCreated
     let plan_handle = Plan::with_id(&plan_id)?;
-    let context = plan_handle.hook_context();
+    let hook_context = plan_handle.hook_context();
 
     // Pre-write hook can abort the import
-    run_pre_hooks(HookEvent::PreWrite, &context)?;
+    run_pre_hooks(HookEvent::PreWrite, &hook_context)?;
 
     // Write without internal hooks — we manage the full lifecycle here
     // to emit PlanCreated (not PlanUpdated which write() would emit)
     plan_handle.write_metadata_without_hooks(&metadata)?;
 
     // Post-write hooks (fire-and-forget)
-    run_post_hooks(HookEvent::PostWrite, &context);
-    run_post_hooks(HookEvent::PlanCreated, &context);
+    run_post_hooks(HookEvent::PostWrite, &hook_context);
+    run_post_hooks(HookEvent::PlanCreated, &hook_context);
 
-    // 13. Output result
-    let tickets_created: Vec<serde_json::Value> = created_ticket_ids
-        .iter()
-        .map(|id| json!({ "id": id }))
-        .collect();
-
-    CommandOutput::new(json!({
-        "id": plan_id,
-        "uuid": uuid,
-        "title": plan.title,
-        "created": now,
-        "is_phased": plan.is_phased(),
-        "tickets_created": tickets_created,
-        "verification_ticket": verification_ticket_id,
-    }))
-    .with_text(&plan_id)
-    .print(output_json)
+    // Phase 4: Finalize (output generation)
+    let results = ImportResults {
+        plan_id,
+        uuid,
+        title: plan.title.clone(),
+        now,
+        created_ticket_ids,
+        verification_ticket_id,
+    };
+    finalize_import(&results, plan, output_json)
 }
