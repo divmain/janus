@@ -463,6 +463,12 @@ impl TicketStore {
     pub fn upsert_ticket(&self, metadata: TicketMetadata) {
         if let Some(id) = metadata.id.clone() {
             self.tickets.insert(id.to_string(), metadata);
+        } else {
+            self.init_warnings.add(InitWarning {
+                file_path: metadata.file_path.clone(),
+                message: "Skipping ticket upsert: missing ID in frontmatter".to_string(),
+                entity_type: "ticket".to_string(),
+            });
         }
     }
 
@@ -572,6 +578,12 @@ impl TicketStore {
     pub fn upsert_plan(&self, metadata: PlanMetadata) {
         if let Some(id) = metadata.id.clone() {
             self.plans.insert(id.to_string(), metadata);
+        } else {
+            self.init_warnings.add(InitWarning {
+                file_path: metadata.file_path.clone(),
+                message: "Skipping plan upsert: missing ID in frontmatter".to_string(),
+                entity_type: "plan".to_string(),
+            });
         }
     }
 
