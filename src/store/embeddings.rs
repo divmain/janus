@@ -87,8 +87,6 @@ impl TicketStore {
             return;
         }
 
-        let expected_bytes = EMBEDDING_DIMENSIONS * 4;
-
         // Snapshot the ticket data we need (id + file_path) into a local Vec,
         // so that all tickets DashMap shard locks are released before we touch
         // the embeddings DashMap. This prevents AB/BA deadlocks between the
@@ -126,23 +124,8 @@ impl TicketStore {
             let bin_path = emb_dir.join(format!("{key}.bin"));
 
             if let Ok(data) = fs::read(&bin_path) {
-                // Validate file size matches expected embedding dimensions
-                // before parsing. Catches corruption or model-change mismatches.
-                if data.len() != expected_bytes {
-                    continue;
-                }
-
-                if let Some(vector) = bytes_to_f32_vec(&data) {
-                    // Validate: no NaN or infinity values. A corrupted .bin
-                    // file with non-finite floats would silently poison all
-                    // cosine_similarity results.
-                    if vector.iter().any(|v| !v.is_finite()) {
-                        eprintln!(
-                            "warning: skipping embedding for {file_path:?}: contains NaN or infinity"
-                        );
-                        continue;
-                    }
-
+                // Use centralized validation helper
+                if let Some(vector) = validate_and_parse_embedding(&data) {
                     loaded.push((id, vector));
                 }
             }
@@ -298,21 +281,11 @@ impl TicketStore {
         // filesystem work, which would increase contention for concurrent readers
         // (watcher upserts, TUI reads).
         let final_embedding = if bin_path.exists() {
-            // Embedding already exists on disk - attempt to load it
-            let loaded = fs::read(&bin_path).ok().and_then(|data| {
-                let expected_bytes = EMBEDDING_DIMENSIONS * 4;
-                if data.len() != expected_bytes {
-                    return None;
-                }
-                let vector = bytes_to_f32_vec(&data)?;
-                // Validate no NaN/infinity
-                if vector.iter().any(|v| !v.is_finite()) {
-                    return None;
-                }
-                Some(vector)
-            });
-
-            match loaded {
+            // Embedding already exists on disk - attempt to load it using centralized validation
+            match fs::read(&bin_path)
+                .ok()
+                .and_then(|data| validate_and_parse_embedding(&data))
+            {
                 Some(vector) => vector,
                 None => {
                     // Loading failed, fall through to regeneration
@@ -478,6 +451,32 @@ fn bytes_to_f32_vec(data: &[u8]) -> Option<Vec<f32>> {
             f32::from_le_bytes(bytes)
         })
         .collect();
+
+    Some(vector)
+}
+
+/// Validate and parse embedding bytes.
+///
+/// This helper centralizes the validation logic for embedding data:
+/// - Validates the data length matches expected embedding dimensions
+/// - Parses the bytes into f32 values
+/// - Validates no NaN or infinity values
+///
+/// Returns `Some(vec)` if valid, `None` if invalid.
+fn validate_and_parse_embedding(data: &[u8]) -> Option<Vec<f32>> {
+    let expected_bytes = EMBEDDING_DIMENSIONS * 4;
+
+    // Validate file size matches expected embedding dimensions
+    if data.len() != expected_bytes {
+        return None;
+    }
+
+    let vector = bytes_to_f32_vec(data)?;
+
+    // Validate: no NaN or infinity values
+    if vector.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
 
     Some(vector)
 }
