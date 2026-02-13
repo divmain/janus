@@ -4,7 +4,7 @@ use serde_json::json;
 
 use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
-use crate::error::Result;
+use crate::error::{JanusError, Result};
 use crate::events::log_plan_created;
 use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
@@ -20,6 +20,23 @@ use crate::utils::{generate_uuid, iso_date};
 /// * `phases` - Optional list of initial phase names (creates a phased plan if provided)
 /// * `output_json` - If true, output result as JSON
 pub fn cmd_plan_create(title: &str, phases: &[String], output: OutputOptions) -> Result<()> {
+    // Validate title
+    if title.trim().is_empty() {
+        return Err(JanusError::EmptyPlanTitle);
+    }
+    if title.contains('\n') {
+        return Err(JanusError::InvalidInput(
+            "Plan title cannot contain newlines".to_string(),
+        ));
+    }
+    const MAX_TITLE_LENGTH: usize = 200;
+    if title.len() > MAX_TITLE_LENGTH {
+        return Err(JanusError::PlanTitleTooLong {
+            max: MAX_TITLE_LENGTH,
+            actual: title.len(),
+        });
+    }
+
     ensure_plans_dir()?;
 
     let id = generate_plan_id()?;
@@ -50,6 +67,10 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output: OutputOptions) ->
     } else {
         // Phased plan: add phases with numbers
         for (i, phase_name) in phases.iter().enumerate() {
+            // Validate phase name
+            if phase_name.trim().is_empty() {
+                return Err(JanusError::ValidationEmpty(format!("Phase {} name", i + 1)));
+            }
             let phase = Phase::new((i + 1).to_string(), phase_name.clone());
             metadata.sections.push(PlanSection::Phase(phase));
         }
