@@ -563,7 +563,7 @@ async fn process_batch(
             FileAction::Remove => {
                 if let Some(id) = path.file_stem().map(|s| s.to_string_lossy().to_string()) {
                     if is_ticket {
-                        store.remove_ticket(&id);
+                        store.remove_ticket_with_cascade(&id);
                         changed_ticket_ids.push(id);
                     } else if is_plan {
                         store.remove_plan(&id);
@@ -690,7 +690,7 @@ async fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Send
             let store_ids: Vec<String> = store.tickets().iter().map(|r| r.key().clone()).collect();
             for id in store_ids {
                 if !disk_ids.contains(&id) {
-                    store.remove_ticket(&id);
+                    store.remove_ticket_with_cascade(&id);
                 }
             }
         }
@@ -802,7 +802,7 @@ async fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             // File was deleted between event and processing — treat as removal.
             // Return Success because the store was modified (ticket removed).
             if let Some(stem) = path.file_stem() {
-                store.remove_ticket(&stem.to_string_lossy());
+                store.remove_ticket_with_cascade(&stem.to_string_lossy());
             }
             return ParseOutcome::Success;
         }

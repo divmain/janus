@@ -466,14 +466,14 @@ impl TicketStore {
         }
     }
 
-    /// Remove a ticket from the store by ID.
+    /// Remove a ticket from the store and cascade delete references from other tickets.
     ///
     /// Also removes the corresponding embedding entry to prevent orphaned
     /// embeddings from inflating coverage counts.
     ///
     /// Performs cascade deletion to remove references to the deleted ticket
-    /// from other tickets' deps and links arrays to maintain referential integrity.
-    pub fn remove_ticket(&self, id: &str) {
+    /// from other tickets' deps and links arrays on disk to maintain referential integrity.
+    pub fn remove_ticket_with_cascade(&self, id: &str) {
         // Get ticket info before removal for cascade cleanup
         let ticket_info = self
             .tickets
@@ -485,8 +485,8 @@ impl TicketStore {
         self.embeddings.remove(id);
 
         // Cascade deletion: remove references from other tickets' deps and links
-        if let Some((Some(file_path), Some(deleted_id))) = ticket_info {
-            self.remove_ticket_references(&deleted_id, &file_path);
+        if let Some((_, Some(deleted_id))) = ticket_info {
+            self.remove_ticket_references(&deleted_id);
         }
     }
 
@@ -494,7 +494,7 @@ impl TicketStore {
     ///
     /// This maintains referential integrity by ensuring no dangling references
     /// remain when a ticket is deleted.
-    fn remove_ticket_references(&self, deleted_id: &str, _deleted_file_path: &PathBuf) {
+    fn remove_ticket_references(&self, deleted_id: &str) {
         // Collect tickets that need to be updated (those referencing the deleted ticket)
         let tickets_to_update: Vec<(String, PathBuf, bool, bool)> = self
             .tickets
@@ -861,11 +861,11 @@ mod tests {
         });
         assert_eq!(store.tickets.len(), 1);
 
-        store.remove_ticket("j-rm1");
+        store.remove_ticket_with_cascade("j-rm1");
         assert_eq!(store.tickets.len(), 0);
 
         // Removing a nonexistent ticket should not panic
-        store.remove_ticket("j-nonexistent");
+        store.remove_ticket_with_cascade("j-nonexistent");
     }
 
     #[test]
