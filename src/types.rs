@@ -610,13 +610,18 @@ impl FromStr for TicketSize {
     type Err = JanusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "xsmall" | "xs" => Ok(TicketSize::XSmall),
-            "small" | "s" => Ok(TicketSize::Small),
-            "medium" | "m" => Ok(TicketSize::Medium),
-            "large" | "l" => Ok(TicketSize::Large),
-            "xlarge" | "xl" => Ok(TicketSize::XLarge),
-            _ => Err(JanusError::InvalidSize(s.to_string())),
+        if s.eq_ignore_ascii_case("xsmall") || s.eq_ignore_ascii_case("xs") {
+            Ok(TicketSize::XSmall)
+        } else if s.eq_ignore_ascii_case("small") || s.eq_ignore_ascii_case("s") {
+            Ok(TicketSize::Small)
+        } else if s.eq_ignore_ascii_case("medium") || s.eq_ignore_ascii_case("m") {
+            Ok(TicketSize::Medium)
+        } else if s.eq_ignore_ascii_case("large") || s.eq_ignore_ascii_case("l") {
+            Ok(TicketSize::Large)
+        } else if s.eq_ignore_ascii_case("xlarge") || s.eq_ignore_ascii_case("xl") {
+            Ok(TicketSize::XLarge)
+        } else {
+            Err(JanusError::InvalidSize(s.to_string()))
         }
     }
 }
@@ -669,10 +674,12 @@ impl std::str::FromStr for ArrayField {
     type Err = JanusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "deps" => Ok(ArrayField::Deps),
-            "links" => Ok(ArrayField::Links),
-            _ => Err(JanusError::UnknownArrayField(s.to_string())),
+        if s.eq_ignore_ascii_case("deps") {
+            Ok(ArrayField::Deps)
+        } else if s.eq_ignore_ascii_case("links") {
+            Ok(ArrayField::Links)
+        } else {
+            Err(JanusError::UnknownArrayField(s.to_string()))
         }
     }
 }
