@@ -6,6 +6,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::ticket::get_all_tickets_from_disk;
@@ -13,13 +14,13 @@ use crate::ticket::get_all_tickets_from_disk;
 /// Verify all ticket files and report any failures
 ///
 /// # Arguments
-/// * `output_json` - If true, output as JSON
+/// * `output` - Output options for controlling JSON output
 ///
 /// # Returns
 /// Returns Ok(()) with exit code 0 if all tickets are valid,
 /// or Ok(()) with failures printed if there are issues.
 /// Callers should check the failure count to determine exit code.
-pub fn cmd_doctor(output_json: bool) -> Result<(bool, Vec<(String, String)>)> {
+pub fn cmd_doctor(output: OutputOptions) -> Result<(bool, Vec<(String, String)>)> {
     let result = get_all_tickets_from_disk();
 
     let success_count = result.success_count();
@@ -63,7 +64,7 @@ pub fn cmd_doctor(output_json: bool) -> Result<(bool, Vec<(String, String)>)> {
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)?;
+        .print(output)?;
 
     Ok((failure_count == 0, failures))
 }

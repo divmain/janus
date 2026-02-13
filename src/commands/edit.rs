@@ -1,22 +1,23 @@
 use serde_json::json;
 
 use super::{CommandOutput, open_in_editor_for_entity};
+use crate::cli::OutputOptions;
 use crate::error::Result;
 use crate::ticket::Ticket;
 
 /// Open a ticket in the default editor
-pub async fn cmd_edit(id: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_edit(id: &str, output: OutputOptions) -> Result<()> {
     let ticket = Ticket::find(id).await?;
 
     // Output in JSON format if requested (skip editor)
-    if output_json {
+    if output.json {
         return CommandOutput::new(json!({
             "id": ticket.id,
             "file_path": ticket.file_path.to_string_lossy(),
             "action": "edit",
         }))
-        .print(output_json);
+        .print(output);
     }
 
-    open_in_editor_for_entity("ticket", &ticket.file_path, output_json)
+    open_in_editor_for_entity("ticket", &ticket.file_path, output)
 }

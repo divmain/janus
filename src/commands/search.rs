@@ -3,6 +3,7 @@
 //! This command performs semantic search over tickets using vector embeddings
 //! to find tickets semantically similar to the query text.
 
+use crate::cli::OutputOptions;
 use crate::commands::print_json;
 use crate::config::Config;
 use crate::error::{JanusError, Result};
@@ -33,7 +34,7 @@ pub async fn cmd_search(
     query: &str,
     limit: usize,
     threshold: Option<f32>,
-    json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     // Validate query is not empty
     if query.trim().is_empty() {
@@ -88,7 +89,7 @@ pub async fn cmd_search(
     };
 
     // Output results
-    if json {
+    if output.json {
         // Output as JSON
         let json_results: Vec<serde_json::Value> = results
             .iter()
@@ -150,7 +151,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_query_error() {
-        let result = cmd_search("", 10, None, false).await;
+        let result = cmd_search("", 10, None, OutputOptions { json: false }).await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("cannot be empty"));
@@ -158,7 +159,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_whitespace_query_error() {
-        let result = cmd_search("   ", 10, None, false).await;
+        let result = cmd_search("   ", 10, None, OutputOptions { json: false }).await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("cannot be empty"));

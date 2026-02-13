@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::commands::dep_tree::{DepthCalculator, TreeBuilder, TreeFormatter};
 use crate::error::{JanusError, Result};
 use crate::events::{log_dependency_added, log_dependency_removed};
@@ -10,7 +11,7 @@ use crate::graph::{check_circular_dependency, resolve_id_from_map};
 use crate::ticket::{ArrayField, Ticket, build_ticket_map};
 
 /// Add a dependency to a ticket
-pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_dep_add(id: &str, dep_id: &str, output: OutputOptions) -> Result<()> {
     let ticket = Ticket::find(id).await?;
 
     // Validate that the dependency exists
@@ -46,11 +47,11 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()
         "current_deps": metadata.deps,
     }))
     .with_text(text)
-    .print(output_json)
+    .print(output)
 }
 
 /// Remove a dependency from a ticket
-pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_dep_remove(id: &str, dep_id: &str, output: OutputOptions) -> Result<()> {
     let ticket = Ticket::find(id).await?;
 
     // Resolve the dependency ID to get the full ID
@@ -75,11 +76,11 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result
         "Removed dependency: {} -/-> {}",
         ticket.id, dep_ticket.id
     ))
-    .print(output_json)
+    .print(output)
 }
 
 /// Display the dependency tree for a ticket
-pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Result<()> {
+pub async fn cmd_dep_tree(id: &str, full_mode: bool, output: OutputOptions) -> Result<()> {
     let ticket_map = build_ticket_map().await?;
 
     let root = resolve_id_from_map(id, &ticket_map)?;
@@ -93,8 +94,8 @@ pub async fn cmd_dep_tree(id: &str, full_mode: bool, output_json: bool) -> Resul
     );
     let json_output = json!({ "root": tree });
 
-    if output_json {
-        return CommandOutput::new(json_output).print(output_json);
+    if output.json {
+        return CommandOutput::new(json_output).print(output);
     }
 
     let (max_depth, subtree_depth) = DepthCalculator::calculate_depths(&root, &ticket_map);

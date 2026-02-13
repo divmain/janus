@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::events::log_plan_created;
@@ -18,7 +19,7 @@ use crate::utils::{generate_uuid, iso_date};
 /// * `title` - The plan title
 /// * `phases` - Optional list of initial phase names (creates a phased plan if provided)
 /// * `output_json` - If true, output result as JSON
-pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Result<()> {
+pub fn cmd_plan_create(title: &str, phases: &[String], output: OutputOptions) -> Result<()> {
     ensure_plans_dir()?;
 
     let id = generate_plan_id()?;
@@ -83,5 +84,5 @@ pub fn cmd_plan_create(title: &str, phases: &[String], output_json: bool) -> Res
         "phases": phases,
     }))
     .with_text(&id)
-    .print(output_json)
+    .print(output)
 }

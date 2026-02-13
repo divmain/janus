@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::{log_phase_added, log_phase_removed};
@@ -21,7 +22,7 @@ pub async fn cmd_plan_add_phase(
     phase_name: &str,
     after: Option<&str>,
     position: Option<usize>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
@@ -126,7 +127,7 @@ pub async fn cmd_plan_add_phase(
         "Added phase '{}' (Phase {}) to plan {}",
         phase_name, next_number, plan.id
     ))
-    .print(output_json)
+    .print(output)
 }
 
 /// Remove a phase from a plan
@@ -142,7 +143,7 @@ pub async fn cmd_plan_remove_phase(
     phase: &str,
     force: bool,
     migrate: Option<&str>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
@@ -215,5 +216,5 @@ pub async fn cmd_plan_remove_phase(
         "migrated_tickets": migrated_tickets,
     }))
     .with_text(text_output)
-    .print(output_json)
+    .print(output)
 }

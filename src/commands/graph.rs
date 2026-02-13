@@ -14,6 +14,7 @@ use std::collections::HashSet;
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::error::Result;
 use crate::ticket::build_ticket_map;
 
@@ -27,7 +28,7 @@ pub async fn cmd_graph(
     format: &str,
     root: Option<&str>,
     plan: Option<&str>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     use types::RelationshipFilter;
 
@@ -94,5 +95,5 @@ pub async fn cmd_graph(
         "graph": graph_output,
     }))
     .with_text(graph_output)
-    .print(output_json)
+    .print(output)
 }

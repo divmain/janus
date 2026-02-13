@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::{log_ticket_added_to_plan, log_ticket_moved, log_ticket_removed_from_plan};
@@ -49,7 +50,7 @@ pub async fn cmd_plan_add_ticket(
     phase: Option<&str>,
     after: Option<&str>,
     position: Option<usize>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     // Validate ticket exists
     let ticket = Ticket::find(ticket_id).await?;
@@ -150,7 +151,7 @@ pub async fn cmd_plan_add_ticket(
         "position": added_position,
     }))
     .with_text(format!("Added {} to plan {}", resolved_ticket_id, plan.id))
-    .print(output_json)
+    .print(output)
 }
 
 /// Remove a ticket from a plan
@@ -162,7 +163,7 @@ pub async fn cmd_plan_add_ticket(
 pub async fn cmd_plan_remove_ticket(
     plan_id: &str,
     ticket_id: &str,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
@@ -220,7 +221,7 @@ pub async fn cmd_plan_remove_ticket(
         "phase": removed_from_phase,
     }))
     .with_text(format!("Removed {} from plan {}", resolved_id, plan.id))
-    .print(output_json)
+    .print(output)
 }
 
 /// Move a ticket between phases
@@ -238,7 +239,7 @@ pub async fn cmd_plan_move_ticket(
     to_phase: &str,
     after: Option<&str>,
     position: Option<usize>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
@@ -303,5 +304,5 @@ pub async fn cmd_plan_move_ticket(
         "Moved {} to phase '{}' in plan {}",
         resolved_id, to_phase, plan.id
     ))
-    .print(output_json)
+    .print(output)
 }

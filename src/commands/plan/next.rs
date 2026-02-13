@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::display::PlanNextFormatter;
 use crate::error::Result;
@@ -26,7 +27,7 @@ pub async fn cmd_plan_next(
     phase_only: bool,
     all: bool,
     count: usize,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let plan = Plan::find(id).await?;
     let metadata = plan.read()?;
@@ -80,7 +81,7 @@ pub async fn cmd_plan_next(
         "next_items": next_items_json,
     }))
     .with_text(text.trim_end())
-    .print(output_json)
+    .print(output)
 }
 
 /// Helper struct for next item results

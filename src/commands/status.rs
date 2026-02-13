@@ -1,14 +1,15 @@
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
 use crate::events::log_status_changed;
 use crate::ticket::Ticket;
 use crate::types::TicketStatus;
 
 /// Update a ticket's status
-async fn update_status(id: &str, new_status: TicketStatus, output_json: bool) -> Result<()> {
-    update_status_with_summary(id, new_status, None, output_json).await
+async fn update_status(id: &str, new_status: TicketStatus, output: OutputOptions) -> Result<()> {
+    update_status_with_summary(id, new_status, None, output).await
 }
 
 /// Update a ticket's status with an optional completion summary
@@ -16,7 +17,7 @@ async fn update_status_with_summary(
     id: &str,
     new_status: TicketStatus,
     summary: Option<&str>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let (ticket, metadata) = Ticket::find_and_read(id).await?;
     let previous_status = metadata.status.unwrap_or_default();
@@ -53,12 +54,12 @@ async fn update_status_with_summary(
         "new_status": new_status.to_string(),
     }))
     .with_text(format!("Updated {} -> {}", ticket.id, new_status))
-    .print(output_json)
+    .print(output)
 }
 
 /// Set a ticket's status to "in_progress" (start working on it)
-pub async fn cmd_start(id: &str, output_json: bool) -> Result<()> {
-    update_status(id, TicketStatus::InProgress, output_json).await
+pub async fn cmd_start(id: &str, output: OutputOptions) -> Result<()> {
+    update_status(id, TicketStatus::InProgress, output).await
 }
 
 /// Set a ticket's status to "complete" or "cancelled"
@@ -69,7 +70,7 @@ pub async fn cmd_close(
     summary: Option<&str>,
     no_summary: bool,
     cancel: bool,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     // Require either --summary or --no-summary
     if summary.is_none() && !no_summary {
@@ -82,15 +83,15 @@ pub async fn cmd_close(
         TicketStatus::Complete
     };
 
-    update_status_with_summary(id, new_status, summary, output_json).await
+    update_status_with_summary(id, new_status, summary, output).await
 }
 
 /// Reopen a ticket (set status back to "new")
-pub async fn cmd_reopen(id: &str, output_json: bool) -> Result<()> {
-    update_status(id, TicketStatus::New, output_json).await
+pub async fn cmd_reopen(id: &str, output: OutputOptions) -> Result<()> {
+    update_status(id, TicketStatus::New, output).await
 }
 
 /// Set a ticket's status to an arbitrary value
-pub async fn cmd_status(id: &str, status: TicketStatus, output_json: bool) -> Result<()> {
-    update_status(id, status, output_json).await
+pub async fn cmd_status(id: &str, status: TicketStatus, output: OutputOptions) -> Result<()> {
+    update_status(id, status, output).await
 }

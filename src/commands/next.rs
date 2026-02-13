@@ -2,6 +2,7 @@ use owo_colors::OwoColorize;
 use serde::Serialize;
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::next::{InclusionReason, NextWorkFinder, WorkItem};
@@ -24,13 +25,13 @@ struct WorkItemJson {
 }
 
 /// Show next ticket(s) to work on (dependency-aware)
-pub async fn cmd_next(limit: usize, output_json: bool) -> Result<()> {
+pub async fn cmd_next(limit: usize, output: OutputOptions) -> Result<()> {
     let ticket_map = build_ticket_map().await?;
 
     if ticket_map.is_empty() {
         return CommandOutput::new(json!([]))
             .with_text("No tickets found.")
-            .print(output_json);
+            .print(output);
     }
 
     // Check if all tickets are complete or cancelled
@@ -45,7 +46,7 @@ pub async fn cmd_next(limit: usize, output_json: bool) -> Result<()> {
     if all_complete {
         return CommandOutput::new(json!([]))
             .with_text("All tickets are complete. Nothing to work on.")
-            .print(output_json);
+            .print(output);
     }
 
     let finder = NextWorkFinder::new(&ticket_map);
@@ -54,7 +55,7 @@ pub async fn cmd_next(limit: usize, output_json: bool) -> Result<()> {
     if work_items.is_empty() {
         return CommandOutput::new(json!([]))
             .with_text("No tickets ready to work on.")
-            .print(output_json);
+            .print(output);
     }
 
     // Build JSON output
@@ -68,7 +69,7 @@ pub async fn cmd_next(limit: usize, output_json: bool) -> Result<()> {
 
     CommandOutput::new(json!(json_items))
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }
 
 /// Convert a WorkItem to JSON representation

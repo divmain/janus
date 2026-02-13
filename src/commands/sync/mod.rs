@@ -11,6 +11,7 @@ use owo_colors::OwoColorize;
 use serde_json::json;
 
 use super::{CommandOutput, print_json};
+use crate::cli::OutputOptions;
 use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::remote::{RemoteIssue, RemoteProvider, RemoteRef, create_provider};
@@ -22,7 +23,7 @@ use std::str::FromStr;
 pub async fn cmd_adopt(
     remote_ref_str: &str,
     prefix: Option<&str>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     if let Some(p) = prefix {
         crate::utils::validate_prefix(p)?;
@@ -57,7 +58,7 @@ pub async fn cmd_adopt(
         "status": status.to_string(),
     }))
     .with_text(&text)
-    .print(output_json)
+    .print(output)
 }
 
 fn create_ticket_from_remote(
@@ -90,7 +91,7 @@ fn create_ticket_from_remote(
     Ok(id)
 }
 
-pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_push(local_id: &str, output: OutputOptions) -> Result<()> {
     let config = Config::load()?;
 
     let ticket = Ticket::find(local_id).await?;
@@ -133,13 +134,13 @@ pub async fn cmd_push(local_id: &str, output_json: bool) -> Result<()> {
         "remote_ref": remote_ref_str,
     }))
     .with_text(&text)
-    .print(output_json)
+    .print(output)
 }
 
 pub async fn cmd_remote_link(
     local_id: &str,
     remote_ref_str: &str,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let config = Config::load()?;
 
@@ -169,10 +170,10 @@ pub async fn cmd_remote_link(
         "remote_ref": remote_ref_str,
     }))
     .with_text(&text)
-    .print(output_json)
+    .print(output)
 }
 
-pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_sync(local_id: &str, output: OutputOptions) -> Result<()> {
     let config = Config::load()?;
 
     let ticket = Ticket::find(local_id).await?;
@@ -200,7 +201,7 @@ pub async fn cmd_sync(local_id: &str, output_json: bool) -> Result<()> {
 
     let sync_plan = compute_sync_state(local_title, local_status, &remote_issue);
 
-    if output_json {
+    if output.json {
         let json_output = generate_sync_json(ticket.id.clone(), &remote_ref, &sync_plan);
         print_json(&json_output)?;
         return Ok(());

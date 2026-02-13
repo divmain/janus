@@ -5,6 +5,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::Result;
 use crate::plan::get_all_plans_from_disk;
@@ -18,7 +19,7 @@ use crate::plan::get_all_plans_from_disk;
 /// Returns Ok(()) with exit code 0 if all plans are valid,
 /// or Ok(()) with failures printed if there are issues.
 /// Callers should check the failure count to determine exit code.
-pub fn cmd_plan_verify(output_json: bool) -> Result<(bool, Vec<(String, String)>)> {
+pub fn cmd_plan_verify(output: OutputOptions) -> Result<(bool, Vec<(String, String)>)> {
     let result = get_all_plans_from_disk();
 
     let success_count = result.success_count();
@@ -62,7 +63,7 @@ pub fn cmd_plan_verify(output_json: bool) -> Result<(bool, Vec<(String, String)>
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)?;
+        .print(output)?;
 
     Ok((failure_count == 0, failures))
 }

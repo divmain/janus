@@ -1,12 +1,13 @@
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
 use crate::events::{log_link_added, log_link_removed};
 use crate::ticket::{ArrayField, Ticket};
 
 /// Add symmetric links between tickets
-pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
+pub async fn cmd_link_add(ids: &[String], output: OutputOptions) -> Result<()> {
     if ids.len() < 2 {
         return Err(JanusError::InsufficientTicketIds {
             expected: 2,
@@ -63,7 +64,7 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
         })
         .collect();
 
-    if !output_json {
+    if !output.json {
         for msg in &asymmetric_messages {
             eprintln!("{msg}");
         }
@@ -96,11 +97,11 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
 
     CommandOutput::new(json_payload)
         .with_text(text)
-        .print(output_json)
+        .print(output)
 }
 
 /// Remove symmetric links between two tickets
-pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_link_remove(id1: &str, id2: &str, output: OutputOptions) -> Result<()> {
     let ticket1 = Ticket::find(id1).await?;
     let ticket2 = Ticket::find(id2).await?;
 
@@ -133,7 +134,7 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
         let msg = format!(
             "Detected one-way link from {from} to {to} (reverse link did not exist). Removed the one-way link."
         );
-        if !output_json {
+        if !output.json {
             eprintln!("{msg}");
         }
         Some(msg)
@@ -159,5 +160,5 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
 
     CommandOutput::new(json_payload)
         .with_text(format!("Removed link: {} <-> {}", ticket1.id, ticket2.id))
-        .print(output_json)
+        .print(output)
 }

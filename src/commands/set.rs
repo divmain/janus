@@ -1,6 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
 use crate::events::log_field_updated;
 use crate::ticket::Ticket;
@@ -86,7 +87,12 @@ fn format_field_change(prev: Option<&str>, new: &str) -> (String, String) {
 }
 
 /// Set a field on a ticket
-pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bool) -> Result<()> {
+pub async fn cmd_set(
+    id: &str,
+    field: &str,
+    value: Option<&str>,
+    output: OutputOptions,
+) -> Result<()> {
     let ticket = Ticket::find(id).await?;
     let metadata = ticket.read()?;
 
@@ -227,5 +233,5 @@ pub async fn cmd_set(id: &str, field: &str, value: Option<&str>, output_json: bo
         "Updated {} field '{}': {} -> {}",
         ticket.id, field, prev_display, new_display
     ))
-    .print(output_json)
+    .print(output)
 }

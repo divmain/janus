@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::{CommandOutput, interactive};
 use crate::error::Result;
 use crate::plan::Plan;
@@ -13,11 +14,11 @@ use crate::utils::is_stdin_tty;
 /// * `id` - The plan ID (can be partial)
 /// * `force` - Skip confirmation prompt
 /// * `output_json` - If true, output result as JSON
-pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result<()> {
+pub async fn cmd_plan_delete(id: &str, force: bool, output: OutputOptions) -> Result<()> {
     let plan = Plan::find(id).await?;
 
     if !force {
-        if output_json || !is_stdin_tty() {
+        if output.json || !is_stdin_tty() {
             return Err(crate::error::JanusError::ConfirmationRequired(
                 "Plan deletion requires --force flag in non-interactive contexts. Use --force to confirm deletion.".to_string()
             ));
@@ -37,7 +38,7 @@ pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result
         "success": true,
     }))
     .with_text(format!("Deleted plan {plan_id}"))
-    .print(output_json)
+    .print(output)
 }
 
 /// Rename a plan (update its title)
@@ -46,7 +47,7 @@ pub async fn cmd_plan_delete(id: &str, force: bool, output_json: bool) -> Result
 /// * `id` - The plan ID (can be partial)
 /// * `new_title` - The new title
 /// * `output_json` - If true, output result as JSON
-pub async fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_plan_rename(id: &str, new_title: &str, output: OutputOptions) -> Result<()> {
     let plan = Plan::find(id).await?;
     let mut metadata = plan.read()?;
 
@@ -66,5 +67,5 @@ pub async fn cmd_plan_rename(id: &str, new_title: &str, output_json: bool) -> Re
         "Renamed plan {} from '{}' to '{}'",
         plan.id, old_title, new_title
     ))
-    .print(output_json)
+    .print(output)
 }

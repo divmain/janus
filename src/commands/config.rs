@@ -7,6 +7,7 @@ use owo_colors::OwoColorize;
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::remote::Platform;
@@ -42,7 +43,7 @@ fn mask_sensitive_value(value: &str) -> String {
 }
 
 /// Show current configuration
-pub fn cmd_config_show(output_json: bool) -> Result<()> {
+pub fn cmd_config_show(output: OutputOptions) -> Result<()> {
     let config = Config::load()?;
 
     let default_remote_json = config.default_remote.as_ref().map(|d| {
@@ -126,11 +127,11 @@ pub fn cmd_config_show(output_json: bool) -> Result<()> {
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }
 
 /// Set a configuration value
-pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
+pub fn cmd_config_set(key: &str, value: &str, output: OutputOptions) -> Result<()> {
     validate_config_key(key)?;
 
     let mut config = Config::load()?;
@@ -216,7 +217,7 @@ pub fn cmd_config_set(key: &str, value: &str, output_json: bool) -> Result<()> {
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }
 
 /// Parse a default_remote value like "github:myorg/myrepo" or "linear:myorg"
@@ -241,7 +242,7 @@ fn parse_default_remote(value: &str) -> Result<(Platform, String)> {
 }
 
 /// Get a specific configuration value
-pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
+pub fn cmd_config_get(key: &str, output: OutputOptions) -> Result<()> {
     validate_config_key(key)?;
 
     let config = Config::load()?;
@@ -314,7 +315,7 @@ pub fn cmd_config_get(key: &str, output_json: bool) -> Result<()> {
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }
 
 #[cfg(test)]

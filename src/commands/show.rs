@@ -2,6 +2,7 @@ use owo_colors::OwoColorize;
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::display::TicketFormatter;
 use crate::error::Result;
 use crate::status::is_dependency_satisfied;
@@ -9,7 +10,7 @@ use crate::ticket::{Ticket, build_ticket_map, get_children_count};
 use crate::types::{TicketMetadata, TicketStatus};
 
 /// Display a ticket with its relationships
-pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
+pub async fn cmd_show(id: &str, output: OutputOptions) -> Result<()> {
     let (ticket, metadata) = Ticket::find_and_read(id).await?;
     let content = ticket.read_content()?;
     let ticket_map = build_ticket_map().await?;
@@ -131,5 +132,5 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }

@@ -1,6 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
 use crate::events::log_ticket_created;
 use crate::ticket::{Ticket, TicketBuilder, parse_ticket};
@@ -20,7 +21,7 @@ pub struct CreateOptions {
     pub spawned_from: Option<String>,
     pub spawn_context: Option<String>,
     pub size: Option<TicketSize>,
-    pub output_json: bool,
+    pub output: OutputOptions,
 }
 
 /// Compute the depth for a spawned ticket based on the parent's resolved canonical ID.
@@ -61,7 +62,7 @@ pub async fn cmd_create(opts: CreateOptions) -> Result<()> {
         spawned_from,
         spawn_context,
         size,
-        output_json,
+        output,
     } = opts;
 
     // Validate that title is not empty or only whitespace
@@ -122,5 +123,5 @@ pub async fn cmd_create(opts: CreateOptions) -> Result<()> {
         "file_path": file_path.to_string_lossy(),
     }))
     .with_text(&id)
-    .print(output_json)
+    .print(output)
 }

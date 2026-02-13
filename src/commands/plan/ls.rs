@@ -3,6 +3,7 @@
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::display::format_status_colored;
 use crate::error::Result;
@@ -16,7 +17,7 @@ use crate::types::TicketStatus;
 /// # Arguments
 /// * `status_filter` - Optional status to filter by
 /// * `output_json` - If true, output as JSON
-pub async fn cmd_plan_ls(status_filter: Option<TicketStatus>, output_json: bool) -> Result<()> {
+pub async fn cmd_plan_ls(status_filter: Option<TicketStatus>, output: OutputOptions) -> Result<()> {
     let result = get_all_plans().await?;
     let plans = result.items;
     let ticket_map = build_ticket_map().await?;
@@ -84,5 +85,5 @@ pub async fn cmd_plan_ls(status_filter: Option<TicketStatus>, output_json: bool)
 
     CommandOutput::new(serde_json::Value::Array(json_plans))
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }

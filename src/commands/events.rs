@@ -1,6 +1,7 @@
 use serde_json::json;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::error::Result;
 use crate::events::{clear_events, events_file_path, read_events};
 
@@ -9,7 +10,7 @@ use crate::events::{clear_events, events_file_path, read_events};
 /// This command removes all events from the events.ndjson file, effectively
 /// resetting the event log. This is useful when the log has grown too large
 /// or when you want to start fresh with event tracking.
-pub async fn cmd_events_prune(output_json: bool) -> Result<()> {
+pub async fn cmd_events_prune(output: OutputOptions) -> Result<()> {
     // Get the events file path for display
     let path = events_file_path();
 
@@ -49,7 +50,7 @@ pub async fn cmd_events_prune(output_json: bool) -> Result<()> {
         "success": true,
     }))
     .with_text(text)
-    .print(output_json)?;
+    .print(output)?;
 
     Ok(())
 }

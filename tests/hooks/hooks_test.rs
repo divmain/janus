@@ -418,7 +418,7 @@ fn test_hook_list_no_config() {
     let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
     // Should succeed with default config
-    let result = cmd_hook_list(false);
+    let result = cmd_hook_list(janus::cli::OutputOptions { json: false });
     assert!(result.is_ok());
 }
 
@@ -439,7 +439,7 @@ hooks:
     let config_path = temp_dir.path().join(".janus/config.yaml");
     fs::write(&config_path, config_content).unwrap();
 
-    let result = cmd_hook_list(false);
+    let result = cmd_hook_list(janus::cli::OutputOptions { json: false });
     assert!(result.is_ok());
 }
 
@@ -458,7 +458,7 @@ hooks:
     let config_path = temp_dir.path().join(".janus/config.yaml");
     fs::write(&config_path, config_content).unwrap();
 
-    let result = cmd_hook_list(true);
+    let result = cmd_hook_list(janus::cli::OutputOptions { json: true });
     assert!(result.is_ok());
 }
 
@@ -475,7 +475,7 @@ hooks:
     let config_path = temp_dir.path().join(".janus/config.yaml");
     fs::write(&config_path, config_content).unwrap();
 
-    let result = cmd_hook_enable(false);
+    let result = cmd_hook_enable(janus::cli::OutputOptions { json: false });
     assert!(result.is_ok());
 
     // Verify config was updated
@@ -492,7 +492,7 @@ fn test_hook_disable() {
     let config_path = temp_dir.path().join(".janus/config.yaml");
     fs::write(&config_path, "").unwrap();
 
-    let result = cmd_hook_disable(false);
+    let result = cmd_hook_disable(janus::cli::OutputOptions { json: false });
     assert!(result.is_ok());
 
     // Verify config was updated
@@ -505,7 +505,7 @@ fn test_hook_enable_json() {
     let temp_dir = setup_test_env_hooks();
     let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
-    let result = cmd_hook_enable(true);
+    let result = cmd_hook_enable(janus::cli::OutputOptions { json: true });
     assert!(result.is_ok());
 }
 
@@ -514,7 +514,7 @@ fn test_hook_disable_json() {
     let temp_dir = setup_test_env_hooks();
     let _guard = JanusRootGuard::new(temp_dir.path().join(".janus"));
 
-    let result = cmd_hook_disable(true);
+    let result = cmd_hook_disable(janus::cli::OutputOptions { json: true });
     assert!(result.is_ok());
 }
 

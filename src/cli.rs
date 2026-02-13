@@ -1,10 +1,18 @@
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use std::io;
 use std::str::FromStr;
 
 use crate::query::SortField;
 use crate::types::{DEFAULT_PRIORITY_STR, TicketPriority, TicketSize, TicketStatus, TicketType};
+
+/// Shared output options for commands that support JSON output.
+#[derive(Args, Clone, Copy, Debug)]
+pub struct OutputOptions {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
 
 #[derive(Parser)]
 #[command(name = "janus")]
@@ -67,9 +75,8 @@ pub enum Commands {
         #[arg(long, value_parser = parse_size)]
         size: Option<TicketSize>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Display ticket with relationships
@@ -79,9 +86,8 @@ pub enum Commands {
         #[arg(value_parser = parse_partial_id)]
         id: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Open ticket in $EDITOR (requires interactive terminal unless --json is set)
@@ -91,9 +97,8 @@ pub enum Commands {
         #[arg(value_parser = parse_partial_id)]
         id: String,
 
-        /// Output as JSON (prints file path without opening editor)
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Add timestamped note to ticket
@@ -106,9 +111,8 @@ pub enum Commands {
         #[arg(trailing_var_arg = true)]
         text: Vec<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Mark ticket as in-progress
@@ -117,9 +121,8 @@ pub enum Commands {
         #[arg(value_parser = parse_partial_id)]
         id: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Mark ticket as complete or cancelled (enforces completion summary).
@@ -144,9 +147,8 @@ pub enum Commands {
         #[arg(long)]
         cancel: bool,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Reopen a closed ticket
@@ -155,9 +157,8 @@ pub enum Commands {
         #[arg(value_parser = parse_partial_id)]
         id: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Set ticket status (low-level field setter).
@@ -174,9 +175,8 @@ pub enum Commands {
         #[arg(value_parser = parse_status)]
         status: TicketStatus,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Set a ticket field (priority, type, parent)
@@ -191,9 +191,8 @@ pub enum Commands {
         /// New value (omit to clear parent)
         value: Option<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Manage dependencies
@@ -267,9 +266,8 @@ pub enum Commands {
         #[arg(long, default_value = "priority", value_parser = parse_sort_field)]
         sort_by: SortField,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Output tickets as JSON, optionally filtered with jq syntax
@@ -319,9 +317,8 @@ pub enum Commands {
 
     /// Check ticket health - scan for corrupted or invalid ticket files
     Doctor {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Plan management
@@ -356,9 +353,8 @@ pub enum Commands {
         #[arg(long)]
         plan: Option<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Show next ticket(s) to work on (dependency-aware)
@@ -368,9 +364,8 @@ pub enum Commands {
         #[arg(short, long, default_value = "5")]
         limit: usize,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Generate shell completions
@@ -399,9 +394,8 @@ pub enum Commands {
         #[arg(long)]
         threshold: Option<f32>,
 
-        /// Output results as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -415,9 +409,9 @@ pub enum DepAction {
         /// Dependency ID (ticket that must be completed first)
         #[arg(value_parser = parse_partial_id)]
         dep_id: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Remove a dependency
     Remove {
@@ -427,9 +421,9 @@ pub enum DepAction {
         /// Dependency ID to remove
         #[arg(value_parser = parse_partial_id)]
         dep_id: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Show dependency tree
     Tree {
@@ -439,9 +433,9 @@ pub enum DepAction {
         /// Show full tree (including duplicate nodes)
         #[arg(long)]
         full: bool,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -452,9 +446,9 @@ pub enum LinkAction {
         /// Ticket IDs to link
         #[arg(required = true, num_args = 2.., value_parser = parse_partial_id)]
         ids: Vec<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Remove link between tickets
     Remove {
@@ -464,9 +458,9 @@ pub enum LinkAction {
         /// Second ticket ID
         #[arg(value_parser = parse_partial_id)]
         id2: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -474,9 +468,8 @@ pub enum LinkAction {
 pub enum ConfigAction {
     /// Show current configuration
     Show {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Set a configuration value
     Set {
@@ -484,17 +477,17 @@ pub enum ConfigAction {
         key: String,
         /// Value to set
         value: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Get a configuration value
     Get {
         /// Configuration key (github.token, linear.api_key, default.remote)
         key: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -502,21 +495,18 @@ pub enum ConfigAction {
 pub enum CacheAction {
     /// Show embedding coverage, model name, and embeddings directory size
     Status {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Delete orphaned embedding files that no longer correspond to current tickets
     Prune {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Regenerate all embeddings (deletes existing embeddings and re-embeds all tickets)
     Rebuild {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -524,9 +514,8 @@ pub enum CacheAction {
 pub enum EventsAction {
     /// Clear the events log file
     Prune {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -534,9 +523,8 @@ pub enum EventsAction {
 pub enum HookAction {
     /// List configured hooks
     List {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Install a hook recipe from GitHub
     Install {
@@ -547,9 +535,8 @@ pub enum HookAction {
         #[arg(long)]
         force: bool,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Run a hook manually for testing
     Run {
@@ -561,15 +548,13 @@ pub enum HookAction {
     },
     /// Enable hooks
     Enable {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Disable hooks
     Disable {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// View hook failure log
     Log {
@@ -577,9 +562,8 @@ pub enum HookAction {
         #[arg(short, long)]
         lines: Option<usize>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -600,9 +584,8 @@ pub enum RemoteAction {
         #[arg(long)]
         prefix: Option<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Push a local ticket to create a remote issue
@@ -611,9 +594,8 @@ pub enum RemoteAction {
         #[arg(value_parser = parse_partial_id)]
         id: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Link a local ticket to an existing remote issue
@@ -625,9 +607,8 @@ pub enum RemoteAction {
         /// Remote reference
         remote_ref: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 
     /// Sync a local ticket with its remote issue
@@ -636,9 +617,8 @@ pub enum RemoteAction {
         #[arg(value_parser = parse_partial_id)]
         id: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -653,9 +633,8 @@ pub enum PlanAction {
         #[arg(long = "phase", action = clap::ArgAction::Append)]
         phases: Vec<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Display a plan with full details
     Show {
@@ -679,9 +658,8 @@ pub enum PlanAction {
         #[arg(long = "verbose-phase", action = clap::ArgAction::Append)]
         verbose_phases: Vec<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Open plan in $EDITOR
     Edit {
@@ -689,9 +667,8 @@ pub enum PlanAction {
         #[arg(value_parser = parse_plan_id)]
         id: String,
 
-        /// Output as JSON (prints file path as JSON instead of opening editor)
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// List all plans
     Ls {
@@ -699,9 +676,8 @@ pub enum PlanAction {
         #[arg(long, value_parser = parse_status)]
         status: Option<TicketStatus>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Add a ticket to a plan
     AddTicket {
@@ -725,9 +701,8 @@ pub enum PlanAction {
         #[arg(long, conflicts_with = "after")]
         position: Option<usize>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Remove a ticket from a plan
     RemoveTicket {
@@ -739,9 +714,8 @@ pub enum PlanAction {
         #[arg(value_parser = parse_partial_id)]
         ticket_id: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Move a ticket between phases
     MoveTicket {
@@ -765,9 +739,8 @@ pub enum PlanAction {
         #[arg(long, conflicts_with = "after")]
         position: Option<usize>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Add a new phase to a plan
     AddPhase {
@@ -786,9 +759,8 @@ pub enum PlanAction {
         #[arg(long)]
         position: Option<usize>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Remove a phase from a plan
     RemovePhase {
@@ -807,9 +779,8 @@ pub enum PlanAction {
         #[arg(long)]
         migrate: Option<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Reorder tickets or phases
     Reorder {
@@ -825,9 +796,8 @@ pub enum PlanAction {
         #[arg(long = "reorder-phases")]
         reorder_phases: bool,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Delete a plan
     Delete {
@@ -839,9 +809,8 @@ pub enum PlanAction {
         #[arg(long)]
         force: bool,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Rename a plan (update its title)
     Rename {
@@ -852,9 +821,8 @@ pub enum PlanAction {
         /// New title
         new_title: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Show the next actionable item(s) in a plan
     Next {
@@ -874,9 +842,8 @@ pub enum PlanAction {
         #[arg(long, default_value = "1")]
         count: usize,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Show plan status summary
     Status {
@@ -884,9 +851,8 @@ pub enum PlanAction {
         #[arg(value_parser = parse_plan_id)]
         id: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Import a plan from a markdown file
     Import {
@@ -911,17 +877,15 @@ pub enum PlanAction {
         #[arg(long)]
         prefix: Option<String>,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
     /// Show the importable plan format specification
     ImportSpec,
     /// Verify all plan files and report any errors
     Verify {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        output: OutputOptions,
     },
 }
 
@@ -975,7 +939,7 @@ impl Commands {
                 spawned_from,
                 spawn_context,
                 size,
-                json,
+                output,
             } => {
                 cmd_create(CreateOptions {
                     title,
@@ -990,48 +954,52 @@ impl Commands {
                     spawned_from,
                     spawn_context,
                     size,
-                    output_json: json,
+                    output,
                 })
                 .await
             }
 
-            Commands::Show { id, json } => cmd_show(&id, json).await,
-            Commands::Edit { id, json } => cmd_edit(&id, json).await,
-            Commands::AddNote { id, text, json } => {
+            Commands::Show { id, output } => cmd_show(&id, output).await,
+            Commands::Edit { id, output } => cmd_edit(&id, output).await,
+            Commands::AddNote { id, text, output } => {
                 let note_text = if text.is_empty() {
                     None
                 } else {
                     Some(text.join(" "))
                 };
-                cmd_add_note(&id, note_text.as_deref(), json).await
+                cmd_add_note(&id, note_text.as_deref(), output).await
             }
 
-            Commands::Start { id, json } => cmd_start(&id, json).await,
+            Commands::Start { id, output } => cmd_start(&id, output).await,
             Commands::Close {
                 id,
                 summary,
                 no_summary,
                 cancel,
-                json,
-            } => cmd_close(&id, summary.as_deref(), no_summary, cancel, json).await,
-            Commands::Reopen { id, json } => cmd_reopen(&id, json).await,
-            Commands::Status { id, status, json } => cmd_status(&id, status, json).await,
+                output,
+            } => cmd_close(&id, summary.as_deref(), no_summary, cancel, output).await,
+            Commands::Reopen { id, output } => cmd_reopen(&id, output).await,
+            Commands::Status { id, status, output } => cmd_status(&id, status, output).await,
             Commands::Set {
                 id,
                 field,
                 value,
-                json,
-            } => cmd_set(&id, &field, value.as_deref(), json).await,
+                output,
+            } => cmd_set(&id, &field, value.as_deref(), output).await,
 
             Commands::Dep { action } => match action {
-                DepAction::Add { id, dep_id, json } => cmd_dep_add(&id, &dep_id, json).await,
-                DepAction::Remove { id, dep_id, json } => cmd_dep_remove(&id, &dep_id, json).await,
-                DepAction::Tree { id, full, json } => cmd_dep_tree(&id, full, json).await,
+                DepAction::Add { id, dep_id, output } => cmd_dep_add(&id, &dep_id, output).await,
+                DepAction::Remove { id, dep_id, output } => {
+                    cmd_dep_remove(&id, &dep_id, output).await
+                }
+                DepAction::Tree { id, full, output } => cmd_dep_tree(&id, full, output).await,
             },
 
             Commands::Link { action } => match action {
-                LinkAction::Add { ids, json } => cmd_link_add(&ids, json).await,
-                LinkAction::Remove { id1, id2, json } => cmd_link_remove(&id1, &id2, json).await,
+                LinkAction::Add { ids, output } => cmd_link_add(&ids, output).await,
+                LinkAction::Remove { id1, id2, output } => {
+                    cmd_link_remove(&id1, &id2, output).await
+                }
             },
 
             Commands::Ls {
@@ -1049,7 +1017,7 @@ impl Commands {
                 size,
                 limit,
                 sort_by,
-                json,
+                output,
             } => {
                 let opts = LsOptions {
                     filter_ready: ready,
@@ -1066,7 +1034,7 @@ impl Commands {
                     size_filter: size,
                     limit,
                     sort_by,
-                    output_json: json,
+                    output,
                 };
                 cmd_ls_with_options(opts).await
             }
@@ -1081,48 +1049,48 @@ impl Commands {
                 RemoteAction::Adopt {
                     remote_ref,
                     prefix,
-                    json,
-                } => cmd_adopt(&remote_ref, prefix.as_deref(), json).await,
-                RemoteAction::Push { id, json } => cmd_push(&id, json).await,
+                    output,
+                } => cmd_adopt(&remote_ref, prefix.as_deref(), output).await,
+                RemoteAction::Push { id, output } => cmd_push(&id, output).await,
                 RemoteAction::Link {
                     id,
                     remote_ref,
-                    json,
-                } => cmd_remote_link(&id, &remote_ref, json).await,
-                RemoteAction::Sync { id, json } => cmd_sync(&id, json).await,
+                    output,
+                } => cmd_remote_link(&id, &remote_ref, output).await,
+                RemoteAction::Sync { id, output } => cmd_sync(&id, output).await,
             },
 
             Commands::Config { action } => match action {
-                ConfigAction::Show { json } => cmd_config_show(json),
-                ConfigAction::Set { key, value, json } => cmd_config_set(&key, &value, json),
-                ConfigAction::Get { key, json } => cmd_config_get(&key, json),
+                ConfigAction::Show { output } => cmd_config_show(output),
+                ConfigAction::Set { key, value, output } => cmd_config_set(&key, &value, output),
+                ConfigAction::Get { key, output } => cmd_config_get(&key, output),
             },
 
             Commands::Cache { action } => match action {
-                CacheAction::Status { json } => cmd_cache_status(json).await,
-                CacheAction::Prune { json } => cmd_cache_prune(json).await,
-                CacheAction::Rebuild { json } => cmd_cache_rebuild(json).await,
+                CacheAction::Status { output } => cmd_cache_status(output).await,
+                CacheAction::Prune { output } => cmd_cache_prune(output).await,
+                CacheAction::Rebuild { output } => cmd_cache_rebuild(output).await,
             },
 
             Commands::Events { action } => match action {
-                EventsAction::Prune { json } => cmd_events_prune(json).await,
+                EventsAction::Prune { output } => cmd_events_prune(output).await,
             },
 
             Commands::Hook { action } => match action {
-                HookAction::List { json } => cmd_hook_list(json),
+                HookAction::List { output } => cmd_hook_list(output),
                 HookAction::Install {
                     recipe,
                     force,
-                    json,
-                } => cmd_hook_install(&recipe, force, json).await,
+                    output,
+                } => cmd_hook_install(&recipe, force, output).await,
                 HookAction::Run { event, id } => cmd_hook_run(&event, id.as_deref()).await,
-                HookAction::Enable { json } => cmd_hook_enable(json),
-                HookAction::Disable { json } => cmd_hook_disable(json),
-                HookAction::Log { lines, json } => cmd_hook_log(lines, json),
+                HookAction::Enable { output } => cmd_hook_enable(output),
+                HookAction::Disable { output } => cmd_hook_disable(output),
+                HookAction::Log { lines, output } => cmd_hook_log(lines, output),
             },
 
-            Commands::Doctor { json } => handle_validation_result(
-                cmd_doctor(json),
+            Commands::Doctor { output } => handle_validation_result(
+                cmd_doctor(output),
                 "Ticket health check failed - some files have errors",
             ),
 
@@ -1130,27 +1098,28 @@ impl Commands {
                 PlanAction::Create {
                     title,
                     phases,
-                    json,
-                } => cmd_plan_create(&title, &phases, json),
+                    output,
+                } => cmd_plan_create(&title, &phases, output),
                 PlanAction::Show {
                     id,
                     raw,
                     tickets_only,
                     phases_only,
                     verbose_phases,
-                    json,
+                    output,
                 } => {
-                    cmd_plan_show(&id, raw, tickets_only, phases_only, &verbose_phases, json).await
+                    cmd_plan_show(&id, raw, tickets_only, phases_only, &verbose_phases, output)
+                        .await
                 }
-                PlanAction::Edit { id, json } => cmd_plan_edit(&id, json).await,
-                PlanAction::Ls { status, json } => cmd_plan_ls(status, json).await,
+                PlanAction::Edit { id, output } => cmd_plan_edit(&id, output).await,
+                PlanAction::Ls { status, output } => cmd_plan_ls(status, output).await,
                 PlanAction::AddTicket {
                     plan_id,
                     ticket_id,
                     phase,
                     after,
                     position,
-                    json,
+                    output,
                 } => {
                     cmd_plan_add_ticket(
                         &plan_id,
@@ -1158,22 +1127,22 @@ impl Commands {
                         phase.as_deref(),
                         after.as_deref(),
                         position,
-                        json,
+                        output,
                     )
                     .await
                 }
                 PlanAction::RemoveTicket {
                     plan_id,
                     ticket_id,
-                    json,
-                } => cmd_plan_remove_ticket(&plan_id, &ticket_id, json).await,
+                    output,
+                } => cmd_plan_remove_ticket(&plan_id, &ticket_id, output).await,
                 PlanAction::MoveTicket {
                     plan_id,
                     ticket_id,
                     to_phase,
                     after,
                     position,
-                    json,
+                    output,
                 } => {
                     cmd_plan_move_ticket(
                         &plan_id,
@@ -1181,7 +1150,7 @@ impl Commands {
                         &to_phase,
                         after.as_deref(),
                         position,
-                        json,
+                        output,
                     )
                     .await
                 }
@@ -1190,9 +1159,9 @@ impl Commands {
                     phase_name,
                     after,
                     position,
-                    json,
+                    output,
                 } => {
-                    cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position, json)
+                    cmd_plan_add_phase(&plan_id, &phase_name, after.as_deref(), position, output)
                         .await
                 }
                 PlanAction::RemovePhase {
@@ -1200,35 +1169,39 @@ impl Commands {
                     phase,
                     force,
                     migrate,
-                    json,
-                } => cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), json).await,
+                    output,
+                } => {
+                    cmd_plan_remove_phase(&plan_id, &phase, force, migrate.as_deref(), output).await
+                }
                 PlanAction::Reorder {
                     plan_id,
                     phase,
                     reorder_phases,
-                    json,
-                } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases, json).await,
-                PlanAction::Delete { id, force, json } => cmd_plan_delete(&id, force, json).await,
+                    output,
+                } => cmd_plan_reorder(&plan_id, phase.as_deref(), reorder_phases, output).await,
+                PlanAction::Delete { id, force, output } => {
+                    cmd_plan_delete(&id, force, output).await
+                }
                 PlanAction::Rename {
                     id,
                     new_title,
-                    json,
-                } => cmd_plan_rename(&id, &new_title, json).await,
+                    output,
+                } => cmd_plan_rename(&id, &new_title, output).await,
                 PlanAction::Next {
                     id,
                     phase,
                     all,
                     count,
-                    json,
-                } => cmd_plan_next(&id, phase, all, count, json).await,
-                PlanAction::Status { id, json } => cmd_plan_status(&id, json).await,
+                    output,
+                } => cmd_plan_next(&id, phase, all, count, output).await,
+                PlanAction::Status { id, output } => cmd_plan_status(&id, output).await,
                 PlanAction::Import {
                     file,
                     dry_run,
                     title,
                     ticket_type,
                     prefix,
-                    json,
+                    output,
                 } => {
                     cmd_plan_import(
                         &file,
@@ -1236,13 +1209,13 @@ impl Commands {
                         title.as_deref(),
                         ticket_type,
                         prefix.as_deref(),
-                        json,
+                        output,
                     )
                     .await
                 }
                 PlanAction::ImportSpec => cmd_show_import_spec(),
-                PlanAction::Verify { json } => handle_validation_result(
-                    cmd_plan_verify(json),
+                PlanAction::Verify { output } => handle_validation_result(
+                    cmd_plan_verify(output),
                     "Plan verification failed - some files have errors",
                 ),
             },
@@ -1254,10 +1227,20 @@ impl Commands {
                 format,
                 root,
                 plan,
-                json,
-            } => cmd_graph(deps, spawn, &format, root.as_deref(), plan.as_deref(), json).await,
+                output,
+            } => {
+                cmd_graph(
+                    deps,
+                    spawn,
+                    &format,
+                    root.as_deref(),
+                    plan.as_deref(),
+                    output,
+                )
+                .await
+            }
 
-            Commands::Next { limit, json } => cmd_next(limit, json).await,
+            Commands::Next { limit, output } => cmd_next(limit, output).await,
 
             Commands::Completions { shell } => {
                 generate_completions(shell);
@@ -1276,8 +1259,8 @@ impl Commands {
                 query,
                 limit,
                 threshold,
-                json,
-            } => cmd_search(&query, limit, threshold, json).await,
+                output,
+            } => cmd_search(&query, limit, threshold, output).await,
         }
     }
 }

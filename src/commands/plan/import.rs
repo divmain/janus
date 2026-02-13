@@ -7,6 +7,7 @@ use std::str::FromStr;
 use owo_colors::OwoColorize;
 use serde_json::json;
 
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
@@ -268,11 +269,11 @@ async fn prepare_import(input: &str, title_override: Option<&str>) -> Result<Imp
 /// # Arguments
 /// * `results` - The import results containing all created artifacts
 /// * `plan` - The importable plan (for is_phased check)
-/// * `output_json` - If true, output result as JSON
+/// * `output` - If true, output result as JSON
 fn finalize_import(
     results: &ImportResults,
     plan: &ImportablePlan,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let tickets_created: Vec<serde_json::Value> = results
         .created_ticket_ids
@@ -290,7 +291,7 @@ fn finalize_import(
         "verification_ticket": results.verification_ticket_id,
     }))
     .with_text(&results.plan_id)
-    .print(output_json)
+    .print(output)
 }
 
 /// Import a plan from a markdown file
@@ -301,14 +302,14 @@ fn finalize_import(
 /// * `title_override` - Override the extracted title
 /// * `ticket_type` - Type for created tickets (default: task)
 /// * `prefix` - Custom prefix for ticket IDs
-/// * `output_json` - If true, output result as JSON
+/// * `output` - If true, output result as JSON
 pub async fn cmd_plan_import(
     input: &str,
     dry_run: bool,
     title_override: Option<&str>,
     ticket_type: TicketType,
     prefix: Option<&str>,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     // Phase 1: Prepare (input parsing, validation)
     let context = prepare_import(input, title_override).await?;
@@ -349,7 +350,7 @@ pub async fn cmd_plan_import(
             }
         }))
         .with_text(format_import_summary(plan))
-        .print(output_json);
+        .print(output);
     }
 
     // Phase 3: Process (create tickets and plan)
@@ -469,5 +470,5 @@ pub async fn cmd_plan_import(
         created_ticket_ids,
         verification_ticket_id,
     };
-    finalize_import(&results, plan, output_json)
+    finalize_import(&results, plan, output)
 }

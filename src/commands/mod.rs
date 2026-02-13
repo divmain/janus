@@ -1,3 +1,5 @@
+use crate::cli::OutputOptions;
+
 mod add_note;
 mod board;
 mod cache;
@@ -72,16 +74,16 @@ use serde_json::json;
 /// # Arguments
 /// * `entity_type` - The type of entity being edited (e.g., "ticket", "plan")
 /// * `file_path` - The path to the file to open
-/// * `output_json` - If true, skip editor opening (JSON output already handled)
+/// * `output` - Output options for controlling JSON output
 ///
 /// # Errors
 /// Returns an error if the editor fails to open
 pub fn open_in_editor_for_entity(
     entity_type: &str,
     file_path: &Path,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
-    if output_json {
+    if output.json {
         return Ok(());
     }
 
@@ -142,8 +144,8 @@ impl CommandOutput {
     }
 
     /// Print the output in the appropriate format.
-    pub fn print(self, output_json: bool) -> Result<()> {
-        if output_json {
+    pub fn print(self, output: OutputOptions) -> Result<()> {
+        if output.json {
             print_json(&self.json)?;
         } else if let Some(text) = self.text {
             println!("{text}");

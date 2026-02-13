@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use serde_json::json;
 
 use super::edit_in_editor;
+use crate::cli::OutputOptions;
 use crate::commands::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
@@ -138,7 +139,7 @@ pub async fn cmd_plan_reorder(
     plan_id: &str,
     phase: Option<&str>,
     reorder_phases: bool,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     let plan = Plan::find(plan_id).await?;
     let mut metadata = plan.read()?;
@@ -254,7 +255,7 @@ pub async fn cmd_plan_reorder(
         "phase": phase,
     }))
     .with_text(format!("Reorder complete for plan {}", plan.id))
-    .print(output_json)
+    .print(output)
 }
 
 #[cfg(test)]

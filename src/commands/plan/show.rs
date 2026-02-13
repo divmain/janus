@@ -1,6 +1,7 @@
 //! Plan show command
 
 use crate::build_ticket_map;
+use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 
@@ -16,17 +17,17 @@ use super::formatters::{
 /// * `tickets_only` - If true, show only the ticket list with statuses
 /// * `phases_only` - If true, show only phase summary (phased plans)
 /// * `verbose_phases` - Phase numbers for which to show full completion summaries
-/// * `output_json` - If true, output as JSON
+/// * `output.json` - If true, output as JSON
 pub async fn cmd_plan_show(
     id: &str,
     raw: bool,
     tickets_only: bool,
     phases_only: bool,
     verbose_phases: &[String],
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     // Validate conflicting flags
-    if raw && (output_json || tickets_only || phases_only) {
+    if raw && (output.json || tickets_only || phases_only) {
         return Err(JanusError::RawWithOtherFlags);
     }
 
@@ -45,7 +46,7 @@ pub async fn cmd_plan_show(
         return RawFormatter::format(&plan);
     }
 
-    if output_json {
+    if output.json {
         return JsonFormatter::format(&metadata, &ticket_map);
     }
 

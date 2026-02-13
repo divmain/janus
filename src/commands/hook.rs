@@ -18,6 +18,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{CommandOutput, interactive};
+use crate::cli::OutputOptions;
 use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::hooks::types::HookEvent;
@@ -56,7 +57,7 @@ struct RecipeHooksConfig {
 }
 
 /// List configured hooks
-pub fn cmd_hook_list(output_json: bool) -> Result<()> {
+pub fn cmd_hook_list(output: OutputOptions) -> Result<()> {
     let config = Config::load()?;
 
     // Build JSON output
@@ -102,7 +103,7 @@ pub fn cmd_hook_list(output_json: bool) -> Result<()> {
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }
 
 /// Phase 1: Fetch hook scripts from GitHub
@@ -177,7 +178,7 @@ type FilesToWrite = Vec<(PathBuf, String, bool)>;
 fn resolve_conflicts(
     files_to_install: &[(String, String)],
     force: bool,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<(FilesToWrite, Vec<String>)> {
     let janus_dir = janus_root();
     let mut files_to_write: Vec<(PathBuf, String, bool)> = Vec::new();
@@ -188,10 +189,10 @@ fn resolve_conflicts(
         let is_hook_script = relative_path.starts_with("hooks/");
 
         if target_path.exists() {
-            if output_json && !force {
+            if output.json && !force {
                 // In JSON mode without force, skip existing files
                 files_skipped.push(relative_path.clone());
-            } else if output_json && force {
+            } else if output.json && force {
                 // In JSON mode with force, overwrite
                 files_to_write.push((target_path, content.clone(), is_hook_script));
             } else {
@@ -231,7 +232,7 @@ fn resolve_conflicts(
 /// permissions on hook scripts.
 fn write_hook_files(
     files_to_write: &[(PathBuf, String, bool)],
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<Vec<String>> {
     let mut installed_files: Vec<String> = Vec::new();
 
@@ -287,7 +288,7 @@ fn write_hook_files(
             })?;
         }
 
-        if !output_json {
+        if !output.json {
             println!(
                 "  Installed {}",
                 crate::utils::format_relative_path(path).green()
@@ -307,7 +308,7 @@ fn write_hook_files(
 /// Phase 4: Update hook configuration
 ///
 /// Merges recipe hooks configuration into the main Janus config file.
-fn update_hook_config(recipe_config: &RecipeConfig, output_json: bool) -> Result<bool> {
+fn update_hook_config(recipe_config: &RecipeConfig, output: OutputOptions) -> Result<bool> {
     let mut config_updated = false;
 
     if let Some(hooks_config) = &recipe_config.hooks {
@@ -318,7 +319,7 @@ fn update_hook_config(recipe_config: &RecipeConfig, output_json: bool) -> Result
             }
             config.save()?;
             config_updated = true;
-            if !output_json {
+            if !output.json {
                 println!("  Updated {}", "config.yaml".green());
             }
         }
@@ -334,8 +335,8 @@ fn update_hook_config(recipe_config: &RecipeConfig, output_json: bool) -> Result
 /// 2. Resolve file conflicts
 /// 3. Write hook files
 /// 4. Update hook configuration
-pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> Result<()> {
-    if !output_json {
+pub async fn cmd_hook_install(recipe: &str, force: bool, output: OutputOptions) -> Result<()> {
+    if !output.json {
         println!("Fetching recipe '{}'...", recipe.cyan());
     }
 
@@ -345,7 +346,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
     let (recipe_config, files_to_install) = fetch_hook_scripts(recipe, &client).await?;
 
     // Security warning for interactive mode before installing remote scripts
-    if !output_json && !force && is_stdin_tty() {
+    if !output.json && !force && is_stdin_tty() {
         let confirmed = interactive::confirm(&format!(
             "You are about to install and execute scripts from {}. Continue",
             "github.com/divmain/janus".cyan()
@@ -358,7 +359,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
     }
 
     // Phase 2: Resolve conflicts
-    let (files_to_write, files_skipped) = resolve_conflicts(&files_to_install, force, output_json)?;
+    let (files_to_write, files_skipped) = resolve_conflicts(&files_to_install, force, output)?;
 
     // Early exit if user aborted during conflict resolution
     if files_to_write.is_empty() && files_skipped.is_empty() {
@@ -366,13 +367,13 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
     }
 
     // Phase 3: Write hook files
-    let installed_files = write_hook_files(&files_to_write, output_json)?;
+    let installed_files = write_hook_files(&files_to_write, output)?;
 
     // Phase 4: Update hook configuration
-    let config_updated = update_hook_config(&recipe_config, output_json)?;
+    let config_updated = update_hook_config(&recipe_config, output)?;
 
     // Output results
-    if output_json {
+    if output.json {
         CommandOutput::new(json!({
             "action": "hook_install",
             "recipe": recipe,
@@ -382,7 +383,7 @@ pub async fn cmd_hook_install(recipe: &str, force: bool, output_json: bool) -> R
             "config_updated": config_updated,
         }))
         .with_text(format!("Recipe '{recipe}' installed successfully"))
-        .print(output_json)?;
+        .print(output)?;
     } else {
         println!();
         println!(
@@ -541,7 +542,7 @@ pub async fn cmd_hook_run(event: &str, id: Option<&str>) -> Result<()> {
 }
 
 /// Enable hooks
-pub fn cmd_hook_enable(output_json: bool) -> Result<()> {
+pub fn cmd_hook_enable(output: OutputOptions) -> Result<()> {
     let mut config = Config::load()?;
 
     if config.hooks.enabled {
@@ -550,7 +551,7 @@ pub fn cmd_hook_enable(output_json: bool) -> Result<()> {
             "hooks_enabled": true,
         }))
         .with_text(format!("{} Hooks already enabled", "ℹ".cyan()))
-        .print(output_json)
+        .print(output)
     } else {
         config.hooks.enabled = true;
         config.save()?;
@@ -560,12 +561,12 @@ pub fn cmd_hook_enable(output_json: bool) -> Result<()> {
             "hooks_enabled": true,
         }))
         .with_text(format!("{} Hooks enabled", "✓".green()))
-        .print(output_json)
+        .print(output)
     }
 }
 
 /// Disable hooks
-pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
+pub fn cmd_hook_disable(output: OutputOptions) -> Result<()> {
     let mut config = Config::load()?;
 
     if !config.hooks.enabled {
@@ -574,7 +575,7 @@ pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
             "hooks_enabled": false,
         }))
         .with_text(format!("{} Hooks already disabled", "ℹ".cyan()))
-        .print(output_json)
+        .print(output)
     } else {
         config.hooks.enabled = false;
         config.save()?;
@@ -584,12 +585,12 @@ pub fn cmd_hook_disable(output_json: bool) -> Result<()> {
             "hooks_enabled": false,
         }))
         .with_text(format!("{} Hooks disabled", "✓".red()))
-        .print(output_json)
+        .print(output)
     }
 }
 
 /// Display hook failure log
-pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
+pub fn cmd_hook_log(lines: Option<usize>, output: OutputOptions) -> Result<()> {
     let log_path = janus_root().join("hooks.log");
 
     if !log_path.exists() {
@@ -603,7 +604,7 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
         );
         return CommandOutput::new(json_output)
             .with_text(text_output)
-            .print(output_json);
+            .print(output);
     }
 
     let content = fs::read_to_string(&log_path).map_err(|e| {
@@ -695,5 +696,5 @@ pub fn cmd_hook_log(lines: Option<usize>, output_json: bool) -> Result<()> {
 
     CommandOutput::new(json_output)
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }

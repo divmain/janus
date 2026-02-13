@@ -5,6 +5,7 @@ use super::{
     CommandOutput, FormatOptions, format_deps, format_ticket_line, get_next_items_phased,
     get_next_items_simple, ticket_to_json,
 };
+use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
 use crate::query::{
@@ -30,7 +31,7 @@ pub struct LsOptions {
     pub size_filter: Option<Vec<TicketSize>>,
     pub limit: Option<usize>,
     pub sort_by: SortField,
-    pub output_json: bool,
+    pub output: OutputOptions,
 }
 
 impl LsOptions {
@@ -51,7 +52,7 @@ impl LsOptions {
             size_filter: None,
             limit: None,
             sort_by: SortField::default(),
-            output_json: false,
+            output: OutputOptions { json: false },
         }
     }
 
@@ -91,7 +92,7 @@ impl Default for LsOptions {
 
 /// Formats a list of tickets for output, handling both JSON and text formats.
 /// This helper consolidates the common output formatting logic used by listing commands.
-fn format_ticket_list(display_tickets: &[TicketMetadata], output_json: bool) -> Result<()> {
+fn format_ticket_list(display_tickets: &[TicketMetadata], output: OutputOptions) -> Result<()> {
     let json_tickets: Vec<_> = display_tickets.iter().map(ticket_to_json).collect();
 
     // Build text output incrementally to avoid intermediate allocations
@@ -109,7 +110,7 @@ fn format_ticket_list(display_tickets: &[TicketMetadata], output_json: bool) -> 
 
     CommandOutput::new(serde_json::Value::Array(json_tickets))
         .with_text(text_output)
-        .print(output_json)
+        .print(output)
 }
 
 /// List all tickets, optionally filtered by status or other criteria.
@@ -123,7 +124,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
                 "--phase cannot be used with --next-in-plan".to_string(),
             ));
         }
-        return cmd_ls_next_in_plan(plan_id, opts.limit, opts.sort_by, opts.output_json).await;
+        return cmd_ls_next_in_plan(plan_id, opts.limit, opts.sort_by, opts.output).await;
     }
 
     let (tickets, _ticket_map) = get_all_tickets_with_map().await?;
@@ -193,7 +194,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
 
     // Execute the query
     let display_tickets = builder.execute(tickets).await?;
-    format_ticket_list(&display_tickets, opts.output_json)
+    format_ticket_list(&display_tickets, opts.output)
 }
 
 /// Handle --next-in-plan filter using plan next logic
@@ -201,7 +202,7 @@ async fn cmd_ls_next_in_plan(
     plan_id: &str,
     limit: Option<usize>,
     sort_by: SortField,
-    output_json: bool,
+    output: OutputOptions,
 ) -> Result<()> {
     use crate::query::sort_tickets_by;
 
@@ -242,7 +243,7 @@ async fn cmd_ls_next_in_plan(
         display_tickets.truncate(limit);
     }
 
-    format_ticket_list(&display_tickets, output_json)
+    format_ticket_list(&display_tickets, output)
 }
 
 #[cfg(test)]

@@ -3,12 +3,13 @@ use std::fs;
 use tokio::time::timeout;
 
 use super::CommandOutput;
+use crate::cli::OutputOptions;
 use crate::embedding::model::{EMBEDDING_BATCH_SIZE, EMBEDDING_MODEL_NAME, EMBEDDING_TIMEOUT};
 use crate::error::Result;
 use crate::events::log_cache_rebuilt;
 use crate::store::get_or_init_store;
 
-pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
+pub async fn cmd_cache_status(output: OutputOptions) -> Result<()> {
     let store = get_or_init_store().await?;
 
     let (with_embedding, total) = store.embedding_coverage();
@@ -31,7 +32,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
         emb_dir_size,
     );
 
-    let output = json!({
+    let json_output = json!({
         "ticket_count": total,
         "status": "healthy",
         "embedding_coverage": {
@@ -44,9 +45,9 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
         "embeddings_directory_size_bytes": emb_dir_size,
     });
 
-    CommandOutput::new(output)
+    CommandOutput::new(json_output)
         .with_text(text)
-        .print(output_json)?;
+        .print(output)?;
 
     Ok(())
 }
@@ -61,7 +62,7 @@ pub async fn cmd_cache_status(output_json: bool) -> Result<()> {
 /// `janus cache rebuild`), a freshly-generated embedding could be incorrectly pruned.
 /// Do not run this command concurrently with `janus cache rebuild` or other operations
 /// that modify ticket files.
-pub async fn cmd_cache_prune(output_json: bool) -> Result<()> {
+pub async fn cmd_cache_prune(output: OutputOptions) -> Result<()> {
     // 1. Get the store and compute valid embedding keys for all current ticket files
     let store = get_or_init_store().await?;
     let tickets = store.get_all_tickets();
@@ -139,11 +140,11 @@ pub async fn cmd_cache_prune(output_json: bool) -> Result<()> {
         "success": true,
     }))
     .with_text(text)
-    .print(output_json)
+    .print(output)
 }
 
-pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
-    if !output_json {
+pub async fn cmd_cache_rebuild(output: OutputOptions) -> Result<()> {
+    if !output.json {
         println!("Regenerating embeddings for all tickets...");
     }
 
@@ -154,7 +155,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
     let tickets = store.get_all_tickets();
     let ticket_count = tickets.len();
 
-    if !output_json {
+    if !output.json {
         println!("Generating embeddings for {ticket_count} tickets...");
     }
 
@@ -209,7 +210,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
         let embedding_result = match model_result {
             Ok(model) => timeout(batch_timeout, model.embed_batch(&texts)).await,
             Err(e) => {
-                if !output_json {
+                if !output.json {
                     eprintln!("Warning: failed to get embedding model for batch: {e}");
                 }
                 continue;
@@ -225,7 +226,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                             match crate::store::TicketStore::embedding_key(file_path, *mtime_ns) {
                                 Ok(k) => k,
                                 Err(e) => {
-                                    if !output_json {
+                                    if !output.json {
                                         eprintln!(
                                             "Warning: failed to compute embedding key for {}: {}",
                                             ticket_id.as_deref().unwrap_or("unknown"),
@@ -236,7 +237,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                                 }
                             };
                         if let Err(e) = crate::store::TicketStore::save_embedding(&key, embedding) {
-                            if !output_json {
+                            if !output.json {
                                 eprintln!(
                                     "Warning: failed to save embedding for {}: {e}",
                                     ticket_id.as_deref().unwrap_or("unknown")
@@ -245,7 +246,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                         } else {
                             valid_keys.insert(key);
                             embedded_count += 1;
-                            if !output_json && embedded_count % 10 == 0 {
+                            if !output.json && embedded_count % 10 == 0 {
                                 println!("  Progress: {embedded_count}/{ticket_count}");
                             }
                         }
@@ -253,7 +254,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 }
             }
             Ok(Err(e)) => {
-                if !output_json {
+                if !output.json {
                     eprintln!(
                         "Warning: failed to generate embeddings for batch {}: {e}",
                         batch_idx + 1
@@ -261,7 +262,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 }
             }
             Err(_) => {
-                if !output_json {
+                if !output.json {
                     eprintln!(
                         "Warning: batch {} embedding generation timed out after {} seconds",
                         batch_idx + 1,
@@ -274,7 +275,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
     // Prune orphaned embedding files
     if let Err(e) = crate::store::TicketStore::prune_orphaned(&valid_keys) {
-        if !output_json {
+        if !output.json {
             eprintln!("Warning: failed to prune orphaned embeddings: {e}");
         }
     }
@@ -284,7 +285,7 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 
     let total_duration = start_total.elapsed();
 
-    let output = json!({
+    let json_output = json!({
         "action": "cache_rebuilt",
         "ticket_count": ticket_count,
         "embedded_count": embedded_count,
@@ -293,11 +294,11 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
         "embedding_model": EMBEDDING_MODEL_NAME,
     });
 
-    CommandOutput::new(output)
+    CommandOutput::new(json_output)
         .with_text(format!(
             "Embeddings rebuilt successfully:\n  Tickets: {ticket_count}\n  Embeddings generated: {embedded_count}\n  Total time: {total_duration:?}"
         ))
-        .print(output_json)?;
+        .print(output)?;
 
     // Log the cache rebuild event
     let details = json!({
