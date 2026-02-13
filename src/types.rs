@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -8,6 +9,7 @@ use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 
 use crate::error::JanusError;
+use crate::store::queries::compute_depth_recursive;
 
 // Re-export path functions from the paths module
 pub use crate::paths::{janus_root, plans_dir, tickets_items_dir};
@@ -831,9 +833,9 @@ impl TicketData for TicketMetadata {
             .unwrap_or(DEFAULT_PRIORITY)
     }
 
-    fn compute_depth(&self) -> u32 {
+    fn compute_depth(&self, tickets: &HashMap<String, TicketMetadata>) -> u32 {
         self.depth
-            .unwrap_or_else(|| compute_depth_recursive(self.spawned_from.as_ref()))
+            .unwrap_or_else(|| compute_depth_recursive(self.spawned_from.as_ref(), tickets))
     }
 }
 
@@ -882,7 +884,7 @@ pub trait TicketData {
     fn priority_num(&self) -> u8;
 
     /// Compute the effective depth of this ticket
-    fn compute_depth(&self) -> u32;
+    fn compute_depth(&self, tickets: &HashMap<String, TicketMetadata>) -> u32;
 }
 
 /// Lightweight ticket summary without the full markdown body.
@@ -962,63 +964,9 @@ impl TicketData for TicketSummary {
             .unwrap_or(DEFAULT_PRIORITY)
     }
 
-    fn compute_depth(&self) -> u32 {
+    fn compute_depth(&self, tickets: &HashMap<String, TicketMetadata>) -> u32 {
         self.depth
-            .unwrap_or_else(|| compute_depth_recursive(self.spawned_from.as_ref()))
-    }
-}
-
-/// Recursively compute depth by traversing the spawned_from chain.
-/// Returns 0 for root tickets, 1 for direct children, 2 for grandchildren, etc.
-/// Uses cycle detection with a max depth of 100 to prevent infinite loops.
-fn compute_depth_recursive(spawned_from: Option<&TicketId>) -> u32 {
-    const MAX_DEPTH: u32 = 100;
-
-    if spawned_from.is_none() {
-        return 0;
-    }
-
-    // Try to access the store to look up parent tickets
-    if let Some(store) = crate::store::get_store() {
-        let tickets = store.tickets();
-        let mut depth = 0u32;
-        let mut current_id = spawned_from.map(|id| id.to_string());
-        let mut visited = std::collections::HashSet::new();
-
-        while let Some(id) = current_id {
-            // Cycle detection
-            if !visited.insert(id.clone()) {
-                break;
-            }
-
-            depth += 1;
-
-            // Limit recursion depth to prevent infinite loops
-            if depth >= MAX_DEPTH {
-                break;
-            }
-
-            // Look up the parent ticket
-            match tickets.get(&id) {
-                Some(parent) => {
-                    // Use stored depth if available
-                    if let Some(parent_depth) = parent.depth {
-                        return parent_depth + 1;
-                    }
-                    // Otherwise continue traversing
-                    current_id = parent.spawned_from.as_ref().map(|id| id.to_string());
-                }
-                None => {
-                    // Parent not found in store, assume depth 1
-                    break;
-                }
-            }
-        }
-
-        depth
-    } else {
-        // Store not initialized, fall back to simple logic
-        1
+            .unwrap_or_else(|| compute_depth_recursive(self.spawned_from.as_ref(), tickets))
     }
 }
 

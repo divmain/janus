@@ -4,7 +4,7 @@ use dashmap::mapref::multiple::RefMulti;
 
 use super::TicketStore;
 use crate::plan::types::PlanMetadata;
-use crate::types::{TicketMetadata, TicketSize, TicketSummary};
+use crate::types::{TicketId, TicketMetadata, TicketSize, TicketSummary};
 use crate::utils::{parse_priority_filter, strip_priority_shorthand};
 
 /// Case-insensitive substring match.
@@ -258,6 +258,56 @@ impl TicketStore {
         matches.sort();
         matches
     }
+}
+
+/// Recursively compute depth by traversing the spawned_from chain.
+/// Returns 0 for root tickets, 1 for direct children, 2 for grandchildren, etc.
+/// Uses cycle detection with a max depth of 100 to prevent infinite loops.
+pub fn compute_depth_recursive(
+    spawned_from: Option<&TicketId>,
+    tickets: &HashMap<String, TicketMetadata>,
+) -> u32 {
+    const MAX_DEPTH: u32 = 100;
+
+    if spawned_from.is_none() {
+        return 0;
+    }
+
+    let mut depth = 0u32;
+    let mut current_id = spawned_from.map(|id| id.to_string());
+    let mut visited = std::collections::HashSet::new();
+
+    while let Some(id) = current_id {
+        // Cycle detection
+        if !visited.insert(id.clone()) {
+            break;
+        }
+
+        depth += 1;
+
+        // Limit recursion depth to prevent infinite loops
+        if depth >= MAX_DEPTH {
+            break;
+        }
+
+        // Look up the parent ticket
+        match tickets.get(&id) {
+            Some(parent) => {
+                // Use stored depth if available
+                if let Some(parent_depth) = parent.depth {
+                    return parent_depth + 1;
+                }
+                // Otherwise continue traversing
+                current_id = parent.spawned_from.as_ref().map(|id| id.to_string());
+            }
+            None => {
+                // Parent not found in store, assume depth 1
+                break;
+            }
+        }
+    }
+
+    depth
 }
 
 #[cfg(test)]
@@ -819,19 +869,20 @@ mod tests {
     fn test_summary_compute_depth() {
         let store = test_store();
         let summaries = store.get_all_ticket_summaries();
+        let ticket_map = store.build_ticket_map();
 
         // Root ticket (no spawned_from) should have depth 0
         let root = summaries
             .iter()
             .find(|s| s.id.as_deref() == Some("j-a1b2"))
             .unwrap();
-        assert_eq!(root.compute_depth(), 0);
+        assert_eq!(root.compute_depth(&ticket_map), 0);
 
         // Child ticket (has spawned_from but no explicit depth) should have depth 1
         let child = summaries
             .iter()
             .find(|s| s.id.as_deref() == Some("j-c3d4"))
             .unwrap();
-        assert_eq!(child.compute_depth(), 1);
+        assert_eq!(child.compute_depth(&ticket_map), 1);
     }
 }

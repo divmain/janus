@@ -128,7 +128,7 @@ impl SpawningFilter {
 }
 
 impl TicketFilter for SpawningFilter {
-    fn matches(&self, ticket: &TicketMetadata, _context: &TicketFilterContext) -> bool {
+    fn matches(&self, ticket: &TicketMetadata, context: &TicketFilterContext) -> bool {
         // Filter by spawned_from (direct children only)
         if let Some(ref parent_id) = self.spawned_from {
             match ticket.spawned_from.as_deref() {
@@ -139,14 +139,14 @@ impl TicketFilter for SpawningFilter {
 
         // Filter by exact depth
         if let Some(target_depth) = self.depth {
-            if ticket.compute_depth() != target_depth {
+            if ticket.compute_depth(&context.ticket_map) != target_depth {
                 return false;
             }
         }
 
         // Filter by max depth
         if let Some(max) = self.max_depth {
-            if ticket.compute_depth() > max {
+            if ticket.compute_depth(&context.ticket_map) > max {
                 return false;
             }
         }
