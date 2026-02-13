@@ -1008,7 +1008,13 @@ pub fn validate_field_name(field: &str, operation: &str) -> crate::error::Result
 pub struct LoadResult<T> {
     /// Successfully loaded items
     pub items: Vec<T>,
-    /// Failed files with their error messages (filename, error)
+    /// Failed files with their error messages (filename, error).
+    ///
+    /// This stores failures as `Vec<(String, String)>` rather than a single String or
+    /// a struct to provide clear separation between the filename and error message in
+    /// error reports. While this requires two heap allocations per failure, this is
+    /// acceptable since it's in an error path (not a hot path). The extra allocation
+    /// overhead is traded off for better error reporting clarity.
     pub failed: Vec<(String, String)>,
 }
 
