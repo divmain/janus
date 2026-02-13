@@ -13,11 +13,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 
 use dashmap::DashMap;
 use notify::{EventKind, RecursiveMode, Watcher};
-use tokio::sync::broadcast;
+use tokio::sync::{Semaphore, broadcast};
 
 use crate::error::{JanusError, Result};
 use crate::plan::parser::parse_plan_content;
@@ -89,6 +89,10 @@ const MAX_RETRY_ATTEMPTS: u8 = 3;
 /// Time-to-live for recently edited entries. Tickets marked as recently edited
 /// will suppress watcher broadcasts for this duration to prevent redundant UI updates.
 const RECENTLY_EDITED_TTL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Semaphore to limit concurrent embedding generation tasks.
+/// Prevents unbounded task spawning when many files change simultaneously.
+static EMBEDDING_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(4));
 
 /// Notification event sent when the store is updated by the watcher.
 #[derive(Debug, Clone)]
@@ -826,10 +830,20 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             if let Some(id) = &ticket_id {
                 store.embeddings().remove(id.as_ref());
 
-                // Generate new embedding asynchronously
-                // Don't block the watcher - spawn a task
+                // Generate new embedding asynchronously with concurrency limit
+                // Acquire semaphore permit to prevent unbounded task spawning
                 let id_clone = id.clone();
                 tokio::spawn(async move {
+                    // Acquire permit - waits if 4 tasks are already running
+                    let permit = EMBEDDING_SEMAPHORE.acquire().await;
+                    let _permit = match permit {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::warn!("Failed to acquire embedding semaphore: {e}");
+                            return;
+                        }
+                    };
+
                     // Get the global store singleton
                     if let Ok(store) = crate::cache::get_or_init_store().await {
                         // Log embedding failures for production visibility
