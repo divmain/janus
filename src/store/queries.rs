@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use dashmap::mapref::multiple::RefMulti;
 
-use crate::cache::TicketStore;
+use super::TicketStore;
 use crate::plan::types::PlanMetadata;
 use crate::types::{TicketMetadata, TicketSize, TicketSummary};
 use crate::utils::{parse_priority_filter, strip_priority_shorthand};
@@ -262,8 +262,8 @@ impl TicketStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::cache::TicketStore;
     use crate::plan::types::{PlanMetadata, PlanSection, TicketsSection};
+    use crate::store::TicketStore;
     use crate::types::{
         PlanId, TicketData, TicketId, TicketMetadata, TicketPriority, TicketSize, TicketStatus,
         TicketType,
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_get_tickets_by_size_from_parsed_content() {
-        use crate::cache::test_helpers::make_ticket_content;
+        use crate::store::test_helpers::make_ticket_content;
         use crate::ticket::parse_ticket;
 
         let store = TicketStore::empty();

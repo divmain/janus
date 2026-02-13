@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
-use crate::cache::TicketStore;
+use super::TicketStore;
 use crate::embedding::model::EMBEDDING_DIMENSIONS;
 use crate::types::janus_root;
 
@@ -465,7 +465,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::cache::TicketStore;
+
     use crate::paths::JanusRootGuard;
     use crate::types::TicketId;
     use crate::types::{TicketMetadata, TicketStatus};

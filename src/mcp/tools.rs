@@ -30,9 +30,9 @@ use tokio::time::timeout;
 
 use regex::Regex;
 
-use crate::cache::get_or_init_store;
 use crate::embedding::model::EMBEDDING_TIMEOUT;
 use crate::events::{Actor, EntityType, Event, EventType, log_event};
+use crate::store::get_or_init_store;
 
 /// Regex for finding the "Completion Summary" section in ticket content
 static COMPLETION_SUMMARY_RE: LazyLock<Regex> =

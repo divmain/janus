@@ -232,7 +232,7 @@ pub fn ticket_minimal_json_with_exists(
 ///     display_init_warnings(&store);
 /// }
 /// ```
-pub fn display_init_warnings(store: &crate::cache::TicketStore) {
+pub fn display_init_warnings(store: &crate::store::TicketStore) {
     let warnings = store.get_init_warnings();
     let ticket_warnings = warnings.ticket_warnings();
     let plan_warnings = warnings.plan_warnings();

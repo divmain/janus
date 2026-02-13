@@ -25,8 +25,8 @@ pub mod tui;
 pub mod types;
 pub mod utils;
 
-pub mod cache;
 pub mod embedding;
+pub mod store;
 
 #[cfg(test)]
 pub(crate) mod test_guards;

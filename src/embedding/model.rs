@@ -185,7 +185,7 @@ pub async fn generate_ticket_embedding(
 /// - **Dimension mismatch**: Cosine similarity is undefined for vectors of
 ///   different dimensions. Returning `0.0` ensures mismatched embeddings are
 ///   ranked last rather than causing a panic. In practice, this case should
-///   not occur because [`load_embeddings()`](crate::cache::embeddings) validates
+///   not occur because [`load_embeddings()`](crate::store::embeddings) validates
 ///   that all loaded embeddings match [`EMBEDDING_DIMENSIONS`] at load time,
 ///   discarding any that don't.
 ///

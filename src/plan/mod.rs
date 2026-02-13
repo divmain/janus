@@ -16,11 +16,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::cache::get_or_init_store;
 use crate::entity::Entity;
 use crate::error::{JanusError, Result};
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::{parse_plan_content, serialize_plan};
+use crate::store::get_or_init_store;
 use crate::types::{EntityType, PlanId, TicketMetadata, plans_dir};
 use crate::utils::{extract_id_from_path, find_markdown_files, find_markdown_files_from_path};
 
@@ -344,7 +344,7 @@ impl Entity for Plan {
 /// The store is populated from disk on first access and kept
 /// up-to-date via the filesystem watcher.
 pub async fn get_all_plans() -> Result<PlanLoadResult> {
-    match crate::cache::get_or_init_store().await {
+    match crate::store::get_or_init_store().await {
         Ok(store) => {
             let plans = store.get_all_plans();
             let mut result = PlanLoadResult::new();

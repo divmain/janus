@@ -221,9 +221,9 @@ pub fn strip_semantic_modifier(query: &str) -> &str {
 /// Returns SearchResults on success, or an error string on failure.
 pub async fn perform_semantic_search(
     query: &str,
-) -> std::result::Result<Vec<crate::cache::search::SearchResult>, String> {
-    use crate::cache::get_or_init_store;
+) -> std::result::Result<Vec<crate::store::search::SearchResult>, String> {
     use crate::config::Config;
+    use crate::store::get_or_init_store;
 
     // Check if semantic search is enabled
     match Config::load() {
@@ -266,7 +266,7 @@ pub async fn perform_semantic_search(
 /// Fuzzy results take precedence (appear first)
 pub fn merge_search_results(
     fuzzy: Vec<FilteredTicket>,
-    semantic: Vec<crate::cache::search::SearchResult>,
+    semantic: Vec<crate::store::search::SearchResult>,
 ) -> Vec<FilteredTicket> {
     use std::collections::HashSet;
 
@@ -295,8 +295,8 @@ pub fn merge_search_results(
     result
 }
 
-impl From<crate::cache::search::SearchResult> for FilteredTicket {
-    fn from(result: crate::cache::search::SearchResult) -> Self {
+impl From<crate::store::search::SearchResult> for FilteredTicket {
+    fn from(result: crate::store::search::SearchResult) -> Self {
         Self {
             ticket: Arc::new(result.ticket),
             score: 0,              // Fuzzy score not applicable
@@ -548,7 +548,7 @@ mod tests {
 
         // Create semantic results (including duplicate)
         let semantic = vec![
-            crate::cache::search::SearchResult {
+            crate::store::search::SearchResult {
                 ticket: TicketMetadata {
                     id: Some(TicketId::new_unchecked("ticket-1")), // Duplicate
                     title: Some("First Ticket".to_string()),
@@ -556,7 +556,7 @@ mod tests {
                 },
                 similarity: 0.95,
             },
-            crate::cache::search::SearchResult {
+            crate::store::search::SearchResult {
                 ticket: TicketMetadata {
                     id: Some(TicketId::new_unchecked("ticket-2")), // New
                     title: Some("Second Ticket".to_string()),

@@ -3,8 +3,8 @@
 //! This module provides a service layer for editing tickets, handling both
 //! new ticket creation and existing ticket updates in a unified interface.
 
-use crate::cache::mark_recently_edited;
 use crate::error::Result;
+use crate::store::mark_recently_edited;
 use crate::tui::services::TicketService;
 use crate::types::{TicketPriority, TicketStatus, TicketType};
 

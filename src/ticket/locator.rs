@@ -6,8 +6,8 @@
 
 use std::path::PathBuf;
 
-use crate::cache::get_or_init_store;
 use crate::error::{JanusError, Result};
+use crate::store::get_or_init_store;
 use crate::types::{TicketId, tickets_items_dir};
 use crate::utils::{extract_id_from_path, find_markdown_files_from_path};
 

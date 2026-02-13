@@ -1,6 +1,6 @@
 //! Ticket repository for loading tickets from the in-memory store
 
-use crate::cache::get_or_init_store;
+use crate::store::get_or_init_store;
 use crate::types::{TicketMetadata, janus_root};
 
 /// Result of initializing the ticket repository

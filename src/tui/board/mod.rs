@@ -136,7 +136,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     hooks.use_future({
         let mut needs_reload = needs_reload;
         async move {
-            if let Some(mut rx) = crate::cache::subscribe_to_changes() {
+            if let Some(mut rx) = crate::store::subscribe_to_changes() {
                 loop {
                     match rx.recv().await {
                         Ok(_event) => {

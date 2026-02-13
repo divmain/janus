@@ -845,7 +845,7 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
                     };
 
                     // Get the global store singleton
-                    if let Ok(store) = crate::cache::get_or_init_store().await {
+                    if let Ok(store) = crate::store::get_or_init_store().await {
                         // Log embedding failures for production visibility
                         if let Err(e) = store.ensure_embedding(&id_clone).await {
                             tracing::warn!("Failed to generate embedding for {id_clone}: {e}");
@@ -919,9 +919,9 @@ mod tests {
     use tokio::time::{sleep, timeout};
 
     use super::*;
-    use crate::cache::TicketStore;
-    use crate::cache::test_helpers::{make_plan_content, make_ticket_content};
     use crate::paths::JanusRootGuard;
+    use crate::store::TicketStore;
+    use crate::store::test_helpers::{make_plan_content, make_ticket_content};
 
     /// Set up a temporary Janus directory structure.
     fn setup_test_dir() -> TempDir {

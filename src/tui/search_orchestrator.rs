@@ -66,7 +66,7 @@ impl SearchState {
                         &query
                     };
 
-                    let store = match crate::cache::get_or_init_store().await {
+                    let store = match crate::store::get_or_init_store().await {
                         Ok(store) => store,
                         Err(_) => {
                             search_filtered_setter.set(Some(vec![]));

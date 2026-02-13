@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-use crate::cache::TicketStore;
+use super::TicketStore;
 use crate::embedding::model::cosine_similarity;
 use crate::types::TicketMetadata;
 
@@ -115,7 +115,7 @@ impl TicketStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::cache::TicketStore;
+    use crate::store::TicketStore;
     use crate::types::{TicketId, TicketMetadata, TicketStatus};
 
     /// Helper to create a store with tickets and mock embeddings.
