@@ -274,12 +274,12 @@ pub fn compute_depth_recursive(
     }
 
     let mut depth = 0u32;
-    let mut current_id = spawned_from.map(|id| id.to_string());
+    let mut current_id: Option<&str> = spawned_from.map(|id| id.as_ref());
     let mut visited = std::collections::HashSet::new();
 
     while let Some(id) = current_id {
-        // Cycle detection
-        if !visited.insert(id.clone()) {
+        // Cycle detection - only allocate here for HashSet storage
+        if !visited.insert(id.to_string()) {
             break;
         }
 
@@ -290,15 +290,15 @@ pub fn compute_depth_recursive(
             break;
         }
 
-        // Look up the parent ticket
-        match tickets.get(&id) {
+        // Look up the parent ticket using &str (no allocation needed)
+        match tickets.get(id) {
             Some(parent) => {
                 // Use stored depth if available
                 if let Some(parent_depth) = parent.depth {
                     return parent_depth + 1;
                 }
-                // Otherwise continue traversing
-                current_id = parent.spawned_from.as_ref().map(|id| id.to_string());
+                // Otherwise continue traversing using &str reference
+                current_id = parent.spawned_from.as_ref().map(|id| id.as_ref());
             }
             None => {
                 // Parent not found in store, assume depth 1
