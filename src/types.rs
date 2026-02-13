@@ -59,19 +59,15 @@ impl TicketId {
         self.0
     }
 
-    fn validate(s: &str) -> crate::error::Result<()> {
+    /// Validate a ticket ID string without creating a TicketId instance.
+    pub fn validate(s: &str) -> crate::error::Result<()> {
         if s.is_empty() {
             return Err(JanusError::InvalidTicketIdFormat(s.to_string()));
         }
+        // Validate characters first (reusable logic)
+        Self::validate_characters(s)?;
         // Must contain at least one hyphen separating prefix from hash
         if !s.contains('-') {
-            return Err(JanusError::InvalidTicketIdFormat(s.to_string()));
-        }
-        // All characters must be alphanumeric, hyphens, or underscores
-        if !s
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
             return Err(JanusError::InvalidTicketIdFormat(s.to_string()));
         }
         // Both prefix and hash must be non-empty
@@ -84,6 +80,18 @@ impl TicketId {
             }
         }
         Ok(())
+    }
+
+    /// Validate that a string contains only valid ticket ID characters.
+    /// Returns the input string for chaining or error context.
+    pub fn validate_characters(s: &str) -> crate::error::Result<&str> {
+        if !s
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(JanusError::InvalidTicketIdFormat(s.to_string()));
+        }
+        Ok(s)
     }
 }
 

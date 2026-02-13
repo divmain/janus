@@ -34,18 +34,8 @@ fn validate_partial_id(id: &str) -> Result<String> {
 async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
     let dir = tickets_items_dir();
 
-    // Validate ID before any path construction (character-level only)
-    let trimmed = partial_id.trim();
-    if trimmed.is_empty() {
-        return Err(JanusError::InvalidTicketId(partial_id.to_string()));
-    }
-    // Check for invalid characters (alphanumeric, hyphens, and underscores only)
-    if !trimmed
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(JanusError::InvalidTicketId(partial_id.to_string()));
-    }
+    // Validate ID before any path construction using shared validation
+    let _trimmed = validate_partial_id(partial_id)?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {
