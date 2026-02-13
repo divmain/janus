@@ -126,6 +126,22 @@ tests/                   # Integration tests
 - **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `TICKETS_DIR`, `VALID_TYPES`)
 - **Modules**: `snake_case` (e.g., `add_note`, `status`)
 
+#### Type Naming: Infrastructure vs Domain
+
+The codebase intentionally uses different naming prefixes to distinguish infrastructure concerns from domain concepts:
+
+- **"Janus" prefix**: Used for infrastructure-level types that are project-specific but not domain-specific:
+  - `JanusError` — The main error enum for the application
+  - `JanusRootGuard` — Guards access to the Janus root directory
+  - These represent project-level infrastructure concerns that would exist even with a different domain
+
+- **Domain terms**: Used for types representing business logic concepts:
+  - `TicketStore`, `TicketMetadata` — Core domain entities
+  - `PlanMetadata`, `Phase` — Domain-specific structures
+  - These map directly to the business domain (tickets, plans, etc.)
+
+This distinction is intentional and clarifies which types are generic infrastructure (`Janus*`) versus domain-specific (`Ticket*`, `Plan*`). When adding new types, consider whether it represents a project-level concern (use `Janus`) or a business domain concept (use the domain term).
+
 ### Imports
 
 Order imports as follows:
