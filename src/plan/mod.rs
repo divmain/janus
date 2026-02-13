@@ -258,20 +258,20 @@ impl Plan {
     /// This method triggers `PreDelete` hook before deletion, and `PostDelete` + `PlanDeleted`
     /// hooks after successful deletion.
     pub fn delete(&self) -> Result<()> {
-        if !self.file_path.exists() {
-            return Ok(());
-        }
-
         let context = self.hook_context();
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        fs::remove_file(&self.file_path).map_err(|e| JanusError::StorageError {
-            operation: "delete",
-            item_type: "plan",
-            path: self.file_path.clone(),
-            source: e,
-        })?;
+        if let Err(e) = fs::remove_file(&self.file_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(JanusError::StorageError {
+                    operation: "delete",
+                    item_type: "plan",
+                    path: self.file_path.clone(),
+                    source: e,
+                });
+            }
+        }
 
         run_post_hooks(HookEvent::PostDelete, &context);
         run_post_hooks(HookEvent::PlanDeleted, &context);

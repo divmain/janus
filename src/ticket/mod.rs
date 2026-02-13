@@ -519,22 +519,20 @@ impl Ticket {
 
     /// Delete the ticket file (async).
     pub async fn delete_async(&self) -> Result<()> {
-        if !self.file_path.exists() {
-            return Ok(());
-        }
-
         let context = self.hook_context();
 
         run_pre_hooks_async(HookEvent::PreDelete, &context).await?;
 
-        tokio_fs::remove_file(&self.file_path)
-            .await
-            .map_err(|e| JanusError::StorageError {
-                operation: "delete",
-                item_type: "ticket",
-                path: self.file_path.clone(),
-                source: e,
-            })?;
+        if let Err(e) = tokio_fs::remove_file(&self.file_path).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(JanusError::StorageError {
+                    operation: "delete",
+                    item_type: "ticket",
+                    path: self.file_path.clone(),
+                    source: e,
+                });
+            }
+        }
 
         run_post_hooks_async(HookEvent::PostDelete, &context).await;
 
@@ -598,20 +596,20 @@ impl Entity for Ticket {
     }
 
     fn delete(&self) -> Result<()> {
-        if !self.file_path.exists() {
-            return Ok(());
-        }
-
         let context = self.hook_context();
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        std::fs::remove_file(&self.file_path).map_err(|e| JanusError::StorageError {
-            operation: "delete",
-            item_type: "ticket",
-            path: self.file_path.clone(),
-            source: e,
-        })?;
+        if let Err(e) = std::fs::remove_file(&self.file_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(JanusError::StorageError {
+                    operation: "delete",
+                    item_type: "ticket",
+                    path: self.file_path.clone(),
+                    source: e,
+                });
+            }
+        }
 
         run_post_hooks(HookEvent::PostDelete, &context);
 
