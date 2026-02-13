@@ -12,35 +12,6 @@ use crate::utils::find_markdown_files;
 use std::collections::HashMap;
 use std::fs;
 
-/// Result of loading tickets from disk, including both successes and failures
-pub type TicketLoadResult = LoadResult<TicketMetadata>;
-
-impl TicketLoadResult {
-    /// Add a successfully loaded ticket
-    pub fn add_ticket(&mut self, ticket: TicketMetadata) {
-        self.items.push(ticket);
-    }
-
-    /// Convert to a Result, returning Err if there are failures
-    pub fn into_result(self) -> crate::error::Result<Vec<TicketMetadata>> {
-        if self.has_failures() {
-            let failure_msgs: Vec<String> = self
-                .failed
-                .iter()
-                .map(|(f, e)| format!("  - {f}: {e}"))
-                .collect();
-            Err(crate::error::JanusError::TicketLoadFailed(failure_msgs))
-        } else {
-            Ok(self.items)
-        }
-    }
-
-    /// Get just the tickets, ignoring failures
-    pub fn into_tickets(self) -> Vec<TicketMetadata> {
-        self.items
-    }
-}
-
 /// Find all ticket files in the tickets directory
 pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
     use crate::types::tickets_items_dir;
@@ -48,32 +19,7 @@ pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
     find_markdown_files(tickets_items_dir())
 }
 
-/// Get all tickets from the in-memory store.
-///
-/// Returns a `TicketLoadResult` containing all loaded tickets.
-/// The store is populated from disk on first access and kept
-/// up-to-date via the filesystem watcher.
-pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusError> {
-    match get_or_init_store().await {
-        Ok(store) => {
-            let tickets = store.get_all_tickets();
-            let mut result = TicketLoadResult::new();
-            for ticket in tickets {
-                result.add_ticket(ticket);
-            }
-            Ok(result)
-        }
-        Err(_) => {
-            // Fall back to disk reads if store initialization fails
-            let result = tokio::task::spawn_blocking(get_all_tickets_from_disk)
-                .await
-                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))?;
-            Ok(result)
-        }
-    }
-}
-
-/// Get all tickets from disk (fallback when store is unavailable)
+/// Get all tickets from disk (for use when store is unavailable)
 ///
 /// Returns a `TicketLoadResult` containing both successfully loaded tickets
 /// and any failures that occurred during loading.
@@ -118,24 +64,55 @@ pub fn get_all_tickets_from_disk() -> TicketLoadResult {
     result
 }
 
+/// Result of loading tickets from disk, including both successes and failures
+pub type TicketLoadResult = LoadResult<TicketMetadata>;
+
+impl TicketLoadResult {
+    /// Add a successfully loaded ticket
+    pub fn add_ticket(&mut self, ticket: TicketMetadata) {
+        self.items.push(ticket);
+    }
+
+    /// Convert to a Result, returning Err if there are failures
+    pub fn into_result(self) -> crate::error::Result<Vec<TicketMetadata>> {
+        if self.has_failures() {
+            let failure_msgs: Vec<String> = self
+                .failed
+                .iter()
+                .map(|(f, e)| format!("  - {f}: {e}"))
+                .collect();
+            Err(crate::error::JanusError::TicketLoadFailed(failure_msgs))
+        } else {
+            Ok(self.items)
+        }
+    }
+
+    /// Get just the tickets, ignoring failures
+    pub fn into_tickets(self) -> Vec<TicketMetadata> {
+        self.items
+    }
+}
+
+/// Get all tickets from the in-memory store.
+///
+/// Returns a `TicketLoadResult` containing all loaded tickets.
+/// The store is populated from disk on first access and kept
+/// up-to-date via the filesystem watcher.
+pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusError> {
+    let store = get_or_init_store().await?;
+    let tickets = store.get_all_tickets();
+    let mut result = TicketLoadResult::new();
+    for ticket in tickets {
+        result.add_ticket(ticket);
+    }
+    Ok(result)
+}
+
 /// Build a HashMap by ID from all tickets
 pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError>
 {
-    match get_or_init_store().await {
-        Ok(store) => Ok(store.build_ticket_map()),
-        Err(_) => {
-            // Fall back to disk reads if store initialization fails
-            let result = tokio::task::spawn_blocking(get_all_tickets_from_disk)
-                .await
-                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))?;
-            let map = result
-                .items
-                .into_iter()
-                .filter_map(|m| m.id.clone().map(|id| (id.to_string(), m)))
-                .collect();
-            Ok(map)
-        }
-    }
+    let store = get_or_init_store().await?;
+    Ok(store.build_ticket_map())
 }
 
 /// Get all tickets and the map together (efficient single call)
@@ -152,18 +129,14 @@ pub async fn get_all_tickets_with_map()
 
 /// Get the count of tickets spawned from a given ticket.
 pub async fn get_children_count(ticket_id: &str) -> Result<usize, crate::error::JanusError> {
-    match get_or_init_store().await {
-        Ok(store) => Ok(store.get_children_count(ticket_id)),
-        Err(_) => Ok(0),
-    }
+    let store = get_or_init_store().await?;
+    Ok(store.get_children_count(ticket_id))
 }
 
 /// Get the count of children for all tickets that have spawned children.
 ///
 /// Returns a HashMap mapping parent ticket IDs to their children count.
 pub async fn get_all_children_counts() -> Result<HashMap<String, usize>, crate::error::JanusError> {
-    match get_or_init_store().await {
-        Ok(store) => Ok(store.get_all_children_counts()),
-        Err(_) => Ok(HashMap::new()),
-    }
+    let store = get_or_init_store().await?;
+    Ok(store.get_all_children_counts())
 }

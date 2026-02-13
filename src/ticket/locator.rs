@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::error::{JanusError, Result};
 use crate::store::get_or_init_store;
 use crate::types::{TicketId, tickets_items_dir};
-use crate::utils::{extract_id_from_path, find_markdown_files_from_path};
+use crate::utils::extract_id_from_path;
 
 fn validate_partial_id(id: &str) -> Result<String> {
     let trimmed = id.trim();
@@ -38,59 +38,26 @@ async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
     let _trimmed = validate_partial_id(partial_id)?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
-    match get_or_init_store().await {
-        Ok(store) => {
-            // Exact match check - does file exist on disk?
-            let exact_match_path = dir.join(format!("{partial_id}.md"));
-            if exact_match_path.exists() {
-                return Ok(exact_match_path);
-            }
+    let store = get_or_init_store().await?;
 
-            // Partial match via store (store is authoritative, no filesystem fallback)
-            let matches = store.find_by_partial_id(partial_id);
-            match matches.len() {
-                0 => Err(JanusError::TicketNotFound(TicketId::new_unchecked(
-                    partial_id,
-                ))),
-                1 => Ok(dir.join(format!("{}.md", &matches[0]))),
-                _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
-            }
-        }
-        Err(_) => {
-            // FALLBACK: File-based implementation only when store is unavailable
-            find_ticket_by_id_filesystem(partial_id, &dir)
-        }
-    }
-}
-
-/// Filesystem-based find implementation for tickets (fallback when store unavailable).
-fn find_ticket_by_id_filesystem(partial_id: &str, dir: &std::path::Path) -> Result<PathBuf> {
-    let files = find_markdown_files_from_path(dir).unwrap_or_else(|e| {
-        eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);
-        Vec::new()
-    });
-
-    // Check for exact match first
-    let exact_name = format!("{partial_id}.md");
-    if files.iter().any(|f| f == &exact_name) {
-        return Ok(dir.join(&exact_name));
+    // Exact match check - does file exist on disk?
+    let exact_match_path = dir.join(format!("{partial_id}.md"));
+    if exact_match_path.exists() {
+        return Ok(exact_match_path);
     }
 
-    // Then check for partial matches
-    let matches: Vec<_> = files.iter().filter(|f| f.contains(partial_id)).collect();
-
+    // Partial match via store (store is authoritative)
+    let matches = store.find_by_partial_id(partial_id);
     match matches.len() {
         0 => Err(JanusError::TicketNotFound(TicketId::new_unchecked(
             partial_id,
         ))),
-        1 => Ok(dir.join(matches[0])),
-        _ => Err(JanusError::AmbiguousId(
-            partial_id.to_string(),
-            matches.iter().map(|m| m.replace(".md", "")).collect(),
-        )),
+        1 => Ok(dir.join(format!("{}.md", &matches[0]))),
+        _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
     }
 }
 
+/// Filesystem-based find implementation for tickets (fallback when store unavailable).
 /// Simple locator for ticket files
 ///
 /// Encapsulates the relationship between a ticket's ID and its file path on disk.
