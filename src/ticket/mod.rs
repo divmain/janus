@@ -249,7 +249,7 @@ impl Ticket {
         match parse(raw_content) {
             Ok(metadata) => {
                 let field_enum: ArrayField = field.parse()?;
-                Ok(Self::get_array_field(&metadata, field_enum)?.clone())
+                Ok(Self::get_array_field(&metadata, field_enum).clone())
             }
             Err(e) => {
                 eprintln!(
@@ -319,10 +319,10 @@ impl Ticket {
         Ok(true)
     }
 
-    fn get_array_field(metadata: &TicketMetadata, field: ArrayField) -> Result<&Vec<TicketId>> {
+    fn get_array_field(metadata: &TicketMetadata, field: ArrayField) -> &Vec<TicketId> {
         match field {
-            ArrayField::Deps => Ok(&metadata.deps),
-            ArrayField::Links => Ok(&metadata.links),
+            ArrayField::Deps => &metadata.deps,
+            ArrayField::Links => &metadata.links,
         }
     }
 
