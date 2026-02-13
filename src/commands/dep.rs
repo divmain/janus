@@ -7,7 +7,7 @@ use crate::commands::dep_tree::{DepthCalculator, TreeBuilder, TreeFormatter};
 use crate::error::{JanusError, Result};
 use crate::events::{log_dependency_added, log_dependency_removed};
 use crate::graph::{check_circular_dependency, resolve_id_from_map};
-use crate::ticket::{Ticket, build_ticket_map};
+use crate::ticket::{ArrayField, Ticket, build_ticket_map};
 
 /// Add a dependency to a ticket
 pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()> {
@@ -25,7 +25,7 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output_json: bool) -> Result<()
     let ticket_map = build_ticket_map().await?;
     check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)?;
 
-    let added = ticket.add_to_array_field("deps", &dep_ticket.id)?;
+    let added = ticket.add_to_array_field(ArrayField::Deps, &dep_ticket.id)?;
     let metadata = ticket.read()?;
 
     // Log the event if dependency was actually added
@@ -56,7 +56,7 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output_json: bool) -> Result
     // Resolve the dependency ID to get the full ID
     let dep_ticket = Ticket::find(dep_id).await?;
 
-    let removed = ticket.remove_from_array_field("deps", &dep_ticket.id)?;
+    let removed = ticket.remove_from_array_field(ArrayField::Deps, &dep_ticket.id)?;
     if !removed {
         return Err(JanusError::DependencyNotFound(dep_ticket.id.clone()));
     }

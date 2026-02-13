@@ -3,7 +3,7 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::error::{JanusError, Result};
 use crate::events::{log_link_added, log_link_removed};
-use crate::ticket::Ticket;
+use crate::ticket::{ArrayField, Ticket};
 
 /// Add symmetric links between tickets
 pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
@@ -36,15 +36,15 @@ pub async fn cmd_link_add(ids: &[String], output_json: bool) -> Result<()> {
     for ticket in &tickets {
         for other in &tickets {
             if ticket.id != other.id {
-                let has_existing_link = ticket.has_in_array_field("links", &other.id)?;
-                let other_has_link = other.has_in_array_field("links", &ticket.id)?;
+                let has_existing_link = ticket.has_in_array_field(ArrayField::Links, &other.id)?;
+                let other_has_link = other.has_in_array_field(ArrayField::Links, &ticket.id)?;
 
                 // Detect one-way link: other -> ticket exists, but ticket -> other does not yet
                 if !has_existing_link && other_has_link {
                     asymmetric_warnings.push((other.id.clone(), ticket.id.clone()));
                 }
 
-                if ticket.add_to_array_field("links", &other.id)? {
+                if ticket.add_to_array_field(ArrayField::Links, &other.id)? {
                     added_count += 1;
                     // Log the event for each link added
                     log_link_added(&ticket.id, &other.id);
@@ -108,12 +108,12 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output_json: bool) -> Result<
     let mut removed_1_to_2 = false;
     let mut removed_2_to_1 = false;
 
-    if ticket1.remove_from_array_field("links", &ticket2.id)? {
+    if ticket1.remove_from_array_field(ArrayField::Links, &ticket2.id)? {
         removed_count += 1;
         removed_1_to_2 = true;
         log_link_removed(&ticket1.id, &ticket2.id);
     }
-    if ticket2.remove_from_array_field("links", &ticket1.id)? {
+    if ticket2.remove_from_array_field(ArrayField::Links, &ticket1.id)? {
         removed_count += 1;
         removed_2_to_1 = true;
         log_link_removed(&ticket2.id, &ticket1.id);

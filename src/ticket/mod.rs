@@ -190,9 +190,10 @@ impl Ticket {
     }
 
     /// Add a value to an array field (deps or links).
-    pub fn add_to_array_field(&self, field: &str, value: &str) -> Result<bool> {
+    pub fn add_to_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
+        let field_str = field.as_str();
         self.mutate_array_field(
-            field,
+            field_str,
             value,
             |current| !current.contains(&value.to_string()),
             |current| {
@@ -204,9 +205,10 @@ impl Ticket {
     }
 
     /// Remove a value from an array field (deps or links).
-    pub fn remove_from_array_field(&self, field: &str, value: &str) -> Result<bool> {
+    pub fn remove_from_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
+        let field_str = field.as_str();
         self.mutate_array_field(
-            field,
+            field_str,
             value,
             |current| current.contains(&value.to_string()),
             |current| {
@@ -247,9 +249,10 @@ impl Ticket {
     }
 
     /// Check if a value exists in an array field (deps or links).
-    pub fn has_in_array_field(&self, field: &str, value: &str) -> Result<bool> {
+    pub fn has_in_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
         let raw_content = self.read_content()?;
-        let current_array = self.extract_array_field_with_fallback(&raw_content, field, "read")?;
+        let current_array =
+            self.extract_array_field_with_fallback(&raw_content, field.as_str(), "read")?;
         Ok(current_array.contains(&value.to_string()))
     }
 
@@ -841,7 +844,9 @@ Description.
         assert!(ticket.read().is_err());
 
         // add_to_array_field should succeed via tolerant path
-        let added = ticket.add_to_array_field("deps", "new-dep").unwrap();
+        let added = ticket
+            .add_to_array_field(ArrayField::Deps, "new-dep")
+            .unwrap();
         assert!(added);
 
         let updated = std::fs::read_to_string(&file_path).unwrap();
@@ -880,7 +885,7 @@ Description.
 
         // remove_from_array_field should succeed via tolerant path
         let removed = ticket
-            .remove_from_array_field("deps", "dep-to-remove")
+            .remove_from_array_field(ArrayField::Deps, "dep-to-remove")
             .unwrap();
         assert!(removed);
 
@@ -916,8 +921,16 @@ unknown_field: causes_strict_failure
         assert!(ticket.read().is_err());
 
         // has_in_array_field should succeed via tolerant path
-        assert!(ticket.has_in_array_field("deps", "existing-dep").unwrap());
-        assert!(!ticket.has_in_array_field("deps", "nonexistent").unwrap());
+        assert!(
+            ticket
+                .has_in_array_field(ArrayField::Deps, "existing-dep")
+                .unwrap()
+        );
+        assert!(
+            !ticket
+                .has_in_array_field(ArrayField::Deps, "nonexistent")
+                .unwrap()
+        );
     }
 
     #[test]
@@ -943,7 +956,9 @@ unknown_field: causes_strict_failure
             id: "test-1234".to_string(),
         };
 
-        let added = ticket.add_to_array_field("deps", "already-there").unwrap();
+        let added = ticket
+            .add_to_array_field(ArrayField::Deps, "already-there")
+            .unwrap();
         assert!(!added);
     }
 
@@ -971,7 +986,7 @@ unknown_field: causes_strict_failure
         };
 
         let removed = ticket
-            .remove_from_array_field("deps", "nonexistent")
+            .remove_from_array_field(ArrayField::Deps, "nonexistent")
             .unwrap();
         assert!(!removed);
     }

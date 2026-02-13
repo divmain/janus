@@ -48,7 +48,9 @@ use crate::next::NextWorkFinder;
 use crate::plan::parser::serialize_plan;
 use crate::plan::{Plan, compute_plan_status};
 use crate::status::is_dependency_satisfied;
-use crate::ticket::{Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map};
+use crate::ticket::{
+    ArrayField, Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map,
+};
 use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
 
@@ -705,7 +707,7 @@ impl JanusTools {
             .map_err(|e| e.to_string())?;
 
         let added = ticket
-            .add_to_array_field("deps", &dep_ticket.id)
+            .add_to_array_field(ArrayField::Deps, &dep_ticket.id)
             .map_err(|e| e.to_string())?;
 
         if added {
@@ -747,7 +749,7 @@ impl JanusTools {
             .map_err(|e| format!("Ticket not found: {e}"))?;
 
         let removed = ticket
-            .remove_from_array_field("deps", &request.depends_on_id)
+            .remove_from_array_field(ArrayField::Deps, &request.depends_on_id)
             .map_err(|e| e.to_string())?;
 
         if !removed {
