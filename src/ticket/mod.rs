@@ -74,6 +74,15 @@ impl Ticket {
         Ok((ticket, metadata))
     }
 
+    /// Resolve a partial ticket ID to a full ID.
+    ///
+    /// This is a convenience method that finds a ticket by partial ID and returns
+    /// just the full ID. Errors (including `TicketNotFound`) are propagated.
+    pub async fn resolve_partial_id(partial_id: &str) -> Result<String> {
+        let ticket = Self::find(partial_id).await?;
+        Ok(ticket.id)
+    }
+
     /// Create a Ticket from an existing file path.
     ///
     /// Extracts the ticket ID from the file path's stem.

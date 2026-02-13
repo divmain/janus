@@ -130,8 +130,7 @@ pub async fn cmd_ls_with_options(opts: LsOptions) -> Result<()> {
 
     // Resolve spawned_from partial ID to full ID if provided
     let resolved_spawned_from = if let Some(ref partial_id) = opts.spawned_from {
-        let ticket = Ticket::find(partial_id).await?;
-        Some(ticket.id)
+        Some(Ticket::resolve_partial_id(partial_id).await?)
     } else {
         None
     };

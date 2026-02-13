@@ -71,8 +71,7 @@ pub async fn cmd_create(opts: CreateOptions) -> Result<()> {
 
     // Resolve spawned_from to canonical ticket ID if provided
     let resolved_spawned_from = if let Some(ref partial_id) = spawned_from {
-        let ticket = Ticket::find(partial_id).await?;
-        Some(ticket.id)
+        Some(Ticket::resolve_partial_id(partial_id).await?)
     } else {
         None
     };
