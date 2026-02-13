@@ -8,6 +8,7 @@ use iocraft::prelude::*;
 use crate::parser::extract_ticket_body;
 use crate::tui::components::{Clickable, Select, Selectable, TextEditor, options_for};
 use crate::tui::services::{TicketEditService, TicketFormValidator};
+use crate::tui::sync_handler::Cycleable;
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketPriority, TicketStatus, TicketType};
 
@@ -43,6 +44,16 @@ impl EditField {
             EditField::Priority => EditField::Type,
             EditField::Body => EditField::Priority,
         }
+    }
+}
+
+impl Cycleable for EditField {
+    fn next(self) -> Self {
+        self.next()
+    }
+
+    fn prev(self) -> Self {
+        self.prev()
     }
 }
 
@@ -107,85 +118,53 @@ pub fn EditForm<'a>(props: &EditFormProps, mut hooks: Hooks) -> impl Into<AnyEle
     let mut error_text = hooks.use_state(String::new);
     let mut is_saving = hooks.use_state(|| false);
 
-    // Click handlers for form fields (using async_handler pattern to allow state mutation)
+    // Click handlers for form fields (async wrapper needed for state mutation)
     let focus_title_handler: Handler<()> = hooks.use_async_handler({
-        let focused_field_setter = focused_field;
-        move |_| {
-            let mut focused_field_setter = focused_field_setter;
-            async move {
-                focused_field_setter.set(EditField::Title);
-            }
+        move |_| async move {
+            focused_field.set(EditField::Title);
         }
     });
 
     let focus_body_handler: Handler<()> = hooks.use_async_handler({
-        let focused_field_setter = focused_field;
-        move |_| {
-            let mut focused_field_setter = focused_field_setter;
-            async move {
-                focused_field_setter.set(EditField::Body);
-            }
+        move |_| async move {
+            focused_field.set(EditField::Body);
         }
     });
 
     // Handlers for Select component arrows
     let status_prev_handler: Handler<()> = hooks.use_async_handler({
-        let status_setter = status;
-        move |_| {
-            let mut status_setter = status_setter;
-            async move {
-                status_setter.set(status_setter.get().prev());
-            }
+        move |_| async move {
+            status.set(status.get().prev());
         }
     });
 
     let status_next_handler: Handler<()> = hooks.use_async_handler({
-        let status_setter = status;
-        move |_| {
-            let mut status_setter = status_setter;
-            async move {
-                status_setter.set(status_setter.get().next());
-            }
+        move |_| async move {
+            status.set(status.get().next());
         }
     });
 
     let type_prev_handler: Handler<()> = hooks.use_async_handler({
-        let type_setter = ticket_type;
-        move |_| {
-            let mut type_setter = type_setter;
-            async move {
-                type_setter.set(type_setter.get().prev());
-            }
+        move |_| async move {
+            ticket_type.set(ticket_type.get().prev());
         }
     });
 
     let type_next_handler: Handler<()> = hooks.use_async_handler({
-        let type_setter = ticket_type;
-        move |_| {
-            let mut type_setter = type_setter;
-            async move {
-                type_setter.set(type_setter.get().next());
-            }
+        move |_| async move {
+            ticket_type.set(ticket_type.get().next());
         }
     });
 
     let priority_prev_handler: Handler<()> = hooks.use_async_handler({
-        let priority_setter = priority;
-        move |_| {
-            let mut priority_setter = priority_setter;
-            async move {
-                priority_setter.set(priority_setter.get().prev());
-            }
+        move |_| async move {
+            priority.set(priority.get().prev());
         }
     });
 
     let priority_next_handler: Handler<()> = hooks.use_async_handler({
-        let priority_setter = priority;
-        move |_| {
-            let mut priority_setter = priority_setter;
-            async move {
-                priority_setter.set(priority_setter.get().next());
-            }
+        move |_| async move {
+            priority.set(priority.get().next());
         }
     });
 

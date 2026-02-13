@@ -376,6 +376,28 @@ impl TicketStatus {
     pub fn is_not_started(self) -> bool {
         crate::status::is_not_started(self)
     }
+
+    /// Get the next status in the cycle
+    pub fn next(self) -> Self {
+        match self {
+            TicketStatus::New => TicketStatus::Next,
+            TicketStatus::Next => TicketStatus::InProgress,
+            TicketStatus::InProgress => TicketStatus::Complete,
+            TicketStatus::Complete => TicketStatus::Cancelled,
+            TicketStatus::Cancelled => TicketStatus::New,
+        }
+    }
+
+    /// Get the previous status in the cycle
+    pub fn prev(self) -> Self {
+        match self {
+            TicketStatus::New => TicketStatus::Cancelled,
+            TicketStatus::Next => TicketStatus::New,
+            TicketStatus::InProgress => TicketStatus::Next,
+            TicketStatus::Complete => TicketStatus::InProgress,
+            TicketStatus::Cancelled => TicketStatus::Complete,
+        }
+    }
 }
 
 enum_display_fromstr!(
@@ -406,6 +428,28 @@ pub enum TicketType {
 impl TicketType {
     /// All valid string representations of this enum.
     pub const ALL_STRINGS: &[&str] = &["bug", "feature", "task", "epic", "chore"];
+
+    /// Get the next ticket type in the cycle
+    pub fn next(self) -> Self {
+        match self {
+            TicketType::Bug => TicketType::Feature,
+            TicketType::Feature => TicketType::Task,
+            TicketType::Task => TicketType::Epic,
+            TicketType::Epic => TicketType::Chore,
+            TicketType::Chore => TicketType::Bug,
+        }
+    }
+
+    /// Get the previous ticket type in the cycle
+    pub fn prev(self) -> Self {
+        match self {
+            TicketType::Bug => TicketType::Chore,
+            TicketType::Feature => TicketType::Bug,
+            TicketType::Task => TicketType::Feature,
+            TicketType::Epic => TicketType::Task,
+            TicketType::Chore => TicketType::Epic,
+        }
+    }
 }
 
 enum_display_fromstr!(
@@ -475,6 +519,28 @@ impl TicketPriority {
             TicketPriority::P2 => 2,
             TicketPriority::P3 => 3,
             TicketPriority::P4 => 4,
+        }
+    }
+
+    /// Get the next priority in the cycle
+    pub fn next(self) -> Self {
+        match self {
+            TicketPriority::P0 => TicketPriority::P1,
+            TicketPriority::P1 => TicketPriority::P2,
+            TicketPriority::P2 => TicketPriority::P3,
+            TicketPriority::P3 => TicketPriority::P4,
+            TicketPriority::P4 => TicketPriority::P0,
+        }
+    }
+
+    /// Get the previous priority in the cycle
+    pub fn prev(self) -> Self {
+        match self {
+            TicketPriority::P0 => TicketPriority::P4,
+            TicketPriority::P1 => TicketPriority::P0,
+            TicketPriority::P2 => TicketPriority::P1,
+            TicketPriority::P3 => TicketPriority::P2,
+            TicketPriority::P4 => TicketPriority::P3,
         }
     }
 }

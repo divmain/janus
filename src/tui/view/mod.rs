@@ -218,94 +218,61 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         }
     });
 
-    // Pane focus handlers - created at top level to follow rules of hooks
+    // Pane focus handlers - async wrapper needed for state mutation
     let focus_search_handler: Handler<()> = hooks.use_async_handler({
-        let active_pane_setter = active_pane;
-        move |()| {
-            let mut active_pane_setter = active_pane_setter;
-            async move {
-                active_pane_setter.set(Pane::Search);
-            }
+        move |_| async move {
+            active_pane.set(Pane::Search);
         }
     });
 
     let focus_list_handler: Handler<()> = hooks.use_async_handler({
-        let active_pane_setter = active_pane;
-        move |()| {
-            let mut active_pane_setter = active_pane_setter;
-            async move {
-                active_pane_setter.set(Pane::List);
-            }
+        move |_| async move {
+            active_pane.set(Pane::List);
         }
     });
 
     let focus_detail_handler: Handler<()> = hooks.use_async_handler({
-        let active_pane_setter = active_pane;
-        move |()| {
-            let mut active_pane_setter = active_pane_setter;
-            async move {
-                active_pane_setter.set(Pane::Detail);
-            }
+        move |_| async move {
+            active_pane.set(Pane::Detail);
         }
     });
 
-    // TicketList row click handler - created at top level to follow rules of hooks
+    // TicketList row click handler
     let row_click_handler: Handler<usize> = hooks.use_async_handler({
-        let selected_setter = selected_index;
-        let pane_setter = active_pane;
-        let scroll_setter = scroll_offset;
-        move |idx: usize| {
-            let mut selected_setter = selected_setter;
-            let mut pane_setter = pane_setter;
-            let mut scroll_setter = scroll_setter;
-            async move {
-                selected_setter.set(idx);
-                pane_setter.set(Pane::List);
-                // Update scroll offset if needed to keep selection visible
-                if idx < scroll_setter.get() {
-                    scroll_setter.set(idx);
-                }
+        move |idx: usize| async move {
+            selected_index.set(idx);
+            active_pane.set(Pane::List);
+            // Update scroll offset if needed to keep selection visible
+            if idx < scroll_offset.get() {
+                scroll_offset.set(idx);
             }
         }
     });
 
-    // TicketList scroll handlers - created at top level to follow rules of hooks
+    // TicketList scroll handlers
     let list_scroll_up_handler: Handler<()> = hooks.use_async_handler({
-        let scroll_setter = scroll_offset;
-        move |()| {
-            let mut scroll_setter = scroll_setter;
-            async move {
-                // Scroll up: decrease offset by 3 items
-                scroll_setter.set(scroll_setter.get().saturating_sub(3));
-            }
+        move |_| async move {
+            // Scroll up: decrease offset by 3 items
+            scroll_offset.set(scroll_offset.get().saturating_sub(3));
         }
     });
 
     // Note: list_scroll_down_handler is defined later after we have access to
     // filtered ticket count and list_height for proper bounds clamping
 
-    // Detail pane scroll handlers - created at top level to follow rules of hooks
+    // Detail pane scroll handlers
     let detail_scroll_up_handler: Handler<()> = hooks.use_async_handler({
-        let scroll_setter = detail_scroll_offset;
-        move |()| {
-            let mut scroll_setter = scroll_setter;
-            async move {
-                // Scroll up: decrease offset by 3 lines
-                scroll_setter.set(scroll_setter.get().saturating_sub(3));
-            }
+        move |_| async move {
+            // Scroll up: decrease offset by 3 lines
+            detail_scroll_offset.set(detail_scroll_offset.get().saturating_sub(3));
         }
     });
 
     let detail_scroll_down_handler: Handler<()> = hooks.use_async_handler({
-        let scroll_setter = detail_scroll_offset;
-        let max_scroll_ref = max_detail_scroll;
-        move |()| {
-            let mut scroll_setter = scroll_setter;
-            let max_scroll = max_scroll_ref.get();
-            async move {
-                // Scroll down: increase offset by 3 lines, capped at max
-                scroll_setter.set((scroll_setter.get() + 3).min(max_scroll));
-            }
+        move |_| async move {
+            // Scroll down: increase offset by 3 lines, capped at max
+            let max_scroll = max_detail_scroll.get();
+            detail_scroll_offset.set((detail_scroll_offset.get() + 3).min(max_scroll));
         }
     });
 
@@ -421,18 +388,13 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
     // Now that we have list_height and filtered tickets, we can create the
     // scroll down handler with proper bounds clamping
+    let max_scroll = filtered
+        .len()
+        .saturating_sub(list_height.saturating_sub(2).max(1));
     let list_scroll_down_handler: Handler<()> = hooks.use_async_handler({
-        let scroll_setter = scroll_offset;
-        let max_scroll = filtered
-            .len()
-            .saturating_sub(list_height.saturating_sub(2).max(1));
-        move |()| {
-            let mut scroll_setter = scroll_setter;
-            let max_scroll = max_scroll;
-            async move {
-                // Scroll down: increase offset by 3 items, clamped to valid range
-                scroll_setter.set((scroll_setter.get() + 3).min(max_scroll));
-            }
+        move |_| async move {
+            // Scroll down: increase offset by 3 items, clamped to valid range
+            scroll_offset.set((scroll_offset.get() + 3).min(max_scroll));
         }
     });
 

@@ -20,6 +20,7 @@ pub mod search;
 pub mod search_orchestrator;
 pub mod services;
 pub mod state;
+pub mod sync_handler;
 pub mod theme;
 pub mod view;
 
