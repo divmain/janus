@@ -53,6 +53,13 @@ impl TuiState {
 }
 
 /// Get the git user name (utility function)
+///
+/// SECURITY: This function executes `git config user.name` as a shell command.
+/// Arguments are hardcoded using the safe array form `.args(["config", "user.name"])`
+/// to prevent shell injection vulnerabilities. DO NOT modify this function to accept
+/// user input in the arguments - any change introducing user input would create a
+/// shell injection vulnerability. If you need dynamic arguments, use proper
+/// sanitization or the safe array form exclusively.
 pub fn get_git_user_name() -> Option<String> {
     std::process::Command::new("git")
         .args(["config", "user.name"])
