@@ -847,11 +847,12 @@ impl RemoteProvider for LinearProvider {
     > {
         let text = text.to_string();
         Box::pin(async move {
+            let max_pages = query.max_pages.max(1);
             let first = query.limit.min(100) as i32;
             let mut all_issues: Vec<RemoteIssue> = Vec::new();
             let mut cursor: Option<String> = None;
             // Track pagination state
-            let mut has_more: bool;
+            let mut has_more = false;
 
             // Build filter for search
             let title_filter = IssueFilter {
@@ -876,8 +877,8 @@ impl RemoteProvider for LinearProvider {
                 ..Default::default()
             };
 
-            // Fetch all matching pages (no limit)
-            loop {
+            // Fetch up to max_pages matching pages
+            for _page in 0..max_pages {
                 let variables = IssuesQueryVariables {
                     first: Some(first),
                     after: cursor.clone(),
