@@ -199,6 +199,15 @@ impl UpdateStatusRequest {
     /// Validate all fields in the request.
     /// Returns Ok if valid, Err with message if invalid.
     pub(crate) fn validate(&self) -> Result<(), String> {
+        // Validate status string is a valid TicketStatus
+        if self.status.parse::<crate::types::TicketStatus>().is_err() {
+            return Err(format!(
+                "Invalid status '{}'. Valid values: {}",
+                self.status,
+                crate::types::TicketStatus::ALL_STRINGS.join(", ")
+            ));
+        }
+
         validate_optional_summary(self.summary.as_deref())
     }
 }
