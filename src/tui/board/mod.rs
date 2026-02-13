@@ -23,7 +23,7 @@ use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
-use handlers::{BoardAsyncHandlers, BoardHandlerContext};
+use handlers::{BoardAsyncHandlers, BoardHandlerContext, FilteredCache};
 use model::{COLUMN_KEYS, COLUMN_NAMES, COLUMNS};
 
 /// Props for the KanbanBoard component
@@ -156,6 +156,9 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Column visibility state (all visible by default)
     let mut visible_columns = hooks.use_state(|| [true; 5]);
+
+    // Cache for filtered tickets to avoid recomputing on every keystroke
+    let mut cache: State<Option<FilteredCache>> = hooks.use_state(|| None);
 
     // Navigation state
     let mut current_column = hooks.use_state(|| 0usize);
@@ -298,7 +301,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         handlers: BoardAsyncHandlers {
                             update_status: &update_status_handler_for_events,
                         },
-                        cache: std::cell::RefCell::new(None),
+                        cache: &mut cache,
                     };
 
                     handlers::handle_key_event(&mut ctx, code, modifiers);

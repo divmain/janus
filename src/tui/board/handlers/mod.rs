@@ -11,7 +11,7 @@ mod search;
 mod types;
 
 pub use column::adjust_column_after_toggle;
-pub use context::{BoardAsyncHandlers, BoardHandlerContext};
+pub use context::{BoardAsyncHandlers, BoardHandlerContext, FilteredCache};
 
 use super::model::BoardAction;
 use crate::tui::handlers::{SearchAction, handle_search_input};
