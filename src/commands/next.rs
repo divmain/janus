@@ -89,8 +89,8 @@ fn work_item_to_json(
             .metadata
             .deps
             .iter()
-            .filter(|dep_id| !is_dependency_satisfied(dep_id, ticket_map))
-            .cloned()
+            .filter(|dep_id| !is_dependency_satisfied(dep_id.as_ref(), ticket_map))
+            .map(|dep_id| dep_id.to_string())
             .collect();
         if deps.is_empty() { None } else { Some(deps) }
     } else {

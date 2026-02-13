@@ -211,8 +211,8 @@ impl TicketFilter for ReadyFilter {
         // Warn about dangling deps before the shared check
         let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
         for dep_id in &ticket.deps {
-            if !context.ticket_map.contains_key(dep_id) {
-                context.warn_dangling(ticket_id, dep_id);
+            if !context.ticket_map.contains_key(dep_id.as_ref()) {
+                context.warn_dangling(ticket_id, dep_id.as_ref());
             }
         }
 
@@ -241,8 +241,8 @@ impl TicketFilter for BlockedFilter {
         // Warn about dangling deps before the shared check
         let ticket_id = ticket.id.as_deref().unwrap_or("unknown");
         for dep_id in &ticket.deps {
-            if !context.ticket_map.contains_key(dep_id) {
-                context.warn_dangling(ticket_id, dep_id);
+            if !context.ticket_map.contains_key(dep_id.as_ref()) {
+                context.warn_dangling(ticket_id, dep_id.as_ref());
             }
         }
 

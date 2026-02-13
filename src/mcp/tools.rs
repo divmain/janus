@@ -667,7 +667,8 @@ impl JanusTools {
 
             // Check if other ticket is blocked by current ticket
             // (other depends on us, and we are not yet terminal)
-            if other.deps.contains(&ticket.id) && !metadata.status.is_some_and(|s| s.is_terminal())
+            let ticket_id = crate::types::TicketId::new_unchecked(&ticket.id);
+            if other.deps.contains(&ticket_id) && !metadata.status.is_some_and(|s| s.is_terminal())
             {
                 blocking.push(other);
             }
@@ -675,8 +676,8 @@ impl JanusTools {
 
         // Find blockers (deps that are not satisfied per canonical definition)
         for dep_id in &metadata.deps {
-            if !is_dependency_satisfied(dep_id, &ticket_map) {
-                if let Some(dep) = ticket_map.get(dep_id) {
+            if !is_dependency_satisfied(dep_id.as_ref(), &ticket_map) {
+                if let Some(dep) = ticket_map.get(dep_id.as_ref()) {
                     blockers.push(dep);
                 }
             }
@@ -1125,7 +1126,7 @@ mod tests {
             "a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("a")),
-                deps: vec!["b".to_string()],
+                deps: vec![TicketId::new_unchecked("b")],
                 ..Default::default()
             },
         );
@@ -1156,7 +1157,7 @@ mod tests {
             "a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("a")),
-                deps: vec!["b".to_string()],
+                deps: vec![TicketId::new_unchecked("b")],
                 ..Default::default()
             },
         );
@@ -1164,7 +1165,7 @@ mod tests {
             "b".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("b")),
-                deps: vec!["c".to_string()],
+                deps: vec![TicketId::new_unchecked("c")],
                 ..Default::default()
             },
         );

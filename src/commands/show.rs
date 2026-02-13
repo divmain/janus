@@ -30,15 +30,16 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
 
         // Check if this ticket is blocking another ticket
         // (other depends on us, and we are not yet terminal)
-        if other.deps.contains(&ticket.id) && !metadata.status.is_some_and(|s| s.is_terminal()) {
+        let ticket_id = crate::types::TicketId::new_unchecked(&ticket.id);
+        if other.deps.contains(&ticket_id) && !metadata.status.is_some_and(|s| s.is_terminal()) {
             blocking.push(other);
         }
     }
 
     // Find blockers (deps that are not satisfied per canonical definition)
     for dep_id in &metadata.deps {
-        if !is_dependency_satisfied(dep_id, &ticket_map) {
-            if let Some(dep) = ticket_map.get(dep_id) {
+        if !is_dependency_satisfied(dep_id.as_ref(), &ticket_map) {
+            if let Some(dep) = ticket_map.get(dep_id.as_ref()) {
                 blockers.push(dep);
             }
         }
@@ -69,7 +70,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
     let linked_json: Vec<_> = metadata
         .links
         .iter()
-        .filter_map(|link_id| ticket_map.get(link_id))
+        .filter_map(|link_id| ticket_map.get(link_id.as_ref()))
         .map(super::ticket_minimal_json)
         .collect();
 
@@ -107,7 +108,7 @@ pub async fn cmd_show(id: &str, output_json: bool) -> Result<()> {
         if !metadata.links.is_empty() {
             output.push_str("\n\n## Linked");
             for link_id in &metadata.links {
-                if let Some(linked) = ticket_map.get(link_id) {
+                if let Some(linked) = ticket_map.get(link_id.as_ref()) {
                     output.push_str(&format!(
                         "\n{}",
                         crate::display::format_ticket_bullet(linked)

@@ -24,8 +24,12 @@ pub fn format_date_for_display(date_str: &str) -> String {
 }
 
 /// Format dependencies for display
-pub fn format_deps(deps: &[String]) -> String {
-    let deps_str = deps.join(", ");
+pub fn format_deps<T: std::fmt::Display>(deps: &[T]) -> String {
+    let deps_str = deps
+        .iter()
+        .map(|d| d.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
     if deps_str.is_empty() {
         " <- []".to_string()
     } else {

@@ -100,7 +100,7 @@ impl PlanNextFormatter {
                 .iter()
                 .map(|dep| {
                     let dep_status = ticket_map
-                        .get(dep)
+                        .get(dep.as_ref())
                         .and_then(|t| t.status)
                         .map(|s| format!("[{s}]"))
                         .unwrap_or_else(|| "[missing]".to_string());

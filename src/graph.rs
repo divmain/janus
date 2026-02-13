@@ -64,8 +64,9 @@ pub fn check_circular_dependency(
     ticket_map: &HashMap<String, TicketMetadata>,
 ) -> Result<()> {
     // Direct circular dependency: A->B when B already depends on A
+    let from_ticket_id = crate::types::TicketId::new_unchecked(from_id);
     if let Some(dep_ticket) = ticket_map.get(to_id)
-        && dep_ticket.deps.contains(&from_id.to_string())
+        && dep_ticket.deps.contains(&from_ticket_id)
     {
         return Err(JanusError::CircularDependency(format!(
             "{from_id} -> {to_id} (direct: {to_id} already depends on {from_id})"
@@ -95,7 +96,9 @@ pub fn check_circular_dependency(
 
         if let Some(ticket) = ticket_map.get(current) {
             for dep in &ticket.deps {
-                if let Some(found_path) = has_path_to(dep, target, ticket_map, visited, path) {
+                if let Some(found_path) =
+                    has_path_to(dep.as_ref(), target, ticket_map, visited, path)
+                {
                     return Some(found_path);
                 }
             }

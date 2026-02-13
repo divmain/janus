@@ -324,11 +324,11 @@ async fn read_blocked_tickets() -> Result<ReadResourceResult, ResourceError> {
             let blocking_deps: Vec<serde_json::Value> = t
                 .deps
                 .iter()
-                .filter(|dep_id| !is_dependency_satisfied(dep_id, &ticket_map))
+                .filter(|dep_id| !is_dependency_satisfied(dep_id.as_ref(), &ticket_map))
                 .map(|dep_id| {
-                    let dep = ticket_map.get(dep_id);
+                    let dep = ticket_map.get(dep_id.as_ref());
                     json!({
-                        "id": dep_id,
+                        "id": dep_id.to_string(),
                         "title": dep.and_then(|d| d.title.clone()),
                         "status": dep.and_then(|d| d.status).map(|s| s.to_string()),
                     })
@@ -645,7 +645,7 @@ mod tests {
             id: Some(TicketId::new_unchecked("j-test")),
             title: Some("Test Ticket".to_string()),
             status: Some(TicketStatus::New),
-            deps: vec!["j-dep1".to_string()],
+            deps: vec![TicketId::new_unchecked("j-dep1")],
             spawned_from: Some(TicketId::new_unchecked("j-parent")),
             depth: Some(1),
             ..Default::default()

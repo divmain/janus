@@ -80,7 +80,10 @@ mod tests {
         TicketMetadata {
             id: Some(TicketId::new_unchecked(id)),
             status: Some(status),
-            deps: deps.into_iter().map(|s| s.to_string()).collect(),
+            deps: deps
+                .into_iter()
+                .map(|s| TicketId::new_unchecked(s))
+                .collect(),
             ..Default::default()
         }
     }

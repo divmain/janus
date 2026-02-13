@@ -34,6 +34,7 @@ use crate::ticket::manipulator::{
 };
 use crate::ticket::parser::parse;
 use crate::types::EntityType;
+use crate::types::TicketId;
 use crate::types::TicketMetadata;
 use crate::utils::extract_id_from_path;
 use serde_json;
@@ -192,13 +193,14 @@ impl Ticket {
     /// Add a value to an array field (deps or links).
     pub fn add_to_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
         let field_str = field.as_str();
+        let ticket_id = TicketId::new(value)?;
         self.mutate_array_field(
             field_str,
             value,
-            |current| !current.contains(&value.to_string()),
+            |current| !current.contains(&ticket_id),
             |current| {
                 let mut new_array = current.clone();
-                new_array.push(value.to_string());
+                new_array.push(ticket_id.clone());
                 new_array
             },
         )
@@ -207,14 +209,15 @@ impl Ticket {
     /// Remove a value from an array field (deps or links).
     pub fn remove_from_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
         let field_str = field.as_str();
+        let ticket_id = TicketId::new(value)?;
         self.mutate_array_field(
             field_str,
             value,
-            |current| current.contains(&value.to_string()),
+            |current| current.contains(&ticket_id),
             |current| {
                 current
                     .iter()
-                    .filter(|v| v.as_str() != value)
+                    .filter(|v| **v != ticket_id)
                     .cloned()
                     .collect()
             },
@@ -231,7 +234,7 @@ impl Ticket {
         raw_content: &str,
         field: &str,
         operation: &str,
-    ) -> Result<Vec<String>> {
+    ) -> Result<Vec<TicketId>> {
         // Try strict parse first, fall back to tolerant path
         match parse(raw_content) {
             Ok(metadata) => {
@@ -243,7 +246,12 @@ impl Ticket {
                     "Warning: ticket '{}' has validation issues ({}); using tolerant {} for field '{}'",
                     self.id, e, operation, field
                 );
-                Self::extract_array_field_tolerant(raw_content, field)
+                // Tolerant parsing returns strings, so we need to parse them
+                let strings = Self::extract_array_field_tolerant(raw_content, field)?;
+                strings
+                    .into_iter()
+                    .map(|s| TicketId::new(&s))
+                    .collect::<Result<Vec<_>>>()
             }
         }
     }
@@ -253,7 +261,8 @@ impl Ticket {
         let raw_content = self.read_content()?;
         let current_array =
             self.extract_array_field_with_fallback(&raw_content, field.as_str(), "read")?;
-        Ok(current_array.contains(&value.to_string()))
+        let ticket_id = TicketId::new(value)?;
+        Ok(current_array.contains(&ticket_id))
     }
 
     /// Generic helper for mutating array fields (deps, links).
@@ -263,11 +272,11 @@ impl Ticket {
         &self,
         field: &str,
         _value: &str,
-        should_mutate: impl Fn(&Vec<String>) -> bool,
+        should_mutate: impl Fn(&Vec<TicketId>) -> bool,
         mutate: F,
     ) -> Result<bool>
     where
-        F: FnOnce(&Vec<String>) -> Vec<String>,
+        F: FnOnce(&Vec<TicketId>) -> Vec<TicketId>,
     {
         let raw_content = self.read_content()?;
         let current_array = self.extract_array_field_with_fallback(&raw_content, field, "edit")?;
@@ -300,7 +309,7 @@ impl Ticket {
         Ok(true)
     }
 
-    fn get_array_field(metadata: &TicketMetadata, field: ArrayField) -> Result<&Vec<String>> {
+    fn get_array_field(metadata: &TicketMetadata, field: ArrayField) -> Result<&Vec<TicketId>> {
         match field {
             ArrayField::Deps => Ok(&metadata.deps),
             ArrayField::Links => Ok(&metadata.links),
@@ -904,7 +913,7 @@ Description.
 id: test-1234
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
-deps: ["existing-dep"]
+deps: ["j-existing"]
 links: []
 unknown_field: causes_strict_failure
 ---
@@ -923,12 +932,12 @@ unknown_field: causes_strict_failure
         // has_in_array_field should succeed via tolerant path
         assert!(
             ticket
-                .has_in_array_field(ArrayField::Deps, "existing-dep")
+                .has_in_array_field(ArrayField::Deps, "j-existing")
                 .unwrap()
         );
         assert!(
             !ticket
-                .has_in_array_field(ArrayField::Deps, "nonexistent")
+                .has_in_array_field(ArrayField::Deps, "j-nonexistent")
                 .unwrap()
         );
     }
@@ -972,7 +981,7 @@ unknown_field: causes_strict_failure
 id: test-1234
 uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
-deps: ["some-dep"]
+deps: ["j-some"]
 links: []
 unknown_field: causes_strict_failure
 ---
@@ -986,7 +995,7 @@ unknown_field: causes_strict_failure
         };
 
         let removed = ticket
-            .remove_from_array_field(ArrayField::Deps, "nonexistent")
+            .remove_from_array_field(ArrayField::Deps, "j-nonexistent")
             .unwrap();
         assert!(!removed);
     }
@@ -1011,7 +1020,7 @@ Description.
 
         // Strict parse should succeed
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.deps, vec!["dep-1"]);
+        assert_eq!(metadata.deps, vec![TicketId::new_unchecked("dep-1")]);
 
         // Tolerant extraction should also work (same result)
         let deps = Ticket::extract_array_field_tolerant(content, "deps").unwrap();

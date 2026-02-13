@@ -690,10 +690,10 @@ pub struct TicketMetadata {
     pub status: Option<TicketStatus>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deps: Vec<String>,
+    pub deps: Vec<TicketId>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub links: Vec<String>,
+    pub links: Vec<TicketId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<CreatedAt>,
@@ -801,28 +801,6 @@ impl TicketMetadata {
     pub fn item_type(&self) -> EntityType {
         EntityType::Ticket
     }
-
-    /// Convert deps strings to validated TicketId values.
-    ///
-    /// Returns a Vec of valid TicketIds, filtering out any malformed IDs.
-    /// This provides type safety at use-site without breaking deserialization.
-    pub fn deps_as_ticket_ids(&self) -> Vec<TicketId> {
-        self.deps
-            .iter()
-            .filter_map(|id| TicketId::new(id).ok())
-            .collect()
-    }
-
-    /// Convert links strings to validated TicketId values.
-    ///
-    /// Returns a Vec of valid TicketIds, filtering out any malformed IDs.
-    /// This provides type safety at use-site without breaking deserialization.
-    pub fn links_as_ticket_ids(&self) -> Vec<TicketId> {
-        self.links
-            .iter()
-            .filter_map(|id| TicketId::new(id).ok())
-            .collect()
-    }
 }
 
 /// Shared ticket data interface for types that contain ticket metadata.
@@ -860,10 +838,10 @@ pub struct TicketSummary {
     pub status: Option<TicketStatus>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deps: Vec<String>,
+    pub deps: Vec<TicketId>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub links: Vec<String>,
+    pub links: Vec<TicketId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<CreatedAt>,

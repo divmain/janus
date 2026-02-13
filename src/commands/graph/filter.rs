@@ -26,7 +26,7 @@ impl ReverseEdges {
             // Build reverse_deps: for each dep, add this ticket to its reverse list
             for dep in &ticket.deps {
                 reverse_deps
-                    .entry(dep.clone())
+                    .entry(dep.to_string())
                     .or_default()
                     .push(id.clone());
             }
@@ -82,8 +82,9 @@ pub fn get_reachable_tickets(
         if let Some(ticket) = ticket_map.get(&current) {
             if filter != RelationshipFilter::Spawn {
                 for dep in &ticket.deps {
-                    if !visited.contains(dep) {
-                        queue.push_back(dep.clone());
+                    let dep_str: &str = dep.as_ref();
+                    if !visited.contains(dep_str) {
+                        queue.push_back(dep_str.to_string());
                     }
                 }
             }
@@ -140,7 +141,7 @@ mod tests {
             "j-a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
-                deps: vec!["j-b".to_string()],
+                deps: vec![TicketId::new_unchecked("j-b")],
                 spawned_from: None,
                 ..Default::default()
             },
@@ -197,7 +198,7 @@ mod tests {
             "j-a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
-                deps: vec!["j-b".to_string()],
+                deps: vec![TicketId::new_unchecked("j-b")],
                 spawned_from: None,
                 ..Default::default()
             },
@@ -206,7 +207,7 @@ mod tests {
             "j-b".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-b")),
-                deps: vec!["j-a".to_string()],
+                deps: vec![TicketId::new_unchecked("j-a")],
                 spawned_from: None,
                 ..Default::default()
             },

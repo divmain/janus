@@ -52,7 +52,7 @@ impl TicketBuilder {
 
     /// Add a dependency
     pub fn dep(mut self, dep_id: &str) -> Self {
-        self.metadata.deps.push(dep_id.to_string());
+        self.metadata.deps.push(TicketId::new_unchecked(dep_id));
         self
     }
 

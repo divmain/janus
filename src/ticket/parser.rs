@@ -15,9 +15,9 @@ struct TicketFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<TicketStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    deps: Vec<String>,
+    deps: Vec<TicketId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    links: Vec<String>,
+    links: Vec<TicketId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     created: Option<CreatedAt>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -143,8 +143,14 @@ links: ["link-1"]
 "#;
 
         let metadata = parse(content).unwrap();
-        assert_eq!(metadata.deps, vec!["dep-1", "dep-2"]);
-        assert_eq!(metadata.links, vec!["link-1"]);
+        assert_eq!(
+            metadata.deps,
+            vec![
+                TicketId::new_unchecked("dep-1"),
+                TicketId::new_unchecked("dep-2")
+            ]
+        );
+        assert_eq!(metadata.links, vec![TicketId::new_unchecked("link-1")]);
     }
 
     #[test]

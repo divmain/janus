@@ -219,13 +219,22 @@ pub fn format_ticket_as_markdown(
         output.push_str(&format!("| Created | {date} |\n"));
     }
     if !metadata.deps.is_empty() {
-        output.push_str(&format!(
-            "| Dependencies | {} |\n",
-            metadata.deps.join(", ")
-        ));
+        let deps_str = metadata
+            .deps
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        output.push_str(&format!("| Dependencies | {deps_str} |\n"));
     }
     if !metadata.links.is_empty() {
-        output.push_str(&format!("| Links | {} |\n", metadata.links.join(", ")));
+        let links_str = metadata
+            .links
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        output.push_str(&format!("| Links | {links_str} |\n"));
     }
     if let Some(ref parent) = metadata.parent {
         output.push_str(&format!("| Parent | {parent} |\n"));
@@ -491,20 +500,20 @@ pub fn format_next_work_as_markdown(
 
         // Additional context for blocked tickets
         if matches!(item.reason, InclusionReason::TargetBlocked) {
-            let incomplete_deps: Vec<&String> = item
+            let incomplete_deps: Vec<&crate::types::TicketId> = item
                 .metadata
                 .deps
                 .iter()
                 .filter(|dep_id| {
                     ticket_map
-                        .get(*dep_id)
+                        .get(dep_id.as_ref())
                         .map(|dep| dep.status != Some(TicketStatus::Complete))
                         .unwrap_or(false)
                 })
                 .collect();
 
             if !incomplete_deps.is_empty() {
-                let dep_list: Vec<&str> = incomplete_deps.iter().map(|s| s.as_str()).collect();
+                let dep_list: Vec<String> = incomplete_deps.iter().map(|s| s.to_string()).collect();
                 output.push_str(&format!("   - Waiting on: {}\n", dep_list.join(", ")));
             }
         }

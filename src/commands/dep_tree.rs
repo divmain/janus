@@ -179,6 +179,7 @@ impl<'a> TreeFormatter<'a> {
 
         let mut children: Vec<String> = deps
             .into_iter()
+            .map(|dep| dep.to_string())
             .filter(|dep| {
                 if !self.max_depth.contains_key(dep) {
                     return false;

@@ -222,11 +222,11 @@ impl<'a> NextWorkFinder<'a> {
 
             if let Some(current_ticket) = self.ticket_map.get(&current_id) {
                 for dep_id in &current_ticket.deps {
-                    if let Some(dep) = self.ticket_map.get(dep_id)
+                    if let Some(dep) = self.ticket_map.get(dep_id.as_ref())
                         && !self.is_ready(dep)
                     {
                         // This dependency is also blocked, recurse
-                        stack.push((dep_id.clone(), current_depth + 1));
+                        stack.push((dep_id.to_string(), current_depth + 1));
                     }
                 }
             }
@@ -260,24 +260,25 @@ impl<'a> NextWorkFinder<'a> {
 
             if let Some(current_ticket) = self.ticket_map.get(&current_id) {
                 for dep_id in &current_ticket.deps {
+                    let dep_id_str = dep_id.as_ref();
                     // Skip if already in result or globally visited
-                    if result.iter().any(|(id, _)| id == dep_id)
-                        || visited.contains(dep_id)
-                        || local_visited.contains(dep_id)
+                    if result.iter().any(|(id, _)| id == dep_id_str)
+                        || visited.contains(dep_id_str)
+                        || local_visited.contains(dep_id_str)
                     {
                         continue;
                     }
 
-                    if let Some(dep) = self.ticket_map.get(dep_id) {
+                    if let Some(dep) = self.ticket_map.get(dep_id_str) {
                         if self.is_ready(dep) {
                             // This dependency is ready - add to result with the original target
-                            result.push((dep_id.clone(), target_id.to_string()));
+                            result.push((dep_id_str.to_string(), target_id.to_string()));
                         } else if matches!(
                             dep.status,
                             Some(TicketStatus::New) | Some(TicketStatus::Next)
                         ) {
                             // This dependency is also workable but blocked - recurse
-                            stack.push(dep_id.clone());
+                            stack.push(dep_id_str.to_string());
                         }
                         // If dep is Complete, Cancelled, or InProgress, skip it
                     }
@@ -362,6 +363,7 @@ impl<'a> NextWorkFinder<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TicketId;
 
     fn create_test_ticket(
         id: &str,
@@ -383,7 +385,7 @@ mod tests {
             uuid: None,
             title: Some(format!("Ticket {id}")),
             status: Some(status),
-            deps: deps.iter().map(|s| s.to_string()).collect(),
+            deps: deps.iter().map(|s| TicketId::new_unchecked(*s)).collect(),
             links: Vec::new(),
             created: Some(crate::types::CreatedAt::new_unchecked(created)),
             ticket_type: Some(crate::types::TicketType::Task),

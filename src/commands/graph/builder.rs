@@ -18,10 +18,10 @@ pub fn build_edges(
         if let Some(ticket) = ticket_map.get(id) {
             if filter != RelationshipFilter::Spawn {
                 for dep in &ticket.deps {
-                    if ticket_ids.contains(dep) {
+                    if ticket_ids.contains(dep.as_ref()) {
                         edges.push(Edge {
                             from: id.clone(),
-                            to: dep.clone(),
+                            to: dep.to_string(),
                             edge_type: EdgeType::Blocks,
                         });
                     }
@@ -60,7 +60,7 @@ mod tests {
             "j-a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
-                deps: vec!["j-b".to_string()],
+                deps: vec![TicketId::new_unchecked("j-b")],
                 spawned_from: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
@@ -89,7 +89,7 @@ mod tests {
             "j-a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
-                deps: vec!["j-b".to_string()],
+                deps: vec![TicketId::new_unchecked("j-b")],
                 spawned_from: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
@@ -118,7 +118,7 @@ mod tests {
             "j-a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
-                deps: vec!["j-b".to_string()],
+                deps: vec![TicketId::new_unchecked("j-b")],
                 spawned_from: Some(TicketId::new_unchecked("j-b")),
                 ..Default::default()
             },
@@ -145,7 +145,7 @@ mod tests {
             "j-a".to_string(),
             TicketMetadata {
                 id: Some(TicketId::new_unchecked("j-a")),
-                deps: vec!["j-b".to_string()],
+                deps: vec![TicketId::new_unchecked("j-b")],
                 spawned_from: Some(TicketId::new_unchecked("j-c")),
                 ..Default::default()
             },
