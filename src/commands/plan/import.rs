@@ -227,7 +227,17 @@ pub async fn cmd_plan_import(
 
     // 3. Apply title override if provided
     if let Some(title) = title_override {
-        plan.title = title.to_string();
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err(JanusError::EmptyPlanTitle);
+        }
+        if trimmed.len() > 200 {
+            return Err(JanusError::PlanTitleTooLong {
+                max: 200,
+                actual: trimmed.len(),
+            });
+        }
+        plan.title = trimmed.to_string();
     }
 
     // 4. Check for duplicate plan title

@@ -331,6 +331,12 @@ pub enum JanusError {
     #[error("ticket title cannot be empty")]
     EmptyTitle,
 
+    #[error("plan title cannot be empty")]
+    EmptyPlanTitle,
+
+    #[error("plan title exceeds maximum length of {max} characters (got {actual})")]
+    PlanTitleTooLong { max: usize, actual: usize },
+
     #[error(
         "Note text cannot be empty. Provide text as an argument or pipe from stdin: echo 'note text' | janus add-note <id>"
     )]
