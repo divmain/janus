@@ -337,10 +337,16 @@ pub enum JanusError {
     #[error("plan title exceeds maximum length of {max} characters (got {actual})")]
     PlanTitleTooLong { max: usize, actual: usize },
 
+    #[error("ticket title exceeds maximum length of {max} characters (got {actual})")]
+    TicketTitleTooLong { max: usize, actual: usize },
+
     #[error(
         "Note text cannot be empty. Provide text as an argument or pipe from stdin: echo 'note text' | janus add-note <id>"
     )]
     EmptyNote,
+
+    #[error("note text exceeds maximum length of {max} characters (got {actual})")]
+    NoteTooLong { max: usize, actual: usize },
 
     // Dependency/Link errors
     #[error("dependency '{0}' not found in ticket")]

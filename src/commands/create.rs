@@ -69,6 +69,15 @@ pub async fn cmd_create(opts: CreateOptions) -> Result<()> {
         return Err(JanusError::EmptyTitle);
     }
 
+    // Validate that title does not exceed maximum length
+    const MAX_TITLE_LENGTH: usize = 500;
+    if title.len() > MAX_TITLE_LENGTH {
+        return Err(JanusError::TicketTitleTooLong {
+            max: MAX_TITLE_LENGTH,
+            actual: title.len(),
+        });
+    }
+
     // Resolve spawned_from to canonical ticket ID if provided
     let resolved_spawned_from = if let Some(ref partial_id) = spawned_from {
         Some(Ticket::resolve_partial_id(partial_id).await?)

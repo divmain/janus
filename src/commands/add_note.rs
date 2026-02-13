@@ -23,6 +23,15 @@ pub async fn cmd_add_note(id: &str, note_text: Option<&str>, output_json: bool) 
         return Err(JanusError::EmptyNote);
     }
 
+    // Validate that note does not exceed maximum length
+    const MAX_NOTE_LENGTH: usize = 10000;
+    if note.len() > MAX_NOTE_LENGTH {
+        return Err(JanusError::NoteTooLong {
+            max: MAX_NOTE_LENGTH,
+            actual: note.len(),
+        });
+    }
+
     // Use the shared add_note method on Ticket
     ticket.add_note(&note)?;
 
