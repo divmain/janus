@@ -19,29 +19,37 @@ static SECTION_REGEX_CACHE: LazyLock<DashMap<String, Regex>> = LazyLock::new(Das
 pub static TITLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^#\s+(.*)$").expect("title regex should be valid"));
 
-/// Extract a named section from the body (case-insensitive).
-/// Returns the content between the section header and the next H2 or end of document.
+/// Compile a section regex pattern with caching.
 ///
-/// This is the shared implementation used by both `ParsedDocument::extract_section`
-/// and other modules. Uses a DashMap-based cache for thread-safe concurrent access.
-pub fn extract_section_from_body(body: &str, section_name: &str) -> Result<Option<String>> {
+/// Constructs the regex pattern for matching a section by name, then checks the
+/// global cache for an existing compiled regex, or compiles and caches a new one.
+fn compile_section_regex(section_name: &str) -> Result<Regex> {
     let pattern = format!(
         r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
         regex::escape(section_name)
     );
 
     // Try to get from cache first, otherwise compile and cache
-    let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
-        cached.clone()
+    if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
+        Ok(cached.clone())
     } else {
         let re = Regex::new(&pattern).map_err(|e| {
             JanusError::ParseError(format!(
                 "failed to compile section regex for '{section_name}': {e}"
             ))
         })?;
-        SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
-        re
-    };
+        SECTION_REGEX_CACHE.insert(pattern, re.clone());
+        Ok(re)
+    }
+}
+
+/// Extract a named section from the body (case-insensitive).
+/// Returns the content between the section header and the next H2 or end of document.
+///
+/// This is the shared implementation used by both `ParsedDocument::extract_section`
+/// and other modules. Uses a DashMap-based cache for thread-safe concurrent access.
+pub fn extract_section_from_body(body: &str, section_name: &str) -> Result<Option<String>> {
+    let section_re = compile_section_regex(section_name)?;
 
     Ok(section_re.captures(body).map(|caps| {
         caps.get(1)
@@ -70,23 +78,7 @@ pub fn update_section_in_body(
     section_name: &str,
     section_content: &str,
 ) -> Result<String> {
-    let pattern = format!(
-        r"(?ims)^##\s+{}\s*\n(.*?)(?:^##\s|\z)",
-        regex::escape(section_name)
-    );
-
-    // Try to get from cache first, otherwise compile and cache
-    let section_re = if let Some(cached) = SECTION_REGEX_CACHE.get(&pattern) {
-        cached.clone()
-    } else {
-        let re = Regex::new(&pattern).map_err(|e| {
-            JanusError::ParseError(format!(
-                "failed to compile section regex for '{section_name}': {e}"
-            ))
-        })?;
-        SECTION_REGEX_CACHE.insert(pattern.clone(), re.clone());
-        re
-    };
+    let section_re = compile_section_regex(section_name)?;
 
     if let Some(caps) = section_re.captures(body) {
         // Section exists - replace its content
