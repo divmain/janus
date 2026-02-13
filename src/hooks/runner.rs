@@ -205,16 +205,22 @@ pub(super) fn execute_hook(
                 )?;
             }
             None => {
+                // Attempt to kill the child process after timeout
                 if let Err(e) = child.kill() {
-                    eprintln!("Warning: failed to kill timed-out hook '{script_name}': {e}");
+                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
+                    // Note: If SIGKILL fails, the process may become a zombie.
+                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
                 }
+                // Wait up to 5 seconds for the process to terminate after SIGKILL
                 match child.wait_timeout(Duration::from_secs(5)) {
                     Ok(Some(_)) => {}
                     Ok(None) => {
-                        eprintln!("Warning: hook '{script_name}' did not terminate after SIGKILL")
+                        eprintln!(
+                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
+                        );
                     }
                     Err(e) => {
-                        eprintln!("Warning: error waiting for hook '{script_name}' cleanup: {e}")
+                        eprintln!("ERROR: error waiting for hook '{script_name}' cleanup: {e}");
                     }
                 }
 
@@ -279,14 +285,19 @@ pub(super) async fn execute_hook_async(
                 return Err(JanusError::Io(e));
             }
             Err(_) => {
+                // Attempt to kill the child process after timeout
                 if let Err(e) = child.kill().await {
-                    eprintln!("Warning: failed to kill timed-out hook '{script_name}': {e}");
+                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
+                    // Note: If SIGKILL fails, the process may become a zombie.
+                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
                 }
-                // Give it a moment to clean up
+                // Wait up to 5 seconds for the process to terminate after SIGKILL
                 match timeout(Duration::from_secs(5), child.wait()).await {
                     Ok(_) => {}
                     Err(_) => {
-                        eprintln!("Warning: hook '{script_name}' did not terminate after SIGKILL")
+                        eprintln!(
+                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
+                        );
                     }
                 }
 
@@ -474,15 +485,19 @@ pub async fn execute_hook_with_result(
             }
             Ok(Err(e)) => Err(JanusError::Io(e)),
             Err(_) => {
-                // Timeout occurred
+                // Timeout occurred - attempt to kill the child process
                 if let Err(e) = child.kill().await {
-                    eprintln!("Warning: failed to kill timed-out hook '{script_name}': {e}");
+                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
+                    // Note: If SIGKILL fails, the process may become a zombie.
+                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
                 }
-                // Give it a moment to clean up
+                // Wait up to 5 seconds for the process to terminate after SIGKILL
                 match timeout(Duration::from_secs(5), child.wait()).await {
                     Ok(_) => {}
                     Err(_) => {
-                        eprintln!("Warning: hook '{script_name}' did not terminate after SIGKILL")
+                        eprintln!(
+                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
+                        );
                     }
                 }
 
