@@ -427,7 +427,7 @@ async fn run_event_loop(
                 event = bridge_rx.recv() => event,
                 _ = tokio::time::sleep_until(deadline) => {
                     // Retry deadline reached — process retries, then continue loop
-                    process_retries(&mut retries, store, &broadcast_tx);
+                    process_retries(&mut retries, store, &broadcast_tx).await;
                     continue;
                 }
             }
@@ -463,9 +463,9 @@ async fn run_event_loop(
                     // Channel closed — process remaining work and exit
                     if rescan_needed.swap(false, Ordering::Relaxed) {
                         pending.clear();
-                        full_rescan(store, &broadcast_tx);
+                        full_rescan(store, &broadcast_tx).await;
                     } else {
-                        process_batch(&mut pending, store, &broadcast_tx, &mut retries);
+                        process_batch(&mut pending, store, &broadcast_tx, &mut retries).await;
                     }
                     return;
                 }
@@ -479,9 +479,9 @@ async fn run_event_loop(
         if rescan_needed.swap(false, Ordering::Relaxed) {
             pending.clear();
             retries.entries.clear();
-            full_rescan(store, &broadcast_tx);
+            full_rescan(store, &broadcast_tx).await;
         } else {
-            process_batch(&mut pending, store, &broadcast_tx, &mut retries);
+            process_batch(&mut pending, store, &broadcast_tx, &mut retries).await;
         }
     }
 }
@@ -508,7 +508,7 @@ fn accumulate_event(pending: &mut HashMap<PathBuf, EventKind>, event: &notify::E
 ///
 /// Note: Tickets marked as "recently edited" (within RECENTLY_EDITED_TTL seconds
 /// by the TUI itself) will not trigger a broadcast, preventing redundant UI updates.
-fn process_batch(
+async fn process_batch(
     pending: &mut HashMap<PathBuf, EventKind>,
     store: &'static TicketStore,
     broadcast_tx: &broadcast::Sender<StoreEvent>,
@@ -540,7 +540,7 @@ fn process_batch(
         match classify_event_kind(kind) {
             FileAction::CreateOrModify => {
                 if is_ticket {
-                    match process_ticket_file(&path, store) {
+                    match process_ticket_file(&path, store).await {
                         ParseOutcome::Success => {
                             if let Some(id) = path.file_stem() {
                                 changed_ticket_ids.push(id.to_string_lossy().to_string());
@@ -552,7 +552,7 @@ fn process_batch(
                         ParseOutcome::Skipped => {}
                     }
                 } else if is_plan {
-                    match process_plan_file(&path, store) {
+                    match process_plan_file(&path, store).await {
                         ParseOutcome::Success => plans_changed = true,
                         ParseOutcome::ParseFailed => {
                             retries.schedule(path, false);
@@ -601,7 +601,7 @@ fn process_batch(
 /// Attempts to re-parse each file whose retry deadline has passed.
 /// Successful parses are removed from the queue; failures are re-scheduled
 /// (up to `MAX_RETRY_ATTEMPTS`).
-fn process_retries(
+async fn process_retries(
     retries: &mut RetryQueue,
     store: &'static TicketStore,
     broadcast_tx: &broadcast::Sender<StoreEvent>,
@@ -616,9 +616,9 @@ fn process_retries(
 
     for (path, is_ticket) in ready {
         let outcome = if is_ticket {
-            process_ticket_file(&path, store)
+            process_ticket_file(&path, store).await
         } else {
-            process_plan_file(&path, store)
+            process_plan_file(&path, store).await
         };
 
         match outcome {
@@ -667,14 +667,14 @@ fn process_retries(
 /// Parse failures during a full rescan are logged but not retried — the
 /// retry queue is cleared before a rescan since we're reading everything
 /// fresh.
-fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<StoreEvent>) {
+async fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<StoreEvent>) {
     use crate::types::{plans_dir, tickets_items_dir};
 
     eprintln!("Warning: performing full rescan of .janus/ directory");
 
     let items_dir = tickets_items_dir();
     if items_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&items_dir) {
+        if let Ok(entries) = std::fs::read_dir(&items_dir) {
             // Collect IDs currently on disk so we can detect deletions
             let mut disk_ids = std::collections::HashSet::new();
             for entry in entries.flatten() {
@@ -684,7 +684,7 @@ fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<Sto
                         disk_ids.insert(stem.to_string_lossy().to_string());
                     }
                     // Best-effort parse during rescan; failures are not retried
-                    let _ = process_ticket_file(&path, store);
+                    let _ = process_ticket_file(&path, store).await;
                 }
             }
             // Remove tickets no longer on disk
@@ -699,7 +699,7 @@ fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<Sto
 
     let p_dir = plans_dir();
     if p_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&p_dir) {
+        if let Ok(entries) = std::fs::read_dir(&p_dir) {
             let mut disk_ids = std::collections::HashSet::new();
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -708,7 +708,7 @@ fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<Sto
                         disk_ids.insert(stem.to_string_lossy().to_string());
                     }
                     // Best-effort parse during rescan; failures are not retried
-                    let _ = process_plan_file(&path, store);
+                    let _ = process_plan_file(&path, store).await;
                 }
             }
             let store_ids: Vec<String> = store.plans().iter().map(|r| r.key().clone()).collect();
@@ -796,10 +796,11 @@ fn is_plan_path(path: &Path) -> bool {
 ///
 /// If the file no longer exists (race with deletion), removes the ticket
 /// from the store and returns `Skipped` (no retry needed).
-fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
-    let content = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+async fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
+    let path_buf = path.to_path_buf();
+    let content = match tokio::task::spawn_blocking(move || fs::read_to_string(&path_buf)).await {
+        Ok(Ok(c)) => c,
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
             // File was deleted between event and processing — treat as removal.
             // Return Success because the store was modified (ticket removed).
             if let Some(stem) = path.file_stem() {
@@ -807,9 +808,16 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             }
             return ParseOutcome::Success;
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             eprintln!(
                 "Warning: failed to read ticket file {}: {e}",
+                path.display()
+            );
+            return ParseOutcome::Skipped;
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to spawn blocking task for ticket file {}: {e}",
                 path.display()
             );
             return ParseOutcome::Skipped;
@@ -873,10 +881,11 @@ fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
 ///
 /// If the file no longer exists (race with deletion), removes the plan
 /// from the store and returns `Skipped` (no retry needed).
-fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
-    let content = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+async fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
+    let path_buf = path.to_path_buf();
+    let content = match tokio::task::spawn_blocking(move || fs::read_to_string(&path_buf)).await {
+        Ok(Ok(c)) => c,
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
             // File was deleted between event and processing — treat as removal.
             // Return Success because the store was modified (plan removed).
             if let Some(stem) = path.file_stem() {
@@ -884,8 +893,15 @@ fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             }
             return ParseOutcome::Success;
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             eprintln!("Warning: failed to read plan file {}: {e}", path.display());
+            return ParseOutcome::Skipped;
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to spawn blocking task for plan file {}: {e}",
+                path.display()
+            );
             return ParseOutcome::Skipped;
         }
     };
