@@ -281,7 +281,9 @@ pub async fn cmd_cache_rebuild(output: OutputOptions) -> Result<()> {
     }
 
     // Reload embeddings into the store
-    store.load_embeddings();
+    if let Err(e) = store.load_embeddings() {
+        tracing::warn!("Failed to reload embeddings: {e}");
+    }
 
     let total_duration = start_total.elapsed();
 

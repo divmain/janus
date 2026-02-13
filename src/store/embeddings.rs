@@ -79,12 +79,18 @@ impl TicketStore {
     /// match [`EMBEDDING_DIMENSIONS`] are silently skipped. This guards
     /// against loading corrupted or incompatible `.bin` files (e.g., from a
     /// model change).
-    pub fn load_embeddings(&self) {
+    ///
+    /// # Errors
+    ///
+    /// Returns `JanusError` if a critical error occurs during loading.
+    /// Individual ticket failures (missing file, invalid embedding, etc.)
+    /// are logged and skipped rather than causing the entire operation to fail.
+    pub fn load_embeddings(&self) -> crate::error::Result<()> {
         self.embeddings().clear();
 
         let emb_dir = embeddings_dir();
         if !emb_dir.exists() {
-            return;
+            return Ok(());
         }
 
         // Snapshot the ticket data we need (id + file_path) into a local Vec,
@@ -117,7 +123,7 @@ impl TicketStore {
             let key = match Self::embedding_key(&file_path, mtime_ns) {
                 Ok(k) => k,
                 Err(e) => {
-                    eprintln!("warning: failed to compute embedding key for {file_path:?}: {e}");
+                    tracing::warn!("Failed to compute embedding key for {file_path:?}: {e}");
                     continue;
                 }
             };
@@ -136,6 +142,8 @@ impl TicketStore {
         for (id, vector) in loaded {
             self.embeddings().insert(id, vector);
         }
+
+        Ok(())
     }
 
     /// Save a single embedding to disk at `.janus/embeddings/{key}.bin`.
@@ -244,8 +252,18 @@ impl TicketStore {
     /// 6. Saves to disk via save_embedding()
     /// 7. Inserts into in-memory embeddings DashMap (CRITICAL for TUI freshness)
     ///
-    /// Returns silently on error (errors logged to stderr in debug builds only)
-    pub async fn ensure_embedding(&self, ticket_id: &str) -> Result<(), String> {
+    /// # Errors
+    ///
+    /// Returns `JanusError` if:
+    /// - The ticket is not found in the store
+    /// - The ticket has no file_path
+    /// - The file modification time cannot be read
+    /// - The embedding key cannot be computed
+    /// - The embedding generation fails
+    /// - The embedding cannot be saved to disk
+    pub async fn ensure_embedding(&self, ticket_id: &str) -> crate::error::Result<()> {
+        use crate::types::TicketId;
+
         // Snapshot required fields from the tickets DashMap into owned locals,
         // then drop the guard before touching the embeddings DashMap.
         // This prevents AB/BA lock-order inversion deadlocks.
@@ -253,24 +271,30 @@ impl TicketStore {
             let ticket = self
                 .tickets()
                 .get(ticket_id)
-                .ok_or_else(|| format!("Ticket '{ticket_id}' not found in store"))?;
+                .ok_or_else(|| JanusError::TicketNotFound(TicketId::new(ticket_id).unwrap()))?;
 
             let file_path = ticket
                 .file_path
                 .clone()
-                .ok_or_else(|| format!("Ticket '{ticket_id}' has no file_path"))?;
+                .ok_or_else(|| JanusError::EmbeddingNoFilePath(ticket_id.to_string()))?;
             let title = ticket.title.clone().unwrap_or_default();
             let body = ticket.body.clone();
             (file_path, title, body)
         }; // ticket guard (Ref) dropped here
 
         // Get current mtime (fresh, not cached)
-        let mtime_ns = file_mtime_ns(&file_path)
-            .ok_or_else(|| format!("Could not get mtime for file: {file_path:?}"))?;
+        let mtime_ns = file_mtime_ns(&file_path).ok_or_else(|| JanusError::StorageError {
+            operation: "get mtime",
+            item_type: "file",
+            path: file_path.clone(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "failed to read file modification time",
+            ),
+        })?;
 
         // Compute embedding key
-        let key = Self::embedding_key(&file_path, mtime_ns)
-            .map_err(|e| format!("Failed to compute embedding key: {e}"))?;
+        let key = Self::embedding_key(&file_path, mtime_ns)?;
 
         // Check if .bin file already exists
         let emb_dir = embeddings_dir();
@@ -292,9 +316,13 @@ impl TicketStore {
                     let embedding =
                         crate::embedding::model::generate_ticket_embedding(&title, body.as_deref())
                             .await
-                            .map_err(|e| format!("Failed to generate embedding: {e}"))?;
-                    Self::save_embedding(&key, &embedding)
-                        .map_err(|e| format!("Failed to save embedding: {e}"))?;
+                            .map_err(|e| JanusError::EmbeddingGenerationFailed(e.to_string()))?;
+                    Self::save_embedding(&key, &embedding).map_err(|e| {
+                        JanusError::EmbeddingSaveFailed {
+                            key: key.clone(),
+                            source: e,
+                        }
+                    })?;
                     embedding
                 }
             }
@@ -303,9 +331,13 @@ impl TicketStore {
             let embedding =
                 crate::embedding::model::generate_ticket_embedding(&title, body.as_deref())
                     .await
-                    .map_err(|e| format!("Failed to generate embedding: {e}"))?;
-            Self::save_embedding(&key, &embedding)
-                .map_err(|e| format!("Failed to save embedding: {e}"))?;
+                    .map_err(|e| JanusError::EmbeddingGenerationFailed(e.to_string()))?;
+            Self::save_embedding(&key, &embedding).map_err(|e| {
+                JanusError::EmbeddingSaveFailed {
+                    key: key.clone(),
+                    source: e,
+                }
+            })?;
             embedding
         };
 
@@ -321,7 +353,12 @@ impl TicketStore {
     ///
     /// Processes tickets in batches of EMBEDDING_BATCH_SIZE (32).
     /// Returns (generated_count, total_count) for progress reporting.
-    pub async fn ensure_all_embeddings(&self) -> Result<(usize, usize), String> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `JanusError` if the embedding model cannot be initialized.
+    /// Individual batch failures are logged and do not fail the entire operation.
+    pub async fn ensure_all_embeddings(&self) -> crate::error::Result<(usize, usize)> {
         use crate::embedding::model::{EMBEDDING_BATCH_SIZE, get_embedding_model};
 
         // Two-phase collection to avoid nested DashMap guards:
@@ -352,7 +389,9 @@ impl TicketStore {
         }
 
         let mut generated = 0usize;
-        let model = get_embedding_model().await?;
+        let model = get_embedding_model()
+            .await
+            .map_err(|e| JanusError::EmbeddingGenerationFailed(e.to_string()))?;
 
         // Process in batches
         for batch in tickets_to_embed.chunks(EMBEDDING_BATCH_SIZE) {
@@ -406,8 +445,7 @@ impl TicketStore {
                 }
                 Err(e) => {
                     // Log batch error but continue with next batch
-                    #[cfg(debug_assertions)]
-                    eprintln!("Warning: Batch embedding generation failed: {e}");
+                    tracing::warn!("Batch embedding generation failed: {e}");
                 }
             }
         }
@@ -628,7 +666,9 @@ status: new
             ..Default::default()
         });
 
-        store.load_embeddings();
+        store
+            .load_embeddings()
+            .expect("load_embeddings should succeed");
         assert_eq!(store.embeddings().len(), 1);
 
         let loaded = store.embeddings().get("j-test").unwrap();
@@ -726,7 +766,9 @@ status: new
         });
 
         // Should not panic, just return without loading
-        store.load_embeddings();
+        store
+            .load_embeddings()
+            .expect("load_embeddings should succeed");
         assert_eq!(store.embeddings().len(), 0);
     }
 
@@ -740,7 +782,9 @@ status: new
         });
 
         // Should skip tickets without file_path
-        store.load_embeddings();
+        store
+            .load_embeddings()
+            .expect("load_embeddings should succeed");
         assert_eq!(store.embeddings().len(), 0);
     }
 
@@ -783,7 +827,9 @@ status: new
         });
 
         // load_embeddings should reject the wrong-dimension file
-        store.load_embeddings();
+        store
+            .load_embeddings()
+            .expect("load_embeddings should succeed");
         assert_eq!(store.embeddings().len(), 0);
     }
 
@@ -828,7 +874,9 @@ status: new
         });
 
         // load_embeddings should reject the embedding containing NaN
-        store.load_embeddings();
+        store
+            .load_embeddings()
+            .expect("load_embeddings should succeed");
         assert_eq!(store.embeddings().len(), 0);
 
         // Also test with infinity
@@ -863,7 +911,9 @@ status: new
         });
 
         // load_embeddings should reject the embedding containing infinity
-        store2.load_embeddings();
+        store2
+            .load_embeddings()
+            .expect("load_embeddings should succeed");
         assert_eq!(store2.embeddings().len(), 0);
     }
 }

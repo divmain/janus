@@ -452,6 +452,22 @@ pub enum JanusError {
     #[error("embedding generation timed out after {seconds} seconds")]
     EmbeddingTimeout { seconds: u64 },
 
+    #[error("embedding generation failed: {0}")]
+    EmbeddingGenerationFailed(String),
+
+    #[error("embedding save failed for key '{key}': {source}")]
+    EmbeddingSaveFailed {
+        key: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("embedding load failed for ticket '{0}': {1}")]
+    EmbeddingLoadFailed(String, String), // (ticket_id, reason)
+
+    #[error("ticket '{0}' has no file_path for embedding generation")]
+    EmbeddingNoFilePath(String),
+
     // Store errors
     #[error("blocking task failed: {0}")]
     BlockingTaskFailed(String),

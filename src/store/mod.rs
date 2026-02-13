@@ -228,7 +228,9 @@ impl TicketStore {
         }
 
         // Load embeddings (requires tickets to be loaded first)
-        store.load_embeddings();
+        if let Err(e) = store.load_embeddings() {
+            tracing::warn!("Failed to load embeddings: {e}");
+        }
 
         Ok(store)
     }
