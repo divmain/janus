@@ -375,11 +375,7 @@ pub fn parse_document_raw(content: &str) -> Result<(String, String)> {
 /// frontmatter fields and body content. For ticket-specific parsing,
 /// use `crate::ticket::parse_ticket` instead.
 pub fn parse_document(content: &str) -> Result<ParsedDocument> {
-    let (frontmatter_raw, body) = split_frontmatter(content)?;
-
-    if frontmatter_raw.trim().is_empty() {
-        return Err(JanusError::EmptyFrontmatter);
-    }
+    let (frontmatter_raw, body) = parse_document_raw(content)?;
 
     let frontmatter: HashMap<String, yaml::Value> = yaml::from_str(&frontmatter_raw)?;
 
