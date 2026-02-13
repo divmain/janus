@@ -19,6 +19,7 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::NamedTempFile;
 use tokio::fs as tokio_fs;
+use uuid::Uuid;
 
 /// Read file content with error handling
 pub fn read_file(path: &Path) -> Result<String> {
@@ -176,27 +177,40 @@ pub async fn write_file_async(path: &Path, content: &str) -> Result<()> {
 ///
 /// This ensures that the original file is never in a partially written state.
 /// The write is atomic: either the new content is fully written, or the
-/// original file remains unchanged. Uses `tempfile::NamedTempFile` to generate
-/// a unique temp filename, avoiding collisions from concurrent writes.
-///
-/// The synchronous I/O operations are wrapped in `spawn_blocking` to avoid
-/// blocking the async runtime.
+/// original file remains unchanged. Uses tokio::fs for async file I/O.
 ///
 /// **Concurrency note**: no advisory locking is performed. Concurrent
 /// read-modify-write cycles follow last-writer-wins semantics.
 pub async fn write_file_async_atomic(path: &Path, content: &str) -> Result<()> {
-    let path = path.to_path_buf();
-    let content = content.to_string();
-    let path_for_error = path.clone();
+    ensure_parent_dir_async(path).await?;
 
-    tokio::task::spawn_blocking(move || write_file_atomic(&path, &content))
+    let parent = path.parent().unwrap_or(Path::new("."));
+
+    // Generate a unique temp filename in the same directory as the target
+    // Use async-compatible temp file creation
+    let temp_path = parent.join(format!(".tmp-write-{}", Uuid::new_v4()));
+
+    // Write content to the temp file asynchronously
+    tokio_fs::write(&temp_path, content)
         .await
         .map_err(|e| JanusError::StorageError {
             operation: "write",
             item_type: "file",
-            path: path_for_error,
-            source: std::io::Error::other(e),
-        })?
+            path: temp_path.clone(),
+            source: e,
+        })?;
+
+    // Atomically rename the temp file to the target path
+    tokio_fs::rename(&temp_path, path)
+        .await
+        .map_err(|e| JanusError::StorageError {
+            operation: "rename",
+            item_type: "file",
+            path: path.to_path_buf(),
+            source: e,
+        })?;
+
+    Ok(())
 }
 
 /// Ensure parent directory exists (async version)

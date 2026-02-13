@@ -68,10 +68,7 @@ impl Ticket {
     /// Find a ticket by partial ID and read its metadata in one operation
     pub async fn find_and_read(partial_id: &str) -> Result<(Self, TicketMetadata)> {
         let ticket = Self::find(partial_id).await?;
-        let ticket_clone = ticket.clone();
-        let metadata = tokio::task::spawn_blocking(move || ticket_clone.read())
-            .await
-            .map_err(|e| JanusError::BlockingTaskFailed(e.to_string()))??;
+        let metadata = ticket.read_async().await?;
         Ok((ticket, metadata))
     }
 
@@ -99,6 +96,19 @@ impl Ticket {
     /// filename stem is used.
     pub fn read(&self) -> Result<TicketMetadata> {
         let raw_content = self.read_content()?;
+        let mut metadata = parse(&raw_content)?;
+        enforce_filename_authority(&mut metadata, &self.id);
+        metadata.file_path = Some(self.file_path.clone());
+        Ok(metadata)
+    }
+
+    /// Read and parse the ticket's metadata (async version).
+    ///
+    /// Enforces the filename-stem-is-authoritative policy: if the frontmatter
+    /// `id` differs from the filename stem, a warning is emitted and the
+    /// filename stem is used.
+    pub async fn read_async(&self) -> Result<TicketMetadata> {
+        let raw_content = self.read_content_async().await?;
         let mut metadata = parse(&raw_content)?;
         enforce_filename_authority(&mut metadata, &self.id);
         metadata.file_path = Some(self.file_path.clone());

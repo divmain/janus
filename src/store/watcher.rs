@@ -10,7 +10,6 @@
 //! is started before any tickets exist.
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, OnceLock};
@@ -797,10 +796,9 @@ fn is_plan_path(path: &Path) -> bool {
 /// If the file no longer exists (race with deletion), removes the ticket
 /// from the store and returns `Skipped` (no retry needed).
 async fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
-    let path_buf = path.to_path_buf();
-    let content = match tokio::task::spawn_blocking(move || fs::read_to_string(&path_buf)).await {
-        Ok(Ok(c)) => c,
-        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+    let content = match tokio::fs::read_to_string(path).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // File was deleted between event and processing — treat as removal.
             // Return Success because the store was modified (ticket removed).
             if let Some(stem) = path.file_stem() {
@@ -808,16 +806,9 @@ async fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             }
             return ParseOutcome::Success;
         }
-        Ok(Err(e)) => {
-            eprintln!(
-                "Warning: failed to read ticket file {}: {e}",
-                path.display()
-            );
-            return ParseOutcome::Skipped;
-        }
         Err(e) => {
             eprintln!(
-                "Warning: failed to spawn blocking task for ticket file {}: {e}",
+                "Warning: failed to read ticket file {}: {e}",
                 path.display()
             );
             return ParseOutcome::Skipped;
@@ -882,10 +873,9 @@ async fn process_ticket_file(path: &Path, store: &TicketStore) -> ParseOutcome {
 /// If the file no longer exists (race with deletion), removes the plan
 /// from the store and returns `Skipped` (no retry needed).
 async fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
-    let path_buf = path.to_path_buf();
-    let content = match tokio::task::spawn_blocking(move || fs::read_to_string(&path_buf)).await {
-        Ok(Ok(c)) => c,
-        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+    let content = match tokio::fs::read_to_string(path).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // File was deleted between event and processing — treat as removal.
             // Return Success because the store was modified (plan removed).
             if let Some(stem) = path.file_stem() {
@@ -893,15 +883,8 @@ async fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             }
             return ParseOutcome::Success;
         }
-        Ok(Err(e)) => {
-            eprintln!("Warning: failed to read plan file {}: {e}", path.display());
-            return ParseOutcome::Skipped;
-        }
         Err(e) => {
-            eprintln!(
-                "Warning: failed to spawn blocking task for plan file {}: {e}",
-                path.display()
-            );
+            eprintln!("Warning: failed to read plan file {}: {e}", path.display());
             return ParseOutcome::Skipped;
         }
     };
@@ -1047,7 +1030,7 @@ mod tests {
         )
         .unwrap();
 
-        let store = leak_store(TicketStore::init().expect("init should succeed"));
+        let store = leak_store(TicketStore::init().await.expect("init should succeed"));
         assert_eq!(
             store.tickets().get("j-mod1").unwrap().title.as_deref(),
             Some("Original Title")

@@ -1,8 +1,8 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use tokio::fs as tokio_fs;
 use tokio::sync::OnceCell;
 
 use crate::error::Result;
@@ -160,9 +160,7 @@ pub async fn get_or_init_store() -> Result<&'static TicketStore> {
     STORE
         .get_or_try_init(|| async {
             // Step 1: Initialize store (loads tickets, plans, existing embeddings)
-            let store = tokio::task::spawn_blocking(TicketStore::init)
-                .await
-                .map_err(|e| crate::error::JanusError::BlockingTaskFailed(e.to_string()))??;
+            let store = TicketStore::init().await?;
 
             // Step 2: Ensure all tickets have embeddings (unless skipped)
             // JANUS_SKIP_EMBEDDINGS=1 disables this for tests and environments
@@ -214,19 +212,19 @@ impl TicketStore {
     /// Scans `.janus/items/` for ticket files and `.janus/plans/` for plan files,
     /// parsing each and populating the internal DashMaps. Files that fail to parse
     /// are logged as warnings but do not prevent initialization.
-    pub fn init() -> Result<Self> {
+    pub async fn init() -> Result<Self> {
         let store = Self::empty();
 
         // Load tickets
         let items_dir = tickets_items_dir();
-        if items_dir.exists() {
-            store.load_tickets_from_dir(&items_dir);
+        if tokio_fs::try_exists(&items_dir).await.unwrap_or(false) {
+            store.load_tickets_from_dir_async(&items_dir).await;
         }
 
         // Load plans
         let p_dir = plans_dir();
-        if p_dir.exists() {
-            store.load_plans_from_dir(&p_dir);
+        if tokio_fs::try_exists(&p_dir).await.unwrap_or(false) {
+            store.load_plans_from_dir_async(&p_dir).await;
         }
 
         // Load embeddings (requires tickets to be loaded first)
@@ -262,7 +260,7 @@ impl TicketStore {
         T: EntityMetadata,
         F: Fn(&str) -> crate::error::Result<T>,
     {
-        let entries = match fs::read_dir(dir) {
+        let entries = match std::fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(e) => {
                 self.init_warnings.add(InitWarning {
@@ -287,7 +285,84 @@ impl TicketStore {
         }) {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "md") {
-                match fs::read_to_string(&path) {
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => match parser(&content) {
+                        Ok(mut metadata) => {
+                            if let Some(stem) = path.file_stem() {
+                                let stem_str = stem.to_string_lossy();
+                                match metadata.id() {
+                                    Some(frontmatter_id) if frontmatter_id != stem_str.as_ref() => {
+                                        self.init_warnings.add(InitWarning {
+                                            file_path: Some(path.clone()),
+                                            message: format!(
+                                                "ID mismatch: frontmatter ID '{frontmatter_id}' doesn't match filename '{stem_str}'. Using filename as authoritative ID to ensure filesystem consistency."
+                                            ),
+                                            entity_type: entity_name.to_string(),
+                                        });
+                                        metadata.set_id(stem_str.to_string());
+                                    }
+                                    None => {
+                                        metadata.set_id(stem_str.to_string());
+                                    }
+                                    Some(_) => {
+                                        // IDs match, no action needed
+                                    }
+                                }
+                            }
+                            metadata.set_file_path(path);
+                            if metadata.id().is_some() {
+                                insert(metadata);
+                            }
+                        }
+                        Err(e) => {
+                            self.init_warnings.add(InitWarning {
+                                file_path: Some(path.clone()),
+                                message: format!("Failed to parse {entity_name} file: {e}"),
+                                entity_type: entity_name.to_string(),
+                            });
+                        }
+                    },
+                    Err(e) => {
+                        self.init_warnings.add(InitWarning {
+                            file_path: Some(path.clone()),
+                            message: format!("Failed to read {entity_name} file: {e}"),
+                            entity_type: entity_name.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Generic async function to load entities from a directory into the store.
+    ///
+    /// Async version of `load_entities_from_dir` using tokio::fs for file I/O.
+    async fn load_entities_from_dir_async<T, F>(
+        &self,
+        dir: &Path,
+        entity_name: &str,
+        parser: F,
+        mut insert: impl FnMut(T),
+    ) where
+        T: EntityMetadata,
+        F: Fn(&str) -> crate::error::Result<T>,
+    {
+        let mut entries = match tokio_fs::read_dir(dir).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                self.init_warnings.add(InitWarning {
+                    file_path: Some(dir.to_path_buf()),
+                    message: format!("Failed to read {entity_name}s directory: {e}"),
+                    entity_type: entity_name.to_string(),
+                });
+                return;
+            }
+        };
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "md") {
+                match tokio_fs::read_to_string(&path).await {
                     Ok(content) => match parser(&content) {
                         Ok(mut metadata) => {
                             if let Some(stem) = path.file_stem() {
@@ -345,6 +420,21 @@ impl TicketStore {
         });
     }
 
+    /// Load all ticket files from a directory into the store (async version).
+    async fn load_tickets_from_dir_async(&self, dir: &Path) {
+        self.load_entities_from_dir_async(
+            dir,
+            "ticket",
+            parse_ticket,
+            |metadata: TicketMetadata| {
+                if let Some(id) = metadata.id.clone() {
+                    self.tickets.insert(id.to_string(), metadata);
+                }
+            },
+        )
+        .await;
+    }
+
     /// Load all plan files from a directory into the store.
     fn load_plans_from_dir(&self, dir: &Path) {
         self.load_entities_from_dir(dir, "plan", parse_plan_content, |metadata: PlanMetadata| {
@@ -352,6 +442,21 @@ impl TicketStore {
                 self.plans.insert(id.to_string(), metadata);
             }
         });
+    }
+
+    /// Load all plan files from a directory into the store (async version).
+    async fn load_plans_from_dir_async(&self, dir: &Path) {
+        self.load_entities_from_dir_async(
+            dir,
+            "plan",
+            parse_plan_content,
+            |metadata: PlanMetadata| {
+                if let Some(id) = metadata.id.clone() {
+                    self.plans.insert(id.to_string(), metadata);
+                }
+            },
+        )
+        .await;
     }
 
     /// Insert or update a ticket in the store.
@@ -549,6 +654,8 @@ Plan description.
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use tempfile::TempDir;
 
     use super::test_helpers::{make_plan_content, make_ticket_content};
@@ -598,14 +705,14 @@ mod tests {
         assert_eq!(store.embeddings.len(), 0);
     }
 
-    #[test]
-    fn test_init_from_disk() {
+    #[tokio::test]
+    async fn test_init_from_disk() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        let store = TicketStore::init().expect("init should succeed");
+        let store = TicketStore::init().await.expect("init should succeed");
 
         assert_eq!(store.tickets.len(), 2);
         assert!(store.tickets.contains_key("j-a1b2"));
@@ -626,21 +733,23 @@ mod tests {
         assert_eq!(plan.title.as_deref(), Some("Test Plan"));
     }
 
-    #[test]
-    fn test_init_with_missing_dirs() {
+    #[tokio::test]
+    async fn test_init_with_missing_dirs() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
         // Don't create the directories
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        let store = TicketStore::init().expect("init should succeed even with missing dirs");
+        let store = TicketStore::init()
+            .await
+            .expect("init should succeed even with missing dirs");
         assert_eq!(store.tickets.len(), 0);
         assert_eq!(store.plans.len(), 0);
     }
 
-    #[test]
-    fn test_init_with_invalid_file() {
+    #[tokio::test]
+    async fn test_init_with_invalid_file() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
         let items_dir = janus_root.join("items");
@@ -663,14 +772,16 @@ mod tests {
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        let store = TicketStore::init().expect("init should succeed despite parse errors");
+        let store = TicketStore::init()
+            .await
+            .expect("init should succeed despite parse errors");
         // Only the valid ticket should be loaded
         assert_eq!(store.tickets.len(), 1);
         assert!(store.tickets.contains_key("j-good"));
     }
 
-    #[test]
-    fn test_init_with_mismatched_id() {
+    #[tokio::test]
+    async fn test_init_with_mismatched_id() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
         let items_dir = janus_root.join("items");
@@ -687,7 +798,7 @@ mod tests {
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        let store = TicketStore::init().expect("init should succeed");
+        let store = TicketStore::init().await.expect("init should succeed");
 
         // The ticket should be stored under the filename stem, not the frontmatter id
         assert_eq!(store.tickets.len(), 1);
@@ -812,14 +923,14 @@ mod tests {
         assert_eq!(store.plans.len(), 0);
     }
 
-    #[test]
-    fn test_file_paths_populated() {
+    #[tokio::test]
+    async fn test_file_paths_populated() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        let store = TicketStore::init().expect("init should succeed");
+        let store = TicketStore::init().await.expect("init should succeed");
 
         // Ticket file paths should be set
         let ticket = store.tickets.get("j-a1b2").unwrap();
@@ -834,8 +945,8 @@ mod tests {
         assert!(file_path.ends_with("plan-x1y2.md"));
     }
 
-    #[test]
-    fn test_init_warnings_captured() {
+    #[tokio::test]
+    async fn test_init_warnings_captured() {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
         let items_dir = janus_root.join("items");
@@ -865,7 +976,9 @@ mod tests {
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        let store = TicketStore::init().expect("init should succeed despite errors");
+        let store = TicketStore::init()
+            .await
+            .expect("init should succeed despite errors");
 
         // Verify the valid ticket was loaded
         assert_eq!(store.tickets.len(), 2); // j-good and j-mismatch
@@ -897,14 +1010,14 @@ mod tests {
         assert!(id_mismatch, "should have an ID mismatch warning");
     }
 
-    #[test]
-    fn test_init_warnings_empty_when_all_valid() {
+    #[tokio::test]
+    async fn test_init_warnings_empty_when_all_valid() {
         let tmp = setup_test_dir();
         let janus_root = tmp.path().join(".janus");
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        let store = TicketStore::init().expect("init should succeed");
+        let store = TicketStore::init().await.expect("init should succeed");
 
         // No warnings should be captured for valid files
         let warnings = store.get_init_warnings();
