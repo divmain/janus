@@ -27,7 +27,7 @@ fn resolve_after_id(partial_id: &str, tickets: &[String]) -> Result<String> {
             partial_id,
         ))),
         1 => Ok(matches[0].clone()),
-        _ => Err(JanusError::AmbiguousId(
+        _ => Err(JanusError::AmbiguousTicketId(
             partial_id.to_string(),
             matches.into_iter().cloned().collect(),
         )),

@@ -46,8 +46,8 @@ fn format_invalid_field_value(field: &str, value: &str, valid_values: &[String])
     )
 }
 
-/// Format the AmbiguousId error message
-fn format_ambiguous_id(id: &str, matches: &[String]) -> String {
+/// Format the AmbiguousTicketId error message
+fn format_ambiguous_ticket_id(id: &str, matches: &[String]) -> String {
     format_error_with_list("ambiguous ID", id, "matches multiple tickets:", matches)
 }
 
@@ -94,8 +94,8 @@ pub enum JanusError {
     #[error("ticket '{0}' not found")]
     TicketNotFound(TicketId),
 
-    #[error("{}", format_ambiguous_id(.0, .1))]
-    AmbiguousId(String, Vec<String>),
+    #[error("{}", format_ambiguous_ticket_id(.0, .1))]
+    AmbiguousTicketId(String, Vec<String>),
 
     #[error(
         "invalid ticket ID '{0}': must contain only alphanumeric characters, hyphens, and underscores"
@@ -551,7 +551,7 @@ mod tests {
             "j-abc2".to_string(),
             "j-abc3".to_string(),
         ];
-        let error = JanusError::AmbiguousId("j-abc".to_string(), matches);
+        let error = JanusError::AmbiguousTicketId("j-abc".to_string(), matches);
         let msg = error.to_string();
         assert!(msg.contains("j-abc"));
         assert!(msg.contains("j-abc1"));

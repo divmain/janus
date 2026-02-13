@@ -23,7 +23,7 @@ use crate::types::{TicketId, TicketMetadata};
 /// Returns the full ID if found uniquely, otherwise an error:
 /// - `EmptyTicketMap` with "No tickets loaded" if map is empty
 /// - `TicketNotFound` if no matches
-/// - `AmbiguousId` if multiple matches
+/// - `AmbiguousTicketId` if multiple matches
 pub fn resolve_id_from_map<T>(
     partial_id: &str,
     map: &std::collections::HashMap<String, T>,
@@ -47,7 +47,10 @@ pub fn resolve_id_from_map<T>(
             partial_id,
         ))),
         1 => Ok(matches[0].clone()),
-        _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
+        _ => Err(JanusError::AmbiguousTicketId(
+            partial_id.to_string(),
+            matches,
+        )),
     }
 }
 
@@ -152,7 +155,7 @@ mod tests {
         map.insert("j-a1c3".to_string(), ());
 
         let result = resolve_id_from_map("j-a1", &map);
-        assert!(matches!(result, Err(JanusError::AmbiguousId(_, _))));
+        assert!(matches!(result, Err(JanusError::AmbiguousTicketId(_, _))));
     }
 
     #[test]

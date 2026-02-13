@@ -53,7 +53,10 @@ async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
             partial_id,
         ))),
         1 => Ok(dir.join(format!("{}.md", &matches[0]))),
-        _ => Err(JanusError::AmbiguousId(partial_id.to_string(), matches)),
+        _ => Err(JanusError::AmbiguousTicketId(
+            partial_id.to_string(),
+            matches,
+        )),
     }
 }
 
