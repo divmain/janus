@@ -61,8 +61,8 @@ pub fn sanitize_remote_title(title: &str) -> Result<String> {
 /// - Strips control characters except newlines (`\n`), carriage returns (`\r`),
 ///   and tabs (`\t`)
 /// - Neutralizes frontmatter delimiter injection: any line that is exactly `---`
-///   (possibly with surrounding whitespace) is prefixed with a zero-width space
-///   to prevent the parser from treating it as a frontmatter boundary
+///   or `+++` (possibly with surrounding whitespace) is prefixed with a zero-width
+///   space to prevent the parser from treating it as a frontmatter boundary
 /// - Truncates to `MAX_BODY_SIZE` bytes (on a UTF-8 char boundary)
 pub fn sanitize_remote_body(body: &str) -> Result<String> {
     // Enforce size limit first (truncate on char boundary)
@@ -82,13 +82,14 @@ pub fn sanitize_remote_body(body: &str) -> Result<String> {
         .collect();
 
     // Neutralize frontmatter delimiter lines.
-    // A line that is exactly `---` (with optional whitespace) at the start of the
-    // body or after a newline could be interpreted as a frontmatter boundary.
+    // A line that is exactly `---` or `+++` (with optional whitespace) at the start
+    // of the body or after a newline could be interpreted as a frontmatter boundary.
     // We escape it by prefixing with a Unicode zero-width space (U+200B).
     let lines: Vec<String> = sanitized
         .lines()
         .map(|line| {
-            if line.trim() == "---" {
+            let trimmed = line.trim();
+            if trimmed == "---" || trimmed == "+++" {
                 format!("\u{200B}{line}")
             } else {
                 line.to_string()
