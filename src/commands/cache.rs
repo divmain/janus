@@ -319,6 +319,13 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
 ///
 /// Recursively traverses subdirectories for robustness, even though the
 /// `.janus/embeddings/` directory is expected to be flat (only `.bin` files).
+///
+/// # Error Handling
+///
+/// This function is used for **informational display only** (non-critical status output).
+/// Errors such as permission denied are intentionally ignored using `.ok()` and `.flatten()`
+/// to provide graceful degradation. Returns 0 on any error by design, ensuring the cache
+/// status display remains functional even when directory traversal encounters issues.
 fn dir_size(path: &std::path::Path) -> u64 {
     let mut total = 0;
     if let Ok(entries) = fs::read_dir(path) {
