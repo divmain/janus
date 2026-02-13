@@ -434,6 +434,9 @@ pub enum JanusError {
     #[error("semantic search not available: embeddings not generated")]
     EmbeddingsNotAvailable,
 
+    #[error("embedding key error: path '{path}' is not within Janus root '{root}'")]
+    EmbeddingKeyError { path: String, root: String },
+
     #[error("embedding generation timed out after {seconds} seconds")]
     EmbeddingTimeout { seconds: u64 },
 

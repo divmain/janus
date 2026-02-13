@@ -82,8 +82,19 @@ pub async fn cmd_cache_prune(output_json: bool) -> Result<()> {
             Some(ns) => ns,
             None => continue,
         };
-        let key = crate::store::TicketStore::embedding_key(file_path, mtime_ns);
-        valid_keys.insert(key);
+        match crate::store::TicketStore::embedding_key(file_path, mtime_ns) {
+            Ok(key) => {
+                valid_keys.insert(key);
+            }
+            Err(e) => {
+                eprintln!(
+                    "Warning: failed to compute embedding key for {}: {}",
+                    ticket.id.as_deref().unwrap_or("unknown"),
+                    e
+                );
+                continue;
+            }
+        }
     }
 
     // 2. Calculate bytes that will be freed (before pruning)
@@ -210,7 +221,20 @@ pub async fn cmd_cache_rebuild(output_json: bool) -> Result<()> {
                 // Save all embeddings from the batch
                 for (i, (file_path, mtime_ns, ticket_id, _)) in batch_data.iter().enumerate() {
                     if let Some(embedding) = embeddings.get(i) {
-                        let key = crate::store::TicketStore::embedding_key(file_path, *mtime_ns);
+                        let key =
+                            match crate::store::TicketStore::embedding_key(file_path, *mtime_ns) {
+                                Ok(k) => k,
+                                Err(e) => {
+                                    if !output_json {
+                                        eprintln!(
+                                            "Warning: failed to compute embedding key for {}: {}",
+                                            ticket_id.as_deref().unwrap_or("unknown"),
+                                            e
+                                        );
+                                    }
+                                    continue;
+                                }
+                            };
                         if let Err(e) = crate::store::TicketStore::save_embedding(&key, embedding) {
                             if !output_json {
                                 eprintln!(

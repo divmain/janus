@@ -5,6 +5,7 @@ use std::time::UNIX_EPOCH;
 
 use super::TicketStore;
 use crate::embedding::model::EMBEDDING_DIMENSIONS;
+use crate::error::JanusError;
 use crate::types::janus_root;
 
 /// Directory name for embedding storage within the Janus root.
@@ -20,6 +21,13 @@ impl TicketStore {
     ///
     /// The key is `hex(blake3(file_path_string + ":" + mtime_ns_string))`.
     /// This produces a content-addressable key that changes when the file is modified.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file path cannot be made relative to the Janus root.
+    /// This ensures cache key consistency - absolute paths can vary between runs
+    /// depending on how the repository is accessed (symlinks, different working
+    /// directories, etc.).
     ///
     /// # Filesystem Precision Caveat
     ///
@@ -38,12 +46,18 @@ impl TicketStore {
     /// robust fix would hash file content instead of mtime, but that defeats the
     /// purpose of the fast mtime-based cache invalidation check.
     ///
-    pub fn embedding_key(file_path: &Path, mtime_ns: u128) -> String {
+    pub fn embedding_key(file_path: &Path, mtime_ns: u128) -> crate::error::Result<String> {
         // Use a repo-relative path for stability. file_path.display() can vary
         // between runs depending on absolute/relative handling, symlink resolution,
         // and platform formatting—causing cache misses and orphaned .bin files.
         let root = janus_root();
-        let relative = file_path.strip_prefix(&root).unwrap_or(file_path);
+        let relative =
+            file_path
+                .strip_prefix(&root)
+                .map_err(|_| JanusError::EmbeddingKeyError {
+                    path: file_path.to_string_lossy().to_string(),
+                    root: root.to_string_lossy().to_string(),
+                })?;
         // Use forward slashes for cross-platform consistency
         let stable_path: String = relative
             .components()
@@ -52,7 +66,7 @@ impl TicketStore {
             .join("/");
         let input = format!("{stable_path}:{mtime_ns}");
         let hash = blake3::hash(input.as_bytes());
-        hash.to_hex().to_string()
+        Ok(hash.to_hex().to_string())
     }
 
     /// Load all embeddings from `.janus/embeddings/` for current tickets.
@@ -102,7 +116,13 @@ impl TicketStore {
                 None => continue,
             };
 
-            let key = Self::embedding_key(&file_path, mtime_ns);
+            let key = match Self::embedding_key(&file_path, mtime_ns) {
+                Ok(k) => k,
+                Err(e) => {
+                    eprintln!("warning: failed to compute embedding key for {file_path:?}: {e}");
+                    continue;
+                }
+            };
             let bin_path = emb_dir.join(format!("{key}.bin"));
 
             if let Ok(data) = fs::read(&bin_path) {
@@ -266,7 +286,8 @@ impl TicketStore {
             .ok_or_else(|| format!("Could not get mtime for file: {file_path:?}"))?;
 
         // Compute embedding key
-        let key = Self::embedding_key(&file_path, mtime_ns);
+        let key = Self::embedding_key(&file_path, mtime_ns)
+            .map_err(|e| format!("Failed to compute embedding key: {e}"))?;
 
         // Check if .bin file already exists
         let emb_dir = embeddings_dir();
@@ -388,7 +409,10 @@ impl TicketStore {
                             let mtime_ns = file_mtime_ns(file_path);
 
                             if let Some(mtime) = mtime_ns {
-                                let key = TicketStore::embedding_key(file_path, mtime);
+                                let key = match TicketStore::embedding_key(file_path, mtime) {
+                                    Ok(k) => k,
+                                    Err(_) => continue,
+                                };
 
                                 if TicketStore::save_embedding(&key, embedding).is_ok() {
                                     saved.push((id.clone(), embedding.clone()));
@@ -472,11 +496,18 @@ mod tests {
 
     #[test]
     fn test_embedding_key_deterministic() {
-        let path = Path::new("/some/path/ticket.md");
+        let tmp = TempDir::new().unwrap();
+        let janus = tmp.path().join(".janus");
+        let _guard = JanusRootGuard::new(&janus);
+
+        let ticket_path = janus.join("items/ticket.md");
+        std::fs::create_dir_all(ticket_path.parent().unwrap()).unwrap();
+        std::fs::write(&ticket_path, "# Test").unwrap();
+
         let mtime = 1234567890_u128;
 
-        let key1 = TicketStore::embedding_key(path, mtime);
-        let key2 = TicketStore::embedding_key(path, mtime);
+        let key1 = TicketStore::embedding_key(&ticket_path, mtime).unwrap();
+        let key2 = TicketStore::embedding_key(&ticket_path, mtime).unwrap();
 
         assert_eq!(key1, key2);
         assert!(!key1.is_empty());
@@ -486,23 +517,49 @@ mod tests {
 
     #[test]
     fn test_embedding_key_changes_with_mtime() {
-        let path = Path::new("/some/path/ticket.md");
+        let tmp = TempDir::new().unwrap();
+        let janus = tmp.path().join(".janus");
+        let _guard = JanusRootGuard::new(&janus);
 
-        let key1 = TicketStore::embedding_key(path, 1000);
-        let key2 = TicketStore::embedding_key(path, 2000);
+        let ticket_path = janus.join("items/ticket.md");
+        std::fs::create_dir_all(ticket_path.parent().unwrap()).unwrap();
+        std::fs::write(&ticket_path, "# Test").unwrap();
+
+        let key1 = TicketStore::embedding_key(&ticket_path, 1000).unwrap();
+        let key2 = TicketStore::embedding_key(&ticket_path, 2000).unwrap();
 
         assert_ne!(key1, key2);
     }
 
     #[test]
     fn test_embedding_key_changes_with_path() {
-        let path1 = Path::new("/some/path/ticket1.md");
-        let path2 = Path::new("/some/path/ticket2.md");
+        let tmp = TempDir::new().unwrap();
+        let janus = tmp.path().join(".janus");
+        let _guard = JanusRootGuard::new(&janus);
 
-        let key1 = TicketStore::embedding_key(path1, 1000);
-        let key2 = TicketStore::embedding_key(path2, 1000);
+        let ticket_path1 = janus.join("items/ticket1.md");
+        let ticket_path2 = janus.join("items/ticket2.md");
+        std::fs::create_dir_all(ticket_path1.parent().unwrap()).unwrap();
+        std::fs::write(&ticket_path1, "# Test 1").unwrap();
+        std::fs::write(&ticket_path2, "# Test 2").unwrap();
+
+        let key1 = TicketStore::embedding_key(&ticket_path1, 1000).unwrap();
+        let key2 = TicketStore::embedding_key(&ticket_path2, 1000).unwrap();
 
         assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn test_embedding_key_fails_outside_root() {
+        let tmp = TempDir::new().unwrap();
+        let janus = tmp.path().join(".janus");
+        let _guard = JanusRootGuard::new(&janus);
+
+        // Path outside the Janus root
+        let outside_path = Path::new("/outside/path/ticket.md");
+
+        let result = TicketStore::embedding_key(outside_path, 1000);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -553,7 +610,7 @@ status: new
         .unwrap();
 
         let mtime_ns = file_mtime_ns(&ticket_path).expect("should get mtime");
-        let key = TicketStore::embedding_key(&ticket_path, mtime_ns);
+        let key = TicketStore::embedding_key(&ticket_path, mtime_ns).expect("should compute key");
 
         // Save embedding (must match EMBEDDING_DIMENSIONS for load validation)
         let vector: Vec<f32> = (0..EMBEDDING_DIMENSIONS).map(|i| i as f32 * 0.1).collect();
@@ -712,7 +769,7 @@ status: new
         .unwrap();
 
         let mtime_ns = file_mtime_ns(&ticket_path).expect("should get mtime");
-        let key = TicketStore::embedding_key(&ticket_path, mtime_ns);
+        let key = TicketStore::embedding_key(&ticket_path, mtime_ns).expect("should compute key");
 
         // Save an embedding with wrong dimensions (4 floats instead of EMBEDDING_DIMENSIONS)
         let wrong_vector = vec![1.0_f32, 2.0, 3.0, 4.0];
@@ -755,7 +812,7 @@ status: new
         .unwrap();
 
         let mtime_ns = file_mtime_ns(&ticket_path).expect("should get mtime");
-        let key = TicketStore::embedding_key(&ticket_path, mtime_ns);
+        let key = TicketStore::embedding_key(&ticket_path, mtime_ns).expect("should compute key");
 
         // Build a vector with the correct number of dimensions but containing NaN
         let mut nan_vector: Vec<f32> = (0..EMBEDDING_DIMENSIONS).map(|i| i as f32 * 0.1).collect();
@@ -790,7 +847,8 @@ status: new
         .unwrap();
 
         let mtime_ns2 = file_mtime_ns(&ticket_path2).expect("should get mtime");
-        let key2 = TicketStore::embedding_key(&ticket_path2, mtime_ns2);
+        let key2 =
+            TicketStore::embedding_key(&ticket_path2, mtime_ns2).expect("should compute key");
 
         let mut inf_vector: Vec<f32> = (0..EMBEDDING_DIMENSIONS).map(|i| i as f32 * 0.1).collect();
         inf_vector[5] = f32::INFINITY;
