@@ -766,10 +766,8 @@ impl TicketData for TicketMetadata {
     }
 
     fn compute_depth(&self) -> u32 {
-        self.depth.unwrap_or_else(|| {
-            // If no explicit depth, infer: if no spawned_from, it's depth 0
-            if self.spawned_from.is_none() { 0 } else { 1 }
-        })
+        self.depth
+            .unwrap_or_else(|| compute_depth_recursive(self.spawned_from.as_ref()))
     }
 }
 
@@ -900,7 +898,61 @@ impl TicketData for TicketSummary {
 
     fn compute_depth(&self) -> u32 {
         self.depth
-            .unwrap_or_else(|| if self.spawned_from.is_none() { 0 } else { 1 })
+            .unwrap_or_else(|| compute_depth_recursive(self.spawned_from.as_ref()))
+    }
+}
+
+/// Recursively compute depth by traversing the spawned_from chain.
+/// Returns 0 for root tickets, 1 for direct children, 2 for grandchildren, etc.
+/// Uses cycle detection with a max depth of 100 to prevent infinite loops.
+fn compute_depth_recursive(spawned_from: Option<&TicketId>) -> u32 {
+    const MAX_DEPTH: u32 = 100;
+
+    if spawned_from.is_none() {
+        return 0;
+    }
+
+    // Try to access the store to look up parent tickets
+    if let Some(store) = crate::store::get_store() {
+        let tickets = store.tickets();
+        let mut depth = 0u32;
+        let mut current_id = spawned_from.map(|id| id.to_string());
+        let mut visited = std::collections::HashSet::new();
+
+        while let Some(id) = current_id {
+            // Cycle detection
+            if !visited.insert(id.clone()) {
+                break;
+            }
+
+            depth += 1;
+
+            // Limit recursion depth to prevent infinite loops
+            if depth >= MAX_DEPTH {
+                break;
+            }
+
+            // Look up the parent ticket
+            match tickets.get(&id) {
+                Some(parent) => {
+                    // Use stored depth if available
+                    if let Some(parent_depth) = parent.depth {
+                        return parent_depth + 1;
+                    }
+                    // Otherwise continue traversing
+                    current_id = parent.spawned_from.as_ref().map(|id| id.to_string());
+                }
+                None => {
+                    // Parent not found in store, assume depth 1
+                    break;
+                }
+            }
+        }
+
+        depth
+    } else {
+        // Store not initialized, fall back to simple logic
+        1
     }
 }
 

@@ -191,6 +191,13 @@ pub async fn get_or_init_store() -> Result<&'static TicketStore> {
         .await
 }
 
+/// Get the store if it has been initialized, otherwise return None.
+/// This is a synchronous alternative to `get_or_init_store()` for cases
+/// where async is not available.
+pub fn get_store() -> Option<&'static TicketStore> {
+    STORE.get()
+}
+
 impl TicketStore {
     /// Create an empty store with no tickets or plans.
     pub fn empty() -> Self {
