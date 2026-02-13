@@ -90,19 +90,26 @@ pub struct GraphQlError {
 
 #[derive(Error, Debug)]
 pub enum JanusError {
+    // Core ID errors
     #[error("ticket '{0}' not found")]
     TicketNotFound(TicketId),
 
     #[error("{}", format_ambiguous_id(.0, .1))]
     AmbiguousId(String, Vec<String>),
 
-    #[error("plan '{0}' not found")]
-    PlanNotFound(PlanId),
-
     #[error(
         "invalid ticket ID '{0}': must contain only alphanumeric characters, hyphens, and underscores"
     )]
     InvalidTicketId(String),
+
+    #[error(
+        "invalid ticket ID format '{0}': must be non-empty and match '<prefix>-<hash>' pattern"
+    )]
+    InvalidTicketIdFormat(String),
+
+    // Plan errors
+    #[error("plan '{0}' not found")]
+    PlanNotFound(PlanId),
 
     #[error(
         "invalid plan ID '{0}': must start with 'plan-' and contain only alphanumeric characters and hyphens"
@@ -112,9 +119,28 @@ pub enum JanusError {
     #[error("{}", format_ambiguous_plan_id(.0, .1))]
     AmbiguousPlanId(String, Vec<String>),
 
+    #[error("invalid plan ID format '{0}': must be non-empty and match 'plan-<hash>' pattern")]
+    InvalidPlanIdFormat(String),
+
     #[error("phase '{0}' not found in plan")]
     PhaseNotFound(String),
 
+    #[error("phase '{0}' contains tickets - use --force or --migrate")]
+    PhaseNotEmpty(String),
+
+    #[error("plan with title '{0}' already exists ({1})")]
+    DuplicatePlanTitle(String, String), // title, existing plan ID
+
+    #[error("failed to load {} plan file(s):\n{}", .0.len(), .0.join("\n"))]
+    PlanLoadFailed(Vec<String>),
+
+    #[error("plan has no tickets section")]
+    PlanNoTicketsSection,
+
+    #[error("plan has no tickets section or phases")]
+    PlanNoTicketsOrPhases,
+
+    // Ticket errors
     #[error("ticket '{0}' is already in this plan")]
     TicketAlreadyInPlan(String),
 
@@ -123,9 +149,6 @@ pub enum JanusError {
 
     #[error("ticket '{0}' not found in plan")]
     TicketNotInPlan(String),
-
-    #[error("phase '{0}' contains tickets - use --force or --migrate")]
-    PhaseNotEmpty(String),
 
     #[error("cannot add ticket to simple plan with --phase option")]
     SimpleplanNoPhase,
@@ -136,6 +159,38 @@ pub enum JanusError {
     #[error("cannot move ticket in a simple plan (no phases)")]
     CannotMoveInSimplePlan,
 
+    #[error("failed to load {} ticket file(s):\n{}", .0.len(), .0.join("\n"))]
+    TicketLoadFailed(Vec<String>),
+
+    // IO/Filesystem errors
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Failed to {operation} {item_type} at {path}: {source}")]
+    StorageError {
+        operation: &'static str,
+        item_type: &'static str,
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("filesystem watcher error: {0}")]
+    WatcherError(String),
+
+    // Serialization/Parsing errors
+    #[error("YAML parse error: {0}")]
+    YamlParse(#[from] serde_yaml_ng::Error),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("jq filter error: {0}")]
+    JqFilter(String),
+
+    #[error("parse error: {0}")]
+    ParseError(String),
+
     #[error(
         "empty YAML frontmatter: the frontmatter block between '---' delimiters is empty. Required fields (e.g. id, status) must be provided"
     )]
@@ -144,8 +199,9 @@ pub enum JanusError {
     #[error("invalid ticket format: {0}")]
     InvalidFormat(String),
 
-    #[error("invalid status '{0}'")]
-    InvalidStatus(String),
+    // Configuration errors
+    #[error("configuration error: {0}")]
+    Config(String),
 
     #[error("invalid field name: '{0}'")]
     InvalidFieldName(String),
@@ -160,28 +216,13 @@ pub enum JanusError {
     #[error("invalid prefix '{0}': {1}")]
     InvalidPrefix(String, String),
 
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    #[error("invalid status '{0}'")]
+    InvalidStatus(String),
 
-    #[error("Failed to {operation} {item_type} at {path}: {source}")]
-    StorageError {
-        operation: &'static str,
-        item_type: &'static str,
-        path: std::path::PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
+    #[error("invalid timestamp '{0}': must be a valid ISO 8601 / RFC 3339 timestamp")]
+    InvalidTimestamp(String),
 
-    #[error("YAML parse error: {0}")]
-    YamlParse(#[from] serde_yaml_ng::Error),
-
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
-
-    #[error("jq filter error: {0}")]
-    JqFilter(String),
-
-    // Remote sync errors
+    // Remote/Sync errors
     #[error("invalid remote reference '{0}': {1}")]
     InvalidRemoteRef(String, String),
 
@@ -193,9 +234,6 @@ pub enum JanusError {
 
     #[error("ticket not linked to any remote")]
     NotLinked,
-
-    #[error("configuration error: {0}")]
-    Config(String),
 
     #[error("authentication error: {0}")]
     Auth(String),
@@ -215,7 +253,13 @@ pub enum JanusError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
-    // Plan import errors
+    #[error("remote operation timed out after {seconds} seconds")]
+    RemoteTimeout { seconds: u64 },
+
+    #[error("unsupported sync field: {0}")]
+    UnsupportedSyncField(String),
+
+    // Import/Export errors
     #[error("{}", format_import_failed(.message, .issues))]
     ImportFailed {
         message: String,
@@ -224,23 +268,6 @@ pub enum JanusError {
 
     #[error("{}", format_retry_errors(.attempts, .errors))]
     RetryFailed { attempts: u32, errors: Vec<String> },
-
-    #[error("plan with title '{0}' already exists ({1})")]
-    DuplicatePlanTitle(String, String), // title, existing plan ID
-
-    #[error("failed to load {} plan file(s):\n{}", .0.len(), .0.join("\n"))]
-    PlanLoadFailed(Vec<String>),
-
-    #[error("failed to load {} ticket file(s):\n{}", .0.len(), .0.join("\n"))]
-    TicketLoadFailed(Vec<String>),
-
-    #[error("--verbose-phase can only be used with phased plans")]
-    VerbosePhaseRequiresPhasedPlan,
-
-    #[error(
-        "--raw cannot be used with other formatting flags (--json, --tickets-only, --phases-only)"
-    )]
-    RawWithOtherFlags,
 
     // Hook errors
     #[error("pre-hook '{hook_name}' failed with exit code {exit_code}: {message}")]
@@ -301,7 +328,15 @@ pub enum JanusError {
     #[error("cannot link a ticket to itself: {0}. Links must be between different tickets.")]
     SelfLink(String),
 
-    // Business logic errors
+    #[error("ticket title cannot be empty")]
+    EmptyTitle,
+
+    #[error(
+        "Note text cannot be empty. Provide text as an argument or pipe from stdin: echo 'note text' | janus add-note <id>"
+    )]
+    EmptyNote,
+
+    // Dependency/Link errors
     #[error("dependency '{0}' not found in ticket")]
     DependencyNotFound(String),
 
@@ -311,6 +346,10 @@ pub enum JanusError {
     #[error("link not found between tickets")]
     LinkNotFound,
 
+    #[error("a ticket cannot depend on itself")]
+    SelfDependency,
+
+    // Business logic errors
     #[error("at least {expected} ticket IDs are required, got {provided}")]
     InsufficientTicketIds { expected: usize, provided: usize },
 
@@ -334,34 +373,11 @@ pub enum JanusError {
     #[error("invalid sort field: {0}. Must be one of: priority, created, id")]
     InvalidSortField(String),
 
-    #[error("plan has no tickets section")]
-    PlanNoTicketsSection,
-
-    #[error("plan has no tickets section or phases")]
-    PlanNoTicketsOrPhases,
-
     #[error("reordered list must contain the same tickets")]
     ReorderTicketMismatch,
 
     #[error("reordered list must contain the same phases")]
     ReorderPhaseMismatch,
-
-    #[error("editor exited with code {0}")]
-    EditorFailed(i32),
-
-    #[error("Cannot open editor in non-interactive mode: {0}")]
-    InteractiveTerminalRequired(std::path::PathBuf),
-
-    #[error(
-        "Note text cannot be empty. Provide text as an argument or pipe from stdin: echo 'note text' | janus add-note <id>"
-    )]
-    EmptyNote,
-
-    #[error("ticket title cannot be empty")]
-    EmptyTitle,
-
-    #[error("closing a ticket requires either --summary <TEXT> or --no-summary")]
-    SummaryRequired,
 
     #[error("cannot {operation} immutable field '{field}'")]
     ImmutableField { field: String, operation: String },
@@ -375,42 +391,43 @@ pub enum JanusError {
     #[error("ticket '{id}' is missing required field '{field}' (file may be corrupted)")]
     CorruptedTicket { id: String, field: String },
 
-    #[error("TUI error: {0}")]
-    TuiError(String),
+    #[error("could not find ticket or plan with ID '{0}'")]
+    ItemNotFound(String),
 
-    #[error("MCP server error: {0}")]
-    McpServerError(String),
+    // CLI/Editor errors
+    #[error("editor exited with code {0}")]
+    EditorFailed(i32),
 
-    #[error("filesystem watcher error: {0}")]
-    WatcherError(String),
-
-    #[error("{0}")]
-    ConfirmationRequired(String),
-
-    #[error("a ticket cannot depend on itself")]
-    SelfDependency,
-
-    #[error("EOF on stdin")]
-    EofOnStdin,
+    #[error("Cannot open editor in non-interactive mode: {0}")]
+    InteractiveTerminalRequired(std::path::PathBuf),
 
     #[error("Not an interactive terminal: {0}")]
     NotInteractive(String),
 
-    #[error("Invalid graph format '{0}'. Must be 'dot' or 'mermaid'")]
-    InvalidGraphFormat(String),
+    #[error("closing a ticket requires either --summary <TEXT> or --no-summary")]
+    SummaryRequired,
 
-    #[error("unsupported sync field: {0}")]
-    UnsupportedSyncField(String),
+    #[error("--verbose-phase can only be used with phased plans")]
+    VerbosePhaseRequiresPhasedPlan,
 
-    #[error("could not find ticket or plan with ID '{0}'")]
-    ItemNotFound(String),
+    #[error(
+        "--raw cannot be used with other formatting flags (--json, --tickets-only, --phases-only)"
+    )]
+    RawWithOtherFlags,
+
+    #[error("EOF on stdin")]
+    EofOnStdin,
+
+    #[error("{0}")]
+    ConfirmationRequired(String),
 
     #[error("{0}")]
     InvalidInput(String),
 
-    #[error("internal error: {0}")]
-    InternalError(String),
+    #[error("Invalid graph format '{0}'. Must be 'dot' or 'mermaid'")]
+    InvalidGraphFormat(String),
 
+    // Cache/Embedding errors
     #[error("embedding model error: {0}")]
     EmbeddingModel(String),
 
@@ -420,25 +437,21 @@ pub enum JanusError {
     #[error("embedding generation timed out after {seconds} seconds")]
     EmbeddingTimeout { seconds: u64 },
 
-    #[error("remote operation timed out after {seconds} seconds")]
-    RemoteTimeout { seconds: u64 },
-
+    // Store errors
     #[error("blocking task failed: {0}")]
     BlockingTaskFailed(String),
 
-    #[error("parse error: {0}")]
-    ParseError(String),
+    // TUI errors
+    #[error("TUI error: {0}")]
+    TuiError(String),
 
-    #[error(
-        "invalid ticket ID format '{0}': must be non-empty and match '<prefix>-<hash>' pattern"
-    )]
-    InvalidTicketIdFormat(String),
+    // MCP errors
+    #[error("MCP server error: {0}")]
+    McpServerError(String),
 
-    #[error("invalid plan ID format '{0}': must be non-empty and match 'plan-<hash>' pattern")]
-    InvalidPlanIdFormat(String),
-
-    #[error("invalid timestamp '{0}': must be a valid ISO 8601 / RFC 3339 timestamp")]
-    InvalidTimestamp(String),
+    // General errors
+    #[error("internal error: {0}")]
+    InternalError(String),
 }
 
 pub type Result<T> = std::result::Result<T, JanusError>;
