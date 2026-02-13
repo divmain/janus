@@ -365,9 +365,102 @@ impl TicketStore {
     ///
     /// Also removes the corresponding embedding entry to prevent orphaned
     /// embeddings from inflating coverage counts.
+    ///
+    /// Performs cascade deletion to remove references to the deleted ticket
+    /// from other tickets' deps and links arrays to maintain referential integrity.
     pub fn remove_ticket(&self, id: &str) {
+        // Get ticket info before removal for cascade cleanup
+        let ticket_info = self
+            .tickets
+            .get(id)
+            .map(|t| (t.file_path.clone(), t.id.as_ref().map(|id| id.to_string())));
+
+        // Remove ticket and its embedding from the store
         self.tickets.remove(id);
         self.embeddings.remove(id);
+
+        // Cascade deletion: remove references from other tickets' deps and links
+        if let Some((Some(file_path), Some(deleted_id))) = ticket_info {
+            self.remove_ticket_references(&deleted_id, &file_path);
+        }
+    }
+
+    /// Remove references to a deleted ticket from all other tickets' deps and links.
+    ///
+    /// This maintains referential integrity by ensuring no dangling references
+    /// remain when a ticket is deleted.
+    fn remove_ticket_references(&self, deleted_id: &str, _deleted_file_path: &PathBuf) {
+        // Collect tickets that need to be updated (those referencing the deleted ticket)
+        let tickets_to_update: Vec<(String, PathBuf, bool, bool)> = self
+            .tickets
+            .iter()
+            .filter_map(|entry| {
+                let ticket_id = entry.key().clone();
+                let metadata = entry.value();
+
+                // Check if this ticket references the deleted ticket
+                let has_in_deps = metadata.deps.iter().any(|dep| dep.as_ref() == deleted_id);
+                let has_in_links = metadata
+                    .links
+                    .iter()
+                    .any(|link| link.as_ref() == deleted_id);
+
+                if has_in_deps || has_in_links {
+                    metadata
+                        .file_path
+                        .clone()
+                        .map(|path| (ticket_id, path, has_in_deps, has_in_links))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Update each ticket that had references to the deleted ticket
+        for (ticket_id, file_path, has_in_deps, has_in_links) in tickets_to_update {
+            // Create a Ticket instance to perform the file operations
+            if let Ok(ticket) = crate::ticket::Ticket::new(file_path.clone()) {
+                // Remove from deps if present
+                if has_in_deps {
+                    if let Err(e) =
+                        ticket.remove_from_array_field(crate::types::ArrayField::Deps, deleted_id)
+                    {
+                        tracing::warn!(
+                            "Failed to remove {} from deps of ticket {}: {}",
+                            deleted_id,
+                            ticket_id,
+                            e
+                        );
+                    }
+                }
+
+                // Remove from links if present
+                if has_in_links {
+                    if let Err(e) =
+                        ticket.remove_from_array_field(crate::types::ArrayField::Links, deleted_id)
+                    {
+                        tracing::warn!(
+                            "Failed to remove {} from links of ticket {}: {}",
+                            deleted_id,
+                            ticket_id,
+                            e
+                        );
+                    }
+                }
+
+                // Update the in-memory store to reflect the changes
+                if let Some(mut metadata) = self.tickets.get_mut(&ticket_id) {
+                    metadata.deps.retain(|dep| dep.as_ref() != deleted_id);
+                    metadata.links.retain(|link| link.as_ref() != deleted_id);
+                }
+            } else {
+                tracing::warn!(
+                    "Could not create Ticket instance for {} at {:?}",
+                    ticket_id,
+                    file_path
+                );
+            }
+        }
     }
 
     /// Insert or update a plan in the store.
