@@ -290,7 +290,7 @@ impl TicketStore {
                                         self.init_warnings.add(InitWarning {
                                             file_path: Some(path.clone()),
                                             message: format!(
-                                                "Frontmatter id '{frontmatter_id}' doesn't match filename '{stem_str}' — using filename as authoritative ID"
+                                                "ID mismatch: frontmatter ID '{frontmatter_id}' doesn't match filename '{stem_str}'. Using filename as authoritative ID to ensure filesystem consistency."
                                             ),
                                             entity_type: entity_name.to_string(),
                                         });
@@ -793,7 +793,7 @@ mod tests {
         // Verify one warning is for the ID mismatch
         let id_mismatch = all_warnings
             .iter()
-            .any(|w| w.message.contains("Frontmatter id"));
+            .any(|w| w.message.contains("ID mismatch"));
         assert!(id_mismatch, "should have an ID mismatch warning");
     }
 
