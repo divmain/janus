@@ -752,13 +752,15 @@ enum ParseOutcome {
 
 /// Check if a path is within the tickets items directory.
 fn is_ticket_path(path: &Path) -> bool {
+    use std::ffi::OsStr;
+
     // Check if any ancestor component is "items" within a .janus directory
     let components: Vec<_> = path.components().collect();
     for (i, comp) in components.iter().enumerate() {
         if let std::path::Component::Normal(s) = comp {
-            if *s == "items" && i > 0 {
+            if *s == OsStr::new("items") && i > 0 {
                 if let std::path::Component::Normal(parent) = &components[i - 1] {
-                    if parent.to_string_lossy() == ".janus" {
+                    if *parent == OsStr::new(".janus") {
                         return true;
                     }
                 }
@@ -770,12 +772,14 @@ fn is_ticket_path(path: &Path) -> bool {
 
 /// Check if a path is within the plans directory.
 fn is_plan_path(path: &Path) -> bool {
+    use std::ffi::OsStr;
+
     let components: Vec<_> = path.components().collect();
     for (i, comp) in components.iter().enumerate() {
         if let std::path::Component::Normal(s) = comp {
-            if *s == "plans" && i > 0 {
+            if *s == OsStr::new("plans") && i > 0 {
                 if let std::path::Component::Normal(parent) = &components[i - 1] {
-                    if parent.to_string_lossy() == ".janus" {
+                    if *parent == OsStr::new(".janus") {
                         return true;
                     }
                 }
