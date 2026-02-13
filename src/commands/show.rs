@@ -31,8 +31,9 @@ pub async fn cmd_show(id: &str, output: OutputOptions) -> Result<()> {
 
         // Check if this ticket is blocking another ticket
         // (other depends on us, and we are not yet terminal)
-        let ticket_id = crate::types::TicketId::new_unchecked(&ticket.id);
-        if other.deps.contains(&ticket_id) && !metadata.status.is_some_and(|s| s.is_terminal()) {
+        if other.deps.iter().any(|dep| dep == &ticket.id)
+            && !metadata.status.is_some_and(|s| s.is_terminal())
+        {
             blocking.push(other);
         }
     }
