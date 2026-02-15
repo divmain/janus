@@ -28,8 +28,6 @@ pub mod utils;
 pub mod embedding;
 pub mod store;
 
-#[cfg(test)]
-pub(crate) mod test_guards;
 
 pub use config::Config;
 pub use entity::Entity;

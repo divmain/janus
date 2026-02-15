@@ -4,117 +4,148 @@ This document provides essential information for AI coding agents working in thi
 
 ## Project Overview
 
-Janus is a plain-text issue tracking CLI tool written in Rust. It stores tickets as Markdown files with YAML frontmatter in a `.janus` directory. The project provides commands for creating, managing, and querying tickets.
+Janus is a plain-text issue tracking CLI tool written in Rust. It stores tickets as Markdown files with YAML frontmatter in a `.janus` directory. The project provides commands for creating, managing, and querying tickets, with optional sync to GitHub Issues and Linear.
 
 ## Technology Stack
 
-- **Language**: Rust (Edition 2024)
+- **Language**: Rust (Edition 2024), workspace with `crates/janus-schema` (Linear GraphQL schema)
 - **CLI Framework**: clap 4 with derive macros
+- **Async Runtime**: tokio (multi-thread) with futures, async-trait
 - **Serialization**: serde, serde_json, serde_yaml_ng
-- **Markdown Parsing**: comrak 0.34 (AST-based markdown parser)
-- **Date/Time**: jiff 0.2
-- **Error Handling**: thiserror 2
-- **Terminal Colors**: owo-colors 4
-- **In-memory Store**: DashMap (concurrent hash maps for ticket/plan data)
-- **Filesystem Watching**: notify 8 (cross-platform fs event watcher)
-- **Hashing**: blake3 (content-addressable embedding keys)
+- **Markdown Parsing**: comrak (AST-based, CommonMark + GFM)
+- **Error Handling**: thiserror
+- **TUI Framework**: iocraft (React-like declarative API, forked)
+- **In-memory Store**: DashMap (concurrent hash maps), notify (fs watcher), blake3 (hashing)
+- **Semantic Search**: fastembed
+- **Remote APIs**: octocrab (GitHub), reqwest + cynic (Linear GraphQL)
+- **MCP Server**: rmcp (Model Context Protocol via STDIO)
+
+Additional smaller dependencies (regex, tabled, fuzzy-matcher, tracing, parking_lot, clipboard-rs, jiff, owo-colors, secrecy, etc.) are also used. Note that `tempfile` is both a regular dependency (editor temp file workflows) and a dev dependency (test isolation). Consult `Cargo.toml` for the full list and exact versions.
 
 ## Build Commands
 
 ```bash
-# Build (debug)
-cargo build
-
-# Build (release)
-cargo build --release
-
-# Run the CLI
-cargo run -- <command>
-
-# Check without building
-cargo check
+cargo build                       # Build (debug)
+cargo build --release             # Build (release)
+cargo run -- <command>            # Run the CLI
+cargo check                       # Check without building
 ```
 
 ## Test Commands
 
 ```bash
-# Run all tests
-cargo test -- --format=terse 2>&1
-
-# Run a single test by name
-cargo test <test_name>
-cargo test test_create_basic
-
-# Run tests matching a pattern
-cargo test create
-
-# Run only unit tests (in src/)
-cargo test --lib
-
-# Run only integration tests
-cargo test --test integration_test
-
-# Run tests with output shown
-cargo test -- --nocapture
+cargo test -- --format=terse 2>&1 # Run all tests
+cargo test <test_name>            # Run a single test by name
+cargo test test_create_basic      # Example: run one specific test
+cargo test create                 # Run tests matching a pattern
+cargo test --lib                  # Run only unit tests (in src/)
+cargo test --test integration_test # Run a specific integration test file
+cargo test -- --nocapture         # Run tests with stdout/stderr shown
 ```
 
 ## Lint and Format
 
 ```bash
-# Format code (uses rustfmt)
-cargo fmt
-
-# Check formatting without changing files
-cargo fmt --check
-
-# Lint code (uses clippy)
-cargo clippy
-
-# Lint with all warnings as errors
-cargo clippy -- -D warnings
+cargo fmt                         # Format code
+cargo fmt --check                 # Check formatting without changes
+cargo clippy                      # Lint code
+cargo clippy -- -D warnings       # Lint with all warnings as errors
 ```
+
+**Note:** There is no CI for pull requests — only a release workflow (`.github/workflows/release.yml`) runs on `v*` tags. Always run `cargo test -- --format=terse 2>&1` and `cargo clippy -- -D warnings` locally before considering work complete.
+
+## Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `JANUS_ROOT` | Override the `.janus` directory location |
+| `JANUS_SKIP_EMBEDDINGS=1` | Skip eager embedding generation (used in tests and environments where semantic search is not needed) |
+| `GITHUB_TOKEN` | GitHub API token; takes precedence over config file value |
+| `LINEAR_API_KEY` | Linear API key; takes precedence over config file value |
+| `RUST_LOG` | Standard tracing log level (e.g., `debug`, `info`) |
 
 ## Project Structure
 
 ```
 src/
-├── main.rs              # CLI entry point, clap command definitions
-├── lib.rs               # Library exports
-├── error.rs             # Custom error types using thiserror
-├── parser.rs            # Ticket file parsing (YAML frontmatter + Markdown)
-├── ticket.rs            # Ticket operations (separated into focused types)
-│   ├── TicketLocator    # Path + ID resolution
-│   ├── TicketFile       # File I/O operations
-│   ├── TicketContent    # Parsing/serialization
-│   ├── TicketEditor     # Field manipulation with hooks
-│   ├── Ticket           # Facade for common operations
-│   └── TicketRepository # Orchestrates components
-├── types.rs             # Core types (TicketStatus, TicketType, etc.)
-├── utils.rs             # Utility functions (ID generation, dates)
-├── plan/                # Plan module
-│   ├── mod.rs           # Plan operations (find, read, write, status computation)
-│   ├── parser.rs        # Plan file parsing and serialization
-│   └── types.rs         # Plan data structures (PlanMetadata, Phase, etc.)
-├── store/               # In-memory store module
-│   ├── mod.rs           # TicketStore struct, singleton, init
-│   ├── queries.rs       # Query operations (search, filter, lookup)
-│   ├── embeddings.rs    # Content-addressable embedding storage
-│   ├── search.rs        # Brute-force cosine similarity search
-│   └── watcher.rs       # Filesystem watcher (notify-based)
-└── commands/
-    ├── mod.rs           # Command module exports and shared formatting
-    ├── add_note.rs      # Add timestamped notes
-    ├── create.rs        # Create new tickets
-    ├── cache.rs         # Cache CLI commands
-    ├── dep.rs           # Dependency management
-    ├── edit.rs          # Open ticket in $EDITOR
-    ├── link.rs          # Link management
-    ├── ls.rs            # List commands (ls with --ready, --blocked, --closed flags)
-    ├── plan.rs          # Plan CLI commands
-    ├── query.rs         # JSON query output
-    ├── show.rs          # Display ticket details
-    └── status.rs        # Status transitions
-tests/                   # Integration tests
+├── main.rs              # CLI entry point, tokio async runtime bootstrap
+├── lib.rs               # Library root, module declarations, public re-exports
+├── cli.rs               # Clap CLI definitions (Cli struct, Commands enum, all subcommand args)
+├── config.rs            # App config (.janus/config.yaml): remote, auth, hooks, search settings
+├── entity.rs            # Entity trait: shared async interface for Ticket and Plan (find/read/write/delete)
+├── error.rs             # JanusError enum (100+ variants) and Result<T> type alias
+├── graph.rs             # Dependency graph algorithms, circular dependency detection
+├── locator.rs           # Path utilities: ticket_path(id), plan_path(id)
+├── macros.rs            # enum_display_fromstr! macro for Display/FromStr on enums
+├── next.rs              # NextWorkFinder: optimal work queue from priorities/deps/status
+├── parser.rs            # Document parsing: YAML frontmatter extraction, markdown section manipulation
+├── paths.rs             # Thread-local Janus root override (JanusRootGuard) for test isolation
+├── types.rs             # Core domain types: TicketId, PlanId, TicketStatus, TicketType, TicketPriority,
+│                        #   TicketSize, TicketMetadata, TicketData, ArrayField, path helpers
+├── ticket/              # Ticket domain module
+│   ├── mod.rs           #   Ticket struct (facade), Entity trait impl, re-exports
+│   ├── builder.rs       #   TicketBuilder: builder pattern for creating tickets
+│   ├── locator.rs       #   TicketLocator: find tickets by partial ID (store/filesystem lookup)
+│   ├── manipulator.rs   #   FrontmatterEditor, update_field, remove_field, extract_body
+│   ├── parser.rs        #   parse(): ticket file parsing (YAML frontmatter + markdown body)
+│   ├── repository.rs    #   get_all_tickets, build_ticket_map, find_tickets (bulk operations)
+│   └── validate.rs      #   enforce_filename_authority
+├── plan/                # Plan domain module
+│   ├── mod.rs           #   Plan facade, get_all_plans, ensure_plans_dir, generate_plan_id
+│   ├── types.rs         #   PlanMetadata, Phase, PlanSection, PlanStatus, importable types
+│   └── parser/          #   Plan file parsing and serialization
+│       ├── import.rs    #     parse_importable_plan() for markdown plan import
+│       ├── sections.rs  #     Structured vs free-form section parsing
+│       └── serialize.rs #     Plan file serialization (write back to disk)
+├── store/               # In-memory store (DashMap-backed, global singleton)
+│   ├── mod.rs           #   TicketStore struct, OnceCell singleton, init from disk
+│   ├── queries.rs       #   Search, filter, lookup, ticket map, depth computation
+│   ├── embeddings.rs    #   Content-addressable embedding storage (.bin files, blake3-keyed)
+│   ├── search.rs        #   Brute-force cosine similarity semantic search
+│   └── watcher.rs       #   Filesystem watcher (notify, 150ms debounce) for live updates
+├── commands/            # CLI command implementations (50+ cmd_* functions)
+│   ├── mod.rs           #   Module root, re-exports, shared CommandOutput type
+│   ├── add_note.rs      #   cmd_add_note
+│   ├── board.rs         #   cmd_board (TUI kanban)
+│   ├── cache.rs         #   cmd_cache_status, cmd_cache_prune, cmd_cache_rebuild
+│   ├── config.rs        #   cmd_config_show, cmd_config_set, cmd_config_get
+│   ├── create.rs        #   cmd_create
+│   ├── dep.rs           #   cmd_dep_add, cmd_dep_remove, cmd_dep_tree
+│   ├── dep_tree.rs      #   TreeBuilder helper (JSON/text dependency trees)
+│   ├── doctor.rs        #   cmd_doctor
+│   ├── edit.rs          #   cmd_edit (open in $EDITOR)
+│   ├── events.rs        #   cmd_events_prune
+│   ├── graph.rs         #   cmd_graph
+│   ├── graph/           #   Graph submodule (builder, filter, formatter, types)
+│   ├── hook.rs          #   cmd_hook_list, cmd_hook_install, cmd_hook_run, cmd_hook_enable/disable/log
+│   ├── interactive.rs   #   Interactive prompting helpers (yes/no confirmation)
+│   ├── link.rs          #   cmd_link_add, cmd_link_remove
+│   ├── ls.rs            #   cmd_ls_with_options
+│   ├── next.rs          #   cmd_next
+│   ├── query.rs         #   cmd_query (JSON output)
+│   ├── remote_browse.rs #   cmd_remote_browse
+│   ├── search.rs        #   cmd_search (semantic search)
+│   ├── set.rs           #   cmd_set
+│   ├── show.rs          #   cmd_show
+│   ├── status.rs        #   cmd_start, cmd_close, cmd_reopen, cmd_status
+│   ├── view.rs          #   cmd_view (TUI issue browser)
+│   ├── plan/            #   Plan subcommands (create, delete, rename, edit, import, show_import_spec,
+│   │                    #     ls, next, add/remove phase, reorder, show, status,
+│   │                    #     add/remove/move ticket, verify, formatters)
+│   └── sync/            #   Remote sync (cmd_adopt, cmd_push, cmd_remote_link, cmd_sync,
+│                        #     sanitize, sync_executor, sync_strategy, sync_ui)
+├── display/             # CLI output formatting (colored badges, JSON output, formatters)
+├── embedding/           # Embedding model for semantic search (fastembed)
+├── events/              # Event logging (.janus/events.ndjson): Event, EventType, Actor
+├── fs/                  # File I/O: atomic write (temp file + rename), read, delete with hooks
+├── hooks/               # Hook execution: pre/post scripts via .janus/hooks/, timeout handling
+├── mcp/                 # MCP server (Model Context Protocol via STDIO); grep for register_tool!
+├── query/               # Query builder: composable ticket filters and sorting
+├── remote/              # Remote sync: GitHub (octocrab) and Linear (cynic GraphQL) providers
+├── status/              # Status computation for tickets and plans: predicates, aggregation
+├── tui/                 # Terminal UI (see src/tui/**/*.rs): view, board, remote manager,
+│                        #   components, services, theme, navigation, search, state, etc.
+└── utils/               # Utilities: ID generation, IO helpers, text processing, dir scanning, validation
 ```
 
 ## Code Style Guidelines
@@ -123,31 +154,27 @@ tests/                   # Integration tests
 
 - **Functions/Variables**: `snake_case` (e.g., `find_ticket_by_id`, `ticket_type`)
 - **Types/Enums**: `PascalCase` (e.g., `TicketStatus`, `TicketMetadata`)
-- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `TICKETS_DIR`, `VALID_TYPES`)
+- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `VALID_STATUSES`, `EMBEDDING_MODEL_NAME`)
 - **Modules**: `snake_case` (e.g., `add_note`, `status`)
 
 #### Type Naming: Infrastructure vs Domain
 
-The codebase intentionally uses different naming prefixes to distinguish infrastructure concerns from domain concepts:
+- **"Janus" prefix**: Infrastructure types not tied to a specific domain concept:
+  - `JanusError` — main error enum, `JanusRootGuard` — test path isolation, `JanusTools` — MCP adapter
+- **Domain terms**: Business logic concepts:
+  - `TicketStore`, `TicketMetadata`, `TicketBuilder` — ticket domain
+  - `PlanMetadata`, `Phase`, `PlanStatus` — plan domain
 
-- **"Janus" prefix**: Used for infrastructure-level types that are project-specific but not domain-specific:
-  - `JanusError` — The main error enum for the application
-  - `JanusRootGuard` — Guards access to the Janus root directory
-  - These represent project-level infrastructure concerns that would exist even with a different domain
-
-- **Domain terms**: Used for types representing business logic concepts:
-  - `TicketStore`, `TicketMetadata` — Core domain entities
-  - `PlanMetadata`, `Phase` — Domain-specific structures
-  - These map directly to the business domain (tickets, plans, etc.)
-
-This distinction is intentional and clarifies which types are generic infrastructure (`Janus*`) versus domain-specific (`Ticket*`, `Plan*`). When adding new types, consider whether it represents a project-level concern (use `Janus`) or a business domain concept (use the domain term).
+When adding new types, use `Janus*` for project-level infrastructure and domain terms (`Ticket*`, `Plan*`) for business concepts.
 
 ### Imports
 
-Order imports as follows:
+Preferred import ordering uses three groups separated by blank lines:
 1. Standard library (`std::`)
 2. External crates (alphabetically)
-3. Crate-internal (`crate::`)
+3. Crate-internal (`crate::`, `super::`)
+
+Note: This convention is not uniformly enforced across all files, but new code should follow it.
 
 ```rust
 use std::fs;
@@ -162,17 +189,16 @@ use crate::types::TicketMetadata;
 
 ### Error Handling
 
-- Use `thiserror` for custom error types
-- Define all errors in `src/error.rs` as `JanusError` enum variants
-- Use `Result<T>` type alias which maps to `Result<T, JanusError>`
-- Use `?` operator for error propagation
-- Wrap external errors with `#[from]` for automatic conversion
+- All errors defined in `src/error.rs` as `JanusError` enum variants (100+ variants)
+- Type alias: `pub type Result<T> = std::result::Result<T, JanusError>;`
+- Use `?` operator for propagation, `#[from]` for automatic conversion from external errors
+- Add new error variants to `JanusError` rather than using ad-hoc error strings
 
 ```rust
 #[derive(Error, Debug)]
 pub enum JanusError {
     #[error("ticket '{0}' not found")]
-    TicketNotFound(String),
+    TicketNotFound(TicketId),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -181,103 +207,84 @@ pub enum JanusError {
 
 ### Types
 
-- Use `Option<T>` for optional fields
 - Use `#[derive(Debug, Clone, Serialize, Deserialize)]` for data types
-- Implement `Default` for types with sensible defaults
-- Implement `Display` and `FromStr` for enum types
-- Use `#[serde(rename_all = "lowercase")]` for enum serialization
+- Implement `Default` for types with sensible defaults (e.g., `TicketStatus` → `New`, `TicketType` → `Task`, `TicketPriority` → `P2`)
+- Use `enum_display_fromstr!` macro (in `src/macros.rs`) for enum `Display`/`FromStr` implementations
+- Use `#[serde(rename_all = "lowercase")]` or `#[serde(rename_all = "snake_case")]` for enum serialization
+- Use `#[serde(skip_serializing_if = "Option::is_none")]` for optional metadata fields
+- Use `#[serde(transparent)]` for newtype wrappers (`TicketId`, `PlanId`)
 
 ### Command Functions
 
-- Command functions are named `cmd_<name>` (e.g., `cmd_create`, `cmd_show`)
-- Commands return `Result<()>` and print output to stdout
-- Error messages go to stderr via the error type
+- Named `cmd_<name>` (e.g., `cmd_create`, `cmd_show`, `cmd_ls_with_options`)
+- Most are `pub async fn ... -> Result<()>` (a few sync commands exist for simple operations)
 - Each command lives in its own file under `src/commands/`
+- Commands print output to stdout; errors propagate via `Result`
 
-### Tests
+### Async Patterns
 
-- Unit tests use `#[cfg(test)]` modules within source files
-- Integration tests spawn the compiled binary in temp directories
-- Use `tempfile` crate for isolated test environments
-- Test function names: `test_<feature>_<scenario>`
-- **Important**: Tests that make changes to the filesystem (create/delete files, databases, etc.) must use the `#[serial]` attribute from the `serial_test` crate to prevent race conditions when running tests in parallel
+- **Finding entities is async**: `Ticket::find()`, `Plan::find()` require store initialization (`get_or_init_store().await`)
+- **File I/O is sync by default**: `ticket.read()`, `ticket.write()`, `ticket.update_field()` use `std::fs`
+- **Async file I/O variants exist**: `read_async()`, `read_content_async()`, `delete_async()` use `tokio::fs`
+- **Repository functions are async**: `get_all_tickets()`, `build_ticket_map()` go through the store
+- **Entity trait**: Shared interface (`find`, `read`, `write`, `delete`, `exists`) implemented by both `Ticket` and `Plan`
+
+## Test Conventions
+
+### Unit Tests
+
+- Inline `#[cfg(test)]` modules within source files (90+ test modules across the codebase)
+- Test function names: `test_<feature>_<scenario>` (e.g., `test_parse_basic_ticket`, `test_search_tickets_case_insensitive`)
+- Use `#[serial]` from `serial_test` **only** for tests that touch process-global singletons (`OnceCell`/`OnceLock`), not for general filesystem tests
+
+### Integration Tests
+
+- Located in `tests/` with subdirectories: `commands/`, `plan/`, `hooks/`, `cache/`
+- Use `JanusTest` helper (in `tests/common/mod.rs`) which creates a `TempDir` and spawns the `janus` binary as a subprocess
+- Isolation via temp directories — `#[serial]` is NOT needed for integration tests
+- Test subprocess invocations set `JANUS_SKIP_EMBEDDINGS=1` to avoid slow embedding operations
+- Shared helpers in `tests/common/`: `fixtures.rs` (fixture paths), `mock_data.rs` (test data builders), `snapshot.rs` (TUI snapshot filters), `tui_helpers.rs` (key event constructors)
 
 ```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serial_test::serial;
-
-    #[test]
-    fn test_parse_basic_ticket() {
-        // test implementation
-    }
-
-    #[test]
-    #[serial]  // Required for tests that modify filesystem
-    fn test_cache_initialization() {
-        // test implementation that creates files/databases
-    }
-}
+// Typical integration test pattern
+let janus = JanusTest::new();
+let output = janus.run_success(&["create", "Test ticket", "--prefix", "t"]);
+assert!(output.contains("t-"));
 ```
 
-## In-Memory Store Architecture
+### Snapshot Testing
 
-Janus uses an in-memory store backed by `DashMap` concurrent hash maps. There is no external database. Key points:
+- Uses `insta` with filters for TUI view model and board state tests
+- Snapshot files in `tests/snapshots/`
+- Snapshot filter infrastructure in `tests/common/snapshot.rs` can normalize timestamps → `[TIMESTAMP]` and durations → `[TIME]` for text-based snapshots via `tui_snapshot_filters()`
+- Named snapshots: `insta::assert_debug_snapshot!("name", data)`
 
-- **Store Location**: In-process memory (no database files)
-- **Initialization**: On process start, all tickets and plans are read from `.janus/items/` and `.janus/plans/` into `DashMap` structures
-- **Singleton**: The store is a global `OnceCell<TicketStore>` initialized once per process via `get_or_init_store()`
-- **Concurrency**: `DashMap` provides lock-free concurrent reads and fine-grained locking for writes
-- **Filesystem Watcher**: For long-running processes (TUI, MCP server), a `notify`-based watcher monitors `.janus/` recursively, debounces events (150ms), and updates the store automatically
-- **Source of truth**: Markdown files remain authoritative; the store is always derived from them
-- **Embeddings**: Stored as `.bin` files in `.janus/embeddings/`, keyed by `blake3(file_path + ":" + mtime_ns)` for content-addressable cache invalidation
+### Dev Dependencies
 
-### Cache Commands
-
-```bash
-janus cache status   # Show embedding coverage, model name, dir size
-janus cache prune    # Delete orphaned embedding files
-janus cache rebuild  # Regenerate all embeddings
-```
-
-### Store Implementation
-
-The store is implemented in:
-- `src/store/mod.rs` - `TicketStore` struct, singleton, initialization from disk
-- `src/store/queries.rs` - Query operations (search, filter, lookup, ticket map)
-- `src/store/embeddings.rs` - Content-addressable embedding storage (save/load/prune `.bin` files)
-- `src/store/search.rs` - Brute-force cosine similarity semantic search
-- `src/store/watcher.rs` - Filesystem watcher with debounced event processing
-- `src/commands/cache.rs` - CLI command handlers for cache status/prune/rebuild
-
-The store:
-1. Reads all `.md` files from `.janus/items/` and `.janus/plans/` at startup
-2. Parses YAML frontmatter + markdown body into `TicketMetadata` / `PlanMetadata`
-3. Populates `DashMap<String, TicketMetadata>` and `DashMap<String, PlanMetadata>`
-4. Loads pre-computed embeddings from `.janus/embeddings/` for semantic search
-5. Optionally starts a filesystem watcher for live updates
+- `tempfile` — isolated temp directories
+- `serial_test` — `#[serial]` for global singleton tests
+- `insta` — snapshot testing with filters
 
 ## Domain Concepts
 
 - **Ticket statuses**: `new`, `next`, `in_progress`, `complete`, `cancelled`
 - **Ticket types**: `bug`, `feature`, `task`, `epic`, `chore`
 - **Priorities**: 0-4 (P0 highest, P4 lowest, default P2)
-- **Sizes**: `xsmall`, `small`, `medium`, `large`, `xlarge` (for complexity estimation)
+- **Sizes**: `xsmall`/`xs`, `small`/`s`, `medium`/`m`, `large`/`l`, `xlarge`/`xl`
 - **Dependencies**: Tickets can depend on other tickets (blocks/blocked-by)
 - **Links**: Bidirectional relationships between tickets
 - **Parent/Child**: Hierarchical ticket organization
-- **ID Format**: `<prefix>-<4-char-hash>` (e.g., `j-a1b2`)
-- **Plans**: Hierarchical structures organizing tickets toward a larger goal
-- **Plan ID Format**: `plan-<4-char-hash>` (e.g., `plan-a1b2`)
+- **ID Format**: `<prefix>-<hash>` where hash is 4-8 chars (e.g., `j-a1b2`)
+- **Plan ID Format**: `plan-<hash>` where hash is 4-8 chars (e.g., `plan-a1b2`)
 
 ## Ticket File Format
 
-Tickets are stored as `.md` files in `.janus/` with YAML frontmatter:
+Tickets are stored as `.md` files in `.janus/items/` with YAML frontmatter:
 
 ```markdown
 ---
 id: j-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440000
 status: new
 deps: []
 links: []
@@ -285,144 +292,72 @@ created: 2024-01-01T00:00:00Z
 type: task
 priority: 2
 size: medium
+external-ref:              # optional, external reference string
+remote:                    # optional, e.g. "github:owner/repo/123" or "linear:org/PROJ-123"
+parent:                    # optional, TicketId for hierarchical organization
+spawned-from:              # optional, TicketId of parent that spawned this ticket
+spawn-context:             # optional, why this ticket was spawned from the parent
+depth:                     # optional, auto-computed decomposition depth (0 = root)
+triaged:                   # optional, bool indicating whether ticket has been triaged
 ---
 # Ticket Title
 
 Description and body content...
 ```
 
-## Common Patterns
+## In-Memory Store Architecture
 
-### Finding Tickets by ID
+Janus uses an in-memory store backed by `DashMap` concurrent hash maps. Key points:
 
-```rust
-// Async API (preferred)
-let ticket = Ticket::find("partial-id").await?;
-let metadata = ticket.read()?;
-```
-
-### Updating Ticket Fields
-
-```rust
-ticket.update_field("status", "complete")?;
-ticket.add_to_array_field("deps", "other-id")?;
-```
-
-### Getting All Tickets
-
-```rust
-// Async API (preferred)
-let tickets = get_all_tickets().await;
-let ticket_map = build_ticket_map().await; // HashMap<String, TicketMetadata>
-```
+- **Singleton**: Global `OnceCell<TicketStore>` initialized once per process via `get_or_init_store()`
+- **Initialization**: Reads all `.md` files from `.janus/items/` and `.janus/plans/` into `DashMap` structures, loads pre-computed embeddings from `.janus/embeddings/`
+- **Concurrency**: `DashMap` provides lock-free concurrent reads and fine-grained locking for writes
+- **Filesystem Watcher**: For long-running processes (TUI, MCP server), a `notify`-based watcher monitors `.janus/` recursively, debounces events (150ms), and updates the store
+- **Source of truth**: Markdown files remain authoritative; the store is always derived from them
+- **Embeddings**: Stored as `.bin` files in `.janus/embeddings/`, keyed by `blake3(repo_relative_path + ":" + mtime_ns)` for content-addressable cache invalidation (paths are made relative to the janus root and normalized to forward slashes before hashing)
 
 ## Plans
 
-Plans are hierarchical structures organizing tickets toward a larger goal. They are stored in `.janus/plans/` as Markdown files with YAML frontmatter.
+Plans organize tickets toward a larger goal. Stored in `.janus/plans/` as Markdown files.
 
 **Plan types:**
-- **Simple Plan**: Direct sequence of tickets (has `## Tickets` section)
-- **Phased Plan**: Sequence of phases, each with tickets (has `## Phase N: Name` sections)
+- **Simple Plan**: Direct sequence of tickets (`## Tickets` section)
+- **Phased Plan**: Phases each containing tickets (`## Phase N: Name` sections)
 
-**Plan status computation** (derived from constituent tickets, never stored):
-- All `complete` → `complete`
-- All `cancelled` → `cancelled`  
-- Mixed `complete`/`cancelled` → `complete`
-- All `new` or `next` → `new`
-- Otherwise → `in_progress`
+**Plan status** (derived from constituent tickets, never stored):
+- All `complete` → `complete`; all `cancelled` → `cancelled`; mixed `complete`/`cancelled` → `complete`
+- All `new` or `next` → `new`; otherwise → `in_progress`
 
-**Section types in plan files:**
-- **Structured**: `## Acceptance Criteria`, `## Tickets`, `## Phase N: Name` → parsed into data structures
-- **Free-form**: Any other H2 (e.g., `## Overview`) → preserved verbatim
-
-### Working with Plans in Code
+**Section types:**
+- **Structured**: `## Acceptance Criteria`, `## Tickets`, `## Phase N: Name` → parsed into data
+- **Free-form**: Any other H2 → preserved verbatim
 
 ```rust
-use crate::plan::{Plan, compute_plan_status, get_all_plans};
-use crate::plan::types::{PlanMetadata, Phase, PlanSection};
-
-// Find and read a plan
 let plan = Plan::find("partial-id").await?;
 let metadata = plan.read()?;
-
-// Check plan type
-if metadata.is_phased() {
-    for phase in metadata.phases() {
-        println!("Phase {}: {}", phase.number, phase.name);
-    }
-}
-
-// Get all tickets in a plan
 let all_tickets = metadata.all_tickets();
-
-// Compute plan status
-let ticket_map = build_ticket_map().await;
 let status = compute_plan_status(&metadata, &ticket_map);
-println!("Progress: {}", status.progress_string()); // e.g., "5/12 (41%)"
-
-// Get all plans
-let plans = get_all_plans().await;
 ```
 
-### Plan Import
+## Hooks
 
-The plan import feature (`src/commands/plan.rs`: `cmd_plan_import`) parses markdown documents and creates plans with tickets. Key implementation details:
+Hooks are scripts in `.janus/hooks/` that run in response to mutations. Configured via `.janus/config.yaml` under the `hooks` key. There are 9 hook events: `ticket_created`, `ticket_updated`, `plan_created`, `plan_updated`, `plan_deleted`, `pre_write`, `post_write`, `pre_delete`, `post_delete`. Pre-hooks (`pre_write`, `pre_delete`) can abort operations by returning non-zero exit codes; post-hook failures are logged but do not abort. Hook scripts receive context via environment variables (`JANUS_EVENT`, `JANUS_ITEM_TYPE`, `JANUS_ITEM_ID`, `JANUS_FILE_PATH`, `JANUS_FIELD_NAME`, `JANUS_OLD_VALUE`, `JANUS_NEW_VALUE`, `JANUS_ROOT`). See `src/hooks/types.rs` for `HookEvent` and `HookContext`. Installable recipes are in `hook_recipes/`.
 
-- **Parser**: `parse_importable_plan()` in `src/plan/parser.rs` handles document parsing
-- **Types**: `ImportablePlan`, `ImportablePhase`, `ImportableTask` in `src/plan/types.rs`
-- **Validation errors**: Use `JanusError::ImportFailed` with descriptive `issues` vector
-- **Format spec**: Embedded in `PLAN_FORMAT_SPEC` constant, shown via `janus plan import-spec`
+## Event Logging
 
-```rust
-use crate::plan::{parse_importable_plan, ImportablePlan};
+All mutations are logged as NDJSON to `.janus/events.ndjson` (appended with `O_APPEND` for atomicity; failures are non-fatal). Each record includes `timestamp`, `event_type`, `entity_type`, `entity_id`, `actor`, and `data`. The 3 actor types are `cli`, `mcp`, `hook` (see `src/events/types.rs` for `EventType` and `Actor` enums). When adding new mutations, call the appropriate event log helper (e.g., `log_ticket_created()`, `log_status_changed()`, `log_field_updated()`) from `src/events/`.
 
-let plan = parse_importable_plan(&content)?;
-println!("Tasks: {}", plan.task_count());
-```
+## MCP Server
 
-## TUI Component Organization
+The MCP server (`src/mcp/`) exposes Janus functionality to AI agents via STDIO transport. Tools are registered using the `register_tool!` macro in `src/mcp/tools.rs`, which handles argument extraction, deserialization, error wrapping, and result formatting. Grep for `register_tool!` to see all registered tools. To add a new tool:
 
-### Shared Components
+1. Define a request struct with `schemars::JsonSchema` + `Deserialize`
+2. Implement a `_impl` method on `JanusTools` that takes `Parameters<RequestType>`
+3. Register it with `register_tool!(router, "name", "description", RequestType, method_name, optional_args_bool)`
+4. Log the mutation event with `Actor::Mcp`
 
-The TUI uses a set of reusable components in `src/tui/components/`:
+Resources (static and template-based) are defined in `src/mcp/resources.rs`.
 
-- **SearchBox / InlineSearchBox** - Single-line text input using iocraft's `TextInput`
-- **Select** - Cycle through enum values (status, type, priority)
-- **TicketCard** - Compact ticket display
-- **TicketDetail** - Full ticket info with scrollable body (read-only)
-- **TicketList** - Left pane list view
-- **Toast** - Error/success notifications
-- **TextViewer** - Read-only multiline text viewer with scroll indicators
-- **TextEditor** - Editable multiline text input with full cursor support
+## Additional Documentation
 
-### Component Patterns
-
-#### Multi-line Text Display
-
-For showing read-only multiline text with scroll indicators:
-
-```rust
-TextViewer(
-    text: content,
-    scroll_offset: scroll_state,
-    has_focus: false,
-    placeholder: None,      // Optional
-)
-```
-
-#### Multi-line Text Editing
-
-For editing multiline text with full cursor support:
-
-```rust
-TextEditor(
-    value: text_state,
-    has_focus: focused_field.get() == EditField::Body,
-)
-```
-
-**Note**: TextEditor uses iocraft's `TextInput(multiline: true)` which provides:
-- Full cursor positioning (insert/delete anywhere)
-- Arrow key navigation
-- Automatic scrolling
-- No vim-style j/k support (use arrows)
+The `docs/` directory contains detailed user-facing documentation: `commands.md`, `hooks.md`, `mcp.md`, `plans.md`, `remote-sync.md`, `semantic-search.md`, `tui.md`, and more. `DEVELOPMENT.md` covers the release process.
