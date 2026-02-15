@@ -162,9 +162,10 @@ pub fn filter_tickets(tickets: &[TicketMetadata], query: &str) -> Vec<FilteredTi
         &fuzzy_query,
         |ticket| {
             format!(
-                "{} {} {}",
+                "{} {} {} {}",
                 ticket.id.as_deref().unwrap_or(""),
                 ticket.title.as_deref().unwrap_or(""),
+                ticket.status.map(|s| s.to_string()).unwrap_or_default(),
                 ticket
                     .ticket_type
                     .map(|t| t.to_string())

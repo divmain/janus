@@ -82,7 +82,7 @@ fn ticket_metadata_from_document(frontmatter_raw: &str, body: &str) -> Result<Ti
         title: extract_title(body),
         completion_summary: extract_section(body, "completion summary")?,
         file_path: None,
-        body: None,
+        body: Some(body.to_string()),
     };
 
     Ok(metadata)
