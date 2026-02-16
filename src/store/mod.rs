@@ -218,13 +218,13 @@ impl TicketStore {
         // Load tickets
         let items_dir = tickets_items_dir();
         if tokio_fs::try_exists(&items_dir).await.unwrap_or(false) {
-            store.load_tickets_from_dir_async(&items_dir).await;
+            store.load_tickets_from_dir(&items_dir).await;
         }
 
         // Load plans
         let p_dir = plans_dir();
         if tokio_fs::try_exists(&p_dir).await.unwrap_or(false) {
-            store.load_plans_from_dir_async(&p_dir).await;
+            store.load_plans_from_dir(&p_dir).await;
         }
 
         // Load embeddings (requires tickets to be loaded first)
@@ -235,111 +235,8 @@ impl TicketStore {
         Ok(store)
     }
 
-    /// Generic function to load entities from a directory into the store.
-    ///
-    /// This function abstracts the common logic for loading both tickets and plans
-    /// from markdown files, eliminating code duplication between `load_tickets_from_dir`
-    /// and `load_plans_from_dir`.
-    ///
-    /// # Type Parameters
-    ///
-    /// - `T`: The entity metadata type (e.g., `TicketMetadata`, `PlanMetadata`)
-    /// - `F`: The parser function type
-    ///
-    /// # Arguments
-    ///
-    /// - `dir`: The directory to scan for `.md` files
-    /// - `entity_name`: Name of the entity type (for error messages: "ticket" or "plan")
-    /// - `parser`: Function to parse file content into the entity type
-    /// - `insert`: Function to insert the parsed entity into the appropriate DashMap
-    fn load_entities_from_dir<T, F>(
-        &self,
-        dir: &Path,
-        entity_name: &str,
-        parser: F,
-        mut insert: impl FnMut(T),
-    ) where
-        T: EntityMetadata,
-        F: Fn(&str) -> crate::error::Result<T>,
-    {
-        let entries = match std::fs::read_dir(dir) {
-            Ok(entries) => entries,
-            Err(e) => {
-                self.init_warnings.add(InitWarning {
-                    file_path: Some(dir.to_path_buf()),
-                    message: format!("Failed to read {entity_name}s directory: {e}"),
-                    entity_type: entity_name.to_string(),
-                });
-                return;
-            }
-        };
-
-        for entry in entries.filter_map(|entry| match entry {
-            Ok(e) => Some(e),
-            Err(e) => {
-                self.init_warnings.add(InitWarning {
-                    file_path: Some(dir.to_path_buf()),
-                    message: format!("Failed to read directory entry: {e}"),
-                    entity_type: entity_name.to_string(),
-                });
-                None
-            }
-        }) {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "md") {
-                match std::fs::read_to_string(&path) {
-                    Ok(content) => match parser(&content) {
-                        Ok(mut metadata) => {
-                            if let Some(stem) = path.file_stem() {
-                                let stem_str = stem.to_string_lossy();
-                                match metadata.id() {
-                                    Some(frontmatter_id) if frontmatter_id != stem_str.as_ref() => {
-                                        self.init_warnings.add(InitWarning {
-                                            file_path: Some(path.clone()),
-                                            message: format!(
-                                                "ID mismatch: frontmatter ID '{frontmatter_id}' doesn't match filename '{stem_str}'. Using filename as authoritative ID to ensure filesystem consistency."
-                                            ),
-                                            entity_type: entity_name.to_string(),
-                                        });
-                                        metadata.set_id(stem_str.to_string());
-                                    }
-                                    None => {
-                                        metadata.set_id(stem_str.to_string());
-                                    }
-                                    Some(_) => {
-                                        // IDs match, no action needed
-                                    }
-                                }
-                            }
-                            metadata.set_file_path(path);
-                            if metadata.id().is_some() {
-                                insert(metadata);
-                            }
-                        }
-                        Err(e) => {
-                            self.init_warnings.add(InitWarning {
-                                file_path: Some(path.clone()),
-                                message: format!("Failed to parse {entity_name} file: {e}"),
-                                entity_type: entity_name.to_string(),
-                            });
-                        }
-                    },
-                    Err(e) => {
-                        self.init_warnings.add(InitWarning {
-                            file_path: Some(path.clone()),
-                            message: format!("Failed to read {entity_name} file: {e}"),
-                            entity_type: entity_name.to_string(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
     /// Generic async function to load entities from a directory into the store.
-    ///
-    /// Async version of `load_entities_from_dir` using tokio::fs for file I/O.
-    async fn load_entities_from_dir_async<T, F>(
+    async fn load_entities_from_dir<T, F>(
         &self,
         dir: &Path,
         entity_name: &str,
@@ -414,50 +311,22 @@ impl TicketStore {
     }
 
     /// Load all ticket files from a directory into the store.
-    fn load_tickets_from_dir(&self, dir: &Path) {
+    async fn load_tickets_from_dir(&self, dir: &Path) {
         self.load_entities_from_dir(dir, "ticket", parse_ticket, |metadata: TicketMetadata| {
             if let Some(id) = metadata.id.clone() {
                 self.tickets.insert(id.to_string(), metadata);
             }
-        });
-    }
-
-    /// Load all ticket files from a directory into the store (async version).
-    async fn load_tickets_from_dir_async(&self, dir: &Path) {
-        self.load_entities_from_dir_async(
-            dir,
-            "ticket",
-            parse_ticket,
-            |metadata: TicketMetadata| {
-                if let Some(id) = metadata.id.clone() {
-                    self.tickets.insert(id.to_string(), metadata);
-                }
-            },
-        )
+        })
         .await;
     }
 
     /// Load all plan files from a directory into the store.
-    fn load_plans_from_dir(&self, dir: &Path) {
+    async fn load_plans_from_dir(&self, dir: &Path) {
         self.load_entities_from_dir(dir, "plan", parse_plan_content, |metadata: PlanMetadata| {
             if let Some(id) = metadata.id.clone() {
                 self.plans.insert(id.to_string(), metadata);
             }
-        });
-    }
-
-    /// Load all plan files from a directory into the store (async version).
-    async fn load_plans_from_dir_async(&self, dir: &Path) {
-        self.load_entities_from_dir_async(
-            dir,
-            "plan",
-            parse_plan_content,
-            |metadata: PlanMetadata| {
-                if let Some(id) = metadata.id.clone() {
-                    self.plans.insert(id.to_string(), metadata);
-                }
-            },
-        )
+        })
         .await;
     }
 
