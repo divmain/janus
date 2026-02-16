@@ -249,6 +249,7 @@ impl<'a> NextWorkFinder<'a> {
         };
 
         let mut result = Vec::new();
+        let mut result_set = HashSet::new();
         let mut stack = vec![start_id];
         let mut local_visited = HashSet::new();
 
@@ -262,7 +263,7 @@ impl<'a> NextWorkFinder<'a> {
                 for dep_id in &current_ticket.deps {
                     let dep_id_str = dep_id.as_ref();
                     // Skip if already in result or globally visited
-                    if result.iter().any(|(id, _)| id == dep_id_str)
+                    if result_set.contains(dep_id_str)
                         || visited.contains(dep_id_str)
                         || local_visited.contains(dep_id_str)
                     {
@@ -273,6 +274,7 @@ impl<'a> NextWorkFinder<'a> {
                         if self.is_ready(dep) {
                             // This dependency is ready - add to result with the original target
                             result.push((dep_id_str.to_string(), target_id.to_string()));
+                            result_set.insert(dep_id_str.to_string());
                         } else if matches!(
                             dep.status,
                             Some(TicketStatus::New) | Some(TicketStatus::Next)
@@ -322,8 +324,9 @@ impl<'a> NextWorkFinder<'a> {
     fn detect_cycle(&self, ticket_id: &str) -> Option<Vec<String>> {
         let mut visited = HashSet::new();
         let mut path = Vec::new();
+        let mut path_set = HashSet::new();
 
-        self.detect_cycle_dfs(ticket_id, &mut visited, &mut path)
+        self.detect_cycle_dfs(ticket_id, &mut visited, &mut path, &mut path_set)
     }
 
     fn detect_cycle_dfs(
@@ -331,8 +334,9 @@ impl<'a> NextWorkFinder<'a> {
         ticket_id: &str,
         visited: &mut HashSet<String>,
         path: &mut Vec<String>,
+        path_set: &mut HashSet<String>,
     ) -> Option<Vec<String>> {
-        if path.contains(&ticket_id.to_string()) {
+        if path_set.contains(ticket_id) {
             // Found a cycle - extract the cycle from the path
             let cycle_start = path.iter().position(|p| p == ticket_id).unwrap();
             let mut cycle = path[cycle_start..].to_vec();
@@ -346,16 +350,18 @@ impl<'a> NextWorkFinder<'a> {
 
         visited.insert(ticket_id.to_string());
         path.push(ticket_id.to_string());
+        path_set.insert(ticket_id.to_string());
 
         if let Some(ticket) = self.ticket_map.get(ticket_id) {
             for dep_id in &ticket.deps {
-                if let Some(cycle) = self.detect_cycle_dfs(dep_id, visited, path) {
+                if let Some(cycle) = self.detect_cycle_dfs(dep_id, visited, path, path_set) {
                     return Some(cycle);
                 }
             }
         }
 
         path.pop();
+        path_set.remove(ticket_id);
         None
     }
 }
