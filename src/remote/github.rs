@@ -5,9 +5,10 @@ use octocrab::Octocrab;
 use secrecy::SecretBox;
 use std::fmt;
 
-use crate::error::{JanusError, Result};
+use tracing::warn;
 
 use crate::config::Config;
+use crate::error::{JanusError, Result};
 
 use super::{
     AsHttpError, IssueUpdates, PaginatedResult, RemoteIssue, RemoteProvider, RemoteQuery,
@@ -535,7 +536,10 @@ impl RemoteProvider for GitHubProvider {
                                 break;
                             }
                             Err(_) => {
-                                // Partial failure - return what we have
+                                warn!(
+                                    "Pagination failed, returning partial results for {} issues",
+                                    all_issues.len()
+                                );
                                 break;
                             }
                         }
@@ -711,7 +715,10 @@ impl RemoteProvider for GitHubProvider {
                                 break;
                             }
                             Err(_) => {
-                                // Partial failure - return what we have
+                                warn!(
+                                    "Pagination failed, returning partial results for {} issues",
+                                    all_issues.len()
+                                );
                                 has_more = true; // Assume there might be more
                                 break;
                             }
