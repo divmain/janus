@@ -3,7 +3,6 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
-use crate::events::log_status_changed;
 use crate::ticket::Ticket;
 use crate::types::TicketStatus;
 
@@ -19,38 +18,14 @@ async fn update_status_with_summary(
     summary: Option<&str>,
     output: OutputOptions,
 ) -> Result<()> {
-    let (ticket, metadata) = Ticket::find_and_read(id).await?;
-    let previous_status = metadata.status.unwrap_or_default();
+    let ticket = Ticket::find(id).await?;
 
-    ticket.update_field("status", &new_status.to_string())?;
-
-    // Write completion summary if provided
-    if let Some(summary_text) = summary {
-        ticket.write_completion_summary(summary_text)?;
-    }
-
-    // Get completion summary for event logging (either provided or from file)
-    let summary_for_log = if let Some(s) = summary {
-        Some(s.to_string())
-    } else if new_status.is_terminal() {
-        // Re-read to get completion summary if present
-        ticket.read().ok().and_then(|m| m.completion_summary)
-    } else {
-        None
-    };
-
-    // Log the event
-    log_status_changed(
-        &ticket.id,
-        &previous_status.to_string(),
-        &new_status.to_string(),
-        summary_for_log.as_deref(),
-    );
+    // Use the domain method that handles status updates and event logging
+    ticket.update_status(new_status, summary)?;
 
     CommandOutput::new(json!({
         "id": ticket.id,
         "action": "status_changed",
-        "previous_status": previous_status.to_string(),
         "new_status": new_status.to_string(),
     }))
     .with_text(format!("Updated {} -> {}", ticket.id, new_status))

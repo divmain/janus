@@ -3,7 +3,6 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
-use crate::events::log_field_updated;
 use crate::ticket::Ticket;
 
 use crate::types::{TicketPriority, TicketSize, TicketStatus, TicketType};
@@ -219,8 +218,7 @@ pub async fn cmd_set(
 
     let (prev_display, new_display) = format_field_change(previous_value.as_deref(), &new_value);
 
-    // Log the event
-    log_field_updated(&ticket.id, field, previous_value.as_deref(), &new_value);
+    // Event logging is now handled in Ticket::update_field/remove_field at the domain layer
 
     CommandOutput::new(json!({
         "id": ticket.id,

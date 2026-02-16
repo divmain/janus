@@ -3,7 +3,6 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
-use crate::events::{log_link_added, log_link_removed};
 use crate::ticket::{ArrayField, Ticket};
 
 /// Add symmetric links between tickets
@@ -47,8 +46,7 @@ pub async fn cmd_link_add(ids: &[String], output: OutputOptions) -> Result<()> {
 
                 if ticket.add_to_array_field(ArrayField::Links, &other.id)? {
                     added_count += 1;
-                    // Log the event for each link added
-                    log_link_added(&ticket.id, &other.id);
+                    // Event logging is now handled in Ticket::add_to_array_field at the domain layer
                 }
             }
         }
@@ -112,12 +110,12 @@ pub async fn cmd_link_remove(id1: &str, id2: &str, output: OutputOptions) -> Res
     if ticket1.remove_from_array_field(ArrayField::Links, &ticket2.id)? {
         removed_count += 1;
         removed_1_to_2 = true;
-        log_link_removed(&ticket1.id, &ticket2.id);
+        // Event logging is now handled in Ticket::remove_from_array_field at the domain layer
     }
     if ticket2.remove_from_array_field(ArrayField::Links, &ticket1.id)? {
         removed_count += 1;
         removed_2_to_1 = true;
-        log_link_removed(&ticket2.id, &ticket1.id);
+        // Event logging is now handled in Ticket::remove_from_array_field at the domain layer
     }
 
     if removed_count == 0 {

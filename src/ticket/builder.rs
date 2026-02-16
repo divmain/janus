@@ -1,4 +1,5 @@
 use crate::error::{JanusError, Result};
+use crate::events::log_ticket_created;
 use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use crate::types::{
     EntityType, TicketPriority, TicketSize, TicketStatus, TicketType, tickets_items_dir,
@@ -187,6 +188,9 @@ impl TicketBuilder {
         let ticket_type = self.ticket_type.unwrap_or_default();
         let priority = self.priority.unwrap_or_default();
 
+        // Clone values needed for event logging before moving into frontmatter_data
+        let spawned_from_for_log = self.spawned_from.clone();
+
         let frontmatter_data = TicketFrontmatter {
             id: id.clone(),
             uuid,
@@ -244,6 +248,15 @@ impl TicketBuilder {
         } else {
             crate::fs::write_file_atomic(&file_path, &content)?;
         }
+
+        // Log the event at the domain layer (write boundary)
+        log_ticket_created(
+            &id,
+            &self.title,
+            &ticket_type.to_string(),
+            priority.as_num(),
+            spawned_from_for_log.as_deref(),
+        );
 
         Ok((id, file_path))
     }

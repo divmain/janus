@@ -160,10 +160,14 @@ impl Ticket {
     /// Update a field in the ticket's frontmatter.
     ///
     /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
+    /// Emits a `FieldUpdated` event after successful write.
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
         validate_field_name(field, "update")?;
 
         let raw_content = self.read_content()?;
+
+        // Capture old value for event logging
+        let old_value = self.extract_field_value_for_logging(&raw_content, field);
 
         let context = self
             .hook_context()
@@ -177,16 +181,25 @@ impl Ticket {
                 self.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
-        )
+        )?;
+
+        // Log the field update event at the domain layer (write boundary)
+        crate::events::log_field_updated(&self.id, field, old_value.as_deref(), value);
+
+        Ok(())
     }
 
     /// Remove a field from the ticket's frontmatter.
     ///
     /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
+    /// Emits a `FieldUpdated` event after successful write.
     pub fn remove_field(&self, field: &str) -> Result<()> {
         validate_field_name(field, "remove")?;
 
         let raw_content = self.read_content()?;
+
+        // Capture old value for event logging
+        let old_value = self.extract_field_value_for_logging(&raw_content, field);
 
         let context = self.hook_context().with_field_name(field);
 
@@ -197,14 +210,106 @@ impl Ticket {
                 self.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
-        )
+        )?;
+
+        // Log the field removal event at the domain layer (write boundary)
+        crate::events::log_field_updated(&self.id, field, old_value.as_deref(), "");
+
+        Ok(())
+    }
+
+    /// Update the status field with optional completion summary.
+    ///
+    /// This is a specialized method for status changes that emits a `StatusChanged`
+    /// event instead of the generic `FieldUpdated` event. If a completion summary
+    /// is provided and the new status is terminal (complete/cancelled), the summary
+    /// will be written to the ticket file.
+    pub fn update_status(
+        &self,
+        new_status: crate::types::TicketStatus,
+        summary: Option<&str>,
+    ) -> Result<()> {
+        let raw_content = self.read_content()?;
+
+        // Capture old status for event logging
+        let old_status = if let Ok(metadata) = parse(&raw_content) {
+            metadata.status.map(|s| s.to_string())
+        } else {
+            None
+        };
+
+        let new_status_str = new_status.to_string();
+
+        // Update the status field
+        let context = self
+            .hook_context()
+            .with_field_name("status")
+            .with_new_value(&new_status_str);
+
+        crate::fs::with_write_hooks(
+            context,
+            || {
+                let new_content = update_field_in_content(&raw_content, "status", &new_status_str)?;
+                self.write_raw(&new_content)
+            },
+            Some(HookEvent::TicketUpdated),
+        )?;
+
+        // Write completion summary if provided
+        if let Some(summary_text) = summary {
+            self.write_completion_summary(summary_text)?;
+        }
+
+        // Get completion summary for event logging
+        let summary_for_log = if summary.is_some() {
+            summary.map(|s| s.to_string())
+        } else if new_status.is_terminal() {
+            // Try to read existing completion summary
+            self.read().ok().and_then(|m| m.completion_summary)
+        } else {
+            None
+        };
+
+        // Log the status change event at the domain layer (write boundary)
+        crate::events::log_status_changed(
+            &self.id,
+            old_status.as_deref().unwrap_or("new"),
+            &new_status_str,
+            summary_for_log.as_deref(),
+        );
+
+        Ok(())
+    }
+
+    /// Extract a field value from raw content for event logging purposes.
+    /// Returns None if the field doesn't exist or can't be parsed.
+    fn extract_field_value_for_logging(&self, raw_content: &str, field: &str) -> Option<String> {
+        // Try to parse the frontmatter and extract the field value
+        if let Ok(metadata) = parse(raw_content) {
+            match field {
+                "status" => metadata.status.map(|s| s.to_string()),
+                "type" => metadata.ticket_type.map(|t| t.to_string()),
+                "priority" => metadata.priority.map(|p| p.to_string()),
+                "parent" => metadata.parent.as_ref().map(|p| p.to_string()),
+                "external_ref" => metadata.external_ref.clone(),
+                "size" => metadata.size.map(|s| s.to_string()),
+                "remote" => metadata.remote.clone(),
+                "triaged" => metadata.triaged.map(|t| t.to_string()),
+                "deps" => Some(format!("{:?}", metadata.deps)),
+                "links" => Some(format!("{:?}", metadata.links)),
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     /// Add a value to an array field (deps or links).
+    /// Emits `DependencyAdded` or `LinkAdded` event after successful write.
     pub fn add_to_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
         let field_str = field.as_str();
         let ticket_id = TicketId::new(value)?;
-        self.mutate_array_field(
+        let added = self.mutate_array_field(
             field_str,
             value,
             |current| !current.contains(&ticket_id),
@@ -213,14 +318,29 @@ impl Ticket {
                 new_array.push(ticket_id.clone());
                 new_array
             },
-        )
+        )?;
+
+        // Log the event if the value was actually added
+        if added {
+            match field {
+                ArrayField::Deps => {
+                    crate::events::log_dependency_added(&self.id, ticket_id.as_ref())
+                }
+                ArrayField::Links => {
+                    crate::events::log_link_added(&self.id, ticket_id.as_ref())
+                }
+            }
+        }
+
+        Ok(added)
     }
 
     /// Remove a value from an array field (deps or links).
+    /// Emits `DependencyRemoved` or `LinkRemoved` event after successful write.
     pub fn remove_from_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
         let field_str = field.as_str();
         let ticket_id = TicketId::new(value)?;
-        self.mutate_array_field(
+        let removed = self.mutate_array_field(
             field_str,
             value,
             |current| current.contains(&ticket_id),
@@ -231,7 +351,21 @@ impl Ticket {
                     .cloned()
                     .collect()
             },
-        )
+        )?;
+
+        // Log the event if the value was actually removed
+        if removed {
+            match field {
+                ArrayField::Deps => {
+                    crate::events::log_dependency_removed(&self.id, ticket_id.as_ref())
+                }
+                ArrayField::Links => {
+                    crate::events::log_link_removed(&self.id, ticket_id.as_ref())
+                }
+            }
+        }
+
+        Ok(removed)
     }
 
     /// Extract an array field from raw content with fallback to tolerant parsing.

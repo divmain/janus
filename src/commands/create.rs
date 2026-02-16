@@ -3,7 +3,6 @@ use serde_json::json;
 use super::CommandOutput;
 use crate::cli::OutputOptions;
 use crate::error::{JanusError, Result};
-use crate::events::log_ticket_created;
 use crate::ticket::{Ticket, TicketBuilder, parse_ticket};
 use crate::types::{TicketPriority, TicketSize, TicketType, tickets_items_dir};
 
@@ -105,14 +104,7 @@ pub async fn cmd_create(opts: CreateOptions) -> Result<()> {
         .run_hooks(true)
         .build()?;
 
-    // Log the event
-    log_ticket_created(
-        &id,
-        &title,
-        &ticket_type.to_string(),
-        priority.as_num(),
-        resolved_spawned_from.as_deref(),
-    );
+    // Event logging is now handled in TicketBuilder::build() at the domain layer
 
     CommandOutput::new(json!({
         "id": id,

@@ -6,7 +6,6 @@ use super::CommandOutput;
 use crate::cli::OutputOptions;
 use crate::commands::dep_tree::{DepthCalculator, TreeBuilder, TreeFormatter};
 use crate::error::{JanusError, Result};
-use crate::events::{log_dependency_added, log_dependency_removed};
 use crate::graph::{check_circular_dependency, resolve_id_from_map};
 use crate::ticket::{ArrayField, Ticket, build_ticket_map};
 
@@ -29,10 +28,7 @@ pub async fn cmd_dep_add(id: &str, dep_id: &str, output: OutputOptions) -> Resul
     let added = ticket.add_to_array_field(ArrayField::Deps, &dep_ticket.id)?;
     let metadata = ticket.read()?;
 
-    // Log the event if dependency was actually added
-    if added {
-        log_dependency_added(&ticket.id, &dep_ticket.id);
-    }
+    // Event logging is now handled in Ticket::add_to_array_field at the domain layer
 
     let text = if added {
         format!("Added dependency: {} -> {}", ticket.id, dep_ticket.id)
@@ -62,8 +58,7 @@ pub async fn cmd_dep_remove(id: &str, dep_id: &str, output: OutputOptions) -> Re
         return Err(JanusError::DependencyNotFound(dep_ticket.id.clone()));
     }
 
-    // Log the event
-    log_dependency_removed(&ticket.id, &dep_ticket.id);
+    // Event logging is now handled in Ticket::remove_from_array_field at the domain layer
 
     let metadata = ticket.read()?;
     CommandOutput::new(json!({
