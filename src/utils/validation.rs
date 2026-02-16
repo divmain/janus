@@ -226,61 +226,8 @@ pub fn validate_optional_summary(summary: Option<&str>) -> std::result::Result<(
     Ok(())
 }
 
-// ============================================================================
-// Remote Title Sanitization
-// ============================================================================
-
 /// Maximum length for remote titles after sanitization.
 pub const MAX_REMOTE_TITLE_LENGTH: usize = 200;
-
-/// Sanitize a remote issue title for use as a local ticket title.
-///
-/// Unlike validation functions, this sanitizes the title by:
-/// - Stripping control characters (except spaces and tabs)
-/// - Collapsing all whitespace to single spaces
-/// - Trimming leading/trailing whitespace
-/// - Truncating to MAX_REMOTE_TITLE_LENGTH characters
-///
-/// # Arguments
-/// * `title` - The remote title to sanitize
-///
-/// # Returns
-/// * `Ok(String)` containing the sanitized title
-/// * `Err(JanusError::InvalidInput)` if title is empty after sanitization
-pub fn sanitize_remote_title(title: &str) -> Result<String> {
-    let sanitized: String = title
-        .chars()
-        .map(|c| {
-            if c.is_control() && c != '\t' {
-                // Replace control characters (including newlines) with space
-                ' '
-            } else {
-                c
-            }
-        })
-        .collect();
-
-    // Collapse all whitespace runs to single spaces
-    let sanitized = sanitized.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    if sanitized.is_empty() {
-        return Err(JanusError::InvalidInput(
-            "remote issue title is empty after sanitization".to_string(),
-        ));
-    }
-
-    // Truncate to max length on a char boundary
-    let truncated = if sanitized.chars().count() > MAX_REMOTE_TITLE_LENGTH {
-        sanitized
-            .chars()
-            .take(MAX_REMOTE_TITLE_LENGTH)
-            .collect::<String>()
-    } else {
-        sanitized
-    };
-
-    Ok(truncated)
-}
 
 #[cfg(test)]
 mod tests {
@@ -517,58 +464,5 @@ mod tests {
         let long_summary = "a".repeat(MAX_DESCRIPTION_LENGTH + 1);
         let result = validate_optional_summary(Some(&long_summary));
         assert!(result.is_err());
-    }
-
-    // ============================================================================
-    // Remote Title Sanitization Tests
-    // ============================================================================
-
-    #[test]
-    fn test_sanitize_remote_title_normal() {
-        let result = sanitize_remote_title("Fix the login bug").unwrap();
-        assert_eq!(result, "Fix the login bug");
-    }
-
-    #[test]
-    fn test_sanitize_remote_title_strips_newlines() {
-        let result = sanitize_remote_title("Title with\nnewline").unwrap();
-        assert_eq!(result, "Title with newline");
-    }
-
-    #[test]
-    fn test_sanitize_remote_title_collapses_whitespace() {
-        let result = sanitize_remote_title("Title   with   extra   spaces").unwrap();
-        assert_eq!(result, "Title with extra spaces");
-    }
-
-    #[test]
-    fn test_sanitize_remote_title_trims() {
-        let result = sanitize_remote_title("  padded title  ").unwrap();
-        assert_eq!(result, "padded title");
-    }
-
-    #[test]
-    fn test_sanitize_remote_title_truncates_long_title() {
-        let long_title = "a".repeat(300);
-        let result = sanitize_remote_title(&long_title).unwrap();
-        assert_eq!(result.chars().count(), MAX_REMOTE_TITLE_LENGTH);
-    }
-
-    #[test]
-    fn test_sanitize_remote_title_rejects_empty() {
-        let result = sanitize_remote_title("");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_sanitize_remote_title_rejects_only_whitespace() {
-        let result = sanitize_remote_title("   \n\t  ");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_sanitize_remote_title_preserves_unicode() {
-        let result = sanitize_remote_title("修复登录错误 🐛").unwrap();
-        assert_eq!(result, "修复登录错误 🐛");
     }
 }
