@@ -56,6 +56,28 @@ impl CreateTicketRequest {
             }
         }
 
+        // Validate ticket_type if provided
+        if let Some(ref t) = self.ticket_type {
+            if t.parse::<crate::types::TicketType>().is_err() {
+                return Err(format!(
+                    "Invalid ticket_type '{}'. Valid values: {}",
+                    t,
+                    crate::types::TicketType::ALL_STRINGS.join(", ")
+                ));
+            }
+        }
+
+        // Validate size if provided
+        if let Some(ref s) = self.size {
+            if s.parse::<crate::types::TicketSize>().is_err() {
+                return Err(format!(
+                    "Invalid size '{}'. Valid values: {} (or aliases: xs, s, m, l, xl)",
+                    s,
+                    crate::types::TicketSize::ALL_STRINGS.join(", ")
+                ));
+            }
+        }
+
         if let Some(ref desc) = self.description {
             validate_description(desc, "Description")?;
         }
@@ -192,6 +214,39 @@ pub struct ListTicketsRequest {
         description = "Filter by size. Comma-separated list of: xsmall/xs, small/s, medium/m, large/l, xlarge/xl"
     )]
     pub size: Option<String>,
+}
+
+impl ListTicketsRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        // Validate ticket_type if provided
+        if let Some(ref t) = self.ticket_type {
+            if t.parse::<crate::types::TicketType>().is_err() {
+                return Err(format!(
+                    "Invalid ticket_type '{}'. Valid values: {}",
+                    t,
+                    crate::types::TicketType::ALL_STRINGS.join(", ")
+                ));
+            }
+        }
+
+        // Validate size if provided (comma-separated list)
+        if let Some(ref s) = self.size {
+            for size_str in s.split(',') {
+                let trimmed = size_str.trim();
+                if trimmed.parse::<crate::types::TicketSize>().is_err() {
+                    return Err(format!(
+                        "Invalid size '{}'. Valid values: {} (or aliases: xs, s, m, l, xl)",
+                        trimmed,
+                        crate::types::TicketSize::ALL_STRINGS.join(", ")
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Request parameters for showing a ticket

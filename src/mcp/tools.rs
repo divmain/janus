@@ -449,6 +449,8 @@ impl JanusTools {
             TicketQueryBuilder, TypeFilter,
         };
 
+        request.validate()?;
+
         let (tickets, _ticket_map) = get_all_tickets_with_map()
             .await
             .map_err(|e| format!("failed to load tickets: {e}"))?;
