@@ -8,6 +8,7 @@ use crate::error::{JanusError, Result};
 use crate::events::{log_phase_added, log_phase_removed};
 use crate::plan::Plan;
 use crate::plan::types::{Phase, PlanSection};
+use crate::utils::validation::validate_plan_title;
 
 /// Add a new phase to a plan
 ///
@@ -57,6 +58,7 @@ pub async fn cmd_plan_add_phase(
             + 1
     };
 
+    validate_plan_title(phase_name)?;
     let new_phase = Phase::new(next_number.to_string(), phase_name.to_string());
 
     // Find where to insert the phase
