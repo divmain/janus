@@ -314,7 +314,9 @@ impl JanusTools {
         let (id, _file_path) = builder.build().map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately
-        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&id).await;
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_ticket_in_store(&id).await;
+        }
 
         // Log the event with MCP actor
         let ticket_type = request.ticket_type.as_deref().unwrap_or("task");
@@ -361,8 +363,10 @@ impl JanusTools {
             .map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately (child and parent)
-        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&id).await;
-        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&parent.id).await;
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_ticket_in_store(&id).await;
+            store.refresh_ticket_in_store(&parent.id).await;
+        }
 
         // Log with MCP actor
         crate::events::log_ticket_created(
@@ -407,7 +411,9 @@ impl JanusTools {
             .map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately
-        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_ticket_in_store(&ticket.id).await;
+        }
 
         Ok(format!(
             "Updated **{}** status to {}",
@@ -433,7 +439,9 @@ impl JanusTools {
             .map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately
-        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_ticket_in_store(&ticket.id).await;
+        }
 
         let timestamp = iso_date();
         Ok(format!("Added note to **{}** at {}", ticket.id, timestamp))
@@ -658,7 +666,9 @@ impl JanusTools {
 
         if added {
             // Refresh the in-memory store immediately
-            crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
+            if let Ok(store) = get_or_init_store().await {
+                store.refresh_ticket_in_store(&ticket.id).await;
+            }
         }
 
         if added {
@@ -700,7 +710,9 @@ impl JanusTools {
         }
 
         // Refresh the in-memory store immediately
-        crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_ticket_in_store(&ticket.id).await;
+        }
 
         Ok(format!(
             "Removed dependency: **{}** no longer depends on **{}**",
@@ -762,7 +774,9 @@ impl JanusTools {
         plan.write(&content).map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately
-        crate::tui::repository::TicketRepository::refresh_plan_in_store(&plan.id).await;
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_plan_in_store(&plan.id).await;
+        }
 
         // Log with MCP actor using the helper function
         crate::events::log_ticket_added_to_plan(

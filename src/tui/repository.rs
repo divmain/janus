@@ -50,29 +50,11 @@ impl TicketRepository {
     /// so the in-memory store is immediately consistent before `load_tickets()`
     /// is called. The filesystem watcher provides eventual consistency for
     /// external changes, but direct mutations need immediate store updates.
+    ///
+    /// This delegates to `TicketStore::refresh_ticket_in_store`.
     pub async fn refresh_ticket_in_store(ticket_id: &str) {
-        let ticket = match crate::ticket::Ticket::find(ticket_id).await {
-            Ok(t) => t,
-            Err(e) => {
-                warn!(
-                    "Failed to find ticket '{}' for store refresh: {}",
-                    ticket_id, e
-                );
-                return;
-            }
-        };
-        let metadata = match ticket.read() {
-            Ok(m) => m,
-            Err(e) => {
-                warn!(
-                    "Failed to read ticket '{}' for store refresh: {}",
-                    ticket_id, e
-                );
-                return;
-            }
-        };
         match get_or_init_store().await {
-            Ok(store) => store.upsert_ticket(metadata),
+            Ok(store) => store.refresh_ticket_in_store(ticket_id).await,
             Err(e) => {
                 warn!("Failed to init store for ticket refresh: {}", e);
             }
@@ -84,23 +66,11 @@ impl TicketRepository {
     /// This is the plan equivalent of `refresh_ticket_in_store`. It should be
     /// called after a mutation writes plan changes to disk, so the in-memory
     /// store is immediately consistent.
+    ///
+    /// This delegates to `TicketStore::refresh_plan_in_store`.
     pub async fn refresh_plan_in_store(plan_id: &str) {
-        let plan = match crate::plan::Plan::find(plan_id).await {
-            Ok(p) => p,
-            Err(e) => {
-                warn!("Failed to find plan '{}' for store refresh: {}", plan_id, e);
-                return;
-            }
-        };
-        let metadata = match plan.read() {
-            Ok(m) => m,
-            Err(e) => {
-                warn!("Failed to read plan '{}' for store refresh: {}", plan_id, e);
-                return;
-            }
-        };
         match get_or_init_store().await {
-            Ok(store) => store.upsert_plan(metadata),
+            Ok(store) => store.refresh_plan_in_store(plan_id).await,
             Err(e) => {
                 warn!("Failed to init store for plan refresh: {}", e);
             }

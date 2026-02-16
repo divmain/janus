@@ -486,6 +486,61 @@ impl TicketStore {
     pub fn get_init_warnings(&self) -> InitWarnings {
         self.init_warnings.clone()
     }
+
+    /// Re-read a specific ticket from disk and upsert it into the store.
+    ///
+    /// This should be called after a mutation writes changes to disk,
+    /// so the in-memory store is immediately consistent before queries
+    /// are performed. The filesystem watcher provides eventual consistency for
+    /// external changes, but direct mutations need immediate store updates.
+    pub async fn refresh_ticket_in_store(&self, ticket_id: &str) {
+        let ticket = match crate::ticket::Ticket::find(ticket_id).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to find ticket '{}' for store refresh: {}",
+                    ticket_id,
+                    e
+                );
+                return;
+            }
+        };
+        let metadata = match ticket.read() {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to read ticket '{}' for store refresh: {}",
+                    ticket_id,
+                    e
+                );
+                return;
+            }
+        };
+        self.upsert_ticket(metadata);
+    }
+
+    /// Re-read a specific plan from disk and upsert it into the store.
+    ///
+    /// This is the plan equivalent of `refresh_ticket_in_store`. It should be
+    /// called after a mutation writes plan changes to disk, so the in-memory
+    /// store is immediately consistent.
+    pub async fn refresh_plan_in_store(&self, plan_id: &str) {
+        let plan = match crate::plan::Plan::find(plan_id).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("Failed to find plan '{}' for store refresh: {}", plan_id, e);
+                return;
+            }
+        };
+        let metadata = match plan.read() {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("Failed to read plan '{}' for store refresh: {}", plan_id, e);
+                return;
+            }
+        };
+        self.upsert_plan(metadata);
+    }
 }
 
 #[cfg(test)]
