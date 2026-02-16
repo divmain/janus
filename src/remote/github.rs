@@ -503,7 +503,19 @@ impl RemoteProvider for GitHubProvider {
 
                     // Fetch additional pages up to max_pages
                     while pages_fetched < max_pages {
-                        match client.get_page(&current_page.next).await {
+                        let next = current_page.next.clone();
+                        let page_result = super::execute_with_retry(
+                            || async {
+                                client
+                                    .get_page::<octocrab::models::issues::Issue>(&next)
+                                    .await
+                                    .map_err(GitHubError::from)
+                            },
+                            Some(timeout),
+                        )
+                        .await;
+
+                        match page_result {
                             Ok(Some(page)) => {
                                 pages_fetched += 1;
                                 all_issues.extend(
@@ -522,13 +534,8 @@ impl RemoteProvider for GitHubProvider {
                                 has_more = false;
                                 break;
                             }
-                            Err(e) => {
-                                // Partial failure - return what we have with warning
-                                eprintln!(
-                                    "Warning: Failed to fetch page {}: {}",
-                                    pages_fetched + 1,
-                                    e
-                                );
+                            Err(_) => {
+                                // Partial failure - return what we have
                                 break;
                             }
                         }
@@ -538,6 +545,14 @@ impl RemoteProvider for GitHubProvider {
                     if pages_fetched >= max_pages && current_page.next.is_some() {
                         has_more = true;
                         next_page_num = Some(max_pages + 1);
+                    }
+
+                    // Warn if we hit a limit
+                    if pages_fetched >= max_pages && has_more {
+                        eprintln!(
+                            "Warning: Reached max page limit ({}). Some issues may not be fetched.",
+                            max_pages
+                        );
                     }
 
                     Ok(PaginatedResult {
@@ -568,6 +583,7 @@ impl RemoteProvider for GitHubProvider {
             let repo = repo.to_string();
             let query_str = format!("repo:{owner}/{repo} is:issue {text}");
             let timeout = self.timeout;
+            let max_pages = query.max_pages.max(1); // At least 1 page
             let per_page = query.limit.min(100) as u8;
 
             let result = super::execute_with_retry(
@@ -618,21 +634,29 @@ impl RemoteProvider for GitHubProvider {
                         .collect();
 
                     let mut has_more = next_page_uri.is_some();
+                    let mut pages_fetched = 1u32;
 
-                    // For search, we fetch all pages (no max limit)
-                    // but be careful not to loop forever
-                    loop {
+                    // Fetch additional pages up to max_pages
+                    while pages_fetched < max_pages {
                         if next_page_uri.is_none() {
                             break;
                         }
 
-                        match client
-                            .get_page::<octocrab::models::issues::Issue>(&Some(
-                                next_page_uri.clone().unwrap(),
-                            ))
-                            .await
-                        {
+                        let next_uri = next_page_uri.clone();
+                        let page_result = super::execute_with_retry(
+                            || async {
+                                client
+                                    .get_page::<octocrab::models::issues::Issue>(&next_uri)
+                                    .await
+                                    .map_err(GitHubError::from)
+                            },
+                            Some(timeout),
+                        )
+                        .await;
+
+                        match page_result {
                             Ok(Some(page)) => {
+                                pages_fetched += 1;
                                 all_issues.extend(
                                     page.items
                                         .into_iter()
@@ -681,22 +705,25 @@ impl RemoteProvider for GitHubProvider {
 
                                 has_more = page.next.is_some();
                                 next_page_uri = page.next;
-
-                                if !has_more {
-                                    break;
-                                }
                             }
                             Ok(None) => {
                                 has_more = false;
                                 break;
                             }
-                            Err(e) => {
-                                // Partial failure in search - return what we have
-                                eprintln!("Warning: Search pagination failed: {e}");
+                            Err(_) => {
+                                // Partial failure - return what we have
                                 has_more = true; // Assume there might be more
                                 break;
                             }
                         }
+                    }
+
+                    // Warn if we hit a limit
+                    if pages_fetched >= max_pages && has_more {
+                        eprintln!(
+                            "Warning: Reached max page limit ({}). Some search results may not be fetched.",
+                            max_pages
+                        );
                     }
 
                     Ok(PaginatedResult {
