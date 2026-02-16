@@ -429,17 +429,18 @@ impl LinearProvider {
     /// Create a new Linear provider with an API key
     ///
     /// Configures HTTP client with 30s connect timeout and 60s total timeout.
-    pub fn new(api_key: &str) -> Self {
-        let client = build_linear_http_client().expect("Failed to create HTTP client");
+    /// Returns an error if HTTP client initialization fails.
+    pub fn new(api_key: &str) -> Result<Self> {
+        let client = build_linear_http_client()?;
 
-        Self {
+        Ok(Self {
             client,
             api_key: SecretBox::new(Box::new(api_key.to_string())),
             default_org: None,
             default_team_id: None,
             issue_id_cache: Arc::new(RwLock::new(HashMap::new())),
             timeout: std::time::Duration::from_secs(30),
-        }
+        })
     }
 
     /// Set default organization for creating issues
@@ -1007,7 +1008,7 @@ mod tests {
 
     #[test]
     fn test_priority_conversion() {
-        let provider = LinearProvider::new("test_api_key");
+        let provider = LinearProvider::new("test_api_key").unwrap();
 
         let test_issue = Issue {
             id: cynic::Id::new("test-id"),
@@ -1073,7 +1074,7 @@ mod tests {
 
     #[test]
     fn test_priority_out_of_range() {
-        let provider = LinearProvider::new("test_api_key");
+        let provider = LinearProvider::new("test_api_key").unwrap();
 
         let test_issue_p_negative = Issue {
             id: cynic::Id::new("test-id"),
@@ -1098,7 +1099,7 @@ mod tests {
 
     #[test]
     fn test_status_conversion() {
-        let provider = LinearProvider::new("test_api_key");
+        let provider = LinearProvider::new("test_api_key").unwrap();
 
         let completed_issue = Issue {
             id: cynic::Id::new("test-id"),
@@ -1166,7 +1167,7 @@ mod tests {
 
     #[test]
     fn test_issue_without_description() {
-        let provider = LinearProvider::new("test_api_key");
+        let provider = LinearProvider::new("test_api_key").unwrap();
 
         let test_issue = Issue {
             id: cynic::Id::new("test-id"),
@@ -1190,7 +1191,7 @@ mod tests {
 
     #[test]
     fn test_issue_without_assignee() {
-        let provider = LinearProvider::new("test_api_key");
+        let provider = LinearProvider::new("test_api_key").unwrap();
 
         let test_issue = Issue {
             id: cynic::Id::new("test-id"),
@@ -1214,7 +1215,7 @@ mod tests {
 
     #[test]
     fn test_issue_fields() {
-        let provider = LinearProvider::new("test_api_key");
+        let provider = LinearProvider::new("test_api_key").unwrap();
 
         let test_issue = Issue {
             id: cynic::Id::new("test-id"),
