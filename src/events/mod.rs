@@ -195,6 +195,7 @@ pub fn log_ticket_created(
     ticket_type: &str,
     priority: u8,
     spawned_from: Option<&str>,
+    actor: Option<Actor>,
 ) {
     let mut data = serde_json::json!({
         "title": title,
@@ -206,16 +207,25 @@ pub fn log_ticket_created(
         data["spawned_from"] = serde_json::Value::String(parent_id.to_string());
     }
 
-    log_event(Event::new(
-        EventType::TicketCreated,
-        EntityType::Ticket,
-        ticket_id,
-        data,
-    ));
+    log_event(
+        Event::new(
+            EventType::TicketCreated,
+            EntityType::Ticket,
+            ticket_id,
+            data,
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a status change event
-pub fn log_status_changed(ticket_id: &str, from: &str, to: &str, summary: Option<&str>) {
+pub fn log_status_changed(
+    ticket_id: &str,
+    from: &str,
+    to: &str,
+    summary: Option<&str>,
+    actor: Option<Actor>,
+) {
     let mut data = serde_json::json!({
         "from": from,
         "to": to,
@@ -225,88 +235,115 @@ pub fn log_status_changed(ticket_id: &str, from: &str, to: &str, summary: Option
         data["summary"] = serde_json::Value::String(s.to_string());
     }
 
-    log_event(Event::new(
-        EventType::StatusChanged,
-        EntityType::Ticket,
-        ticket_id,
-        data,
-    ));
+    log_event(
+        Event::new(
+            EventType::StatusChanged,
+            EntityType::Ticket,
+            ticket_id,
+            data,
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a note added event
-pub fn log_note_added(ticket_id: &str, note_preview: &str) {
+pub fn log_note_added(ticket_id: &str, note_preview: &str, actor: Option<Actor>) {
     let preview = truncate_string(note_preview, 100);
 
-    log_event(Event::new(
-        EventType::NoteAdded,
-        EntityType::Ticket,
-        ticket_id,
-        serde_json::json!({
-            "content_preview": preview,
-        }),
-    ));
+    log_event(
+        Event::new(
+            EventType::NoteAdded,
+            EntityType::Ticket,
+            ticket_id,
+            serde_json::json!({
+                "content_preview": preview,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a field update event
-pub fn log_field_updated(ticket_id: &str, field: &str, old_value: Option<&str>, new_value: &str) {
-    log_event(Event::new(
-        EventType::FieldUpdated,
-        EntityType::Ticket,
-        ticket_id,
-        serde_json::json!({
-            "field": field,
-            "old_value": old_value,
-            "new_value": new_value,
-        }),
-    ));
+pub fn log_field_updated(
+    ticket_id: &str,
+    field: &str,
+    old_value: Option<&str>,
+    new_value: &str,
+    actor: Option<Actor>,
+) {
+    log_event(
+        Event::new(
+            EventType::FieldUpdated,
+            EntityType::Ticket,
+            ticket_id,
+            serde_json::json!({
+                "field": field,
+                "old_value": old_value,
+                "new_value": new_value,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a dependency added event
-pub fn log_dependency_added(ticket_id: &str, dep_id: &str) {
-    log_event(Event::new(
-        EventType::DependencyAdded,
-        EntityType::Ticket,
-        ticket_id,
-        serde_json::json!({
-            "dependency_id": dep_id,
-        }),
-    ));
+pub fn log_dependency_added(ticket_id: &str, dep_id: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::DependencyAdded,
+            EntityType::Ticket,
+            ticket_id,
+            serde_json::json!({
+                "dependency_id": dep_id,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a dependency removed event
-pub fn log_dependency_removed(ticket_id: &str, dep_id: &str) {
-    log_event(Event::new(
-        EventType::DependencyRemoved,
-        EntityType::Ticket,
-        ticket_id,
-        serde_json::json!({
-            "dependency_id": dep_id,
-        }),
-    ));
+pub fn log_dependency_removed(ticket_id: &str, dep_id: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::DependencyRemoved,
+            EntityType::Ticket,
+            ticket_id,
+            serde_json::json!({
+                "dependency_id": dep_id,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a link added event
-pub fn log_link_added(ticket_id: &str, linked_id: &str) {
-    log_event(Event::new(
-        EventType::LinkAdded,
-        EntityType::Ticket,
-        ticket_id,
-        serde_json::json!({
-            "linked_id": linked_id,
-        }),
-    ));
+pub fn log_link_added(ticket_id: &str, linked_id: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::LinkAdded,
+            EntityType::Ticket,
+            ticket_id,
+            serde_json::json!({
+                "linked_id": linked_id,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a link removed event
-pub fn log_link_removed(ticket_id: &str, linked_id: &str) {
-    log_event(Event::new(
-        EventType::LinkRemoved,
-        EntityType::Ticket,
-        ticket_id,
-        serde_json::json!({
-            "linked_id": linked_id,
-        }),
-    ));
+pub fn log_link_removed(ticket_id: &str, linked_id: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::LinkRemoved,
+            EntityType::Ticket,
+            ticket_id,
+            serde_json::json!({
+                "linked_id": linked_id,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a plan creation event
@@ -324,7 +361,12 @@ pub fn log_plan_created(plan_id: &str, title: &str, is_phased: bool, phases: &[S
 }
 
 /// Log a ticket added to plan event
-pub fn log_ticket_added_to_plan(plan_id: &str, ticket_id: &str, phase: Option<&str>) {
+pub fn log_ticket_added_to_plan(
+    plan_id: &str,
+    ticket_id: &str,
+    phase: Option<&str>,
+    actor: Option<Actor>,
+) {
     let mut data = serde_json::json!({
         "ticket_id": ticket_id,
     });
@@ -333,12 +375,15 @@ pub fn log_ticket_added_to_plan(plan_id: &str, ticket_id: &str, phase: Option<&s
         data["phase"] = serde_json::Value::String(p.to_string());
     }
 
-    log_event(Event::new(
-        EventType::TicketAddedToPlan,
-        EntityType::Plan,
-        plan_id,
-        data,
-    ));
+    log_event(
+        Event::new(
+            EventType::TicketAddedToPlan,
+            EntityType::Plan,
+            plan_id,
+            data,
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
 }
 
 /// Log a ticket removed from plan event
@@ -542,16 +587,16 @@ mod tests {
     fn test_helper_functions() {
         let (_temp, _guard) = setup_test_dir();
 
-        log_ticket_created("j-test", "Test ticket", "task", 2, None);
-        log_status_changed("j-test", "new", "complete", Some("Done!"));
-        log_note_added("j-test", "This is a note");
-        log_field_updated("j-test", "priority", Some("2"), "1");
-        log_dependency_added("j-test", "j-other");
-        log_dependency_removed("j-test", "j-other");
-        log_link_added("j-test", "j-linked");
-        log_link_removed("j-test", "j-linked");
+        log_ticket_created("j-test", "Test ticket", "task", 2, None, None);
+        log_status_changed("j-test", "new", "complete", Some("Done!"), None);
+        log_note_added("j-test", "This is a note", None);
+        log_field_updated("j-test", "priority", Some("2"), "1", None);
+        log_dependency_added("j-test", "j-other", None);
+        log_dependency_removed("j-test", "j-other", None);
+        log_link_added("j-test", "j-linked", None);
+        log_link_removed("j-test", "j-linked", None);
         log_plan_created("plan-1", "Test Plan", true, &["Phase 1".to_string()]);
-        log_ticket_added_to_plan("plan-1", "j-test", Some("Phase 1"));
+        log_ticket_added_to_plan("plan-1", "j-test", Some("Phase 1"), None);
         log_ticket_removed_from_plan("plan-1", "j-test", Some("Phase 1"));
         log_phase_added("plan-1", "2", "Phase 2");
         log_phase_removed("plan-1", "1", "Phase 1", 2);
@@ -625,7 +670,7 @@ mod tests {
     fn test_spawned_from_included() {
         let (_temp, _guard) = setup_test_dir();
 
-        log_ticket_created("j-child", "Child ticket", "task", 2, Some("j-parent"));
+        log_ticket_created("j-child", "Child ticket", "task", 2, Some("j-parent"), None);
 
         let events = read_events().unwrap();
         assert_eq!(events.len(), 1);
@@ -637,7 +682,7 @@ mod tests {
         let (_temp, _guard) = setup_test_dir();
 
         let long_note = "a".repeat(200);
-        log_note_added("j-test", &long_note);
+        log_note_added("j-test", &long_note, None);
 
         let events = read_events().unwrap();
         let preview = events[0].data["content_preview"].as_str().unwrap();

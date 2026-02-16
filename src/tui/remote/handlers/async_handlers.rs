@@ -6,7 +6,6 @@
 //! Factory functions accept `&mut Hooks` as their first parameter so they can
 //! call `hooks.use_async_handler()` internally.
 
-use futures::stream;
 use iocraft::hooks::UseAsyncHandler;
 use iocraft::prelude::{Handler, Hooks, State};
 

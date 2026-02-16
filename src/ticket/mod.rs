@@ -162,6 +162,19 @@ impl Ticket {
     /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
     /// Emits a `FieldUpdated` event after successful write.
     pub fn update_field(&self, field: &str, value: &str) -> Result<()> {
+        self.update_field_with_actor(field, value, None)
+    }
+
+    /// Update a field in the ticket's frontmatter with optional actor.
+    ///
+    /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
+    /// Emits a `FieldUpdated` event after successful write.
+    pub fn update_field_with_actor(
+        &self,
+        field: &str,
+        value: &str,
+        actor: Option<crate::events::Actor>,
+    ) -> Result<()> {
         validate_field_name(field, "update")?;
 
         let raw_content = self.read_content()?;
@@ -184,7 +197,7 @@ impl Ticket {
         )?;
 
         // Log the field update event at the domain layer (write boundary)
-        crate::events::log_field_updated(&self.id, field, old_value.as_deref(), value);
+        crate::events::log_field_updated(&self.id, field, old_value.as_deref(), value, actor);
 
         Ok(())
     }
@@ -194,6 +207,18 @@ impl Ticket {
     /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
     /// Emits a `FieldUpdated` event after successful write.
     pub fn remove_field(&self, field: &str) -> Result<()> {
+        self.remove_field_with_actor(field, None)
+    }
+
+    /// Remove a field from the ticket's frontmatter with optional actor.
+    ///
+    /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
+    /// Emits a `FieldUpdated` event after successful write.
+    pub fn remove_field_with_actor(
+        &self,
+        field: &str,
+        actor: Option<crate::events::Actor>,
+    ) -> Result<()> {
         validate_field_name(field, "remove")?;
 
         let raw_content = self.read_content()?;
@@ -213,7 +238,7 @@ impl Ticket {
         )?;
 
         // Log the field removal event at the domain layer (write boundary)
-        crate::events::log_field_updated(&self.id, field, old_value.as_deref(), "");
+        crate::events::log_field_updated(&self.id, field, old_value.as_deref(), "", actor);
 
         Ok(())
     }
@@ -228,6 +253,21 @@ impl Ticket {
         &self,
         new_status: crate::types::TicketStatus,
         summary: Option<&str>,
+    ) -> Result<()> {
+        self.update_status_with_actor(new_status, summary, None)
+    }
+
+    /// Update the status field with optional completion summary and actor.
+    ///
+    /// This is a specialized method for status changes that emits a `StatusChanged`
+    /// event instead of the generic `FieldUpdated` event. If a completion summary
+    /// is provided and the new status is terminal (complete/cancelled), the summary
+    /// will be written to the ticket file.
+    pub fn update_status_with_actor(
+        &self,
+        new_status: crate::types::TicketStatus,
+        summary: Option<&str>,
+        actor: Option<crate::events::Actor>,
     ) -> Result<()> {
         let raw_content = self.read_content()?;
 
@@ -276,6 +316,7 @@ impl Ticket {
             old_status.as_deref().unwrap_or("new"),
             &new_status_str,
             summary_for_log.as_deref(),
+            actor,
         );
 
         Ok(())
@@ -307,6 +348,17 @@ impl Ticket {
     /// Add a value to an array field (deps or links).
     /// Emits `DependencyAdded` or `LinkAdded` event after successful write.
     pub fn add_to_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
+        self.add_to_array_field_with_actor(field, value, None)
+    }
+
+    /// Add a value to an array field (deps or links) with optional actor.
+    /// Emits `DependencyAdded` or `LinkAdded` event after successful write.
+    pub fn add_to_array_field_with_actor(
+        &self,
+        field: ArrayField,
+        value: &str,
+        actor: Option<crate::events::Actor>,
+    ) -> Result<bool> {
         let field_str = field.as_str();
         let ticket_id = TicketId::new(value)?;
         let added = self.mutate_array_field(
@@ -324,9 +376,11 @@ impl Ticket {
         if added {
             match field {
                 ArrayField::Deps => {
-                    crate::events::log_dependency_added(&self.id, ticket_id.as_ref())
+                    crate::events::log_dependency_added(&self.id, ticket_id.as_ref(), actor)
                 }
-                ArrayField::Links => crate::events::log_link_added(&self.id, ticket_id.as_ref()),
+                ArrayField::Links => {
+                    crate::events::log_link_added(&self.id, ticket_id.as_ref(), actor)
+                }
             }
         }
 
@@ -336,6 +390,17 @@ impl Ticket {
     /// Remove a value from an array field (deps or links).
     /// Emits `DependencyRemoved` or `LinkRemoved` event after successful write.
     pub fn remove_from_array_field(&self, field: ArrayField, value: &str) -> Result<bool> {
+        self.remove_from_array_field_with_actor(field, value, None)
+    }
+
+    /// Remove a value from an array field (deps or links) with optional actor.
+    /// Emits `DependencyRemoved` or `LinkRemoved` event after successful write.
+    pub fn remove_from_array_field_with_actor(
+        &self,
+        field: ArrayField,
+        value: &str,
+        actor: Option<crate::events::Actor>,
+    ) -> Result<bool> {
         let field_str = field.as_str();
         let ticket_id = TicketId::new(value)?;
         let removed = self.mutate_array_field(
@@ -355,9 +420,11 @@ impl Ticket {
         if removed {
             match field {
                 ArrayField::Deps => {
-                    crate::events::log_dependency_removed(&self.id, ticket_id.as_ref())
+                    crate::events::log_dependency_removed(&self.id, ticket_id.as_ref(), actor)
                 }
-                ArrayField::Links => crate::events::log_link_removed(&self.id, ticket_id.as_ref()),
+                ArrayField::Links => {
+                    crate::events::log_link_removed(&self.id, ticket_id.as_ref(), actor)
+                }
             }
         }
 
@@ -504,6 +571,24 @@ impl Ticket {
     ///
     /// Returns `JanusError::EmptyNote` if the note text is empty or only whitespace.
     pub fn add_note(&self, note_text: &str) -> Result<()> {
+        self.add_note_with_actor(note_text, None)
+    }
+
+    /// Add a timestamped note to the ticket with optional actor.
+    ///
+    /// Adds the note text under a "## Notes" section. If the section doesn't exist,
+    /// it will be created. The note is prefixed with a timestamp.
+    ///
+    /// Concurrent read-modify-write cycles follow last-writer-wins semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns `JanusError::EmptyNote` if the note text is empty or only whitespace.
+    pub fn add_note_with_actor(
+        &self,
+        note_text: &str,
+        actor: Option<crate::events::Actor>,
+    ) -> Result<()> {
         // Validate that note is not empty or only whitespace
         if note_text.trim().is_empty() {
             return Err(JanusError::EmptyNote);
@@ -519,7 +604,7 @@ impl Ticket {
         new_content.push_str(&format!("\n\n**{timestamp}**\n\n{note_text}"));
         self.write(&new_content)?;
 
-        crate::events::log_note_added(&self.id, note_text);
+        crate::events::log_note_added(&self.id, note_text, actor);
 
         Ok(())
     }

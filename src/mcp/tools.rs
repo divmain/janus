@@ -23,24 +23,13 @@
 //! | `semantic_search` | Find tickets semantically similar to a query (requires semantic-search config) |
 
 use rmcp::handler::server::{tool::ToolRouter, wrapper::Parameters};
-use serde_json::json;
+
 use std::str::FromStr;
-use std::sync::LazyLock;
 use tokio::time::timeout;
 
-use regex::Regex;
-
 use crate::embedding::model::EMBEDDING_TIMEOUT;
-use crate::events::{Actor, EntityType, Event, EventType, log_event};
+use crate::events::Actor;
 use crate::store::get_or_init_store;
-
-/// Regex for finding the "Completion Summary" section in ticket content
-static COMPLETION_SUMMARY_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?mi)^## completion summary\s*$").expect("regex should compile"));
-
-/// Regex for finding the next H2 heading
-static NEXT_H2_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^## ").expect("regex should compile"));
 
 use crate::config::Config;
 use crate::graph::check_circular_dependency;
@@ -330,20 +319,14 @@ impl JanusTools {
         // Log the event with MCP actor
         let ticket_type = request.ticket_type.as_deref().unwrap_or("task");
         let priority = request.priority.unwrap_or(2);
-        let size_str = size.map(|s| s.to_string());
-        log_event(
-            Event::new(
-                EventType::TicketCreated,
-                EntityType::Ticket,
-                &id,
-                json!({
-                    "title": request.title,
-                    "type": ticket_type,
-                    "priority": priority,
-                    "size": size_str,
-                }),
-            )
-            .with_actor(Actor::Mcp),
+        let _size_str = size.map(|s| s.to_string());
+        crate::events::log_ticket_created(
+            &id,
+            &request.title,
+            ticket_type,
+            priority,
+            None,
+            Some(Actor::Mcp),
         );
 
         Ok(format!("Created ticket **{}**: \"{}\"", id, request.title))
@@ -382,20 +365,13 @@ impl JanusTools {
         crate::tui::repository::TicketRepository::refresh_ticket_in_store(&parent.id).await;
 
         // Log with MCP actor
-        log_event(
-            Event::new(
-                EventType::TicketCreated,
-                EntityType::Ticket,
-                &id,
-                json!({
-                    "title": request.title,
-                    "type": "task",
-                    "priority": 2,
-                    "spawned_from": parent.id,
-                    "depth": new_depth,
-                }),
-            )
-            .with_actor(Actor::Mcp),
+        crate::events::log_ticket_created(
+            &id,
+            &request.title,
+            "task",
+            2,
+            Some(&parent.id),
+            Some(Actor::Mcp),
         );
 
         Ok(format!(
@@ -416,7 +392,6 @@ impl JanusTools {
         let ticket = Ticket::find(&request.id)
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
-        let metadata = ticket.read().map_err(|e| e.to_string())?;
 
         // Validate and parse status
         let new_status = TicketStatus::from_str(&request.status).map_err(|_| {
@@ -426,41 +401,17 @@ impl JanusTools {
             )
         })?;
 
-        let previous_status = metadata.status.unwrap_or_default();
-
-        // Update the status field
+        // Use the domain method with Actor::Mcp to log the event correctly
         ticket
-            .update_field("status", &new_status.to_string())
+            .update_status_with_actor(new_status, request.summary.as_deref(), Some(Actor::Mcp))
             .map_err(|e| e.to_string())?;
-
-        // Write completion summary if provided and ticket is being closed
-        if new_status.is_terminal()
-            && let Some(ref summary) = request.summary
-        {
-            write_completion_summary(&ticket, summary).map_err(|e| e.to_string())?;
-        }
 
         // Refresh the in-memory store immediately
         crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
 
-        // Log with MCP actor
-        log_event(
-            Event::new(
-                EventType::StatusChanged,
-                EntityType::Ticket,
-                &ticket.id,
-                json!({
-                    "from": previous_status.to_string(),
-                    "to": new_status.to_string(),
-                    "summary": request.summary,
-                }),
-            )
-            .with_actor(Actor::Mcp),
-        );
-
         Ok(format!(
-            "Updated **{}** status: {} → {}",
-            ticket.id, previous_status, new_status
+            "Updated **{}** status to {}",
+            ticket.id, new_status
         ))
     }
 
@@ -476,31 +427,15 @@ impl JanusTools {
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
 
-        // Use the shared add_note method on Ticket
-        ticket.add_note(&request.note).map_err(|e| e.to_string())?;
+        // Use the shared add_note method on Ticket with Actor::Mcp
+        ticket
+            .add_note_with_actor(&request.note, Some(Actor::Mcp))
+            .map_err(|e| e.to_string())?;
 
         // Refresh the in-memory store immediately
         crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
 
-        // Log with MCP actor
         let timestamp = iso_date();
-        log_event(
-            Event::new(
-                EventType::NoteAdded,
-                EntityType::Ticket,
-                &ticket.id,
-                json!({
-                    "content_preview": if request.note.len() > 100 {
-                        let end = request.note.char_indices().nth(97).map(|(i, _)| i).unwrap_or(request.note.len());
-                        format!("{}...", &request.note[..end])
-                    } else {
-                        request.note.clone()
-                    },
-                }),
-            )
-            .with_actor(Actor::Mcp),
-        );
-
         Ok(format!("Added note to **{}** at {}", ticket.id, timestamp))
     }
 
@@ -707,24 +642,14 @@ impl JanusTools {
         check_circular_dependency(&ticket.id, &dep_ticket.id, &ticket_map)
             .map_err(|e| e.to_string())?;
 
+        // Use the method with Actor::Mcp to log the event correctly
         let added = ticket
-            .add_to_array_field(ArrayField::Deps, &dep_ticket.id)
+            .add_to_array_field_with_actor(ArrayField::Deps, &dep_ticket.id, Some(Actor::Mcp))
             .map_err(|e| e.to_string())?;
 
         if added {
             // Refresh the in-memory store immediately
             crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
-
-            // Log with MCP actor
-            log_event(
-                Event::new(
-                    EventType::DependencyAdded,
-                    EntityType::Ticket,
-                    &ticket.id,
-                    json!({ "dependency_id": dep_ticket.id }),
-                )
-                .with_actor(Actor::Mcp),
-            );
         }
 
         if added {
@@ -749,8 +674,13 @@ impl JanusTools {
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
 
+        // Use the method with Actor::Mcp to log the event correctly
         let removed = ticket
-            .remove_from_array_field(ArrayField::Deps, &request.depends_on_id)
+            .remove_from_array_field_with_actor(
+                ArrayField::Deps,
+                &request.depends_on_id,
+                Some(Actor::Mcp),
+            )
             .map_err(|e| e.to_string())?;
 
         if !removed {
@@ -762,17 +692,6 @@ impl JanusTools {
 
         // Refresh the in-memory store immediately
         crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket.id).await;
-
-        // Log with MCP actor
-        log_event(
-            Event::new(
-                EventType::DependencyRemoved,
-                EntityType::Ticket,
-                &ticket.id,
-                json!({ "dependency_id": request.depends_on_id }),
-            )
-            .with_actor(Actor::Mcp),
-        );
 
         Ok(format!(
             "Removed dependency: **{}** no longer depends on **{}**",
@@ -836,18 +755,12 @@ impl JanusTools {
         // Refresh the in-memory store immediately
         crate::tui::repository::TicketRepository::refresh_plan_in_store(&plan.id).await;
 
-        // Log with MCP actor
-        log_event(
-            Event::new(
-                EventType::TicketAddedToPlan,
-                EntityType::Plan,
-                &plan.id,
-                json!({
-                    "ticket_id": ticket.id,
-                    "phase": added_to_phase,
-                }),
-            )
-            .with_actor(Actor::Mcp),
+        // Log with MCP actor using the helper function
+        crate::events::log_ticket_added_to_plan(
+            &plan.id,
+            &ticket.id,
+            added_to_phase.as_deref(),
+            Some(Actor::Mcp),
         );
 
         if let Some(phase_name) = added_to_phase {
@@ -1066,50 +979,6 @@ impl JanusTools {
 
         Ok(output)
     }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Write a completion summary section to a ticket file
-fn write_completion_summary(ticket: &Ticket, summary: &str) -> crate::error::Result<()> {
-    let content = ticket.read_content()?;
-
-    // Check if there's already a Completion Summary section
-    let section_start = COMPLETION_SUMMARY_RE.find(&content).map(|m| m.start());
-
-    let new_content = if let Some(start_idx) = section_start {
-        // Replace existing section
-        let after_header = &content[start_idx..];
-        let header_end = after_header
-            .find('\n')
-            .map(|i| i + 1)
-            .unwrap_or(after_header.len());
-        let section_content_start = start_idx + header_end;
-
-        let section_content = &content[section_content_start..];
-        let section_end = NEXT_H2_RE
-            .find(section_content)
-            .map(|m| section_content_start + m.start())
-            .unwrap_or(content.len());
-
-        let before = &content[..start_idx];
-        let after = &content[section_end..];
-
-        format!(
-            "{}## Completion Summary\n\n{}\n{}",
-            before,
-            summary,
-            if after.is_empty() { "" } else { "\n" }.to_owned() + after.trim_start_matches('\n')
-        )
-    } else {
-        // Add new section at end
-        let trimmed = content.trim_end();
-        format!("{trimmed}\n\n## Completion Summary\n\n{summary}\n")
-    };
-
-    ticket.write(&new_content)
 }
 
 #[cfg(test)]

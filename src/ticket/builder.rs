@@ -256,6 +256,7 @@ impl TicketBuilder {
             &ticket_type.to_string(),
             priority.as_num(),
             spawned_from_for_log.as_deref(),
+            None,
         );
 
         Ok((id, file_path))

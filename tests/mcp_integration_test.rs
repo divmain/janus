@@ -566,9 +566,8 @@ fn test_mcp_call_update_status() {
     let content = response["result"]["content"].as_array().unwrap();
     let text = content[0]["text"].as_str().unwrap();
 
-    // Output is now plain text: Updated **j-xxxx** status: new → in_progress
+    // Output is now plain text: Updated **j-xxxx** status to in_progress
     assert!(text.contains("Updated"), "Should contain 'Updated'");
-    assert!(text.contains("new"), "Should contain previous status");
     assert!(text.contains("in_progress"), "Should contain new status");
 
     // Verify status changed

@@ -141,7 +141,12 @@ pub async fn cmd_plan_add_ticket(
     plan.write_metadata(&metadata)?;
 
     // Log the event
-    log_ticket_added_to_plan(&plan.id, &resolved_ticket_id, added_to_phase.as_deref());
+    log_ticket_added_to_plan(
+        &plan.id,
+        &resolved_ticket_id,
+        added_to_phase.as_deref(),
+        None,
+    );
 
     CommandOutput::new(json!({
         "plan_id": plan.id,
