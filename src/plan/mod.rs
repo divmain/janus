@@ -242,12 +242,7 @@ impl Plan {
     /// Write raw content without hooks
     fn write_raw(&self, content: &str) -> Result<()> {
         self.ensure_parent_dir()?;
-        fs::write(&self.file_path, content).map_err(|e| JanusError::StorageError {
-            operation: "write",
-            item_type: "plan",
-            path: self.file_path.clone(),
-            source: e,
-        })
+        crate::fs::write_file_atomic(&self.file_path, content)
     }
 
     /// Ensure the parent directory exists
