@@ -16,11 +16,13 @@ impl TicketBuilder {
     pub fn new(id: &str) -> Self {
         Self {
             metadata: TicketMetadata {
-                id: Some(TicketId::new_unchecked(id)),
+                id: Some(TicketId::new(id).expect("test id should be valid")),
                 status: Some(TicketStatus::New),
                 ticket_type: Some(TicketType::Task),
                 priority: Some(TicketPriority::P2),
-                created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
+                created: Some(
+                    CreatedAt::new("2024-01-01T00:00:00Z").expect("test timestamp should be valid"),
+                ),
                 ..Default::default()
             },
         }
@@ -52,13 +54,16 @@ impl TicketBuilder {
 
     /// Add a dependency
     pub fn dep(mut self, dep_id: &str) -> Self {
-        self.metadata.deps.push(TicketId::new_unchecked(dep_id));
+        self.metadata
+            .deps
+            .push(TicketId::new(dep_id).expect("test dep id should be valid"));
         self
     }
 
     /// Set the parent ticket
     pub fn parent(mut self, parent_id: &str) -> Self {
-        self.metadata.parent = Some(TicketId::new_unchecked(parent_id));
+        self.metadata.parent =
+            Some(TicketId::new(parent_id).expect("test parent id should be valid"));
         self
     }
 
