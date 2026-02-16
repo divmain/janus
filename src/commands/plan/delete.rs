@@ -7,6 +7,7 @@ use crate::commands::{CommandOutput, interactive};
 use crate::error::Result;
 use crate::plan::Plan;
 use crate::utils::is_stdin_tty;
+use crate::utils::validation::validate_plan_title;
 
 /// Delete a plan
 ///
@@ -50,6 +51,8 @@ pub async fn cmd_plan_delete(id: &str, force: bool, output: OutputOptions) -> Re
 pub async fn cmd_plan_rename(id: &str, new_title: &str, output: OutputOptions) -> Result<()> {
     let plan = Plan::find(id).await?;
     let mut metadata = plan.read()?;
+
+    validate_plan_title(new_title)?;
 
     let old_title = metadata.title.clone().unwrap_or_default();
     metadata.title = Some(new_title.to_string());
