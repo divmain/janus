@@ -56,6 +56,14 @@ pub struct AuthConfig {
 }
 
 /// GitHub authentication
+///
+/// SECURITY NOTE: Tokens are stored as plain `String` in the config file.
+/// The config file is protected with restrictive permissions (0o600 - owner read/write only).
+/// At runtime, tokens are converted to `SecretBox<String>` for secure handling in the
+/// GitHub provider to prevent accidental logging or exposure.
+///
+/// PREFERRED STORAGE: Environment variable `GITHUB_TOKEN` is preferred over config file
+/// storage. Set the environment variable instead of using `janus config set github.token`.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GitHubAuth {
     pub token: String,
@@ -70,6 +78,14 @@ impl fmt::Debug for GitHubAuth {
 }
 
 /// Linear authentication
+///
+/// SECURITY NOTE: API keys are stored as plain `String` in the config file.
+/// The config file is protected with restrictive permissions (0o600 - owner read/write only).
+/// At runtime, keys are converted to `SecretBox<String>` for secure handling in the
+/// Linear provider to prevent accidental logging or exposure.
+///
+/// PREFERRED STORAGE: Environment variable `LINEAR_API_KEY` is preferred over config file
+/// storage. Set the environment variable instead of using `janus config set linear.api_key`.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct LinearAuth {
     pub api_key: String,
@@ -186,6 +202,14 @@ impl Config {
     }
 
     /// Save configuration to file
+    ///
+    /// SECURITY NOTE: The config file is created with restrictive permissions (0o600) on Unix
+    /// systems to ensure only the owner can read/write the file. This protects any authentication
+    /// tokens stored in the config. However, storing credentials in environment variables
+    /// (GITHUB_TOKEN, LINEAR_API_KEY) is still preferred over config file storage.
+    ///
+    /// WARNING: If authentication tokens are present in this config, they will be written
+    /// to disk. Consider using environment variables instead.
     pub fn save(&self) -> Result<()> {
         let path = Self::config_path();
 
@@ -265,11 +289,19 @@ impl Config {
     }
 
     /// Set GitHub token
+    ///
+    /// SECURITY WARNING: This stores the token in the config file. While the file is protected
+    /// with 0o600 permissions, it is recommended to use the `GITHUB_TOKEN` environment variable
+    /// instead, which takes precedence over the config file value.
     pub fn set_github_token(&mut self, token: String) {
         self.auth.github = Some(GitHubAuth { token });
     }
 
     /// Set Linear API key
+    ///
+    /// SECURITY WARNING: This stores the API key in the config file. While the file is protected
+    /// with 0o600 permissions, it is recommended to use the `LINEAR_API_KEY` environment variable
+    /// instead, which takes precedence over the config file value.
     pub fn set_linear_api_key(&mut self, api_key: String) {
         self.auth.linear = Some(LinearAuth { api_key });
     }
