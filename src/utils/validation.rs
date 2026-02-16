@@ -76,7 +76,7 @@ pub fn validate_plan_title(title: &str) -> Result<()> {
 /// suitable for MCP error responses.
 ///
 /// Rules:
-/// - Must not be empty
+/// - Must not be empty or whitespace-only after trimming
 /// - Must not exceed MAX_TICKET_TITLE_LENGTH characters
 /// - Must not contain control characters (including newlines)
 ///
@@ -87,20 +87,22 @@ pub fn validate_plan_title(title: &str) -> Result<()> {
 /// * `Ok(())` if valid
 /// * `Err(String)` with descriptive message if invalid
 pub fn validate_title_for_mcp(title: &str) -> std::result::Result<(), String> {
-    if title.is_empty() {
-        return Err("Title cannot be empty".to_string());
+    let trimmed = title.trim();
+
+    if trimmed.is_empty() {
+        return Err("Title cannot be empty or whitespace-only".to_string());
     }
 
-    if title.len() > MAX_TICKET_TITLE_LENGTH {
+    if trimmed.len() > MAX_TICKET_TITLE_LENGTH {
         return Err(format!(
             "Title too long: {} characters (max: {})",
-            title.len(),
+            trimmed.len(),
             MAX_TICKET_TITLE_LENGTH
         ));
     }
 
     // Check for control characters (including newlines)
-    if title.chars().any(|c| c.is_control()) {
+    if trimmed.chars().any(|c| c.is_control()) {
         return Err("Title contains invalid control characters".to_string());
     }
 
@@ -361,9 +363,9 @@ mod tests {
 
     #[test]
     fn test_validate_title_for_mcp_whitespace_only() {
-        // Note: MCP validation does NOT trim, so whitespace-only is not empty
         let result = validate_title_for_mcp("   ");
-        assert!(result.is_ok());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("whitespace-only"));
     }
 
     #[test]
