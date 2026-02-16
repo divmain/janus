@@ -291,8 +291,10 @@ impl<'a> NextWorkFinder<'a> {
 
         // Sort the result by priority and created date for consistent ordering
         result.sort_by(|(a_id, _), (b_id, _)| {
-            let a_meta = self.ticket_map.get(a_id).unwrap();
-            let b_meta = self.ticket_map.get(b_id).unwrap();
+            let a_meta = self.ticket_map.get(a_id)
+                .expect("dependency IDs in result must exist in ticket_map; derived from collect_all_ready_deps");
+            let b_meta = self.ticket_map.get(b_id)
+                .expect("dependency IDs in result must exist in ticket_map; derived from collect_all_ready_deps");
             let priority_cmp = a_meta.priority_num().cmp(&b_meta.priority_num());
             if priority_cmp != std::cmp::Ordering::Equal {
                 return priority_cmp;
@@ -338,7 +340,9 @@ impl<'a> NextWorkFinder<'a> {
     ) -> Option<Vec<String>> {
         if path_set.contains(ticket_id) {
             // Found a cycle - extract the cycle from the path
-            let cycle_start = path.iter().position(|p| p == ticket_id).unwrap();
+            let cycle_start = path.iter().position(|p| p == ticket_id).expect(
+                "ticket_id in path_set must exist in path; path_set tracks current recursion stack",
+            );
             let mut cycle = path[cycle_start..].to_vec();
             cycle.push(ticket_id.to_string());
             return Some(cycle);
