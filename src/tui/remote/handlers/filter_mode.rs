@@ -9,26 +9,8 @@ use super::context::HandlerContext;
 /// Handle filter modal events
 pub fn handle(ctx: &mut HandlerContext<'_>, code: KeyCode) -> HandleResult {
     match code {
-        KeyCode::Tab => {
-            let state = ctx.filters.filter_modal.read().clone();
-            if let Some(mut s) = state {
-                s.focus_next();
-                ctx.filters.filter_modal.set(Some(s));
-                HandleResult::Handled
-            } else {
-                HandleResult::NotHandled
-            }
-        }
-        KeyCode::BackTab => {
-            let state = ctx.filters.filter_modal.read().clone();
-            if let Some(mut s) = state {
-                s.focus_prev();
-                ctx.filters.filter_modal.set(Some(s));
-                HandleResult::Handled
-            } else {
-                HandleResult::NotHandled
-            }
-        }
+        // Tab and BackTab are no-ops since there's only one field
+        KeyCode::Tab | KeyCode::BackTab => HandleResult::Handled,
         KeyCode::Char('r') => {
             let state = ctx.filters.filter_modal.read().clone();
             if let Some(mut s) = state {

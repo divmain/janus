@@ -285,20 +285,8 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         }
     });
 
-    // Filter modal click handler
-    let filter_limit_click_handler = hooks.use_async_handler({
-        let filter_state = filter_state.clone();
-        move |()| {
-            let mut filter_state = filter_state.clone();
-            async move {
-                let state = filter_state.read().clone();
-                if let Some(mut s) = state {
-                    s.focused_field = 0;
-                    filter_state.set(Some(s));
-                }
-            }
-        }
-    });
+    // Filter modal click handler (no-op since there's only one field)
+    let filter_limit_click_handler = hooks.use_async_handler(move |()| async move {});
 
     // Help scroll handlers
     let help_scroll_up_handler = hooks.use_async_handler({

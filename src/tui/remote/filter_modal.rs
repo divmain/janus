@@ -16,17 +16,12 @@ use crate::tui::components::{
 pub struct FilterState {
     /// Page size limit
     pub limit: u32,
-    /// Current focused field index
-    pub focused_field: usize,
 }
 
 impl FilterState {
     /// Create a new filter state from an existing query
     pub fn from_query(query: &RemoteQuery) -> Self {
-        Self {
-            limit: query.limit,
-            focused_field: 0,
-        }
+        Self { limit: query.limit }
     }
 
     /// Convert to a RemoteQuery
@@ -34,19 +29,6 @@ impl FilterState {
         let mut query = base.clone();
         query.limit = self.limit;
         query
-    }
-
-    /// Number of configurable fields
-    pub const FIELD_COUNT: usize = 1;
-
-    /// Move focus to next field (no-op with only one field)
-    pub fn focus_next(&mut self) {
-        // With only one field, focus doesn't change
-    }
-
-    /// Move focus to previous field (no-op with only one field)
-    pub fn focus_prev(&mut self) {
-        // With only one field, focus doesn't change
     }
 
     /// Increase limit
@@ -85,7 +67,7 @@ pub struct FilterModalProps {
 pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<AnyElement<'a>> {
     let state = &props.state;
 
-    let limit_focused = state.focused_field == 0;
+    let limit_focused = true;
 
     element! {
         ModalOverlay() {
@@ -94,7 +76,7 @@ pub fn FilterModal<'a>(props: &FilterModalProps, _hooks: Hooks) -> impl Into<Any
                 height: Some(ModalHeight::Fixed(10)),
                 border_color: Some(ModalBorderColor::Info),
                 title: Some("Remote Query Settings".to_string()),
-                footer_text: Some("Tab: focus | +/-: adjust | r: reset | Enter/Esc: close".to_string()),
+                footer_text: Some("+/-: adjust | r: reset | Enter/Esc: close".to_string()),
                 on_close: props.on_close.clone(),
             ) {
                 Text(content: "Note: Server-side filtering is not supported.")
