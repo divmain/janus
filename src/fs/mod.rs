@@ -11,10 +11,7 @@
 //! `flock(2)`-style locks ineffective.
 
 use crate::error::{JanusError, Result};
-use crate::hooks::{
-    HookContext, HookEvent, run_post_hooks, run_post_hooks_async, run_pre_hooks,
-    run_pre_hooks_async,
-};
+use crate::hooks::{HookContext, HookEvent, run_post_hooks, run_pre_hooks};
 use std::io::Write;
 use std::path::Path;
 use tempfile::NamedTempFile;
@@ -127,28 +124,6 @@ where
     run_post_hooks(HookEvent::PostWrite, &context);
     if let Some(event) = post_hook_event {
         run_post_hooks(event, &context);
-    }
-    Ok(())
-}
-
-/// Execute an operation with standard write hooks (async version).
-///
-/// Runs PreWrite hook before the operation, then PostWrite hook,
-/// and optionally an additional post-hook event after successful completion.
-pub async fn with_write_hooks_async<F, Fut>(
-    context: HookContext,
-    operation: F,
-    post_hook_event: Option<HookEvent>,
-) -> Result<()>
-where
-    F: FnOnce() -> Fut,
-    Fut: std::future::Future<Output = Result<()>>,
-{
-    run_pre_hooks_async(HookEvent::PreWrite, &context).await?;
-    operation().await?;
-    run_post_hooks_async(HookEvent::PostWrite, &context).await;
-    if let Some(event) = post_hook_event {
-        run_post_hooks_async(event, &context).await;
     }
     Ok(())
 }
