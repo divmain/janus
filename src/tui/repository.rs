@@ -128,11 +128,17 @@ pub fn load_ticket_body(file_path: Option<&PathBuf>) -> String {
         return String::new();
     };
     let Ok(ticket) = Ticket::new(file_path.clone()) else {
-        debug!("Failed to load ticket from {:?}", file_path);
+        warn!(
+            "Failed to load ticket body from {:?}: Ticket::new failed",
+            file_path
+        );
         return String::new();
     };
     let Ok(content) = ticket.read_content() else {
-        debug!("Failed to read ticket content from {:?}", file_path);
+        warn!(
+            "Failed to load ticket body from {:?}: read_content failed",
+            file_path
+        );
         return String::new();
     };
     extract_ticket_body(&content).unwrap_or_default()
