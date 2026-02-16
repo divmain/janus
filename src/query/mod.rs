@@ -275,6 +275,71 @@ impl TicketFilter for ActiveFilter {
     }
 }
 
+/// An executed query configuration that can be applied to ticket data.
+/// This separates query configuration from execution, following SRP.
+pub struct TicketQuery {
+    filters: Vec<Box<dyn TicketFilter>>,
+    or_filter_groups: Vec<Vec<Box<dyn TicketFilter>>>,
+    sort_by: SortField,
+    limit: Option<usize>,
+}
+
+impl TicketQuery {
+    /// Apply this query to the provided tickets and ticket map.
+    /// The caller is responsible for providing the ticket_map, which allows
+    /// for better control over data sources and avoids tight coupling.
+    pub fn apply(
+        &self,
+        tickets: Vec<TicketMetadata>,
+        ticket_map: &HashMap<String, TicketMetadata>,
+    ) -> Vec<TicketMetadata> {
+        let context = TicketFilterContext::new(ticket_map.clone());
+
+        // Apply AND filters first
+        let mut filtered: Vec<TicketMetadata> = tickets
+            .into_iter()
+            .filter(|t| self.filters.iter().all(|f| f.matches(t, &context)))
+            .collect();
+
+        // Apply OR filter groups as a union across all groups
+        if !self.or_filter_groups.is_empty() {
+            use std::collections::HashSet;
+
+            use crate::types::TicketId;
+
+            // Collect all tickets that match ANY filter in ANY group
+            // We iterate over filtered (the AND results), not the original tickets
+            let mut matched_ids: HashSet<TicketId> = HashSet::new();
+
+            for or_group in &self.or_filter_groups {
+                // Check which filtered tickets match ANY filter in this group
+                for ticket in &filtered {
+                    if or_group.iter().any(|f| f.matches(ticket, &context)) {
+                        if let Some(id) = &ticket.id {
+                            matched_ids.insert(id.clone());
+                        }
+                    }
+                }
+            }
+
+            // Keep only filtered tickets that matched any OR group
+            filtered.retain(|t| t.id.as_ref().is_some_and(|id| matched_ids.contains(id)));
+        }
+
+        // Sort using local sort function
+        sort::sort_tickets_by(&mut filtered, self.sort_by);
+
+        // Apply limit
+        if let Some(limit) = self.limit {
+            if limit < filtered.len() {
+                filtered.truncate(limit);
+            }
+        }
+
+        filtered
+    }
+}
+
 /// Query builder for filtering and sorting tickets
 pub struct TicketQueryBuilder {
     filters: Vec<Box<dyn TicketFilter>>,
@@ -321,57 +386,29 @@ impl TicketQueryBuilder {
         self
     }
 
-    /// Execute the query against the provided tickets
+    /// Build the query configuration from this builder.
+    /// Returns a TicketQuery that can be applied to ticket data.
+    pub fn build(self) -> TicketQuery {
+        TicketQuery {
+            filters: self.filters,
+            or_filter_groups: self.or_filter_groups,
+            sort_by: self.sort_by,
+            limit: self.limit,
+        }
+    }
+
+    /// Execute the query against the provided tickets.
+    /// This is a convenience method that builds the query and applies it.
+    /// For more control, use `build()` followed by `TicketQuery::apply()`.
     pub async fn execute(self, tickets: Vec<TicketMetadata>) -> Result<Vec<TicketMetadata>> {
         // Build ticket map once from the provided tickets
         let ticket_map: HashMap<String, TicketMetadata> = tickets
             .iter()
             .filter_map(|t| t.id.as_ref().map(|id| (id.to_string(), t.clone())))
             .collect();
-        let context = TicketFilterContext::new(ticket_map);
 
-        // Apply AND filters first
-        let mut filtered: Vec<TicketMetadata> = tickets
-            .into_iter()
-            .filter(|t| self.filters.iter().all(|f| f.matches(t, &context)))
-            .collect();
-
-        // Apply OR filter groups as a union across all groups
-        if !self.or_filter_groups.is_empty() {
-            use std::collections::HashSet;
-
-            use crate::types::TicketId;
-
-            // Collect all tickets that match ANY filter in ANY group
-            // We iterate over filtered (the AND results), not the original tickets
-            let mut matched_ids: HashSet<TicketId> = HashSet::new();
-
-            for or_group in &self.or_filter_groups {
-                // Check which filtered tickets match ANY filter in this group
-                for ticket in &filtered {
-                    if or_group.iter().any(|f| f.matches(ticket, &context)) {
-                        if let Some(id) = &ticket.id {
-                            matched_ids.insert(id.clone());
-                        }
-                    }
-                }
-            }
-
-            // Keep only filtered tickets that matched any OR group
-            filtered.retain(|t| t.id.as_ref().is_some_and(|id| matched_ids.contains(id)));
-        }
-
-        // Sort using local sort function
-        sort::sort_tickets_by(&mut filtered, self.sort_by);
-
-        // Apply limit
-        if let Some(limit) = self.limit {
-            if limit < filtered.len() {
-                filtered.truncate(limit);
-            }
-        }
-
-        Ok(filtered)
+        let query = self.build();
+        Ok(query.apply(tickets, &ticket_map))
     }
 }
 
