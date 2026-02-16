@@ -10,7 +10,7 @@ use dashmap::DashSet;
 use crate::error::Result;
 use crate::status::{all_deps_satisfied, has_unsatisfied_dep};
 use crate::ticket::build_ticket_map;
-use crate::types::{TicketData, TicketMetadata, TicketSize, TicketStatus};
+use crate::types::{TicketData, TicketMetadata, TicketSize, TicketStatus, TicketType};
 
 pub mod sort;
 
@@ -89,23 +89,20 @@ impl TicketFilter for StatusFilter {
 
 /// Filter tickets by type
 pub struct TypeFilter {
-    target_type: String,
+    target_type: TicketType,
 }
 
 impl TypeFilter {
-    pub fn new(ticket_type: &str) -> Self {
+    pub fn new(ticket_type: TicketType) -> Self {
         Self {
-            target_type: ticket_type.to_string(),
+            target_type: ticket_type,
         }
     }
 }
 
 impl TicketFilter for TypeFilter {
     fn matches(&self, ticket: &TicketMetadata, _context: &TicketFilterContext) -> bool {
-        let ticket_type = ticket
-            .ticket_type
-            .map(|t| t.to_string())
-            .unwrap_or_else(|| "task".to_string());
+        let ticket_type = ticket.ticket_type.unwrap_or_default();
         ticket_type == self.target_type
     }
 }

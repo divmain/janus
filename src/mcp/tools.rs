@@ -518,7 +518,14 @@ impl JanusTools {
 
         // Add type filter
         if let Some(ref type_filter) = request.ticket_type {
-            query_builder = query_builder.with_filter(Box::new(TypeFilter::new(type_filter)));
+            let parsed_type = TicketType::from_str(type_filter).map_err(|_| {
+                format!(
+                    "Invalid type '{}'. Must be one of: {}",
+                    type_filter,
+                    TicketType::ALL_STRINGS.join(", ")
+                )
+            })?;
+            query_builder = query_builder.with_filter(Box::new(TypeFilter::new(parsed_type)));
         }
 
         // Add size filter
