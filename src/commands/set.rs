@@ -158,9 +158,9 @@ pub async fn cmd_set(
                     .map(|s| s.to_string())
                     .collect(),
             })?;
-            validate_status(value)?;
+            let new_status = validate_status(value)?;
             new_value = value.to_string();
-            ticket.update_field("status", value)?;
+            ticket.update_status(new_status, None)?;
         }
         "external_ref" => {
             previous_value = metadata.external_ref.clone();
