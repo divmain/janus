@@ -89,10 +89,14 @@ macro_rules! register_tool {
         use rmcp::schemars::schema_for;
         use std::sync::Arc;
 
-        let schema_value = serde_json::to_value(schema_for!($req_type)).unwrap();
+        let schema_value = serde_json::to_value(schema_for!($req_type))
+            .unwrap_or_else(|e| panic!("Failed to serialize schema for tool '{}': {e}", $name));
         let schema_obj = match schema_value {
             serde_json::Value::Object(obj) => obj,
-            _ => panic!("Schema must be an object"),
+            _ => panic!(
+                "Schema for tool '{}' is not an object (this is a bug)",
+                $name
+            ),
         };
         let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj));
         let route =
