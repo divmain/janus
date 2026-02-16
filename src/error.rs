@@ -98,11 +98,6 @@ pub enum JanusError {
     AmbiguousTicketId(String, Vec<String>),
 
     #[error(
-        "invalid ticket ID '{0}': must contain only alphanumeric characters, hyphens, and underscores"
-    )]
-    InvalidTicketId(String),
-
-    #[error(
         "invalid ticket ID format '{0}': must be non-empty and match '<prefix>-<hash>' pattern"
     )]
     InvalidTicketIdFormat(String),
@@ -308,11 +303,6 @@ pub enum JanusError {
     #[error("{0} cannot be empty")]
     ValidationEmpty(String), // field name
 
-    #[error(
-        "{0} '{1}' contains invalid characters. Use only letters, numbers, hyphens, and underscores"
-    )]
-    ValidationInvalidCharacters(String, String), // field name, value
-
     #[error("ticket ID cannot be empty")]
     EmptyTicketId,
 
@@ -449,9 +439,6 @@ pub enum JanusError {
     #[error("embedding key error: path '{path}' is not within Janus root '{root}'")]
     EmbeddingKeyError { path: String, root: String },
 
-    #[error("embedding generation timed out after {seconds} seconds")]
-    EmbeddingTimeout { seconds: u64 },
-
     #[error("embedding generation failed: {0}")]
     EmbeddingGenerationFailed(String),
 
@@ -461,9 +448,6 @@ pub enum JanusError {
         #[source]
         source: std::io::Error,
     },
-
-    #[error("embedding load failed for ticket '{0}': {1}")]
-    EmbeddingLoadFailed(String, String), // (ticket_id, reason)
 
     #[error("ticket '{0}' has no file_path for embedding generation")]
     EmbeddingNoFilePath(String),
