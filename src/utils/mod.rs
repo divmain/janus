@@ -2,7 +2,6 @@ pub mod dir_scanner;
 pub mod id;
 pub mod io;
 pub mod text;
-pub mod validation;
 
 // Re-export text utilities for backward compatibility
 pub use text::{truncate_string, wrap_text_lines};
