@@ -123,23 +123,6 @@ fn build_hook_error(
     }
 }
 
-/// Check command output and return error if the command failed.
-///
-/// Shared helper for both sync and async no-timeout paths.
-fn check_output(output: &std::process::Output, script_name: &str, is_pre_hook: bool) -> Result<()> {
-    if !output.status.success() {
-        let exit_code = output.status.code().unwrap_or(-1);
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        return Err(build_hook_error(
-            script_name,
-            exit_code,
-            stderr,
-            is_pre_hook,
-        ));
-    }
-    Ok(())
-}
-
 /// Check exit status and return error if the process failed.
 ///
 /// Shared helper for both sync and async timeout paths.
@@ -159,6 +142,143 @@ fn check_status(
         ));
     }
     Ok(())
+}
+
+/// Internal hook execution with timeout and output capture (async version).
+///
+/// This is the core execution function used by all public async variants.
+/// It handles spawning, timeout enforcement, cleanup on timeout,
+/// and returns the full output for the caller to interpret.
+///
+/// # Arguments
+/// * `script_path` - Path to the hook script
+/// * `env_vars` - Environment variables to set
+/// * `j_root` - Janus root directory (working directory)
+/// * `script_name` - Name of the script (for error messages)
+/// * `timeout_secs` - Timeout in seconds (0 for no timeout)
+///
+/// # Returns
+/// * `Ok((ExitStatus, Vec<u8>, Vec<u8>))` - (status, stdout, stderr)
+/// * `Err` - If the hook times out or an IO error occurs
+async fn run_hook_with_timeout_and_capture_async(
+    script_path: &Path,
+    env_vars: &HashMap<String, String>,
+    j_root: &Path,
+    script_name: &str,
+    timeout_secs: u64,
+) -> Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>)> {
+    let mut cmd = TokioCommand::new(script_path);
+    cmd.envs(env_vars);
+    cmd.current_dir(j_root);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    if timeout_secs == 0 {
+        let output = cmd.output().await?;
+        Ok((output.status, output.stdout, output.stderr))
+    } else {
+        let mut child = cmd.spawn()?;
+
+        match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
+            Ok(Ok(status)) => {
+                let output = child.wait_with_output().await?;
+                Ok((status, output.stdout, output.stderr))
+            }
+            Ok(Err(e)) => Err(JanusError::Io(e)),
+            Err(_) => {
+                // Timeout occurred - attempt to kill the child process
+                if let Err(e) = child.kill().await {
+                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
+                    // Note: If SIGKILL fails, the process may become a zombie.
+                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
+                }
+                // Wait up to 5 seconds for the process to terminate after SIGKILL
+                match timeout(Duration::from_secs(5), child.wait()).await {
+                    Ok(_) => {}
+                    Err(_) => {
+                        eprintln!(
+                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
+                        );
+                    }
+                }
+
+                Err(JanusError::HookTimeout {
+                    hook_name: script_name.to_string(),
+                    seconds: timeout_secs,
+                })
+            }
+        }
+    }
+}
+
+/// Internal hook execution with timeout and output capture (sync version).
+///
+/// This is the core execution function used by the sync public variant.
+/// It handles spawning, timeout enforcement, cleanup on timeout,
+/// and returns the full output for the caller to interpret.
+///
+/// # Arguments
+/// * `script_path` - Path to the hook script
+/// * `env_vars` - Environment variables to set
+/// * `j_root` - Janus root directory (working directory)
+/// * `script_name` - Name of the script (for error messages)
+/// * `timeout_secs` - Timeout in seconds (0 for no timeout)
+///
+/// # Returns
+/// * `Ok((ExitStatus, Vec<u8>, Vec<u8>))` - (status, stdout, stderr)
+/// * `Err` - If the hook times out or an IO error occurs
+fn run_hook_with_timeout_and_capture(
+    script_path: &Path,
+    env_vars: &HashMap<String, String>,
+    j_root: &Path,
+    script_name: &str,
+    timeout_secs: u64,
+) -> Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>)> {
+    let mut cmd = std::process::Command::new(script_path);
+    cmd.envs(env_vars);
+    cmd.current_dir(j_root);
+
+    if timeout_secs == 0 {
+        let output = cmd.output()?;
+        Ok((output.status, output.stdout, output.stderr))
+    } else {
+        let mut child = cmd
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+
+        match child.wait_timeout(Duration::from_secs(timeout_secs))? {
+            Some(status) => {
+                let output = child.wait_with_output()?;
+                Ok((status, output.stdout, output.stderr))
+            }
+            None => {
+                // Timeout occurred - attempt to kill the child process
+                if let Err(e) = child.kill() {
+                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
+                    // Note: If SIGKILL fails, the process may become a zombie.
+                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
+                }
+                // Wait up to 5 seconds for the process to terminate after SIGKILL
+                match child.wait_timeout(Duration::from_secs(5)) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        eprintln!(
+                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: error waiting for hook '{script_name}' cleanup: {e}");
+                    }
+                }
+
+                Err(JanusError::HookTimeout {
+                    hook_name: script_name.to_string(),
+                    seconds: timeout_secs,
+                })
+            }
+        }
+    }
 }
 
 /// Execute a hook script with the given context.
@@ -182,60 +302,21 @@ pub(super) fn execute_hook(
 ) -> Result<()> {
     let (script_path, env_vars, j_root) = prepare_hook_execution(event, script_name, context)?;
 
-    let mut cmd = std::process::Command::new(&script_path);
-    cmd.envs(env_vars);
-    cmd.current_dir(&j_root);
-
     let timeout_secs = config.hooks.timeout;
+    let (status, _, stderr) = run_hook_with_timeout_and_capture(
+        &script_path,
+        &env_vars,
+        &j_root,
+        script_name,
+        timeout_secs,
+    )?;
 
-    if timeout_secs == 0 {
-        let output = cmd.output()?;
-        check_output(&output, script_name, is_pre_hook)?;
-    } else {
-        let mut child = cmd
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
-
-        match child.wait_timeout(Duration::from_secs(timeout_secs))? {
-            Some(status) => {
-                let output = child.wait_with_output()?;
-                check_status(
-                    &status,
-                    &String::from_utf8_lossy(&output.stderr),
-                    script_name,
-                    is_pre_hook,
-                )?;
-            }
-            None => {
-                // Attempt to kill the child process after timeout
-                if let Err(e) = child.kill() {
-                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
-                    // Note: If SIGKILL fails, the process may become a zombie.
-                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
-                }
-                // Wait up to 5 seconds for the process to terminate after SIGKILL
-                match child.wait_timeout(Duration::from_secs(5)) {
-                    Ok(Some(_)) => {}
-                    Ok(None) => {
-                        eprintln!(
-                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!("ERROR: error waiting for hook '{script_name}' cleanup: {e}");
-                    }
-                }
-
-                return Err(JanusError::HookTimeout {
-                    hook_name: script_name.to_string(),
-                    seconds: timeout_secs,
-                });
-            }
-        }
-    }
-
-    Ok(())
+    check_status(
+        &status,
+        &String::from_utf8_lossy(&stderr),
+        script_name,
+        is_pre_hook,
+    )
 }
 
 /// Execute a hook script with the given context (async version).
@@ -259,60 +340,22 @@ pub(super) async fn execute_hook_async(
 ) -> Result<()> {
     let (script_path, env_vars, j_root) = prepare_hook_execution(event, script_name, context)?;
 
-    let mut cmd = TokioCommand::new(&script_path);
-    cmd.envs(env_vars);
-    cmd.current_dir(&j_root);
-
     let timeout_secs = config.hooks.timeout;
+    let (status, _, stderr) = run_hook_with_timeout_and_capture_async(
+        &script_path,
+        &env_vars,
+        &j_root,
+        script_name,
+        timeout_secs,
+    )
+    .await?;
 
-    if timeout_secs == 0 {
-        let output = cmd.output().await?;
-        check_output(&output, script_name, is_pre_hook)?;
-    } else {
-        let mut child = cmd
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
-
-        match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
-            Ok(Ok(status)) => {
-                let output = child.wait_with_output().await?;
-                check_status(
-                    &status,
-                    &String::from_utf8_lossy(&output.stderr),
-                    script_name,
-                    is_pre_hook,
-                )?;
-            }
-            Ok(Err(e)) => {
-                return Err(JanusError::Io(e));
-            }
-            Err(_) => {
-                // Attempt to kill the child process after timeout
-                if let Err(e) = child.kill().await {
-                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
-                    // Note: If SIGKILL fails, the process may become a zombie.
-                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
-                }
-                // Wait up to 5 seconds for the process to terminate after SIGKILL
-                match timeout(Duration::from_secs(5), child.wait()).await {
-                    Ok(_) => {}
-                    Err(_) => {
-                        eprintln!(
-                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
-                        );
-                    }
-                }
-
-                return Err(JanusError::HookTimeout {
-                    hook_name: script_name.to_string(),
-                    seconds: timeout_secs,
-                });
-            }
-        }
-    }
-
-    Ok(())
+    check_status(
+        &status,
+        &String::from_utf8_lossy(&stderr),
+        script_name,
+        is_pre_hook,
+    )
 }
 
 /// Convert a HookContext to environment variables for the hook script.
@@ -452,70 +495,20 @@ pub async fn execute_hook_with_result(
 ) -> Result<HookExecutionResult> {
     let (script_path, env_vars, j_root) = prepare_hook_execution(event, script_name, context)?;
 
-    let mut cmd = TokioCommand::new(&script_path);
-    cmd.envs(&env_vars);
-    cmd.current_dir(&j_root);
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+    let (status, stdout, stderr) = run_hook_with_timeout_and_capture_async(
+        &script_path,
+        &env_vars,
+        &j_root,
+        script_name,
+        timeout_secs,
+    )
+    .await?;
 
-    if timeout_secs == 0 {
-        // No timeout - just run and collect output
-        let output = cmd.output().await?;
-        let success = output.status.success();
-        let exit_code = output.status.code();
-        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-
-        Ok(HookExecutionResult {
-            success,
-            exit_code,
-            stdout,
-            stderr,
-            env_vars,
-        })
-    } else {
-        // With timeout
-        let mut child = cmd.spawn()?;
-
-        match timeout(Duration::from_secs(timeout_secs), child.wait()).await {
-            Ok(Ok(status)) => {
-                let output = child.wait_with_output().await?;
-                let success = status.success();
-                let exit_code = status.code();
-                let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-
-                Ok(HookExecutionResult {
-                    success,
-                    exit_code,
-                    stdout,
-                    stderr,
-                    env_vars,
-                })
-            }
-            Ok(Err(e)) => Err(JanusError::Io(e)),
-            Err(_) => {
-                // Timeout occurred - attempt to kill the child process
-                if let Err(e) = child.kill().await {
-                    eprintln!("ERROR: failed to kill timed-out hook '{script_name}': {e}");
-                    // Note: If SIGKILL fails, the process may become a zombie.
-                    // Manual cleanup (e.g., kill -9 <pid>) may be required in edge cases.
-                }
-                // Wait up to 5 seconds for the process to terminate after SIGKILL
-                match timeout(Duration::from_secs(5), child.wait()).await {
-                    Ok(_) => {}
-                    Err(_) => {
-                        eprintln!(
-                            "ERROR: hook '{script_name}' did not terminate after SIGKILL; manual cleanup may be needed"
-                        );
-                    }
-                }
-
-                Err(JanusError::HookTimeout {
-                    hook_name: script_name.to_string(),
-                    seconds: timeout_secs,
-                })
-            }
-        }
-    }
+    Ok(HookExecutionResult {
+        success: status.success(),
+        exit_code: status.code(),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        env_vars,
+    })
 }

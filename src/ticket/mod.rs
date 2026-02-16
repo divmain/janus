@@ -326,9 +326,7 @@ impl Ticket {
                 ArrayField::Deps => {
                     crate::events::log_dependency_added(&self.id, ticket_id.as_ref())
                 }
-                ArrayField::Links => {
-                    crate::events::log_link_added(&self.id, ticket_id.as_ref())
-                }
+                ArrayField::Links => crate::events::log_link_added(&self.id, ticket_id.as_ref()),
             }
         }
 
@@ -359,9 +357,7 @@ impl Ticket {
                 ArrayField::Deps => {
                     crate::events::log_dependency_removed(&self.id, ticket_id.as_ref())
                 }
-                ArrayField::Links => {
-                    crate::events::log_link_removed(&self.id, ticket_id.as_ref())
-                }
+                ArrayField::Links => crate::events::log_link_removed(&self.id, ticket_id.as_ref()),
             }
         }
 
