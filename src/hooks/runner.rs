@@ -10,6 +10,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 use wait_timeout::ChildExt;
@@ -387,16 +390,23 @@ pub(super) fn log_hook_failure(hook_name: &str, error: &JanusError) {
     let log_entry = format!("{timestamp}: post-hook '{hook_name}' failed: {error_detail}\n");
 
     // Try to append to the log file, but don't fail if we can't
-    match OpenOptions::new()
+    #[cfg(unix)]
+    let result = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(&log_path)
+        .and_then(|mut file| file.write_all(log_entry.as_bytes()));
+
+    #[cfg(not(unix))]
+    let result = OpenOptions::new()
         .create(true)
         .append(true)
         .open(&log_path)
-        .and_then(|mut file| file.write_all(log_entry.as_bytes()))
-    {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Warning: failed to write to hook log file: {e}");
-        }
+        .and_then(|mut file| file.write_all(log_entry.as_bytes()));
+
+    if let Err(e) = result {
+        eprintln!("Warning: failed to write to hook log file: {e}");
     }
 }
 
