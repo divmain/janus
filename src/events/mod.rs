@@ -34,6 +34,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use crate::types::janus_root;
+use crate::utils::text::truncate_string;
 
 /// The name of the events log file
 const EVENTS_FILE: &str = "events.ndjson";
@@ -234,17 +235,7 @@ pub fn log_status_changed(ticket_id: &str, from: &str, to: &str, summary: Option
 
 /// Log a note added event
 pub fn log_note_added(ticket_id: &str, note_preview: &str) {
-    // Truncate note to first 100 chars for preview
-    let preview = if note_preview.len() > 100 {
-        let end = note_preview
-            .char_indices()
-            .nth(97)
-            .map(|(i, _)| i)
-            .unwrap_or(note_preview.len());
-        format!("{}...", &note_preview[..end])
-    } else {
-        note_preview.to_string()
-    };
+    let preview = truncate_string(note_preview, 100);
 
     log_event(Event::new(
         EventType::NoteAdded,
