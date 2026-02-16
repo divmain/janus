@@ -267,7 +267,7 @@ fn test_space_toggles_selection_on() {
         Some(RemoteAction::ToggleSelection)
     );
 
-    let mut nav = NavigationData::new();
+    let mut nav = NavigationData::default();
     nav.selected_ids.insert("j-1".to_string());
     assert!(nav.selected_ids.contains("j-1"));
     assert_eq!(nav.selected_ids.len(), 1);
@@ -278,7 +278,7 @@ fn test_space_toggles_selection_on() {
 /// (Original: test_reduce_toggle_selection_off)
 #[test]
 fn test_space_toggles_selection_off() {
-    let mut nav = NavigationData::new();
+    let mut nav = NavigationData::default();
     nav.selected_ids.insert("j-1".to_string());
     assert!(nav.selected_ids.contains("j-1"));
 
@@ -292,7 +292,7 @@ fn test_space_toggles_selection_off() {
 /// (Original: test_reduce_select_all)
 #[test]
 fn test_select_all_selects_every_item() {
-    let mut nav = NavigationData::new();
+    let mut nav = NavigationData::default();
     let ids = vec!["j-1", "j-2", "j-3"];
     for id in &ids {
         nav.selected_ids.insert(id.to_string());
@@ -307,7 +307,7 @@ fn test_select_all_selects_every_item() {
 /// (Original: test_reduce_clear_selection)
 #[test]
 fn test_clear_selection_deselects_all() {
-    let mut nav = NavigationData::new();
+    let mut nav = NavigationData::default();
     nav.selected_ids.insert("j-1".to_string());
     nav.selected_ids.insert("j-2".to_string());
     nav.selected_ids.insert("j-3".to_string());
@@ -329,7 +329,7 @@ fn test_shift_j_extends_selection_downward() {
     );
 
     // Simulate: start at index 0, extend selection to index 1
-    let mut nav = NavigationData::new();
+    let mut nav = NavigationData::default();
     nav.selected_ids.insert("j-0".to_string()); // current item
     navigation::scroll_down(&mut nav.selected_index, &mut nav.scroll_offset, 3, 20);
     nav.selected_ids.insert("j-1".to_string()); // newly reached item
@@ -385,7 +385,7 @@ fn test_search_query_filters_list() {
 #[test]
 fn test_search_query_resets_selection_to_zero() {
     // Simulate: user was at index 2, then types a query that returns fewer results
-    let mut nav = NavigationData::new();
+    let mut nav = NavigationData::default();
     nav.selected_index = 2;
     nav.scroll_offset = 0;
 

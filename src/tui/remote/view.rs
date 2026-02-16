@@ -442,10 +442,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
         .cloned()
         .collect();
 
-    // Clone collection data for the event closure before dropping refs.
-    let local_tickets_data = local_tickets_ref.clone();
-    let remote_issues_data = remote_issues_ref.clone();
-
     // Drop refs before creating the event closure (which captures mutable State handles)
     drop(view_display_ref);
     drop(local_nav_ref);
@@ -490,8 +486,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         remote_count,
                         list_height,
                         detail_scroll: &mut detail_scroll,
-                        local_tickets_data: local_tickets_data.clone(),
-                        remote_issues_data: remote_issues_data.clone(),
                     },
                     search: SearchState {
                         ui: &mut search_ui,
@@ -503,7 +497,6 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
                         sync_preview: &mut sync_preview,
                         confirm_dialog: &mut confirm_dialog,
                         visibility: &mut modal_visibility,
-                        last_error: &last_error,
                     },
                     filters: FilteringState {
                         filter_modal: &mut filter_state,

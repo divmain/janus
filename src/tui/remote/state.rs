@@ -32,19 +32,7 @@ pub struct NavigationData {
 }
 
 impl NavigationData {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn clear_selection(&mut self) {
-        self.selected_ids.clear();
-    }
-
-    #[allow(dead_code)]
-    pub fn reset(&mut self) {
-        self.selected_index = 0;
-        self.scroll_offset = 0;
         self.selected_ids.clear();
     }
 

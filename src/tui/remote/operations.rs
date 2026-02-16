@@ -508,57 +508,6 @@ fn create_ticket_from_remote(remote_issue: &RemoteIssue, remote_ref: &RemoteRef)
     Ok(id)
 }
 
-/// Check for link conflicts - returns issues that are already linked
-#[allow(dead_code)]
-pub fn check_link_conflicts<'a>(
-    issue_ids: &[&'a str],
-    local_ids: &HashSet<String>,
-) -> Vec<&'a str> {
-    issue_ids
-        .iter()
-        .filter(|&&id| local_ids.contains(id))
-        .copied()
-        .collect()
-}
-
-/// Create sync changes between a local ticket and remote issue
-#[allow(dead_code)]
-pub fn create_sync_changes(
-    ticket: &TicketMetadata,
-    issue: &RemoteIssue,
-) -> Result<Vec<SyncChange>> {
-    let mut changes = Vec::new();
-
-    let local_title = ticket.title.as_deref().unwrap_or("");
-    if local_title != issue.title {
-        changes.push(SyncChange {
-            field_name: "Title".to_string(),
-            local_value: local_title.to_string(),
-            remote_value: issue.title.clone(),
-            direction: SyncDirection::LocalToRemote,
-        });
-    }
-
-    // Use resolve_with_local to avoid flagging spurious diffs when the remote
-    // status is just a less-specific version of the local status (e.g., local
-    // is InProgress and remote is Open—they're semantically equivalent).
-    let local_status = ticket.status.ok_or_else(|| JanusError::CorruptedTicket {
-        id: ticket.id.as_deref().unwrap_or("unknown").to_string(),
-        field: "status".to_string(),
-    })?;
-    let remote_status = issue.status.resolve_with_local(local_status);
-    if local_status != remote_status {
-        changes.push(SyncChange {
-            field_name: "Status".to_string(),
-            local_value: local_status.to_string(),
-            remote_value: remote_status.to_string(),
-            direction: SyncDirection::LocalToRemote,
-        });
-    }
-
-    Ok(changes)
-}
-
 /// Link a local ticket to a remote issue
 pub async fn link_ticket_to_issue(local_ticket_id: &str, remote_issue: &RemoteIssue) -> Result<()> {
     use crate::ticket::Ticket;
@@ -582,16 +531,6 @@ pub async fn unlink_ticket(local_ticket_id: &str) -> Result<()> {
     ticket.remove_field("remote")?;
 
     Ok(())
-}
-
-/// Get tickets that have remote links
-#[allow(dead_code)]
-pub fn get_linked_ticket_ids(tickets: &[TicketMetadata]) -> HashSet<String> {
-    tickets
-        .iter()
-        .filter(|t| t.remote.is_some())
-        .filter_map(|t| t.id.as_ref().map(|id| id.to_string()))
-        .collect()
 }
 
 /// Result of a push operation

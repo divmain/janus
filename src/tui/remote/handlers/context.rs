@@ -64,17 +64,9 @@ impl<'a> NavigationState<'a> {
         nav.clear_selection();
         self.nav.set(nav);
     }
-
-    #[allow(dead_code)]
-    pub fn select_item(&mut self, index: usize) {
-        let mut nav = self.nav.read().clone();
-        nav.select_item(index);
-        self.nav.set(nav);
-    }
 }
 
 /// Data and navigation state for both local and remote views
-#[allow(dead_code)] // Fields are cloned for future handler use
 pub struct ViewData<'a> {
     pub local_tickets: &'a mut State<Vec<TicketMetadata>>,
     pub remote_issues: &'a mut State<Vec<RemoteIssue>>,
@@ -88,10 +80,6 @@ pub struct ViewData<'a> {
     pub list_height: usize,
     /// Scroll offset for detail panes (grouped)
     pub detail_scroll: &'a mut State<DetailScrollData>,
-    /// Cloned local tickets data (avoids complex re-read patterns)
-    pub local_tickets_data: Vec<TicketMetadata>,
-    /// Cloned remote issues data (avoids complex re-read patterns)
-    pub remote_issues_data: Vec<RemoteIssue>,
 }
 
 /// Global view state (which view is active, exit flag, etc.) - using grouped state
@@ -108,11 +96,6 @@ impl<'a> ViewState<'a> {
         self.display.get().show_detail
     }
 
-    #[allow(dead_code)]
-    pub fn should_exit(&self) -> bool {
-        self.display.get().should_exit
-    }
-
     pub fn detail_pane_focused(&self) -> bool {
         self.display.get().detail_pane_focused
     }
@@ -126,13 +109,6 @@ impl<'a> ViewState<'a> {
     pub fn toggle_view(&mut self) {
         let mut display = self.display.get();
         display.toggle_view();
-        self.display.set(display);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_show_detail(&mut self, show: bool) {
-        let mut display = self.display.get();
-        display.show_detail = show;
         self.display.set(display);
     }
 
@@ -154,11 +130,6 @@ impl<'a> ViewState<'a> {
         self.display.set(display);
     }
 
-    #[allow(dead_code)]
-    pub fn loading(&self) -> bool {
-        self.display.read().remote_loading
-    }
-
     pub fn set_loading(&mut self, loading: bool) {
         let mut display = *self.display.read();
         display.remote_loading = loading;
@@ -174,11 +145,6 @@ pub struct SearchState<'a> {
 }
 
 impl<'a> SearchState<'a> {
-    #[allow(dead_code)]
-    pub fn query(&self) -> String {
-        self.ui.read().query.clone()
-    }
-
     pub fn is_focused(&self) -> bool {
         self.ui.read().focused
     }
@@ -204,8 +170,6 @@ pub struct ModalState<'a> {
     pub confirm_dialog: &'a mut State<Option<ConfirmDialogState>>,
     /// Modal visibility state (grouped)
     pub visibility: &'a mut State<ModalVisibilityData>,
-    #[allow(dead_code)]
-    pub last_error: &'a State<Option<(String, String)>>,
 }
 
 impl<'a> ModalState<'a> {
@@ -236,20 +200,6 @@ impl<'a> ModalState<'a> {
     pub fn set_help_scroll(&mut self, scroll: usize) {
         let mut visibility = self.visibility.get();
         visibility.help_scroll = scroll;
-        self.visibility.set(visibility);
-    }
-
-    #[allow(dead_code)]
-    pub fn scroll_help_up(&mut self, lines: usize) {
-        let mut visibility = self.visibility.get();
-        visibility.help_scroll = visibility.help_scroll.saturating_sub(lines);
-        self.visibility.set(visibility);
-    }
-
-    #[allow(dead_code)]
-    pub fn scroll_help_down(&mut self, lines: usize) {
-        let mut visibility = self.visibility.get();
-        visibility.help_scroll += lines;
         self.visibility.set(visibility);
     }
 
