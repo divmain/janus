@@ -82,8 +82,8 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let mut search_state = SearchState::use_state(&mut hooks);
 
     // Modal state for triage mode using generic ModalState
-    let note_modal = ModalState::<NoteModalData>::use_state(&mut hooks);
-    let cancel_confirm_modal = ModalState::<TicketModalData>::use_state(&mut hooks);
+    let mut note_modal = ModalState::<NoteModalData>::use_state(&mut hooks);
+    let mut cancel_confirm_modal = ModalState::<TicketModalData>::use_state(&mut hooks);
     let store_error_modal = ModalState::<StoreErrorModalData>::use_state(&mut hooks);
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
@@ -480,28 +480,16 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                     }
 
                     // Handle triage mode modal triggers (before passing to handler)
-                    if is_triage_mode_for_events.get() {
-                        if code == KeyCode::Char('n') {
-                            // Open note input modal
-                            if let Some(ft) = filtered_for_events.get(selected_index.get())
-                                && let Some(id) = &ft.ticket.id
-                            {
-                                note_modal.open(NoteModalData::new(id.clone()));
-                            }
-                            return;
-                        }
-                        if code == KeyCode::Char('c') {
-                            // Open cancel confirmation modal
-                            if let Some(ft) = filtered_for_events.get(selected_index.get())
-                                && let Some(id) = &ft.ticket.id
-                            {
-                                cancel_confirm_modal.open(TicketModalData::new(
-                                    id.clone(),
-                                    ft.ticket.title.clone().unwrap_or_default(),
-                                ));
-                            }
-                            return;
-                        }
+                    if handlers::handle_triage_modal_triggers(
+                        code,
+                        modifiers,
+                        is_triage_mode_for_events.get(),
+                        selected_index.get(),
+                        &filtered_for_events,
+                        &mut note_modal,
+                        &mut cancel_confirm_modal,
+                    ) {
+                        return;
                     }
 
                     let mut ctx = handlers::ViewHandlerContext {

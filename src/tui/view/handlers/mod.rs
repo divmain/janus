@@ -7,12 +7,14 @@ mod context;
 mod list;
 mod navigation;
 mod search;
+mod triage;
 mod types;
 
 pub use context::{
     AppState, AsyncHandlers, DetailNavigationState, EditState, ListNavigationState, SearchState,
     ViewData, ViewHandlerContext,
 };
+pub use triage::handle_triage_modal_triggers;
 
 use iocraft::prelude::{KeyCode, KeyModifiers, State};
 
