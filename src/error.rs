@@ -191,7 +191,7 @@ pub enum JanusError {
     )]
     EmptyFrontmatter,
 
-    #[error("invalid ticket format: {0}")]
+    #[error("invalid format: {0}")]
     InvalidFormat(String),
 
     // Configuration errors
