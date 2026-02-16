@@ -131,28 +131,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     }
 
     // Subscribe to store watcher events for live external updates.
-    // The watcher updates the in-memory store when external processes modify ticket files.
-    // This future polls the broadcast channel and sets needs_reload to refresh the UI.
-    hooks.use_future({
-        let mut needs_reload = needs_reload;
-        async move {
-            if let Some(mut rx) = crate::store::subscribe_to_changes() {
-                loop {
-                    match rx.recv().await {
-                        Ok(_event) => {
-                            needs_reload.set(true);
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                            needs_reload.set(true);
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    });
+    hooks.use_future(crate::tui::hooks::use_store_watcher(needs_reload));
 
     // Column visibility state (all visible by default)
     let mut visible_columns = hooks.use_state(|| [true; 5]);

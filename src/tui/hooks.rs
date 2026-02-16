@@ -2,6 +2,7 @@
 
 use iocraft::prelude::*;
 
+use crate::store;
 use crate::tui::repository::{InitResult, TicketRepository, janus_dir_exists};
 use crate::types::TicketMetadata;
 
@@ -68,5 +69,49 @@ pub fn use_ticket_loader(
             tickets_setter.set(tickets);
             loading_setter.set(false);
         })
+    }
+}
+
+/// Subscribe to store watcher events for live external updates.
+///
+/// This hook creates a future that polls the store's broadcast channel
+/// and sets the `needs_reload` state when changes are detected. The watcher
+/// updates the in-memory store when external processes modify ticket files.
+///
+/// # Arguments
+///
+/// * `needs_reload` - State setter that will be set to `true` when store changes
+///   are detected, triggering a UI reload
+///
+/// # Returns
+///
+/// A future that can be passed to `hooks.use_future()` to subscribe to store changes.
+///
+/// # Example
+///
+/// ```ignore
+/// let mut needs_reload = hooks.use_state(|| false);
+/// hooks.use_future(use_store_watcher(needs_reload));
+/// ```
+pub fn use_store_watcher(
+    needs_reload: State<bool>,
+) -> impl std::future::Future<Output = ()> + Send {
+    let mut needs_reload = needs_reload;
+    async move {
+        if let Some(mut rx) = store::subscribe_to_changes() {
+            loop {
+                match rx.recv().await {
+                    Ok(_event) => {
+                        needs_reload.set(true);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        needs_reload.set(true);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        break;
+                    }
+                }
+            }
+        }
     }
 }
