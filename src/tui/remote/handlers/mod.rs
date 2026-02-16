@@ -26,27 +26,11 @@ pub use context::HandlerContext;
 
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
+use crate::tui::handlers::HandleResult;
 use crate::tui::navigation as shared_nav;
 
 use super::help_modal::help_content_line_count;
 use super::state::ViewMode;
-
-/// Result from handling an event
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HandleResult {
-    /// Event was handled, stop processing
-    Handled,
-    /// Event was not handled, continue to next handler
-    #[default]
-    NotHandled,
-}
-
-impl HandleResult {
-    #[allow(dead_code)]
-    pub fn is_handled(self) -> bool {
-        matches!(self, HandleResult::Handled)
-    }
-}
 
 /// Main event dispatcher that routes key events to the appropriate handler.
 ///

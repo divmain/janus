@@ -5,6 +5,22 @@
 
 use iocraft::prelude::{KeyCode, KeyModifiers};
 
+/// Result from handling an event
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HandleResult {
+    /// Event was handled, stop processing
+    Handled,
+    /// Event was not handled, continue to next handler
+    #[default]
+    NotHandled,
+}
+
+impl HandleResult {
+    pub fn is_handled(self) -> bool {
+        matches!(self, HandleResult::Handled)
+    }
+}
+
 /// Action to take based on search input handling
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchAction {

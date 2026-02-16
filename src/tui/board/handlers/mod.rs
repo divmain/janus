@@ -14,24 +14,8 @@ pub use column::adjust_column_after_toggle;
 pub use context::{BoardAsyncHandlers, BoardHandlerContext, FilteredCache};
 
 use super::model::BoardAction;
-use crate::tui::handlers::{SearchAction, handle_search_input};
+use crate::tui::handlers::{HandleResult, SearchAction, handle_search_input};
 use iocraft::prelude::{KeyCode, KeyModifiers};
-
-/// Result from handling an event
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HandleResult {
-    /// Event was handled, stop processing
-    Handled,
-    /// Event was not handled, continue to next handler
-    #[default]
-    NotHandled,
-}
-
-impl HandleResult {
-    pub fn is_handled(self) -> bool {
-        matches!(self, HandleResult::Handled)
-    }
-}
 
 /// Main event dispatcher that routes events to the appropriate handler
 pub fn handle_key_event(ctx: &mut BoardHandlerContext<'_>, code: KeyCode, modifiers: KeyModifiers) {

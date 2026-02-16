@@ -16,6 +16,7 @@ pub use context::{
 };
 pub use triage::handle_triage_modal_triggers;
 
+use crate::tui::handlers::HandleResult;
 use iocraft::prelude::{KeyCode, KeyModifiers, State};
 
 use crate::error::Result;
@@ -88,22 +89,6 @@ pub async fn execute_ticket_op_simple(
         |e| format!("{error_prefix}: {e}"),
     )
     .await;
-}
-
-/// Result from handling an event
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HandleResult {
-    /// Event was handled, stop processing
-    Handled,
-    /// Event was not handled, continue to next handler
-    #[default]
-    NotHandled,
-}
-
-impl HandleResult {
-    pub fn is_handled(self) -> bool {
-        matches!(self, HandleResult::Handled)
-    }
 }
 
 /// Main event dispatcher that routes events to the appropriate handler
