@@ -37,11 +37,8 @@ pub use crate::plan::parser::{
 };
 
 /// Find all plan files in the plans directory
-fn find_plans() -> Vec<String> {
-    find_markdown_files(plans_dir()).unwrap_or_else(|e| {
-        eprintln!("Warning: failed to read plans directory: {e}");
-        Vec::new()
-    })
+fn find_plans() -> std::result::Result<Vec<String>, std::io::Error> {
+    find_markdown_files(plans_dir())
 }
 
 /// Find a plan by partial ID.
@@ -99,10 +96,7 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
 
 /// Filesystem-based find implementation for plans (fallback when store unavailable).
 fn find_plan_by_id_filesystem(partial_id: &str, dir: &std::path::Path) -> Result<PathBuf> {
-    let files = find_markdown_files_from_path(dir).unwrap_or_else(|e| {
-        eprintln!("Warning: failed to read {} directory: {}", dir.display(), e);
-        Vec::new()
-    });
+    let files = find_markdown_files_from_path(dir)?;
 
     // Check for exact match first
     let exact_name = format!("{partial_id}.md");
@@ -392,9 +386,19 @@ pub async fn get_all_plans_with_map() -> Result<(PlanLoadResult, HashMap<String,
 
 /// Get all plans from disk (fallback implementation)
 pub fn get_all_plans_from_disk() -> PlanLoadResult {
-    let files = find_plans();
     let mut result = PlanLoadResult::new();
     let p_dir = plans_dir();
+
+    let files = match find_plans() {
+        Ok(files) => files,
+        Err(e) => {
+            result.add_failure(
+                "<plans directory>",
+                format!("failed to read directory: {e}"),
+            );
+            return result;
+        }
+    };
 
     for file in files {
         let file_path = p_dir.join(&file);
