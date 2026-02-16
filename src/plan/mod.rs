@@ -65,6 +65,9 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
         return Err(JanusError::InvalidPlanId(partial_id.to_string()));
     }
 
+    // Use trimmed ID for all subsequent operations
+    let partial_id = trimmed;
+
     // Use store as authoritative source when available; filesystem fallback only when store fails
     match get_or_init_store().await {
         Ok(store) => {
