@@ -82,8 +82,13 @@ pub async fn find_plan_by_id(partial_id: &str) -> Result<PathBuf> {
                 _ => Err(JanusError::AmbiguousPlanId(partial_id.to_string(), matches)),
             }
         }
-        Err(_) => {
+        Err(e) => {
             // FALLBACK: File-based implementation only when store is unavailable
+            tracing::warn!(
+                "Store initialization failed for plan lookup '{}': {}. Falling back to filesystem search.",
+                partial_id,
+                e
+            );
             find_plan_by_id_filesystem(partial_id, &dir)
         }
     }

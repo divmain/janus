@@ -28,7 +28,6 @@ pub mod utils;
 pub mod embedding;
 pub mod store;
 
-
 pub use config::Config;
 pub use entity::Entity;
 pub use error::{JanusError, Result};

@@ -394,7 +394,7 @@ mod tests {
             id: Some(PlanId::new_unchecked("plan-c3d4")),
             title: Some("Feature Rollout".to_string()),
             sections: vec![PlanSection::Tickets(TicketsSection::new(vec![
-                "j-e5f6".to_string()
+                "j-e5f6".to_string(),
             ]))],
             ..Default::default()
         });
