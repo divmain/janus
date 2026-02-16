@@ -1,5 +1,7 @@
 //! Ticket repository for loading tickets from the in-memory store
 
+use tracing::warn;
+
 use crate::store::get_or_init_store;
 use crate::types::{TicketMetadata, janus_root};
 
@@ -52,21 +54,27 @@ impl TicketRepository {
         let ticket = match crate::ticket::Ticket::find(ticket_id).await {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("Warning: failed to find ticket '{ticket_id}' for store refresh: {e}");
+                warn!(
+                    "Failed to find ticket '{}' for store refresh: {}",
+                    ticket_id, e
+                );
                 return;
             }
         };
         let metadata = match ticket.read() {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("Warning: failed to read ticket '{ticket_id}' for store refresh: {e}");
+                warn!(
+                    "Failed to read ticket '{}' for store refresh: {}",
+                    ticket_id, e
+                );
                 return;
             }
         };
         match get_or_init_store().await {
             Ok(store) => store.upsert_ticket(metadata),
             Err(e) => {
-                eprintln!("Warning: failed to init store for ticket refresh: {e}");
+                warn!("Failed to init store for ticket refresh: {}", e);
             }
         }
     }
@@ -80,21 +88,21 @@ impl TicketRepository {
         let plan = match crate::plan::Plan::find(plan_id).await {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Warning: failed to find plan '{plan_id}' for store refresh: {e}");
+                warn!("Failed to find plan '{}' for store refresh: {}", plan_id, e);
                 return;
             }
         };
         let metadata = match plan.read() {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("Warning: failed to read plan '{plan_id}' for store refresh: {e}");
+                warn!("Failed to read plan '{}' for store refresh: {}", plan_id, e);
                 return;
             }
         };
         match get_or_init_store().await {
             Ok(store) => store.upsert_plan(metadata),
             Err(e) => {
-                eprintln!("Warning: failed to init store for plan refresh: {e}");
+                warn!("Failed to init store for plan refresh: {}", e);
             }
         }
     }
