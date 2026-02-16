@@ -6,86 +6,9 @@
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 
-// ============================================================================
-// Input Validation Constants
-// ============================================================================
-
-/// Maximum length for ticket titles
-const MAX_TITLE_LENGTH: usize = 200;
-/// Maximum length for descriptions, notes, and summaries
-const MAX_DESCRIPTION_LENGTH: usize = 5000;
-
-/// Validates a title string.
-/// Returns Ok if valid, Err with message if invalid.
-pub(crate) fn validate_title(title: &str) -> Result<(), String> {
-    if title.is_empty() {
-        return Err("Title cannot be empty".to_string());
-    }
-    if title.len() > MAX_TITLE_LENGTH {
-        return Err(format!(
-            "Title too long: {} characters (max: {})",
-            title.len(),
-            MAX_TITLE_LENGTH
-        ));
-    }
-    // Check for control characters (except newlines which aren't expected in titles)
-    if title.chars().any(|c| c.is_control()) {
-        return Err("Title contains invalid control characters".to_string());
-    }
-    Ok(())
-}
-
-/// Validates a description/note string.
-/// Returns Ok if valid, Err with message if invalid.
-pub(crate) fn validate_description(text: &str, field_name: &str) -> Result<(), String> {
-    if text.len() > MAX_DESCRIPTION_LENGTH {
-        return Err(format!(
-            "{} too long: {} characters (max: {})",
-            field_name,
-            text.len(),
-            MAX_DESCRIPTION_LENGTH
-        ));
-    }
-    // Allow newlines but reject other control characters
-    if text
-        .chars()
-        .any(|c| c.is_control() && c != '\n' && c != '\r')
-    {
-        return Err(format!("{field_name} contains invalid control characters"));
-    }
-    Ok(())
-}
-
-/// Validates a note (non-empty version of description validation).
-/// Returns Ok if valid, Err with message if invalid.
-pub(crate) fn validate_note(note: &str) -> Result<(), String> {
-    if note.is_empty() {
-        return Err("Note cannot be empty".to_string());
-    }
-    validate_description(note, "Note")
-}
-
-/// Validates an optional summary.
-/// Returns Ok if valid or None, Err with message if Some and invalid.
-pub(crate) fn validate_optional_summary(summary: Option<&str>) -> Result<(), String> {
-    if let Some(text) = summary {
-        if text.len() > MAX_DESCRIPTION_LENGTH {
-            return Err(format!(
-                "Summary too long: {} characters (max: {})",
-                text.len(),
-                MAX_DESCRIPTION_LENGTH
-            ));
-        }
-        // Allow newlines but reject other control characters
-        if text
-            .chars()
-            .any(|c| c.is_control() && c != '\n' && c != '\r')
-        {
-            return Err("Summary contains invalid control characters".to_string());
-        }
-    }
-    Ok(())
-}
+use crate::utils::validation::{
+    validate_description, validate_note, validate_optional_summary, validate_title_for_mcp,
+};
 
 // ============================================================================
 // Tool Request Types
@@ -122,7 +45,7 @@ impl CreateTicketRequest {
     /// Validate all fields in the request.
     /// Returns Ok if valid, Err with message if invalid.
     pub(crate) fn validate(&self) -> Result<(), String> {
-        validate_title(&self.title)?;
+        validate_title_for_mcp(&self.title)?;
 
         // Validate priority range (0-4)
         if let Some(p) = self.priority {
@@ -166,7 +89,7 @@ impl SpawnSubtaskRequest {
     /// Validate all fields in the request.
     /// Returns Ok if valid, Err with message if invalid.
     pub(crate) fn validate(&self) -> Result<(), String> {
-        validate_title(&self.title)?;
+        validate_title_for_mcp(&self.title)?;
         if let Some(ref desc) = self.description {
             validate_description(desc, "Description")?;
         }
@@ -360,55 +283,56 @@ pub struct SemanticSearchRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::validation::{MAX_DESCRIPTION_LENGTH, MAX_TICKET_TITLE_LENGTH};
 
     // ============================================================================
     // Input Validation Tests
     // ============================================================================
 
     #[test]
-    fn test_validate_title_empty() {
-        let result = validate_title("");
+    fn test_validate_title_for_mcp_empty() {
+        let result = validate_title_for_mcp("");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("empty"));
     }
 
     #[test]
-    fn test_validate_title_too_long() {
-        let long_title = "a".repeat(201);
-        let result = validate_title(&long_title);
+    fn test_validate_title_for_mcp_too_long() {
+        let long_title = "a".repeat(MAX_TICKET_TITLE_LENGTH + 1);
+        let result = validate_title_for_mcp(&long_title);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("too long"));
     }
 
     #[test]
-    fn test_validate_title_max_length() {
-        let max_title = "a".repeat(200);
-        let result = validate_title(&max_title);
+    fn test_validate_title_for_mcp_max_length() {
+        let max_title = "a".repeat(MAX_TICKET_TITLE_LENGTH);
+        let result = validate_title_for_mcp(&max_title);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_validate_title_control_chars() {
-        let result = validate_title("Title\x00with\x01nulls");
+    fn test_validate_title_for_mcp_control_chars() {
+        let result = validate_title_for_mcp("Title\x00with\x01nulls");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("control characters"));
     }
 
     #[test]
-    fn test_validate_title_newline() {
-        let result = validate_title("Title\nwith newline");
+    fn test_validate_title_for_mcp_newline() {
+        let result = validate_title_for_mcp("Title\nwith newline");
         assert!(result.is_err()); // Newlines not allowed in titles
     }
 
     #[test]
-    fn test_validate_title_valid() {
-        let result = validate_title("Valid Ticket Title");
+    fn test_validate_title_for_mcp_valid() {
+        let result = validate_title_for_mcp("Valid Ticket Title");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_description_too_long() {
-        let long_desc = "a".repeat(5001);
+        let long_desc = "a".repeat(MAX_DESCRIPTION_LENGTH + 1);
         let result = validate_description(&long_desc, "Description");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("too long"));
@@ -416,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_validate_description_max_length() {
-        let max_desc = "a".repeat(5000);
+        let max_desc = "a".repeat(MAX_DESCRIPTION_LENGTH);
         let result = validate_description(&max_desc, "Description");
         assert!(result.is_ok());
     }
@@ -461,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_validate_optional_summary_too_long() {
-        let long_summary = "a".repeat(5001);
+        let long_summary = "a".repeat(MAX_DESCRIPTION_LENGTH + 1);
         let result = validate_optional_summary(Some(&long_summary));
         assert!(result.is_err());
     }

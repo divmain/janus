@@ -10,9 +10,7 @@
 //! - Cause excessive resource usage with very large payloads
 
 use crate::error::{JanusError, Result};
-
-/// Maximum length for a ticket title (in characters).
-const MAX_TITLE_LENGTH: usize = 200;
+use crate::utils::validation::MAX_REMOTE_TITLE_LENGTH;
 
 /// Maximum size for a ticket body (in bytes).
 const MAX_BODY_SIZE: usize = 100 * 1024; // 100 KB
@@ -22,8 +20,11 @@ const MAX_BODY_SIZE: usize = 100 * 1024; // 100 KB
 /// - Strips control characters (except spaces and tabs)
 /// - Collapses all whitespace (newlines, tabs, etc.) to single spaces
 /// - Trims leading/trailing whitespace
-/// - Truncates to `MAX_TITLE_LENGTH` characters
+/// - Truncates to `MAX_REMOTE_TITLE_LENGTH` characters
 /// - Rejects empty titles after sanitization
+///
+/// This function uses the shared constant from `crate::utils::validation`
+/// to ensure consistency with other title validation rules.
 pub fn sanitize_remote_title(title: &str) -> Result<String> {
     let sanitized: String = title
         .chars()
@@ -47,8 +48,11 @@ pub fn sanitize_remote_title(title: &str) -> Result<String> {
     }
 
     // Truncate to max length on a char boundary
-    let truncated = if sanitized.chars().count() > MAX_TITLE_LENGTH {
-        sanitized.chars().take(MAX_TITLE_LENGTH).collect::<String>()
+    let truncated = if sanitized.chars().count() > MAX_REMOTE_TITLE_LENGTH {
+        sanitized
+            .chars()
+            .take(MAX_REMOTE_TITLE_LENGTH)
+            .collect::<String>()
     } else {
         sanitized
     };
@@ -157,17 +161,19 @@ mod tests {
 
     #[test]
     fn test_sanitize_title_truncates_long_title() {
+        use crate::utils::validation::MAX_REMOTE_TITLE_LENGTH;
         let long_title = "a".repeat(300);
         let result = sanitize_remote_title(&long_title).unwrap();
-        assert_eq!(result.chars().count(), MAX_TITLE_LENGTH);
+        assert_eq!(result.chars().count(), MAX_REMOTE_TITLE_LENGTH);
     }
 
     #[test]
     fn test_sanitize_title_truncates_unicode() {
+        use crate::utils::validation::MAX_REMOTE_TITLE_LENGTH;
         // Each emoji is multiple bytes but one char
         let title = "🎉".repeat(250);
         let result = sanitize_remote_title(&title).unwrap();
-        assert_eq!(result.chars().count(), MAX_TITLE_LENGTH);
+        assert_eq!(result.chars().count(), MAX_REMOTE_TITLE_LENGTH);
         // Should still be valid UTF-8
         assert!(result.is_char_boundary(result.len()));
     }

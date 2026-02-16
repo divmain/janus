@@ -2,9 +2,10 @@ use serde_json::json;
 
 use super::CommandOutput;
 use crate::cli::OutputOptions;
-use crate::error::{JanusError, Result};
+use crate::error::Result;
 use crate::ticket::{Ticket, TicketBuilder, parse_ticket};
 use crate::types::{TicketPriority, TicketSize, TicketType, tickets_items_dir};
+use crate::utils::validation::validate_ticket_title;
 
 /// Options for the `create` command, bundling all parameters.
 pub struct CreateOptions {
@@ -64,19 +65,8 @@ pub async fn cmd_create(opts: CreateOptions) -> Result<()> {
         output,
     } = opts;
 
-    // Validate that title is not empty or only whitespace
-    if title.trim().is_empty() {
-        return Err(JanusError::EmptyTitle);
-    }
-
-    // Validate that title does not exceed maximum length
-    const MAX_TITLE_LENGTH: usize = 500;
-    if title.len() > MAX_TITLE_LENGTH {
-        return Err(JanusError::TicketTitleTooLong {
-            max: MAX_TITLE_LENGTH,
-            actual: title.len(),
-        });
-    }
+    // Validate title using shared validation rules
+    validate_ticket_title(&title)?;
 
     // Resolve spawned_from to canonical ticket ID if provided
     let resolved_spawned_from = if let Some(ref partial_id) = spawned_from {

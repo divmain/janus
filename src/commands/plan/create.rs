@@ -10,6 +10,7 @@ use crate::hooks::{HookEvent, run_post_hooks, run_pre_hooks};
 use crate::plan::parser::serialize_plan;
 use crate::plan::types::{Phase, PlanMetadata, PlanSection, TicketsSection};
 use crate::plan::{Plan, ensure_plans_dir, generate_plan_id};
+use crate::utils::validation::validate_plan_title;
 
 use crate::utils::{generate_uuid, iso_date};
 
@@ -20,22 +21,8 @@ use crate::utils::{generate_uuid, iso_date};
 /// * `phases` - Optional list of initial phase names (creates a phased plan if provided)
 /// * `output_json` - If true, output result as JSON
 pub fn cmd_plan_create(title: &str, phases: &[String], output: OutputOptions) -> Result<()> {
-    // Validate title
-    if title.trim().is_empty() {
-        return Err(JanusError::EmptyPlanTitle);
-    }
-    if title.contains('\n') {
-        return Err(JanusError::InvalidInput(
-            "Plan title cannot contain newlines".to_string(),
-        ));
-    }
-    const MAX_TITLE_LENGTH: usize = 200;
-    if title.len() > MAX_TITLE_LENGTH {
-        return Err(JanusError::PlanTitleTooLong {
-            max: MAX_TITLE_LENGTH,
-            actual: title.len(),
-        });
-    }
+    // Validate title using shared validation rules
+    validate_plan_title(title)?;
 
     ensure_plans_dir()?;
 

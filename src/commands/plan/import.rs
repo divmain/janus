@@ -17,6 +17,7 @@ use crate::plan::{
 };
 
 use crate::types::{TicketPriority, TicketStatus, TicketType};
+use crate::utils::validation::validate_plan_title;
 use crate::utils::{generate_uuid, iso_date};
 
 /// The Plan Format Specification document.
@@ -237,17 +238,9 @@ async fn prepare_import(input: &str, title_override: Option<&str>) -> Result<Imp
 
     // Apply title override if provided
     if let Some(title) = title_override {
-        let trimmed = title.trim();
-        if trimmed.is_empty() {
-            return Err(JanusError::EmptyPlanTitle);
-        }
-        if trimmed.len() > 200 {
-            return Err(JanusError::PlanTitleTooLong {
-                max: 200,
-                actual: trimmed.len(),
-            });
-        }
-        plan.title = trimmed.to_string();
+        // Validate using shared rules (already trims internally)
+        validate_plan_title(title)?;
+        plan.title = title.trim().to_string();
     }
 
     // Check for duplicate plan title
