@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::JanusError;
 use crate::types::EntityType;
 
 /// Events that can trigger hooks.
@@ -72,7 +71,8 @@ impl HookEvent {
 
 enum_display_fromstr!(
     HookEvent,
-    JanusError::InvalidHookEvent,
+    crate::error::JanusError::invalid_hook_event,
+    ["ticket_created", "ticket_updated", "plan_created", "plan_updated", "plan_deleted", "pre_write", "post_write", "pre_delete", "post_delete"],
     {
         TicketCreated => "ticket_created",
         TicketUpdated => "ticket_updated",
@@ -157,6 +157,7 @@ impl HookContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::JanusError;
 
     #[test]
     fn test_hook_event_display() {
@@ -218,8 +219,12 @@ mod tests {
     fn test_invalid_hook_event_error() {
         let result = "not_a_valid_event".parse::<HookEvent>();
         match result {
-            Err(JanusError::InvalidHookEvent(event)) => {
-                assert_eq!(event, "not_a_valid_event");
+            Err(JanusError::InvalidHookEvent {
+                value,
+                valid_values,
+            }) => {
+                assert_eq!(value, "not_a_valid_event");
+                assert!(valid_values.contains(&"ticket_created".to_string()));
             }
             other => panic!("Expected InvalidHookEvent, got: {other:?}"),
         }
@@ -266,7 +271,7 @@ mod tests {
         for invalid in invalid_events {
             let result = invalid.parse::<HookEvent>();
             assert!(
-                matches!(result, Err(JanusError::InvalidHookEvent(_))),
+                matches!(result, Err(JanusError::InvalidHookEvent { .. })),
                 "Expected InvalidHookEvent for '{invalid}'"
             );
         }

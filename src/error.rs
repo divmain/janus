@@ -56,6 +56,69 @@ fn format_ambiguous_plan_id(id: &str, matches: &[String]) -> String {
     format_error_with_list("ambiguous plan ID", id, "matches multiple plans:", matches)
 }
 
+/// Format an invalid enum value error with the list of valid options
+fn format_invalid_enum_value(value: &str, valid_values: &[String]) -> String {
+    format_error_with_list("invalid value", value, "must be one of:", valid_values)
+}
+
+impl JanusError {
+    pub fn invalid_status(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidStatus {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_ticket_type(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidTicketType {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_entity_type(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidEntityType {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_priority(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidPriority {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_sort_field(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidSortField {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_hook_event(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidHookEvent {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_event_type(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidEventType {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_actor(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidActor {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+}
+
 fn format_retry_errors(attempts: &u32, errors: &[String]) -> String {
     let mut msg = format!("operation failed after {attempts} attempts:");
     for (i, error) in errors.iter().enumerate() {
@@ -211,8 +274,11 @@ pub enum JanusError {
     #[error("invalid prefix '{0}': {1}")]
     InvalidPrefix(String, String),
 
-    #[error("invalid status '{0}'")]
-    InvalidStatus(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidStatus {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
     #[error("invalid timestamp '{0}': must be a valid ISO 8601 / RFC 3339 timestamp")]
     InvalidTimestamp(String),
@@ -281,14 +347,23 @@ pub enum JanusError {
     #[error("hook '{hook_name}' timed out after {seconds} seconds")]
     HookTimeout { hook_name: String, seconds: u64 },
 
-    #[error("invalid hook event '{0}'")]
-    InvalidHookEvent(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidHookEvent {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
-    #[error("invalid event type '{0}'")]
-    InvalidEventType(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidEventType {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
-    #[error("invalid actor '{0}'. Must be one of: cli, mcp, hook")]
-    InvalidActor(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidActor {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
     #[error("hook recipe '{0}' not found")]
     HookRecipeNotFound(String),
@@ -358,22 +433,34 @@ pub enum JanusError {
     #[error("unknown array field: {0}")]
     UnknownArrayField(String),
 
-    #[error("invalid ticket type: {0}")]
-    InvalidTicketType(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidTicketType {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
-    #[error("invalid entity type: {0}. Must be one of: ticket, plan")]
-    InvalidEntityType(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidEntityType {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
-    #[error("invalid priority: {0}")]
-    InvalidPriority(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidPriority {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
     #[error(
         "invalid size: {0}. Must be one of: xsmall (xs), small (s), medium (m), large (l), xlarge (xl)"
     )]
     InvalidSize(String),
 
-    #[error("invalid sort field: {0}. Must be one of: priority, created, id")]
-    InvalidSortField(String),
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidSortField {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
     #[error("reordered list must contain the same tickets")]
     ReorderTicketMismatch,
@@ -522,10 +609,12 @@ mod tests {
 
     #[test]
     fn test_invalid_hook_event_error_message() {
-        let error = JanusError::InvalidHookEvent("bad_event".to_string());
+        let error =
+            JanusError::invalid_hook_event("bad_event", &["ticket_created", "ticket_updated"]);
         let msg = error.to_string();
         assert!(msg.contains("bad_event"));
-        assert!(msg.contains("invalid"));
+        assert!(msg.contains("ticket_created"));
+        assert!(msg.contains("must be one of"));
     }
 
     #[test]

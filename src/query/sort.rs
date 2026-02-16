@@ -3,7 +3,6 @@
 //! These functions are used by the query module to sort ticket results.
 //! They are re-exported from the display module for backward compatibility.
 
-use crate::error::JanusError;
 use crate::types::{TicketData, TicketMetadata};
 
 /// Sort field for ticket listing and queries.
@@ -22,7 +21,8 @@ impl SortField {
 
 enum_display_fromstr!(
     SortField,
-    JanusError::InvalidSortField,
+    crate::error::JanusError::invalid_sort_field,
+    ["priority", "created", "id"],
     {
         Created => "created",
         Id => "id",

@@ -36,7 +36,8 @@ pub enum EventType {
 
 enum_display_fromstr!(
     EventType,
-    crate::error::JanusError::InvalidEventType,
+    crate::error::JanusError::invalid_event_type,
+    ["ticket_created", "status_changed", "note_added", "field_updated", "dependency_added", "dependency_removed", "link_added", "link_removed", "plan_created", "ticket_added_to_plan", "ticket_removed_from_plan", "phase_added", "phase_removed", "ticket_moved", "cache_rebuilt"],
     {
         TicketCreated => "ticket_created",
         StatusChanged => "status_changed",
@@ -68,7 +69,8 @@ pub enum Actor {
 
 enum_display_fromstr!(
     Actor,
-    crate::error::JanusError::InvalidActor,
+    crate::error::JanusError::invalid_actor,
+    ["cli", "mcp", "hook"],
     {
         Cli => "cli",
         Mcp => "mcp",

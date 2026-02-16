@@ -576,15 +576,19 @@ hooks:
 #[tokio::test]
 async fn test_hook_run_invalid_event() {
     let result = cmd_hook_run("invalid_event", None).await;
-    assert!(matches!(result, Err(JanusError::InvalidHookEvent(_))));
+    assert!(matches!(result, Err(JanusError::InvalidHookEvent { .. })));
 }
 
 #[tokio::test]
 async fn test_invalid_hook_event_error_message() {
     let result = cmd_hook_run("not_a_real_event", None).await;
     match result {
-        Err(JanusError::InvalidHookEvent(event)) => {
-            assert_eq!(event, "not_a_real_event");
+        Err(JanusError::InvalidHookEvent {
+            value,
+            valid_values,
+        }) => {
+            assert_eq!(value, "not_a_real_event");
+            assert!(valid_values.contains(&"ticket_created".to_string()));
         }
         other => panic!("Expected InvalidHookEvent, got: {other:?}"),
     }

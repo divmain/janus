@@ -9,11 +9,12 @@
 ///
 /// enum_display_fromstr!(
 ///     MyEnum,
-///     JanusError::InvalidMyEnum,
+///     JanusError::invalid_my_enum,
+///     ["value1", "value2", "value3"],
 ///     {
-///         Variant1 => "variant1",
-///         Variant2 => "variant2",
-///         Variant3 => "variant_3",
+///         Variant1 => "value1",
+///         Variant2 => "value2",
+///         Variant3 => "value3",
 ///     }
 /// );
 /// ```
@@ -21,7 +22,8 @@
 macro_rules! enum_display_fromstr {
     (
         $enum_name:ident,
-        $error_variant:path,
+        $error_fn:path,
+        [$($valid_val:expr),+ $(,)?],
         { $($variant:ident => $str:expr),+ $(,)? }
     ) => {
         impl std::fmt::Display for $enum_name {
@@ -38,7 +40,7 @@ macro_rules! enum_display_fromstr {
             fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
                 match s.to_lowercase().as_str() {
                     $($str => Ok($enum_name::$variant),)+
-                    _ => Err($error_variant(s.to_string())),
+                    _ => Err($error_fn(s, &[$($valid_val),+])),
                 }
             }
         }

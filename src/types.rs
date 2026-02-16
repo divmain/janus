@@ -403,7 +403,8 @@ impl TicketStatus {
 
 enum_display_fromstr!(
     TicketStatus,
-    JanusError::InvalidStatus,
+    JanusError::invalid_status,
+    ["new", "next", "in_progress", "complete", "cancelled"],
     {
         New => "new",
         Next => "next",
@@ -455,7 +456,8 @@ impl TicketType {
 
 enum_display_fromstr!(
     TicketType,
-    JanusError::InvalidTicketType,
+    JanusError::invalid_ticket_type,
+    ["bug", "feature", "task", "epic", "chore"],
     {
         Bug => "bug",
         Feature => "feature",
@@ -477,7 +479,8 @@ pub enum EntityType {
 
 enum_display_fromstr!(
     EntityType,
-    JanusError::InvalidEntityType,
+    JanusError::invalid_entity_type,
+    ["ticket", "plan", "cache"],
     {
         Ticket => "ticket",
         Plan => "plan",
@@ -548,7 +551,8 @@ impl TicketPriority {
 
 enum_display_fromstr!(
     TicketPriority,
-    JanusError::InvalidPriority,
+    JanusError::invalid_priority,
+    ["0", "1", "2", "3", "4"],
     {
         P0 => "0",
         P1 => "1",
