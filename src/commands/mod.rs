@@ -188,6 +188,8 @@ pub fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
         "file_path": ticket.file_path.as_ref().map(|p| p.to_string_lossy().to_string()),
         "remote": ticket.remote,
         "completion_summary": ticket.completion_summary,
+        "spawned_from": ticket.spawned_from,
+        "depth": ticket.depth,
     })
 }
 

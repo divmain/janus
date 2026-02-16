@@ -27,12 +27,12 @@ use rmcp::model::{
 use serde_json::json;
 
 use crate::commands::graph::{RelationshipFilter, build_edges, generate_dot};
-use crate::commands::{get_next_items_phased, get_next_items_simple};
+use crate::commands::{get_next_items_phased, get_next_items_simple, ticket_to_json};
 
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::status::{all_deps_satisfied, has_unsatisfied_dep, is_dependency_satisfied};
 use crate::ticket::{Ticket, build_ticket_map, get_all_tickets_with_map};
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::TicketStatus;
 
 // ============================================================================
 // Resource Definitions
@@ -587,24 +587,10 @@ async fn read_graph_spawning() -> Result<ReadResourceResult, ResourceError> {
 // Helper Functions
 // ============================================================================
 
-/// Convert ticket metadata to JSON value
-fn ticket_to_json(ticket: &TicketMetadata) -> serde_json::Value {
-    json!({
-        "id": ticket.id,
-        "title": ticket.title,
-        "status": ticket.status.map(|s| s.to_string()),
-        "type": ticket.ticket_type.map(|t| t.to_string()),
-        "priority": ticket.priority.map(|p| p.as_num()),
-        "deps": ticket.deps,
-        "spawned_from": ticket.spawned_from,
-        "depth": ticket.depth,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::TicketId;
+    use crate::types::{TicketId, TicketMetadata};
 
     #[test]
     fn test_list_all_resources() {
