@@ -11,8 +11,6 @@ use std::path::PathBuf;
 
 use iocraft::prelude::*;
 
-use crate::parser::extract_ticket_body;
-use crate::ticket::Ticket;
 use crate::tui::components::{
     Clickable, EmptyState, EmptyStateKind, ModalState, NoteModalData, SearchBox,
     StoreErrorModalData, TicketDetail, TicketList, TicketModalData, Toast, browser_shortcuts,
@@ -22,7 +20,7 @@ use crate::tui::components::{
 use crate::tui::edit::{EditFormOverlay, EditResult};
 use crate::tui::edit_state::{EditFormState, EditMode};
 use crate::tui::hooks::use_ticket_loader;
-use crate::tui::repository::InitResult;
+use crate::tui::repository::{InitResult, load_ticket_body};
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
 use crate::tui::services::TicketService;
@@ -902,24 +900,4 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
             })
         }
     }
-}
-
-/// Load the body content of a ticket from disk.
-///
-/// This is called once per selection change (not per render).
-/// Returns an empty string if the path is `None` or if reading fails.
-fn load_ticket_body(file_path: Option<&PathBuf>) -> String {
-    let Some(file_path) = file_path else {
-        tracing::debug!("Failed to load ticket body: file_path is None");
-        return String::new();
-    };
-    let Ok(ticket) = Ticket::new(file_path.clone()) else {
-        tracing::debug!("Failed to load ticket from {:?}", file_path);
-        return String::new();
-    };
-    let Ok(content) = ticket.read_content() else {
-        tracing::debug!("Failed to read ticket content from {:?}", file_path);
-        return String::new();
-    };
-    extract_ticket_body(&content).unwrap_or_default()
 }

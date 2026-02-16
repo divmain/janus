@@ -1,8 +1,12 @@
 //! Ticket repository for loading tickets from the in-memory store
 
-use tracing::warn;
+use std::path::PathBuf;
 
+use tracing::{debug, warn};
+
+use crate::parser::extract_ticket_body;
 use crate::store::get_or_init_store;
+use crate::ticket::Ticket;
 use crate::types::{TicketMetadata, janus_root};
 
 /// Result of initializing the ticket repository
@@ -112,4 +116,24 @@ impl TicketRepository {
     pub async fn reload_tickets(&mut self) {
         self.tickets = Self::load_tickets().await;
     }
+}
+
+/// Load the body content of a ticket from disk.
+///
+/// This is called once per selection change (not per render).
+/// Returns an empty string if the path is `None` or if reading fails.
+pub fn load_ticket_body(file_path: Option<&PathBuf>) -> String {
+    let Some(file_path) = file_path else {
+        debug!("Failed to load ticket body: file_path is None");
+        return String::new();
+    };
+    let Ok(ticket) = Ticket::new(file_path.clone()) else {
+        debug!("Failed to load ticket from {:?}", file_path);
+        return String::new();
+    };
+    let Ok(content) = ticket.read_content() else {
+        debug!("Failed to read ticket content from {:?}", file_path);
+        return String::new();
+    };
+    extract_ticket_body(&content).unwrap_or_default()
 }
