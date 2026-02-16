@@ -41,18 +41,18 @@ pub fn create_fetch_handler(
     last_error: &State<Option<(String, String)>>,
     last_fetch_result: &State<Option<(FetchResult, bool)>>,
 ) -> Handler<(Platform, RemoteQuery)> {
-    let remote_issues = remote_issues.clone();
-    let view_display = view_display.clone();
-    let toast = toast.clone();
-    let last_error = last_error.clone();
-    let last_fetch_result = last_fetch_result.clone();
+    let remote_issues = *remote_issues;
+    let view_display = *view_display;
+    let toast = *toast;
+    let last_error = *last_error;
+    let last_fetch_result = *last_fetch_result;
 
     hooks.use_async_handler(move |(platform, query): (Platform, RemoteQuery)| {
-        let mut remote_issues = remote_issues.clone();
-        let mut view_display = view_display.clone();
-        let mut toast = toast.clone();
-        let mut last_error = last_error.clone();
-        let mut last_fetch_result = last_fetch_result.clone();
+        let mut remote_issues = remote_issues;
+        let mut view_display = view_display;
+        let mut toast = toast;
+        let mut last_error = last_error;
+        let mut last_fetch_result = last_fetch_result;
 
         async move {
             let is_search = query.search_text.is_some();
@@ -88,7 +88,7 @@ pub fn create_fetch_handler(
             }
 
             // Update loading state within view_display struct
-            let mut new_display = view_display.read().clone();
+            let mut new_display = *view_display.read();
             new_display.remote_loading = false;
             view_display.set(new_display);
         }
@@ -102,11 +102,11 @@ pub fn create_search_fetch_handler(
     filter_config: &State<super::super::state::FilterConfigData>,
 ) -> Handler<String> {
     let fetch_handler = fetch_handler.clone();
-    let filter_config = filter_config.clone();
+    let filter_config = *filter_config;
 
     hooks.use_async_handler(move |search_text: String| {
         let fetch_handler = fetch_handler.clone();
-        let filter_config = filter_config.clone();
+        let filter_config = filter_config;
 
         async move {
             // Debounce wait to prevent excessive API calls while typing
@@ -140,19 +140,19 @@ pub fn create_push_handler(
     last_error: &State<Option<(String, String)>>,
     local_nav: &State<NavigationData>,
 ) -> Handler<(Vec<String>, Platform, RemoteQuery)> {
-    let local_tickets = local_tickets.clone();
+    let local_tickets = *local_tickets;
     let fetch_handler = fetch_handler.clone();
-    let toast = toast.clone();
-    let last_error = last_error.clone();
-    let local_nav = local_nav.clone();
+    let toast = *toast;
+    let last_error = *last_error;
+    let local_nav = *local_nav;
 
     hooks.use_async_handler(
         move |(ticket_ids, platform, query): (Vec<String>, Platform, RemoteQuery)| {
-            let mut local_tickets = local_tickets.clone();
+            let mut local_tickets = local_tickets;
             let fetch_handler = fetch_handler.clone();
-            let mut toast = toast.clone();
-            let mut last_error = last_error.clone();
-            let mut local_nav = local_nav.clone();
+            let mut toast = toast;
+            let mut last_error = last_error;
+            let mut local_nav = local_nav;
 
             async move {
                 let (successes, errors) = push_tickets_to_remote(&ticket_ids, platform).await;
@@ -220,12 +220,12 @@ pub fn create_link_handler(
     local_tickets: &State<Vec<TicketMetadata>>,
     toast: &State<Option<Toast>>,
 ) -> Handler<LinkSource> {
-    let local_tickets = local_tickets.clone();
-    let toast = toast.clone();
+    let local_tickets = *local_tickets;
+    let toast = *toast;
 
     hooks.use_async_handler(move |source: LinkSource| {
-        let mut local_tickets = local_tickets.clone();
-        let mut toast = toast.clone();
+        let mut local_tickets = local_tickets;
+        let mut toast = toast;
 
         async move {
             match link_ticket_to_issue(&source.ticket_id, &source.remote_issue).await {
@@ -251,14 +251,14 @@ pub fn create_unlink_handler(
     local_nav: &State<NavigationData>,
     toast: &State<Option<Toast>>,
 ) -> Handler<Vec<String>> {
-    let local_tickets = local_tickets.clone();
-    let local_nav = local_nav.clone();
-    let toast = toast.clone();
+    let local_tickets = *local_tickets;
+    let local_nav = *local_nav;
+    let toast = *toast;
 
     hooks.use_async_handler(move |ticket_ids: Vec<String>| {
-        let mut local_tickets = local_tickets.clone();
-        let mut local_nav = local_nav.clone();
-        let mut toast = toast.clone();
+        let mut local_tickets = local_tickets;
+        let mut local_nav = local_nav;
+        let mut toast = toast;
 
         async move {
             let mut unlinked = 0;
@@ -390,17 +390,17 @@ pub fn create_sync_apply_handler(
     toast: &State<Option<Toast>>,
     last_error: &State<Option<(String, String)>>,
 ) -> Handler<(SyncPreviewState, Platform, RemoteQuery)> {
-    let local_tickets = local_tickets.clone();
+    let local_tickets = *local_tickets;
     let fetch_handler = fetch_handler.clone();
-    let toast = toast.clone();
-    let last_error = last_error.clone();
+    let toast = *toast;
+    let last_error = *last_error;
 
     hooks.use_async_handler(
         move |(state, platform, query): (SyncPreviewState, Platform, RemoteQuery)| {
-            let mut local_tickets = local_tickets.clone();
+            let mut local_tickets = local_tickets;
             let fetch_handler = fetch_handler.clone();
-            let mut toast = toast.clone();
-            let mut last_error = last_error.clone();
+            let mut toast = toast;
+            let mut last_error = last_error;
 
             async move {
                 let accepted = state.accepted_changes();

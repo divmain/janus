@@ -17,6 +17,7 @@ use super::super::sync_preview::{SyncChangeWithContext, SyncPreviewState};
 ///
 /// This is the main handler that fetches sync preview data. It requires the
 /// sync action handlers to be passed in as parameters.
+#[allow(clippy::too_many_arguments)]
 pub fn create_sync_fetch_handler(
     hooks: &mut Hooks,
     sync_preview: &State<Option<SyncPreviewState>>,
@@ -28,24 +29,24 @@ pub fn create_sync_fetch_handler(
     sync_cancel_handler: &Handler<()>,
     filter_config: &State<super::super::state::FilterConfigData>,
 ) -> Handler<(Vec<String>, Platform)> {
-    let sync_preview = sync_preview.clone();
-    let toast = toast.clone();
-    let last_error = last_error.clone();
+    let sync_preview = *sync_preview;
+    let toast = *toast;
+    let last_error = *last_error;
     let sync_accept_handler = sync_accept_handler.clone();
     let sync_skip_handler = sync_skip_handler.clone();
     let sync_accept_all_handler = sync_accept_all_handler.clone();
     let sync_cancel_handler = sync_cancel_handler.clone();
-    let filter_config = filter_config.clone();
+    let filter_config = *filter_config;
 
     hooks.use_async_handler(move |(ticket_ids, platform): (Vec<String>, Platform)| {
-        let mut sync_preview = sync_preview.clone();
-        let mut toast = toast.clone();
-        let mut last_error = last_error.clone();
+        let mut sync_preview = sync_preview;
+        let mut toast = toast;
+        let mut last_error = last_error;
         let sync_accept_handler = sync_accept_handler.clone();
         let sync_skip_handler = sync_skip_handler.clone();
         let sync_accept_all_handler = sync_accept_all_handler.clone();
         let sync_cancel_handler = sync_cancel_handler.clone();
-        let _filter_config = filter_config.clone();
+        let _filter_config = filter_config;
 
         async move {
             let owned_ticket_ids: Vec<String> = ticket_ids.to_vec();
@@ -125,22 +126,22 @@ pub fn create_sync_action_handlers(
     filter_config: &State<super::super::state::FilterConfigData>,
     toast: &State<Option<Toast>>,
 ) -> SyncActionHandlers {
-    let sync_preview_accept = sync_preview.clone();
-    let sync_preview_skip = sync_preview.clone();
-    let sync_preview_accept_all = sync_preview.clone();
-    let sync_preview_cancel = sync_preview.clone();
+    let sync_preview_accept = *sync_preview;
+    let sync_preview_skip = *sync_preview;
+    let sync_preview_accept_all = *sync_preview;
+    let sync_preview_cancel = *sync_preview;
     let sync_apply_accept = sync_apply_handler.clone();
     let sync_apply_skip = sync_apply_handler.clone();
     let sync_apply_accept_all = sync_apply_handler.clone();
-    let filter_config_accept = filter_config.clone();
-    let filter_config_skip = filter_config.clone();
-    let filter_config_accept_all = filter_config.clone();
-    let toast_cancel = toast.clone();
+    let filter_config_accept = *filter_config;
+    let filter_config_skip = *filter_config;
+    let filter_config_accept_all = *filter_config;
+    let toast_cancel = *toast;
 
     let accept = hooks.use_async_handler(move |()| {
-        let mut sync_preview = sync_preview_accept.clone();
+        let mut sync_preview = sync_preview_accept;
         let sync_apply_handler = sync_apply_accept.clone();
-        let filter_config = filter_config_accept.clone();
+        let filter_config = filter_config_accept;
         async move {
             let preview = sync_preview.read().clone();
             if let Some(mut p) = preview {
@@ -159,9 +160,9 @@ pub fn create_sync_action_handlers(
     });
 
     let skip = hooks.use_async_handler(move |()| {
-        let mut sync_preview = sync_preview_skip.clone();
+        let mut sync_preview = sync_preview_skip;
         let sync_apply_handler = sync_apply_skip.clone();
-        let filter_config = filter_config_skip.clone();
+        let filter_config = filter_config_skip;
         async move {
             let preview = sync_preview.read().clone();
             if let Some(mut p) = preview {
@@ -180,9 +181,9 @@ pub fn create_sync_action_handlers(
     });
 
     let accept_all = hooks.use_async_handler(move |()| {
-        let mut sync_preview = sync_preview_accept_all.clone();
+        let mut sync_preview = sync_preview_accept_all;
         let sync_apply_handler = sync_apply_accept_all.clone();
-        let filter_config = filter_config_accept_all.clone();
+        let filter_config = filter_config_accept_all;
         async move {
             let preview = sync_preview.read().clone();
             if let Some(mut p) = preview {
@@ -197,8 +198,8 @@ pub fn create_sync_action_handlers(
     });
 
     let cancel = hooks.use_async_handler(move |()| {
-        let mut sync_preview = sync_preview_cancel.clone();
-        let mut toast = toast_cancel.clone();
+        let mut sync_preview = sync_preview_cancel;
+        let mut toast = toast_cancel;
         async move {
             sync_preview.set(None);
             toast.set(Some(Toast::info("Sync cancelled")));

@@ -287,10 +287,7 @@ impl TicketStore {
             operation: "get mtime",
             item_type: "file",
             path: file_path.clone(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "failed to read file modification time",
-            ),
+            source: std::io::Error::other("failed to read file modification time"),
         })?;
 
         // Compute embedding key

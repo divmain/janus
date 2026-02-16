@@ -554,8 +554,7 @@ impl RemoteProvider for GitHubProvider {
                     // Warn if we hit a limit
                     if pages_fetched >= max_pages && has_more {
                         eprintln!(
-                            "Warning: Reached max page limit ({}). Some issues may not be fetched.",
-                            max_pages
+                            "Warning: Reached max page limit ({max_pages}). Some issues may not be fetched."
                         );
                     }
 
@@ -728,8 +727,7 @@ impl RemoteProvider for GitHubProvider {
                     // Warn if we hit a limit
                     if pages_fetched >= max_pages && has_more {
                         eprintln!(
-                            "Warning: Reached max page limit ({}). Some search results may not be fetched.",
-                            max_pages
+                            "Warning: Reached max page limit ({max_pages}). Some search results may not be fetched."
                         );
                     }
 

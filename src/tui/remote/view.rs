@@ -162,11 +162,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Tab click handlers
     let tab_local_click_handler = hooks.use_async_handler({
-        let view_display = view_display.clone();
+        let view_display = view_display;
         move |()| {
-            let mut view_display = view_display.clone();
+            let mut view_display = view_display;
             async move {
-                let mut new_display = view_display.read().clone();
+                let mut new_display = *view_display.read();
                 new_display.set_view(ViewMode::Local);
                 view_display.set(new_display);
             }
@@ -174,11 +174,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     let tab_remote_click_handler = hooks.use_async_handler({
-        let view_display = view_display.clone();
+        let view_display = view_display;
         move |()| {
-            let mut view_display = view_display.clone();
+            let mut view_display = view_display;
             async move {
-                let mut new_display = view_display.read().clone();
+                let mut new_display = *view_display.read();
                 new_display.set_view(ViewMode::Remote);
                 view_display.set(new_display);
             }
@@ -187,9 +187,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Search focus handler
     let search_click_handler = hooks.use_async_handler({
-        let search_ui = search_ui.clone();
+        let search_ui = search_ui;
         move |()| {
-            let mut search_ui = search_ui.clone();
+            let mut search_ui = search_ui;
             async move {
                 let mut new_ui = search_ui.read().clone();
                 new_ui.focused = true;
@@ -200,16 +200,16 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // List pane click handler
     let list_pane_click_handler = hooks.use_async_handler({
-        let search_ui = search_ui.clone();
-        let view_display = view_display.clone();
+        let search_ui = search_ui;
+        let view_display = view_display;
         move |()| {
-            let mut search_ui = search_ui.clone();
-            let mut view_display = view_display.clone();
+            let mut search_ui = search_ui;
+            let mut view_display = view_display;
             async move {
                 let mut new_ui = search_ui.read().clone();
                 new_ui.focused = false;
                 search_ui.set(new_ui);
-                let mut new_display = view_display.read().clone();
+                let mut new_display = *view_display.read();
                 new_display.detail_pane_focused = false;
                 view_display.set(new_display);
             }
@@ -218,9 +218,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Row click handlers
     let local_row_click_handler = hooks.use_async_handler({
-        let local_nav = local_nav.clone();
+        let local_nav = local_nav;
         move |idx: usize| {
-            let mut local_nav = local_nav.clone();
+            let mut local_nav = local_nav;
             async move {
                 let mut new_nav = local_nav.read().clone();
                 new_nav.select_item(idx);
@@ -230,9 +230,9 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     let remote_row_click_handler = hooks.use_async_handler({
-        let remote_nav = remote_nav.clone();
+        let remote_nav = remote_nav;
         move |idx: usize| {
-            let mut remote_nav = remote_nav.clone();
+            let mut remote_nav = remote_nav;
             async move {
                 let mut new_nav = remote_nav.read().clone();
                 new_nav.select_item(idx);
@@ -243,11 +243,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Detail pane click handler
     let detail_pane_click_handler = hooks.use_async_handler({
-        let view_display = view_display.clone();
+        let view_display = view_display;
         move |()| {
-            let mut view_display = view_display.clone();
+            let mut view_display = view_display;
             async move {
-                let mut new_display = view_display.read().clone();
+                let mut new_display = *view_display.read();
                 new_display.detail_pane_focused = true;
                 view_display.set(new_display);
             }
@@ -256,14 +256,14 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Detail scroll handlers
     let detail_scroll_up_handler = hooks.use_async_handler({
-        let view_display = view_display.clone();
-        let detail_scroll = detail_scroll.clone();
+        let view_display = view_display;
+        let detail_scroll = detail_scroll;
         move |()| {
-            let view_display = view_display.clone();
-            let mut detail_scroll = detail_scroll.clone();
+            let view_display = view_display;
+            let mut detail_scroll = detail_scroll;
             async move {
                 let current_view = view_display.get().active_view;
-                let mut new_scroll = detail_scroll.read().clone();
+                let mut new_scroll = *detail_scroll.read();
                 new_scroll.scroll_up(current_view, 3);
                 detail_scroll.set(new_scroll);
             }
@@ -271,14 +271,14 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     let detail_scroll_down_handler = hooks.use_async_handler({
-        let view_display = view_display.clone();
-        let detail_scroll = detail_scroll.clone();
+        let view_display = view_display;
+        let detail_scroll = detail_scroll;
         move |()| {
-            let view_display = view_display.clone();
-            let mut detail_scroll = detail_scroll.clone();
+            let view_display = view_display;
+            let mut detail_scroll = detail_scroll;
             async move {
                 let current_view = view_display.get().active_view;
-                let mut new_scroll = detail_scroll.read().clone();
+                let mut new_scroll = *detail_scroll.read();
                 new_scroll.scroll_down(current_view, 3);
                 detail_scroll.set(new_scroll);
             }
@@ -290,11 +290,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
 
     // Help scroll handlers
     let help_scroll_up_handler = hooks.use_async_handler({
-        let modal_visibility = modal_visibility.clone();
+        let modal_visibility = modal_visibility;
         move |()| {
-            let mut modal_visibility = modal_visibility.clone();
+            let mut modal_visibility = modal_visibility;
             async move {
-                let mut visibility = modal_visibility.read().clone();
+                let mut visibility = *modal_visibility.read();
                 visibility.help_scroll = visibility.help_scroll.saturating_sub(3);
                 modal_visibility.set(visibility);
             }
@@ -302,11 +302,11 @@ pub fn RemoteTui<'a>(_props: &RemoteTuiProps, mut hooks: Hooks) -> impl Into<Any
     });
 
     let help_scroll_down_handler = hooks.use_async_handler({
-        let modal_visibility = modal_visibility.clone();
+        let modal_visibility = modal_visibility;
         move |()| {
-            let mut modal_visibility = modal_visibility.clone();
+            let mut modal_visibility = modal_visibility;
             async move {
-                let mut visibility = modal_visibility.read().clone();
+                let mut visibility = *modal_visibility.read();
                 visibility.help_scroll += 3;
                 modal_visibility.set(visibility);
             }

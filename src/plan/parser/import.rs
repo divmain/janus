@@ -6,13 +6,13 @@
 use std::sync::LazyLock;
 
 use comrak::nodes::{AstNode, NodeValue};
-use comrak::{Arena, Options, parse_document};
+use comrak::{parse_document, Arena, Options};
 use regex::Regex;
 
 use crate::error::{JanusError, Result};
 use crate::plan::types::{
-    ImportValidationError, ImportablePhase, ImportablePlan, ImportableTask,
-    display_import_validation_error,
+    display_import_validation_error, ImportValidationError, ImportablePhase, ImportablePlan,
+    ImportableTask,
 };
 
 use super::{extract_text_content, render_node_to_markdown};
@@ -1085,12 +1085,11 @@ It has no explicit H4 task headers.
         let task = &phase.tasks[0];
         assert_eq!(task.title, "Implement Phase 1: Setup");
         assert!(task.body.is_some());
-        assert!(
-            task.body
-                .as_ref()
-                .unwrap()
-                .contains("sets up the infrastructure")
-        );
+        assert!(task
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("sets up the infrastructure"));
         assert!(!task.is_complete);
     }
 
@@ -1155,13 +1154,11 @@ Test the full workflow.
         assert_eq!(phase2.tasks.len(), 1, "Should have one fallback task");
         assert_eq!(phase2.tasks[0].title, "Implement Phase 2: Integration");
         assert!(phase2.tasks[0].body.is_some());
-        assert!(
-            phase2.tasks[0]
-                .body
-                .as_ref()
-                .unwrap()
-                .contains("no H4 tasks")
-        );
+        assert!(phase2.tasks[0]
+            .body
+            .as_ref()
+            .unwrap()
+            .contains("no H4 tasks"));
 
         // Phase 3: Has explicit H4 tasks
         let phase3 = &plan.phases[2];
