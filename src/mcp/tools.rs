@@ -23,6 +23,7 @@
 //! | `semantic_search` | Find tickets semantically similar to a query (requires semantic-search config) |
 
 use rmcp::handler::server::{tool::ToolRouter, wrapper::Parameters};
+use tracing::warn;
 
 use std::str::FromStr;
 use tokio::time::timeout;
@@ -316,6 +317,11 @@ impl JanusTools {
         // Refresh the in-memory store immediately
         if let Ok(store) = get_or_init_store().await {
             store.refresh_ticket_in_store(&id).await;
+        } else {
+            warn!(
+                "Failed to refresh ticket {} in store - store initialization failed",
+                &id
+            );
         }
 
         // Log the event with MCP actor
@@ -366,6 +372,11 @@ impl JanusTools {
         if let Ok(store) = get_or_init_store().await {
             store.refresh_ticket_in_store(&id).await;
             store.refresh_ticket_in_store(&parent.id).await;
+        } else {
+            warn!(
+                "Failed to refresh tickets {} and {} in store - store initialization failed",
+                &id, &parent.id
+            );
         }
 
         // Log with MCP actor
@@ -413,6 +424,11 @@ impl JanusTools {
         // Refresh the in-memory store immediately
         if let Ok(store) = get_or_init_store().await {
             store.refresh_ticket_in_store(&ticket.id).await;
+        } else {
+            warn!(
+                "Failed to refresh ticket {} in store - store initialization failed",
+                &ticket.id
+            );
         }
 
         Ok(format!(
@@ -441,6 +457,11 @@ impl JanusTools {
         // Refresh the in-memory store immediately
         if let Ok(store) = get_or_init_store().await {
             store.refresh_ticket_in_store(&ticket.id).await;
+        } else {
+            warn!(
+                "Failed to refresh ticket {} in store - store initialization failed",
+                &ticket.id
+            );
         }
 
         let timestamp = iso_date();
@@ -668,6 +689,11 @@ impl JanusTools {
             // Refresh the in-memory store immediately
             if let Ok(store) = get_or_init_store().await {
                 store.refresh_ticket_in_store(&ticket.id).await;
+            } else {
+                warn!(
+                    "Failed to refresh ticket {} in store - store initialization failed",
+                    &ticket.id
+                );
             }
         }
 
@@ -712,6 +738,11 @@ impl JanusTools {
         // Refresh the in-memory store immediately
         if let Ok(store) = get_or_init_store().await {
             store.refresh_ticket_in_store(&ticket.id).await;
+        } else {
+            warn!(
+                "Failed to refresh ticket {} in store - store initialization failed",
+                &ticket.id
+            );
         }
 
         Ok(format!(
@@ -776,6 +807,11 @@ impl JanusTools {
         // Refresh the in-memory store immediately
         if let Ok(store) = get_or_init_store().await {
             store.refresh_plan_in_store(&plan.id).await;
+        } else {
+            warn!(
+                "Failed to refresh plan {} in store - store initialization failed",
+                &plan.id
+            );
         }
 
         // Log with MCP actor using the helper function
