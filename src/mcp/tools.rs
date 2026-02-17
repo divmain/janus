@@ -27,6 +27,7 @@
 //! | `doc_search` | Search documents semantically for relevant content |
 
 use rmcp::handler::server::{tool::ToolRouter, wrapper::Parameters};
+use rmcp::model::ToolAnnotations;
 use tracing::warn;
 
 use std::str::FromStr;
@@ -60,6 +61,20 @@ use super::requests::{
     UpdateStatusRequest,
 };
 
+/// Helper to create ToolAnnotations with all fields set
+fn tool_annotations(
+    read_only: bool,
+    destructive: bool,
+    idempotent: bool,
+    open_world: bool,
+) -> ToolAnnotations {
+    ToolAnnotations::new()
+        .read_only(read_only)
+        .destructive(destructive)
+        .idempotent(idempotent)
+        .open_world(open_world)
+}
+
 // ============================================================================
 // Tool Router Implementation
 // ============================================================================
@@ -87,7 +102,69 @@ impl Default for JanusTools {
 /// - `$method`: The method to call on `self` that implements the tool logic
 /// - `$optional`: `true` if arguments are optional (uses `unwrap_or_default`),
 ///   `false` if required (errors on missing args)
+/// - `$annotations`: ToolAnnotations for the tool (optional, for backward compatibility)
 macro_rules! register_tool {
+    // Full signature with annotations
+    ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident, $optional:expr, $annotations:expr) => {{
+        use rmcp::handler::server::tool::ToolRoute;
+        use rmcp::model::Tool;
+        use rmcp::schemars::schema_for;
+        use std::sync::Arc;
+
+        let schema_value = serde_json::to_value(schema_for!($req_type))
+            .unwrap_or_else(|e| panic!("Failed to serialize schema for tool '{}': {e}", $name));
+        let schema_obj = match schema_value {
+            serde_json::Value::Object(obj) => obj,
+            _ => panic!(
+                "Schema for tool '{}' is not an object (this is a bug)",
+                $name
+            ),
+        };
+        let tool = Tool::new($name.to_string(), $desc.to_string(), Arc::new(schema_obj))
+            .annotate($annotations);
+        let route =
+            ToolRoute::new_dyn(
+                tool,
+                |ctx: rmcp::handler::server::tool::ToolCallContext<'_, JanusTools>| {
+                    Box::pin(async move {
+                        let this = ctx.service;
+                        let args = if $optional {
+                            ctx.arguments.unwrap_or_default()
+                        } else {
+                            ctx.arguments.ok_or(rmcp::model::ErrorData {
+                                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                                message: std::borrow::Cow::Borrowed("Missing arguments"),
+                                data: None,
+                            })?
+                        };
+                        let request: $req_type = serde_json::from_value(serde_json::Value::Object(
+                            args,
+                        ))
+                        .map_err(|e| rmcp::model::ErrorData {
+                            code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                            message: std::borrow::Cow::Owned(format!("Invalid parameters: {e}")),
+                            data: None,
+                        })?;
+                        match this.$method(Parameters(request)).await {
+                            Ok(result) => Ok(rmcp::model::CallToolResult {
+                                content: vec![rmcp::model::Content::text(result)],
+                                structured_content: None,
+                                is_error: None,
+                                meta: None,
+                            }),
+                            Err(e) => Ok(rmcp::model::CallToolResult {
+                                content: vec![rmcp::model::Content::text(e)],
+                                structured_content: None,
+                                is_error: Some(true),
+                                meta: None,
+                            }),
+                        }
+                    })
+                },
+            );
+        $router.add_route(route);
+    }};
+    // Legacy signature without annotations (backward compatibility)
     ($router:expr, $name:expr, $desc:expr, $req_type:ty, $method:ident, $optional:expr) => {{
         use rmcp::handler::server::tool::ToolRoute;
         use rmcp::model::Tool;
@@ -159,7 +236,8 @@ impl JanusTools {
             "Create a new ticket. Returns the ticket ID and file path.",
             CreateTicketRequest,
             create_ticket_impl,
-            false
+            false,
+            tool_annotations(false, false, false, false)
         );
 
         register_tool!(
@@ -168,7 +246,8 @@ impl JanusTools {
             "Create a new ticket as a child of an existing ticket. Sets spawning metadata for decomposition tracking.",
             SpawnSubtaskRequest,
             spawn_subtask_impl,
-            false
+            false,
+            tool_annotations(false, false, false, false)
         );
 
         register_tool!(
@@ -177,7 +256,8 @@ impl JanusTools {
             "Change a ticket's status. Valid statuses: new, next, in_progress, complete, cancelled.",
             UpdateStatusRequest,
             update_status_impl,
-            false
+            false,
+            tool_annotations(false, false, true, false)
         );
 
         register_tool!(
@@ -186,7 +266,8 @@ impl JanusTools {
             "Add a timestamped note to a ticket. Notes are appended under a '## Notes' section.",
             AddNoteRequest,
             add_note_impl,
-            false
+            false,
+            tool_annotations(false, false, false, false)
         );
 
         register_tool!(
@@ -195,7 +276,8 @@ impl JanusTools {
             "Query tickets with optional filters. Returns a list of matching tickets with their metadata. By default, only open tickets are returned (Complete and Cancelled tickets are excluded). To include closed tickets, specify an explicit status filter.",
             ListTicketsRequest,
             list_tickets_impl,
-            true
+            true,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -204,7 +286,8 @@ impl JanusTools {
             "Get full ticket content including metadata, body, dependencies, and relationships. Returns markdown optimized for LLM consumption.",
             ShowTicketRequest,
             show_ticket_impl,
-            false
+            false,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -213,7 +296,8 @@ impl JanusTools {
             "Add a dependency. The first ticket will depend on the second (blocking relationship).",
             AddDependencyRequest,
             add_dependency_impl,
-            false
+            false,
+            tool_annotations(false, false, true, false)
         );
 
         register_tool!(
@@ -222,7 +306,8 @@ impl JanusTools {
             "Remove a dependency from a ticket.",
             RemoveDependencyRequest,
             remove_dependency_impl,
-            false
+            false,
+            tool_annotations(false, true, true, false)
         );
 
         register_tool!(
@@ -231,7 +316,8 @@ impl JanusTools {
             "Add a ticket to a plan. For phased plans, specify the phase.",
             AddTicketToPlanRequest,
             add_ticket_to_plan_impl,
-            false
+            false,
+            tool_annotations(false, false, true, false)
         );
 
         register_tool!(
@@ -240,7 +326,8 @@ impl JanusTools {
             "Get plan status including progress percentage and phase breakdown. Returns markdown optimized for LLM consumption.",
             GetPlanStatusRequest,
             get_plan_status_impl,
-            false
+            false,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -249,7 +336,8 @@ impl JanusTools {
             "Get all tickets that were spawned from a given parent ticket. Returns markdown optimized for LLM consumption.",
             GetChildrenRequest,
             get_children_impl,
-            false
+            false,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -258,7 +346,8 @@ impl JanusTools {
             "Query the Janus ticket backlog for the next ticket(s) to work on, based on priority and dependency resolution. Returns tickets in optimal order (dependencies before dependents). Use this if you've been instructed to work on tickets on the backlog. Do NOT use this for guidance on your current task.",
             GetNextAvailableTicketRequest,
             get_next_available_ticket_impl,
-            true
+            true,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -267,7 +356,8 @@ impl JanusTools {
             "Find tickets semantically similar to a natural language query. Uses vector embeddings for fuzzy matching by intent rather than exact keywords.",
             SemanticSearchRequest,
             semantic_search_impl,
-            false
+            false,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -276,7 +366,8 @@ impl JanusTools {
             "List all project knowledge documents with their metadata (label, title, description, tags).",
             DocListRequest,
             doc_list_impl,
-            true
+            true,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -285,7 +376,8 @@ impl JanusTools {
             "Show a document's full content or a specific line range. Returns markdown with heading context.",
             DocShowRequest,
             doc_show_impl,
-            false
+            false,
+            tool_annotations(true, false, true, false)
         );
 
         register_tool!(
@@ -294,7 +386,8 @@ impl JanusTools {
             "Create a new project knowledge document. Returns error if document already exists (no overwrite).",
             DocSetRequest,
             doc_set_impl,
-            false
+            false,
+            tool_annotations(false, false, false, false)
         );
 
         register_tool!(
@@ -303,7 +396,8 @@ impl JanusTools {
             "Search project knowledge documents semantically. Returns chunks with heading paths and line numbers.",
             DocSearchRequest,
             doc_search_impl,
-            false
+            false,
+            tool_annotations(true, false, true, false)
         );
 
         Self {
@@ -1958,5 +2052,119 @@ mod tests {
         // Test invalid size
         assert!("invalid".parse::<TicketSize>().is_err());
         assert!("tiny".parse::<TicketSize>().is_err());
+    }
+}
+
+#[cfg(test)]
+mod annotation_tests {
+    use super::*;
+
+    #[test]
+    fn test_all_tools_have_annotations() {
+        let server = JanusTools::new();
+        let tools = server.router().list_all();
+
+        assert!(!tools.is_empty(), "Should have registered tools");
+
+        for tool in &tools {
+            assert!(
+                tool.annotations.is_some(),
+                "Tool '{}' should have annotations set",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_read_only_tools_annotated_correctly() {
+        let server = JanusTools::new();
+        let tools = server.router().list_all();
+
+        let read_only_tools = [
+            "list_tickets",
+            "show_ticket",
+            "get_children",
+            "get_plan_status",
+            "get_next_available_ticket",
+            "semantic_search",
+            "doc_list",
+            "doc_show",
+            "doc_search",
+        ];
+
+        for tool in &tools {
+            if read_only_tools.contains(&tool.name.as_ref()) {
+                let ann = tool
+                    .annotations
+                    .as_ref()
+                    .expect(&format!("Tool {} missing annotations", tool.name));
+                assert!(
+                    ann.read_only_hint.unwrap_or(false),
+                    "Tool '{}' should be marked read-only",
+                    tool.name
+                );
+                assert!(
+                    !ann.destructive_hint.unwrap_or(true),
+                    "Read-only tool '{}' should not be destructive",
+                    tool.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_remove_dependency_is_destructive() {
+        let server = JanusTools::new();
+        let tools = server.router().list_all();
+
+        let remove_dep_tool = tools
+            .iter()
+            .find(|t| t.name == "remove_dependency")
+            .expect("remove_dependency tool should exist");
+
+        let ann = remove_dep_tool
+            .annotations
+            .as_ref()
+            .expect("remove_dependency should have annotations");
+
+        assert!(
+            ann.destructive_hint.unwrap_or(false),
+            "remove_dependency should be marked destructive"
+        );
+        assert!(
+            ann.idempotent_hint.unwrap_or(false),
+            "remove_dependency should be idempotent"
+        );
+    }
+
+    #[test]
+    fn test_write_tools_not_read_only() {
+        let server = JanusTools::new();
+        let tools = server.router().list_all();
+
+        let write_tools = [
+            "create_ticket",
+            "spawn_subtask",
+            "update_status",
+            "add_note",
+            "add_dependency",
+            "remove_dependency",
+            "add_ticket_to_plan",
+            "doc_set",
+        ];
+
+        for tool in &tools {
+            if write_tools.contains(&tool.name.as_ref()) {
+                let ann = tool
+                    .annotations
+                    .as_ref()
+                    .expect(&format!("Tool {} missing annotations", tool.name));
+                assert!(
+                    !ann.read_only_hint.unwrap_or(true),
+                    "Write tool '{}' should not be marked read-only",
+                    tool.name
+                );
+            }
+        }
     }
 }

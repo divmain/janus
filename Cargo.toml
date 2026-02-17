@@ -85,7 +85,7 @@ clipboard-rs = "0.3.2"
 url = "2.5"
 
 # MCP (Model Context Protocol) server
-rmcp = { version = "0.13", features = ["server", "macros", "transport-io"] }
+rmcp = { version = "0.16", features = ["server", "macros", "transport-io"] }
 
 # Table formatting for pretty output
 tabled = "0.20"

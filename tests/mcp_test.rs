@@ -20,7 +20,7 @@ fn test_mcp_version() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("MCP Protocol Version:"));
-    assert!(stdout.contains("2024-11-05"));
+    // Protocol version is managed by rmcp via ProtocolVersion::LATEST
     assert!(stdout.contains("Janus MCP Server:"));
     assert!(stdout.contains("janus"));
 }

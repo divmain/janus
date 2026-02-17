@@ -46,9 +46,9 @@ use rmcp::{
     RoleServer, ServerHandler, ServiceExt,
     handler::server::tool::ToolCallContext,
     model::{
-        CallToolRequestParam, CallToolResult, ErrorData, ListResourceTemplatesResult,
-        ListResourcesResult, ListToolsResult, PaginatedRequestParam, ReadResourceRequestParam,
-        ReadResourceResult, ServerCapabilities, ServerInfo,
+        CallToolRequestParams, CallToolResult, ErrorData, ListResourceTemplatesResult,
+        ListResourcesResult, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
+        ReadResourceRequestParams, ReadResourceResult, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
     transport::stdio,
@@ -57,27 +57,15 @@ use rmcp::{
 use crate::error::Result;
 use resources::{ResourceError, list_all_resource_templates, list_all_resources, read_resource};
 use tools::JanusTools;
-use types::{MCP_PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION};
+use types::{SERVER_NAME, SERVER_VERSION};
 
 impl ServerHandler for JanusTools {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "Janus MCP server provides access to plain-text issue tracking. \
-                 Use tools to create, query, and manage tickets and plans. \
-                 \n\nAvailable tools:\n\
-                  - create_ticket: Create a new ticket\n\
-                  - spawn_subtask: Create a child ticket with spawning metadata\n\
-                  - update_status: Change ticket status (new/next/in_progress/complete/cancelled)\n\
-                  - add_note: Add a timestamped note to a ticket\n\
-                  - list_tickets: Query tickets with filters\n\
-                  - show_ticket: Get full ticket content and relationships\n\
-                  - add_dependency: Add a blocking dependency between tickets\n\
-                  - remove_dependency: Remove a dependency\n\
-                  - add_ticket_to_plan: Add a ticket to a plan\n\
-                  - get_plan_status: Get plan progress and phase status\n\
-                  - get_children: Get tickets spawned from a parent\n\
-                  - semantic_search: Find tickets semantically similar to a query"
+                "Janus MCP server for plain-text issue tracking. \
+                 Use list_tickets to discover work, show_ticket for details, \
+                 update_status to change status, add_note for progress updates."
                     .to_string(),
             ),
             capabilities: ServerCapabilities::builder()
@@ -87,6 +75,7 @@ impl ServerHandler for JanusTools {
             server_info: rmcp::model::Implementation {
                 name: SERVER_NAME.to_string(),
                 version: SERVER_VERSION.to_string(),
+                description: None,
                 title: None,
                 icons: None,
                 website_url: None,
@@ -100,7 +89,7 @@ impl ServerHandler for JanusTools {
     /// Returns all 13 Janus tools with their schemas and descriptions.
     async fn list_tools(
         &self,
-        _pagination: Option<PaginatedRequestParam>,
+        _pagination: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> std::result::Result<ListToolsResult, ErrorData> {
         let items = self.router().list_all();
@@ -112,7 +101,7 @@ impl ServerHandler for JanusTools {
     /// Dispatches to the appropriate tool handler based on the tool name.
     async fn call_tool(
         &self,
-        request: CallToolRequestParam,
+        request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> std::result::Result<CallToolResult, ErrorData> {
         let tcc = ToolCallContext::new(self, request, context);
@@ -124,7 +113,7 @@ impl ServerHandler for JanusTools {
     /// Returns all 9 Janus resources (5 static + 4 templates).
     async fn list_resources(
         &self,
-        _pagination: Option<PaginatedRequestParam>,
+        _pagination: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> std::result::Result<ListResourcesResult, ErrorData> {
         Ok(list_all_resources())
@@ -135,7 +124,7 @@ impl ServerHandler for JanusTools {
     /// Returns resource templates that require parameters (e.g., `janus://ticket/{id}`).
     async fn list_resource_templates(
         &self,
-        _pagination: Option<PaginatedRequestParam>,
+        _pagination: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> std::result::Result<ListResourceTemplatesResult, ErrorData> {
         Ok(ListResourceTemplatesResult {
@@ -150,7 +139,7 @@ impl ServerHandler for JanusTools {
     /// Supports all 9 Janus resource URIs including template URIs with parameters.
     async fn read_resource(
         &self,
-        request: ReadResourceRequestParam,
+        request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> std::result::Result<ReadResourceResult, ErrorData> {
         match read_resource(&request.uri).await {
@@ -207,7 +196,7 @@ pub async fn cmd_mcp() -> Result<()> {
 
 /// Print the MCP protocol version.
 pub fn cmd_mcp_version() -> Result<()> {
-    println!("MCP Protocol Version: {MCP_PROTOCOL_VERSION}");
+    println!("MCP Protocol Version: {}", ProtocolVersion::LATEST);
     println!("Janus MCP Server: {SERVER_NAME} v{SERVER_VERSION}");
     Ok(())
 }
@@ -223,9 +212,10 @@ mod tests {
 
         assert!(info.instructions.is_some());
         let instructions = info.instructions.unwrap();
-        assert!(instructions.contains("create_ticket"));
-        assert!(instructions.contains("spawn_subtask"));
+        assert!(instructions.contains("list_tickets"));
+        assert!(instructions.contains("show_ticket"));
         assert!(instructions.contains("update_status"));
+        assert!(instructions.contains("add_note"));
         assert_eq!(info.server_info.name, SERVER_NAME);
         assert_eq!(info.server_info.version, SERVER_VERSION);
     }
@@ -240,7 +230,8 @@ mod tests {
     #[test]
     #[allow(clippy::const_is_empty)]
     fn test_mcp_version_constants() {
-        assert_eq!(MCP_PROTOCOL_VERSION, "2024-11-05");
+        // Protocol version is managed by rmcp::model::ProtocolVersion::LATEST
+        // We verify the server name and version are correctly set
         assert_eq!(SERVER_NAME, "janus");
         assert!(!SERVER_VERSION.is_empty());
     }
