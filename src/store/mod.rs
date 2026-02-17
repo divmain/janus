@@ -5,11 +5,13 @@ use dashmap::DashMap;
 use tokio::fs as tokio_fs;
 use tokio::sync::OnceCell;
 
+use crate::doc::parser::parse_doc_content;
+use crate::doc::types::DocMetadata;
 use crate::error::Result;
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
 use crate::ticket::parse_ticket;
-use crate::types::{TicketMetadata, plans_dir, tickets_items_dir};
+use crate::types::{TicketMetadata, docs_dir, plans_dir, tickets_items_dir};
 
 /// A warning that occurred during store initialization.
 #[derive(Debug, Clone)]
@@ -76,6 +78,14 @@ impl InitWarnings {
             .filter(|w| w.entity_type == "plan")
             .collect()
     }
+
+    /// Get doc warnings only.
+    pub fn doc_warnings(&self) -> Vec<InitWarning> {
+        self.get_all()
+            .into_iter()
+            .filter(|w| w.entity_type == "doc")
+            .collect()
+    }
 }
 
 /// Trait for entity metadata that can be loaded from files.
@@ -123,6 +133,22 @@ impl EntityMetadata for PlanMetadata {
     }
 }
 
+impl EntityMetadata for DocMetadata {
+    fn id(&self) -> Option<&str> {
+        self.label.as_ref().map(|l| l.as_ref())
+    }
+    fn set_id(&mut self, id: String) {
+        self.label = Some(crate::doc::types::DocLabel::new_unchecked(id));
+    }
+    fn file_path(&self) -> Option<&PathBuf> {
+        self.file_path.as_ref()
+    }
+    fn set_file_path(&mut self, path: PathBuf) {
+        self.file_path = Some(path);
+    }
+}
+
+pub mod doc_search;
 pub mod embeddings;
 pub mod queries;
 pub mod search;
@@ -130,14 +156,15 @@ pub mod watcher;
 
 pub use watcher::{StoreEvent, mark_recently_edited, start_watching, subscribe_to_changes};
 
-/// In-memory store for ticket and plan metadata with concurrent access.
+/// In-memory store for ticket, plan, and document metadata with concurrent access.
 ///
-/// The store holds all ticket and plan metadata in `DashMap` structures,
+/// The store holds all ticket, plan, and document metadata in `DashMap` structures,
 /// allowing lock-free concurrent reads and fine-grained locking for writes.
 /// It also manages embedding vectors for semantic search.
 pub struct TicketStore {
     tickets: DashMap<String, TicketMetadata>,
     plans: DashMap<String, PlanMetadata>,
+    docs: DashMap<String, DocMetadata>,
     embeddings: DashMap<String, Vec<f32>>,
     /// Warnings captured during initialization
     init_warnings: InitWarnings,
@@ -197,21 +224,23 @@ pub fn get_store() -> Option<&'static TicketStore> {
 }
 
 impl TicketStore {
-    /// Create an empty store with no tickets or plans.
+    /// Create an empty store with no tickets, plans, or docs.
     pub fn empty() -> Self {
         TicketStore {
             tickets: DashMap::new(),
             plans: DashMap::new(),
+            docs: DashMap::new(),
             embeddings: DashMap::new(),
             init_warnings: InitWarnings::new(),
         }
     }
 
-    /// Initialize the store by reading all tickets and plans from disk.
+    /// Initialize the store by reading all tickets, plans, and docs from disk.
     ///
-    /// Scans `.janus/items/` for ticket files and `.janus/plans/` for plan files,
-    /// parsing each and populating the internal DashMaps. Files that fail to parse
-    /// are logged as warnings but do not prevent initialization.
+    /// Scans `.janus/items/` for ticket files, `.janus/plans/` for plan files,
+    /// and `.janus/docs/` for document files, parsing each and populating the
+    /// internal DashMaps. Files that fail to parse are logged as warnings but
+    /// do not prevent initialization.
     pub async fn init() -> Result<Self> {
         let store = Self::empty();
 
@@ -225,6 +254,12 @@ impl TicketStore {
         let p_dir = plans_dir();
         if tokio_fs::try_exists(&p_dir).await.unwrap_or(false) {
             store.load_plans_from_dir(&p_dir).await;
+        }
+
+        // Load docs
+        let d_dir = docs_dir();
+        if tokio_fs::try_exists(&d_dir).await.unwrap_or(false) {
+            store.load_docs_from_dir(&d_dir).await;
         }
 
         // Load embeddings (requires tickets to be loaded first)
@@ -325,6 +360,16 @@ impl TicketStore {
         self.load_entities_from_dir(dir, "plan", parse_plan_content, |metadata: PlanMetadata| {
             if let Some(id) = metadata.id.clone() {
                 self.plans.insert(id.to_string(), metadata);
+            }
+        })
+        .await;
+    }
+
+    /// Load all document files from a directory into the store.
+    async fn load_docs_from_dir(&self, dir: &Path) {
+        self.load_entities_from_dir(dir, "doc", parse_doc_content, |metadata: DocMetadata| {
+            if let Some(label) = metadata.label.clone() {
+                self.docs.insert(label.to_string(), metadata);
             }
         })
         .await;
@@ -463,6 +508,36 @@ impl TicketStore {
         self.plans.remove(id);
     }
 
+    /// Insert or update a document in the store.
+    pub fn upsert_doc(&self, metadata: DocMetadata) {
+        if let Some(label) = metadata.label.clone() {
+            self.docs.insert(label.to_string(), metadata);
+        } else {
+            self.init_warnings.add(InitWarning {
+                file_path: metadata.file_path.clone(),
+                message: "Skipping doc upsert: missing label in frontmatter".to_string(),
+                entity_type: "doc".to_string(),
+            });
+        }
+    }
+
+    /// Remove a document from the store by label.
+    pub fn remove_doc(&self, label: &str) {
+        self.docs.remove(label);
+        // Also remove associated embeddings
+        self.embeddings.remove(&format!("doc:{label}"));
+        // Remove chunk embeddings (keys starting with doc:{label}:c)
+        let chunk_keys: Vec<String> = self
+            .embeddings()
+            .iter()
+            .filter(|entry| entry.key().starts_with(&format!("doc:{label}:c")))
+            .map(|entry| entry.key().clone())
+            .collect();
+        for key in chunk_keys {
+            self.embeddings.remove(&key);
+        }
+    }
+
     /// Get a reference to the embeddings DashMap (for use by embeddings/search modules).
     pub(crate) fn embeddings(&self) -> &DashMap<String, Vec<f32>> {
         &self.embeddings
@@ -476,6 +551,11 @@ impl TicketStore {
     /// Get a reference to the plans DashMap (for use by query modules).
     pub(crate) fn plans(&self) -> &DashMap<String, PlanMetadata> {
         &self.plans
+    }
+
+    /// Get a reference to the docs DashMap (for use by query modules).
+    pub(crate) fn docs(&self) -> &DashMap<String, DocMetadata> {
+        &self.docs
     }
 
     /// Get the initialization warnings captured during store loading.
@@ -541,6 +621,29 @@ impl TicketStore {
         };
         self.upsert_plan(metadata);
     }
+
+    /// Re-read a specific document from disk and upsert it into the store.
+    ///
+    /// This is the document equivalent of `refresh_ticket_in_store`. It should be
+    /// called after a mutation writes document changes to disk, so the in-memory
+    /// store is immediately consistent.
+    pub async fn refresh_doc_in_store(&self, label: &str) {
+        let doc = match crate::doc::Doc::find(label).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("Failed to find doc '{}' for store refresh: {}", label, e);
+                return;
+            }
+        };
+        let metadata = match doc.read() {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("Failed to read doc '{}' for store refresh: {}", label, e);
+                return;
+            }
+        };
+        self.upsert_doc(metadata);
+    }
 }
 
 #[cfg(test)]
@@ -588,6 +691,21 @@ Plan description.
 "#
         )
     }
+
+    /// Create a minimal document markdown file content for testing.
+    pub fn make_doc_content(label: &str, title: &str) -> String {
+        format!(
+            r#"---
+label: {label}
+description: Test document
+created: 2024-01-01T00:00:00Z
+---
+# {title}
+
+Document content for {label}.
+"#
+        )
+    }
 }
 
 #[cfg(test)]
@@ -596,22 +714,25 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::test_helpers::{make_plan_content, make_ticket_content};
+    use super::test_helpers::{make_doc_content, make_plan_content, make_ticket_content};
     use super::*;
+    use crate::doc::types::DocLabel;
     use crate::paths::JanusRootGuard;
     use crate::types::{PlanId, TicketId};
     use crate::types::{TicketPriority, TicketStatus, TicketType};
 
-    /// Set up a temporary Janus directory with ticket and plan files.
+    /// Set up a temporary Janus directory with ticket, plan, and doc files.
     /// Returns the TempDir (must be held alive for the duration of the test).
     fn setup_test_dir() -> TempDir {
         let tmp = TempDir::new().expect("failed to create temp dir");
         let janus_root = tmp.path().join(".janus");
         let items_dir = janus_root.join("items");
         let plans_dir = janus_root.join("plans");
+        let docs_dir = janus_root.join("docs");
 
         fs::create_dir_all(&items_dir).expect("failed to create items dir");
         fs::create_dir_all(&plans_dir).expect("failed to create plans dir");
+        fs::create_dir_all(&docs_dir).expect("failed to create docs dir");
 
         // Write ticket files
         fs::write(
@@ -632,6 +753,13 @@ mod tests {
         )
         .unwrap();
 
+        // Write doc files
+        fs::write(
+            docs_dir.join("architecture.md"),
+            make_doc_content("architecture", "Architecture"),
+        )
+        .unwrap();
+
         tmp
     }
 
@@ -640,6 +768,7 @@ mod tests {
         let store = TicketStore::empty();
         assert_eq!(store.tickets.len(), 0);
         assert_eq!(store.plans.len(), 0);
+        assert_eq!(store.docs.len(), 0);
         assert_eq!(store.embeddings.len(), 0);
     }
 
@@ -659,6 +788,9 @@ mod tests {
         assert_eq!(store.plans.len(), 1);
         assert!(store.plans.contains_key("plan-x1y2"));
 
+        assert_eq!(store.docs.len(), 1);
+        assert!(store.docs.contains_key("architecture"));
+
         // Verify ticket metadata
         let ticket = store.tickets.get("j-a1b2").unwrap();
         assert_eq!(ticket.title.as_deref(), Some("First Ticket"));
@@ -669,6 +801,10 @@ mod tests {
         // Verify plan metadata
         let plan = store.plans.get("plan-x1y2").unwrap();
         assert_eq!(plan.title.as_deref(), Some("Test Plan"));
+
+        // Verify doc metadata
+        let doc = store.docs.get("architecture").unwrap();
+        assert_eq!(doc.title.as_deref(), Some("Architecture"));
     }
 
     #[tokio::test]
@@ -684,6 +820,7 @@ mod tests {
             .expect("init should succeed even with missing dirs");
         assert_eq!(store.tickets.len(), 0);
         assert_eq!(store.plans.len(), 0);
+        assert_eq!(store.docs.len(), 0);
     }
 
     #[tokio::test]
@@ -861,6 +998,88 @@ mod tests {
         assert_eq!(store.plans.len(), 0);
     }
 
+    #[test]
+    fn test_upsert_doc() {
+        let store = TicketStore::empty();
+
+        let metadata = DocMetadata {
+            label: Some(DocLabel::new_unchecked("test-doc")),
+            title: Some("Test Doc".to_string()),
+            description: Some("A test document".to_string()),
+            ..Default::default()
+        };
+        store.upsert_doc(metadata);
+
+        assert_eq!(store.docs.len(), 1);
+        assert!(store.docs.contains_key("test-doc"));
+        assert_eq!(
+            store.docs.get("test-doc").unwrap().title.as_deref(),
+            Some("Test Doc")
+        );
+
+        // Update it
+        let updated = DocMetadata {
+            label: Some(DocLabel::new_unchecked("test-doc")),
+            title: Some("Updated Doc".to_string()),
+            description: Some("An updated document".to_string()),
+            ..Default::default()
+        };
+        store.upsert_doc(updated);
+
+        assert_eq!(store.docs.len(), 1);
+        assert_eq!(
+            store.docs.get("test-doc").unwrap().title.as_deref(),
+            Some("Updated Doc")
+        );
+    }
+
+    #[test]
+    fn test_remove_doc() {
+        let store = TicketStore::empty();
+
+        store.upsert_doc(DocMetadata {
+            label: Some(DocLabel::new_unchecked("doc-to-remove")),
+            title: Some("Remove Me".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(store.docs.len(), 1);
+
+        // Add some embeddings for the doc
+        store
+            .embeddings
+            .insert("doc:doc-to-remove".to_string(), vec![1.0, 2.0, 3.0]);
+        store
+            .embeddings
+            .insert("doc:doc-to-remove:c10".to_string(), vec![4.0, 5.0, 6.0]);
+        store
+            .embeddings
+            .insert("doc:doc-to-remove:c20".to_string(), vec![7.0, 8.0, 9.0]);
+
+        store.remove_doc("doc-to-remove");
+        assert_eq!(store.docs.len(), 0);
+
+        // Verify embeddings are removed
+        assert!(!store.embeddings.contains_key("doc:doc-to-remove"));
+        assert!(!store.embeddings.contains_key("doc:doc-to-remove:c10"));
+        assert!(!store.embeddings.contains_key("doc:doc-to-remove:c20"));
+
+        // Removing a nonexistent doc should not panic
+        store.remove_doc("nonexistent");
+    }
+
+    #[test]
+    fn test_upsert_doc_without_label_is_noop() {
+        let store = TicketStore::empty();
+
+        store.upsert_doc(DocMetadata {
+            label: None,
+            title: Some("No Label".to_string()),
+            ..Default::default()
+        });
+
+        assert_eq!(store.docs.len(), 0);
+    }
+
     #[tokio::test]
     async fn test_file_paths_populated() {
         let tmp = setup_test_dir();
@@ -881,6 +1100,12 @@ mod tests {
         assert!(plan.file_path.is_some());
         let file_path = plan.file_path.as_ref().unwrap();
         assert!(file_path.ends_with("plan-x1y2.md"));
+
+        // Doc file paths should be set
+        let doc = store.docs.get("architecture").unwrap();
+        assert!(doc.file_path.is_some());
+        let file_path = doc.file_path.as_ref().unwrap();
+        assert!(file_path.ends_with("architecture.md"));
     }
 
     #[tokio::test]
@@ -966,5 +1191,6 @@ mod tests {
         assert_eq!(warnings.count(), 0);
         assert!(warnings.ticket_warnings().is_empty());
         assert!(warnings.plan_warnings().is_empty());
+        assert!(warnings.doc_warnings().is_empty());
     }
 }

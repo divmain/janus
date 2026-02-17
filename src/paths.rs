@@ -92,6 +92,11 @@ pub fn plans_dir() -> PathBuf {
     janus_root().join("plans")
 }
 
+/// Returns the path to the docs directory.
+pub fn docs_dir() -> PathBuf {
+    janus_root().join("docs")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::JanusError;
 
 // Re-export path functions from the paths module
-pub use crate::paths::{janus_root, plans_dir, tickets_items_dir};
+pub use crate::paths::{docs_dir, janus_root, plans_dir, tickets_items_dir};
 
 // =============================================================================
 // Newtypes for core identity and temporal fields
@@ -474,16 +474,18 @@ pub const VALID_TYPES: &[&str] = TicketType::ALL_STRINGS;
 pub enum EntityType {
     Ticket,
     Plan,
+    Doc,
     Cache,
 }
 
 enum_display_fromstr!(
     EntityType,
     JanusError::invalid_entity_type,
-    ["ticket", "plan", "cache"],
+    ["ticket", "plan", "doc", "cache"],
     {
         Ticket => "ticket",
         Plan => "plan",
+        Doc => "doc",
         Cache => "cache",
     }
 );

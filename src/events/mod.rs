@@ -436,6 +436,21 @@ pub fn log_phase_removed(
     ));
 }
 
+/// Log a document creation event
+pub fn log_doc_created(label: &str, title: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::DocCreated,
+            EntityType::Doc,
+            label,
+            serde_json::json!({
+                "title": title,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
+}
+
 /// Log a ticket moved event (between phases)
 pub fn log_ticket_moved(plan_id: &str, ticket_id: &str, from_phase: &str, to_phase: &str) {
     log_event(Event::new(

@@ -14,6 +14,7 @@ _Janus: ancient Roman deity, guardian of doorways and gates, protector of the st
 - **CLI-first**: All operations available via command line with aliases
 - **JSON queries**: Export tickets as JSON with flexible filtering
 - **Semantic search**: Find tickets by intent using AI-powered vector embeddings
+- **Project Knowledge Documents**: Store project knowledge as semantically-searchable markdown files in `.janus/docs/`
 
 ## Installation
 
@@ -96,6 +97,10 @@ Tickets can depend on other tickets. Use `janus ls --ready` to see tickets with 
 | `janus cache status` | | Show embedding cache status |
 | `janus cache prune` | | Delete orphaned embedding files |
 | `janus cache rebuild` | | Regenerate all embeddings |
+| `janus doc ls` | | List knowledge documents |
+| `janus doc show <label>` | | Show document content |
+| `janus doc create <label>` | | Create new document |
+| `janus doc search <query>` | | Search document contents |
 
 Partial IDs work - use just the first few unique characters (e.g., `j-a1` instead of `j-a1b2`).
 
@@ -148,6 +153,28 @@ janus plan status plan-a1b2
 
 See [Plans Guide](docs/plans.md) for details.
 
+## Project Knowledge Documents
+
+Store and search project knowledge as markdown files:
+
+```bash
+# Create a new document
+janus doc create "Architecture"
+
+# List all documents
+janus doc ls
+
+# View a document (with optional line range)
+janus doc show architecture
+janus doc show architecture --lines 10-50
+
+# Search across all documents (or filter to a specific document)
+janus doc search "authentication flow"
+janus doc search --document architecture "API design"
+```
+
+Documents are stored in `.janus/docs/` with YAML frontmatter, chunked at headings for semantic search, and accessible via CLI and MCP tools.
+
 ## Hooks
 
 Run custom scripts on ticket events (create, update, status change):
@@ -179,6 +206,7 @@ See [MCP Guide](docs/mcp.md) for integration setup.
 | [Cache](docs/cache.md) | How caching works |
 | [TUI Guide](docs/tui.md) | Keyboard shortcuts and modes |
 | [Plans](docs/plans.md) | Organizing tickets into plans |
+| [Project Knowledge Documents](docs/docs.md) | Managing project knowledge |
 | [Hooks](docs/hooks.md) | Automation and scripting |
 | [MCP Server](docs/mcp.md) | AI assistant integration |
 | [Semantic Search](docs/semantic-search.md) | Natural language ticket search |

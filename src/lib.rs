@@ -5,6 +5,7 @@ pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod display;
+pub mod doc;
 pub mod entity;
 pub mod error;
 pub mod events;
@@ -29,6 +30,10 @@ pub mod embedding;
 pub mod store;
 
 pub use config::Config;
+pub use doc::types::{DocChunk, DocLabel, DocLoadResult, DocMetadata};
+pub use doc::{
+    Doc, chunk_document, ensure_docs_dir, get_all_docs_from_disk, parse_doc_content, serialize_doc,
+};
 pub use entity::Entity;
 pub use error::{JanusError, Result};
 pub use graph::{check_circular_dependency, resolve_id_from_map};
@@ -49,6 +54,6 @@ pub use ticket::{
 };
 pub use types::{
     ArrayField, CreatedAt, EntityType, PlanId, TicketData, TicketId, TicketMetadata,
-    TicketPriority, TicketStatus, TicketSummary, TicketType, janus_root, plans_dir,
+    TicketPriority, TicketStatus, TicketSummary, TicketType, docs_dir, janus_root, plans_dir,
     tickets_items_dir,
 };

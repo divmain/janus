@@ -21,6 +21,10 @@
 //! | `get_children` | Get tickets spawned from a parent |
 //! | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
 //! | `semantic_search` | Find tickets semantically similar to a query (requires semantic-search config) |
+//! | `doc_list` | List all project knowledge documents |
+//! | `doc_show` | Show a document's content (optionally a line range) |
+//! | `doc_set` | Create a new project knowledge document |
+//! | `doc_search` | Search documents semantically for relevant content |
 
 use rmcp::handler::server::{tool::ToolRouter, wrapper::Parameters};
 use tracing::warn;
@@ -28,16 +32,16 @@ use tracing::warn;
 use std::str::FromStr;
 use tokio::time::timeout;
 
+use crate::config::Config;
+use crate::doc::{Doc, DocMetadata, get_all_docs_from_disk};
 use crate::embedding::model::EMBEDDING_TIMEOUT;
 use crate::events::Actor;
-use crate::store::get_or_init_store;
-
-use crate::config::Config;
 use crate::graph::check_circular_dependency;
 use crate::next::NextWorkFinder;
 use crate::plan::parser::serialize_plan;
 use crate::plan::{Plan, compute_plan_status};
 use crate::status::is_dependency_satisfied;
+use crate::store::get_or_init_store;
 use crate::ticket::{
     ArrayField, Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map,
 };
@@ -50,7 +54,8 @@ use super::format::{
 };
 use super::requests::{
     AddDependencyRequest, AddNoteRequest, AddTicketToPlanRequest, CreateTicketRequest,
-    GetChildrenRequest, GetNextAvailableTicketRequest, GetPlanStatusRequest, ListTicketsRequest,
+    DocListRequest, DocSearchRequest, DocSetRequest, DocShowRequest, GetChildrenRequest,
+    GetNextAvailableTicketRequest, GetPlanStatusRequest, ListTicketsRequest,
     RemoveDependencyRequest, SemanticSearchRequest, ShowTicketRequest, SpawnSubtaskRequest,
     UpdateStatusRequest,
 };
@@ -262,6 +267,42 @@ impl JanusTools {
             "Find tickets semantically similar to a natural language query. Uses vector embeddings for fuzzy matching by intent rather than exact keywords.",
             SemanticSearchRequest,
             semantic_search_impl,
+            false
+        );
+
+        register_tool!(
+            router,
+            "doc_list",
+            "List all project knowledge documents with their metadata (label, title, description, tags).",
+            DocListRequest,
+            doc_list_impl,
+            true
+        );
+
+        register_tool!(
+            router,
+            "doc_show",
+            "Show a document's full content or a specific line range. Returns markdown with heading context.",
+            DocShowRequest,
+            doc_show_impl,
+            false
+        );
+
+        register_tool!(
+            router,
+            "doc_set",
+            "Create a new project knowledge document. Returns error if document already exists (no overwrite).",
+            DocSetRequest,
+            doc_set_impl,
+            false
+        );
+
+        register_tool!(
+            router,
+            "doc_search",
+            "Search project knowledge documents semantically. Returns chunks with heading paths and line numbers.",
+            DocSearchRequest,
+            doc_search_impl,
             false
         );
 
@@ -1038,6 +1079,289 @@ impl JanusTools {
             output.push_str(&format!(
                 "\n\n*Note: Only {with_embedding}/{total} tickets have embeddings ({percentage}%). Results may be incomplete. Run 'janus cache rebuild' to generate embeddings for all tickets.*"
             ));
+        }
+
+        Ok(output)
+    }
+
+    /// List all project knowledge documents.
+    async fn doc_list_impl(&self, _request: Parameters<DocListRequest>) -> Result<String, String> {
+        let docs = get_all_docs_from_disk();
+        let doc_list = docs.into_docs();
+
+        if doc_list.is_empty() {
+            return Ok("No documents found.".to_string());
+        }
+
+        let mut output = String::from("# Project Knowledge Documents\n\n");
+        output.push_str(&format!("**Total:** {} document(s)\n\n", doc_list.len()));
+        output.push_str("| Label | Title | Description | Tags |\n");
+        output.push_str("|-------|-------|-------------|------|\n");
+
+        for doc in doc_list {
+            let label = doc.label().unwrap_or("(no label)");
+            let title = doc.title().unwrap_or("(no title)");
+            let description = doc.description.as_deref().unwrap_or("");
+            let tags = if doc.tags.is_empty() {
+                "-".to_string()
+            } else {
+                doc.tags.join(", ")
+            };
+
+            let desc_display = if description.len() > 40 {
+                format!("{}...", &description[..40])
+            } else {
+                description.to_string()
+            };
+
+            output.push_str(&format!(
+                "| {label} | {title} | {desc_display} | {tags} |\n"
+            ));
+        }
+
+        Ok(output)
+    }
+
+    /// Show a document's content, optionally with line range.
+    async fn doc_show_impl(
+        &self,
+        Parameters(request): Parameters<DocShowRequest>,
+    ) -> Result<String, String> {
+        let doc = Doc::find(&request.label)
+            .await
+            .map_err(|e| format!("Document not found: {e}"))?;
+        let content = doc.read_content().map_err(|e| e.to_string())?;
+        let metadata = doc.read().map_err(|e| e.to_string())?;
+
+        let start_line = request.start_line.unwrap_or(1);
+        let end_line = request.end_line;
+
+        let lines: Vec<&str> = content.lines().collect();
+        let total_lines = lines.len();
+
+        if start_line == 0 || start_line > total_lines {
+            return Err(format!(
+                "Invalid start_line: {start_line}. Document has {total_lines} lines."
+            ));
+        }
+
+        let actual_end_line = end_line.map(|e| e.min(total_lines)).unwrap_or(total_lines);
+
+        if actual_end_line < start_line {
+            return Err(format!(
+                "Invalid line range: end_line ({actual_end_line}) must be >= start_line ({start_line})"
+            ));
+        }
+
+        let mut output = String::new();
+        let title = metadata.title().unwrap_or(&doc.label);
+        output.push_str(&format!("# Document: {title}\n\n"));
+        output.push_str(&format!("**Label:** {}\n", doc.label));
+        if let Some(ref desc) = metadata.description {
+            output.push_str(&format!("**Description:** {desc}\n"));
+        }
+        if !metadata.tags.is_empty() {
+            output.push_str(&format!("**Tags:** {}\n", metadata.tags.join(", ")));
+        }
+        output.push_str(&format!(
+            "**Lines:** {start_line}-{actual_end_line}/{total_lines}\n\n"
+        ));
+
+        let selected_lines = &lines[start_line - 1..actual_end_line];
+        output.push_str("```markdown\n");
+        for line in selected_lines {
+            output.push_str(line);
+            output.push('\n');
+        }
+        output.push_str("```");
+
+        Ok(output)
+    }
+
+    /// Create a new project knowledge document.
+    async fn doc_set_impl(
+        &self,
+        Parameters(request): Parameters<DocSetRequest>,
+    ) -> Result<String, String> {
+        request.validate()?;
+
+        let doc = Doc::with_label(&request.label).map_err(|e| e.to_string())?;
+        if doc.exists() {
+            return Err(format!(
+                "Document '{}' already exists. Use doc_edit to modify existing documents.",
+                request.label
+            ));
+        }
+
+        let mut metadata = DocMetadata {
+            label: Some(crate::doc::DocLabel::new(&request.label).map_err(|e| e.to_string())?),
+            description: request.description,
+            tags: request.tags.unwrap_or_default(),
+            ..Default::default()
+        };
+
+        let lines: Vec<&str> = request.content.lines().collect();
+        for line in &lines {
+            let trimmed = line.trim();
+            if let Some(title_text) = trimmed.strip_prefix("# ") {
+                metadata.title = Some(title_text.to_string());
+                break;
+            }
+        }
+
+        let content = crate::doc::serialize_doc(&metadata).map_err(|e| e.to_string())?;
+        let full_content = format!("{}\n{}", content, request.content);
+        doc.write(&full_content).map_err(|e| e.to_string())?;
+
+        crate::events::log_doc_created(
+            &request.label,
+            metadata.title.as_deref().unwrap_or("Untitled"),
+            Some(Actor::Mcp),
+        );
+
+        Ok(format!("Created document **{}**", request.label))
+    }
+
+    /// Search documents semantically.
+    async fn doc_search_impl(
+        &self,
+        Parameters(request): Parameters<DocSearchRequest>,
+    ) -> Result<String, String> {
+        request.validate()?;
+
+        match Config::load() {
+            Ok(config) => {
+                if !config.semantic_search_enabled() {
+                    return Err("Semantic search is disabled. Enable with: janus config set semantic_search.enabled true".to_string());
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to load config: {e}. Proceeding with semantic search.");
+            }
+        }
+
+        let store = get_or_init_store()
+            .await
+            .map_err(|e| format!("Failed to initialize store: {e}"))?;
+
+        // Resolve document label if specified
+        let resolved_label = if let Some(ref doc_label) = request.document {
+            let docs: Vec<_> = store
+                .docs()
+                .iter()
+                .filter(|entry| {
+                    let label = entry.key();
+                    label == doc_label || label.starts_with(doc_label)
+                })
+                .map(|entry| entry.key().clone())
+                .collect();
+
+            match docs.as_slice() {
+                [] => {
+                    return Err(format!("No document found matching '{doc_label}'"));
+                }
+                [single] => Some(single.clone()),
+                multiple => {
+                    return Err(format!(
+                        "Ambiguous document label '{}'. Matches: {}",
+                        doc_label,
+                        multiple.join(", ")
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
+        let doc_embeddings: Vec<_> = store
+            .embeddings()
+            .iter()
+            .filter(|entry| entry.key().starts_with("doc:"))
+            .collect();
+
+        if doc_embeddings.is_empty() {
+            return Err("No document embeddings available. Run 'janus cache rebuild' to generate embeddings for all documents.".to_string());
+        }
+
+        let query_embedding = match timeout(
+            EMBEDDING_TIMEOUT,
+            crate::embedding::model::generate_embedding(&request.query),
+        )
+        .await
+        {
+            Ok(Ok(embedding)) => embedding,
+            Ok(Err(e)) => return Err(format!("Failed to generate query embedding: {e}")),
+            Err(_) => {
+                return Err(format!(
+                    "Embedding generation timed out after {} seconds.",
+                    EMBEDDING_TIMEOUT.as_secs()
+                ));
+            }
+        };
+
+        let limit = request.limit.unwrap_or(10);
+        let threshold = request.threshold.unwrap_or(0.0);
+
+        let results = match &resolved_label {
+            Some(label) => store.doc_search_by_document(&query_embedding, label, limit),
+            None => store.doc_search(&query_embedding, limit),
+        };
+
+        let results: Vec<_> = results
+            .into_iter()
+            .filter(|r| r.similarity >= threshold)
+            .collect();
+
+        if results.is_empty() {
+            let target_info = if let Some(ref label) = resolved_label {
+                format!(" in document '{label}'")
+            } else {
+                String::new()
+            };
+            return Ok(format!(
+                "No documents found matching the query{target_info}."
+            ));
+        }
+
+        let target_info = if let Some(ref label) = resolved_label {
+            format!(" in document '{label}'")
+        } else {
+            String::new()
+        };
+        let mut output = format!(
+            "Found {} document chunk(s) semantically similar to: {}{target_info}\n\n",
+            results.len(),
+            request.query,
+        );
+
+        for (i, result) in results.iter().enumerate() {
+            let title = result.doc.title().unwrap_or("(no title)");
+            let heading_path = if result.heading_path.is_empty() {
+                "(document)".to_string()
+            } else {
+                result.heading_path.join(" > ")
+            };
+
+            output.push_str(&format!(
+                "## {}. {} (similarity: {:.2})\n\n",
+                i + 1,
+                title,
+                result.similarity
+            ));
+            output.push_str(&format!("**Label:** `{}`\n", result.label));
+            output.push_str(&format!(
+                "**Location:** {} (lines {}-{})\n\n",
+                heading_path, result.line_range.0, result.line_range.1
+            ));
+
+            let snippet = if result.content_snippet.len() > 500 {
+                format!("{}...", &result.content_snippet[..500])
+            } else {
+                result.content_snippet.clone()
+            };
+            output.push_str("```\n");
+            output.push_str(&snippet);
+            output.push_str("\n```\n\n");
         }
 
         Ok(output)

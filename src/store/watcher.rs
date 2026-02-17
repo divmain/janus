@@ -100,6 +100,16 @@ pub enum StoreEvent {
     TicketsChanged,
     /// One or more plans were created, modified, or deleted.
     PlansChanged,
+    /// One or more documents were created, modified, or deleted.
+    DocsChanged,
+}
+
+/// Entity type for retry tracking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EntityType {
+    Ticket,
+    Plan,
+    Doc,
 }
 
 /// Tracks retry state for a file that failed to parse.
@@ -109,8 +119,8 @@ struct RetryEntry {
     attempts: u8,
     /// When the next retry should be attempted.
     next_retry: tokio::time::Instant,
-    /// Whether this file is a ticket (true) or plan (false).
-    is_ticket: bool,
+    /// The type of entity being retried.
+    entity_type: EntityType,
 }
 
 /// Queue of files pending retry after parse failure.
@@ -131,18 +141,22 @@ impl RetryQueue {
 
     /// Schedule a retry for a file that failed to parse.
     /// Returns `true` if the retry was scheduled, `false` if max attempts exceeded.
-    fn schedule(&mut self, path: PathBuf, is_ticket: bool) -> bool {
+    fn schedule(&mut self, path: PathBuf, entity_type: EntityType) -> bool {
         let entry = self.entries.entry(path.clone()).or_insert(RetryEntry {
             attempts: 0,
             next_retry: tokio::time::Instant::now(),
-            is_ticket,
+            entity_type,
         });
         entry.attempts += 1;
         if entry.attempts > MAX_RETRY_ATTEMPTS {
             // Final failure — log and remove from queue
+            let entity_name = match entity_type {
+                EntityType::Ticket => "ticket",
+                EntityType::Plan => "plan",
+                EntityType::Doc => "document",
+            };
             eprintln!(
-                "Warning: giving up on parsing {} after {MAX_RETRY_ATTEMPTS} attempts: {}",
-                if is_ticket { "ticket" } else { "plan" },
+                "Warning: giving up on parsing {entity_name} after {MAX_RETRY_ATTEMPTS} attempts: {}",
                 path.display()
             );
             self.entries.remove(&path);
@@ -150,9 +164,13 @@ impl RetryQueue {
         }
         if entry.attempts == 1 {
             // First failure — log a warning
+            let entity_name = match entity_type {
+                EntityType::Ticket => "ticket",
+                EntityType::Plan => "plan",
+                EntityType::Doc => "document",
+            };
             eprintln!(
-                "Warning: failed to parse {} (will retry): {}",
-                if is_ticket { "ticket" } else { "plan" },
+                "Warning: failed to parse {entity_name} (will retry): {}",
                 path.display()
             );
         }
@@ -171,7 +189,7 @@ impl RetryQueue {
     }
 
     /// Drain all entries whose retry deadline has passed.
-    fn take_ready(&mut self) -> Vec<(PathBuf, bool)> {
+    fn take_ready(&mut self) -> Vec<(PathBuf, EntityType)> {
         let now = tokio::time::Instant::now();
         let ready: Vec<PathBuf> = self
             .entries
@@ -182,8 +200,8 @@ impl RetryQueue {
         ready
             .into_iter()
             .map(|p| {
-                let is_ticket = self.entries.get(&p).unwrap().is_ticket;
-                (p, is_ticket)
+                let entity_type = self.entries.get(&p).unwrap().entity_type;
+                (p, entity_type)
             })
             .collect()
     }
@@ -519,6 +537,7 @@ async fn process_batch(
 
     let mut changed_ticket_ids: Vec<String> = Vec::new();
     let mut plans_changed = false;
+    let mut docs_changed = false;
 
     for (path, kind) in pending.drain() {
         // Only process .md files
@@ -528,8 +547,9 @@ async fn process_batch(
 
         let is_ticket = is_ticket_path(&path);
         let is_plan = is_plan_path(&path);
+        let is_doc = is_doc_path(&path);
 
-        if !is_ticket && !is_plan {
+        if !is_ticket && !is_plan && !is_doc {
             continue;
         }
 
@@ -546,7 +566,7 @@ async fn process_batch(
                             }
                         }
                         ParseOutcome::ParseFailed => {
-                            retries.schedule(path, true);
+                            retries.schedule(path, EntityType::Ticket);
                         }
                         ParseOutcome::Skipped => {}
                     }
@@ -554,7 +574,15 @@ async fn process_batch(
                     match process_plan_file(&path, store).await {
                         ParseOutcome::Success => plans_changed = true,
                         ParseOutcome::ParseFailed => {
-                            retries.schedule(path, false);
+                            retries.schedule(path, EntityType::Plan);
+                        }
+                        ParseOutcome::Skipped => {}
+                    }
+                } else if is_doc {
+                    match process_doc_file(&path, store).await {
+                        ParseOutcome::Success => docs_changed = true,
+                        ParseOutcome::ParseFailed => {
+                            retries.schedule(path, EntityType::Doc);
                         }
                         ParseOutcome::Skipped => {}
                     }
@@ -568,6 +596,9 @@ async fn process_batch(
                     } else if is_plan {
                         store.remove_plan(&id);
                         plans_changed = true;
+                    } else if is_doc {
+                        store.remove_doc(&id);
+                        docs_changed = true;
                     }
                 }
             }
@@ -593,6 +624,10 @@ async fn process_batch(
     if plans_changed {
         let _ = broadcast_tx.send(StoreEvent::PlansChanged);
     }
+
+    if docs_changed {
+        let _ = broadcast_tx.send(StoreEvent::DocsChanged);
+    }
 }
 
 /// Process pending retries for files that previously failed to parse.
@@ -612,28 +647,35 @@ async fn process_retries(
 
     let mut changed_ticket_ids: Vec<String> = Vec::new();
     let mut plans_changed = false;
+    let mut docs_changed = false;
 
-    for (path, is_ticket) in ready {
-        let outcome = if is_ticket {
-            process_ticket_file(&path, store).await
-        } else {
-            process_plan_file(&path, store).await
+    for (path, entity_type) in ready {
+        let outcome = match entity_type {
+            EntityType::Ticket => process_ticket_file(&path, store).await,
+            EntityType::Plan => process_plan_file(&path, store).await,
+            EntityType::Doc => process_doc_file(&path, store).await,
         };
 
         match outcome {
             ParseOutcome::Success => {
                 retries.cancel(&path);
-                if is_ticket {
-                    if let Some(id) = path.file_stem() {
-                        changed_ticket_ids.push(id.to_string_lossy().to_string());
+                match entity_type {
+                    EntityType::Ticket => {
+                        if let Some(id) = path.file_stem() {
+                            changed_ticket_ids.push(id.to_string_lossy().to_string());
+                        }
                     }
-                } else {
-                    plans_changed = true;
+                    EntityType::Plan => {
+                        plans_changed = true;
+                    }
+                    EntityType::Doc => {
+                        docs_changed = true;
+                    }
                 }
             }
             ParseOutcome::ParseFailed => {
                 // schedule() handles attempt counting and final warning
-                retries.schedule(path, is_ticket);
+                retries.schedule(path, entity_type);
             }
             ParseOutcome::Skipped => {
                 // File disappeared or IO error — stop retrying
@@ -654,20 +696,23 @@ async fn process_retries(
     if plans_changed {
         let _ = broadcast_tx.send(StoreEvent::PlansChanged);
     }
+    if docs_changed {
+        let _ = broadcast_tx.send(StoreEvent::DocsChanged);
+    }
 }
 
-/// Perform a full rescan of all ticket and plan files on disk.
+/// Perform a full rescan of all ticket, plan, and doc files on disk.
 ///
 /// This is the fallback when the bounded channel overflows or the pending
 /// map exceeds its cap. Instead of processing individual events, we
 /// re-read every `.md` file and reconcile the store, then broadcast
-/// change notifications for both tickets and plans.
+/// change notifications for tickets, plans, and documents.
 ///
 /// Parse failures during a full rescan are logged but not retried — the
 /// retry queue is cleared before a rescan since we're reading everything
 /// fresh.
 async fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<StoreEvent>) {
-    use crate::types::{plans_dir, tickets_items_dir};
+    use crate::types::{docs_dir, plans_dir, tickets_items_dir};
 
     eprintln!("Warning: performing full rescan of .janus/ directory");
 
@@ -719,8 +764,32 @@ async fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Send
         }
     }
 
+    let d_dir = docs_dir();
+    if d_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&d_dir) {
+            let mut disk_ids = std::collections::HashSet::new();
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "md") {
+                    if let Some(stem) = path.file_stem() {
+                        disk_ids.insert(stem.to_string_lossy().to_string());
+                    }
+                    // Best-effort parse during rescan; failures are not retried
+                    let _ = process_doc_file(&path, store).await;
+                }
+            }
+            let store_ids: Vec<String> = store.docs().iter().map(|r| r.key().clone()).collect();
+            for id in store_ids {
+                if !disk_ids.contains(&id) {
+                    store.remove_doc(&id);
+                }
+            }
+        }
+    }
+
     let _ = broadcast_tx.send(StoreEvent::TicketsChanged);
     let _ = broadcast_tx.send(StoreEvent::PlansChanged);
+    let _ = broadcast_tx.send(StoreEvent::DocsChanged);
 }
 
 /// Classify a notify event kind into one of our simplified actions.
@@ -778,6 +847,25 @@ fn is_plan_path(path: &Path) -> bool {
     for (i, comp) in components.iter().enumerate() {
         if let std::path::Component::Normal(s) = comp {
             if *s == OsStr::new("plans") && i > 0 {
+                if let std::path::Component::Normal(parent) = &components[i - 1] {
+                    if *parent == OsStr::new(".janus") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Check if a path is within the docs directory.
+fn is_doc_path(path: &Path) -> bool {
+    use std::ffi::OsStr;
+
+    let components: Vec<_> = path.components().collect();
+    for (i, comp) in components.iter().enumerate() {
+        if let std::path::Component::Normal(s) = comp {
+            if *s == OsStr::new("docs") && i > 0 {
                 if let std::path::Component::Normal(parent) = &components[i - 1] {
                     if *parent == OsStr::new(".janus") {
                         return true;
@@ -902,6 +990,56 @@ async fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             }
             metadata.file_path = Some(path.to_path_buf());
             store.upsert_plan(metadata);
+            ParseOutcome::Success
+        }
+        Err(_) => {
+            // Don't log here — the RetryQueue handles rate-limited warnings.
+            // The store is intentionally NOT modified, preserving last-known-good state.
+            ParseOutcome::ParseFailed
+        }
+    }
+}
+
+/// Read and parse a document file, updating the store.
+///
+/// Returns a `ParseOutcome` indicating whether the store was updated,
+/// the parse failed (eligible for retry), or the file was skipped.
+///
+/// On parse failure, the store is **not** modified — the last-known-good
+/// state is preserved so callers can schedule a retry.
+///
+/// If the file no longer exists (race with deletion), removes the document
+/// from the store and returns `Skipped` (no retry needed).
+async fn process_doc_file(path: &Path, store: &TicketStore) -> ParseOutcome {
+    use crate::doc::parser::parse_doc_content;
+
+    let content = match tokio::fs::read_to_string(path).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // File was deleted between event and processing — treat as removal.
+            // Return Success because the store was modified (doc removed).
+            if let Some(stem) = path.file_stem() {
+                store.remove_doc(&stem.to_string_lossy());
+            }
+            return ParseOutcome::Success;
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to read doc file {}: {e}", path.display());
+            return ParseOutcome::Skipped;
+        }
+    };
+
+    match parse_doc_content(&content) {
+        Ok(mut metadata) => {
+            if metadata.label.is_none() {
+                if let Some(stem) = path.file_stem() {
+                    metadata.label = Some(crate::doc::types::DocLabel::new_unchecked(
+                        stem.to_string_lossy(),
+                    ));
+                }
+            }
+            metadata.file_path = Some(path.to_path_buf());
+            store.upsert_doc(metadata);
             ParseOutcome::Success
         }
         Err(_) => {

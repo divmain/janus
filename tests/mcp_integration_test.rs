@@ -143,8 +143,8 @@ fn test_mcp_tools_list() {
     assert!(response["result"]["tools"].is_array());
     let tools = response["result"]["tools"].as_array().unwrap();
 
-    // Should have 13 tools
-    assert_eq!(tools.len(), 13);
+    // Should have 17 tools
+    assert_eq!(tools.len(), 17);
 
     // Verify all tool names are present
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
@@ -161,6 +161,10 @@ fn test_mcp_tools_list() {
     assert!(tool_names.contains(&"get_children"));
     assert!(tool_names.contains(&"semantic_search"));
     assert!(tool_names.contains(&"get_next_available_ticket"));
+    assert!(tool_names.contains(&"doc_list"));
+    assert!(tool_names.contains(&"doc_show"));
+    assert!(tool_names.contains(&"doc_set"));
+    assert!(tool_names.contains(&"doc_search"));
 }
 
 // ============================================================================

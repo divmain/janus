@@ -30,6 +30,9 @@ pub enum EventType {
     PhaseRemoved,
     TicketMoved,
 
+    // Doc events
+    DocCreated,
+
     // Cache events
     CacheRebuilt,
 }
@@ -37,7 +40,7 @@ pub enum EventType {
 enum_display_fromstr!(
     EventType,
     crate::error::JanusError::invalid_event_type,
-    ["ticket_created", "status_changed", "note_added", "field_updated", "dependency_added", "dependency_removed", "link_added", "link_removed", "plan_created", "ticket_added_to_plan", "ticket_removed_from_plan", "phase_added", "phase_removed", "ticket_moved", "cache_rebuilt"],
+    ["ticket_created", "status_changed", "note_added", "field_updated", "dependency_added", "dependency_removed", "link_added", "link_removed", "plan_created", "ticket_added_to_plan", "ticket_removed_from_plan", "phase_added", "phase_removed", "ticket_moved", "doc_created", "cache_rebuilt"],
     {
         TicketCreated => "ticket_created",
         StatusChanged => "status_changed",
@@ -53,6 +56,7 @@ enum_display_fromstr!(
         PhaseAdded => "phase_added",
         PhaseRemoved => "phase_removed",
         TicketMoved => "ticket_moved",
+        DocCreated => "doc_created",
         CacheRebuilt => "cache_rebuilt",
     }
 );

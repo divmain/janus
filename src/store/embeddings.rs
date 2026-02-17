@@ -449,6 +449,199 @@ impl TicketStore {
 
         Ok((generated, total))
     }
+
+    /// Ensure a document has an embedding generated and saved.
+    ///
+    /// The embedding key is `doc:{label}` for the document-level embedding.
+    /// This uses the document's label, title, description, and tags as the
+    /// embedding text.
+    ///
+    /// # Errors
+    ///
+    /// Returns `JanusError` if:
+    /// - The document is not found in the store
+    /// - The embedding generation fails
+    pub async fn ensure_doc_embedding(&self, label: &str) -> crate::error::Result<()> {
+        // Check if embedding already exists
+        let doc_key = format!("doc:{label}");
+        if self.embeddings().contains_key(&doc_key) {
+            return Ok(());
+        }
+
+        // Get document metadata
+        let (title, description, tags) = {
+            let doc = self
+                .docs()
+                .get(label)
+                .ok_or_else(|| JanusError::DocNotFound(label.to_string()))?;
+
+            let title = doc.title.clone().unwrap_or_default();
+            let description = doc.description.clone().unwrap_or_default();
+            let tags = doc.tags.clone();
+            (title, description, tags)
+        };
+
+        // Build embedding text from document metadata
+        let mut embedding_text = title.clone();
+        if !description.is_empty() {
+            embedding_text.push_str("\n\n");
+            embedding_text.push_str(&description);
+        }
+        if !tags.is_empty() {
+            embedding_text.push_str("\n\nTags: ");
+            embedding_text.push_str(&tags.join(", "));
+        }
+
+        // Generate embedding
+        let embedding = crate::embedding::model::generate_embedding(&embedding_text)
+            .await
+            .map_err(|e| JanusError::EmbeddingGenerationFailed(e.to_string()))?;
+
+        // Insert into in-memory store
+        self.embeddings().insert(doc_key, embedding);
+
+        Ok(())
+    }
+
+    /// Ensure all documents have embeddings generated.
+    ///
+    /// Returns (generated_count, total_count) for progress reporting.
+    pub async fn ensure_all_doc_embeddings(&self) -> crate::error::Result<(usize, usize)> {
+        // Collect documents that need embeddings
+        let docs_to_embed: Vec<(String, String, String, Vec<String>)> = self
+            .docs()
+            .iter()
+            .filter_map(|entry| {
+                let label = entry.key().clone();
+                let doc_key = format!("doc:{label}");
+                // Skip if embedding already exists
+                if self.embeddings().contains_key(&doc_key) {
+                    return None;
+                }
+                let doc = entry.value();
+                let title = doc.title.clone().unwrap_or_default();
+                let description = doc.description.clone().unwrap_or_default();
+                let tags = doc.tags.clone();
+                Some((label, title, description, tags))
+            })
+            .collect();
+
+        let total = docs_to_embed.len();
+        if total == 0 {
+            return Ok((0, 0));
+        }
+
+        let mut generated = 0usize;
+
+        for (label, title, description, tags) in docs_to_embed {
+            // Build embedding text
+            let mut embedding_text = title;
+            if !description.is_empty() {
+                embedding_text.push_str("\n\n");
+                embedding_text.push_str(&description);
+            }
+            if !tags.is_empty() {
+                embedding_text.push_str("\n\nTags: ");
+                embedding_text.push_str(&tags.join(", "));
+            }
+
+            // Generate embedding
+            match crate::embedding::model::generate_embedding(&embedding_text).await {
+                Ok(embedding) => {
+                    let doc_key = format!("doc:{label}");
+                    self.embeddings().insert(doc_key, embedding);
+                    generated += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to generate embedding for doc {label}: {e}");
+                }
+            }
+        }
+
+        Ok((generated, total))
+    }
+
+    /// Ensure document chunk embeddings are generated.
+    ///
+    /// This generates embeddings for all chunks of a document.
+    /// Chunk embedding keys are: `doc:{label}:c{start_line}`
+    ///
+    /// # Errors
+    ///
+    /// Returns `JanusError` if:
+    /// - The document is not found in the store
+    /// - The document content cannot be read
+    /// - The embedding generation fails
+    pub async fn ensure_doc_chunk_embeddings(&self, label: &str) -> crate::error::Result<()> {
+        use crate::doc::chunk_document;
+
+        // Get document metadata and content
+        let (file_path, _title) = {
+            let doc = self
+                .docs()
+                .get(label)
+                .ok_or_else(|| JanusError::DocNotFound(label.to_string()))?;
+
+            let file_path = doc
+                .file_path
+                .clone()
+                .ok_or_else(|| JanusError::EmbeddingNoFilePath(label.to_string()))?;
+            let title = doc.title.clone().unwrap_or_default();
+            (file_path, title)
+        };
+
+        // Read document content
+        let content = fs::read_to_string(&file_path).map_err(|e| JanusError::StorageError {
+            operation: "read",
+            item_type: "doc",
+            path: file_path.clone(),
+            source: e,
+        })?;
+
+        // Chunk the document
+        let chunks = chunk_document(label, &content)?;
+
+        // Generate embeddings for chunks that don't already have them
+        let embeddings_to_generate: Vec<(String, String)> = chunks
+            .iter()
+            .filter_map(|chunk| {
+                let chunk_key = format!("doc:{label}:c{}", chunk.start_line);
+                if self.embeddings().contains_key(&chunk_key) {
+                    return None;
+                }
+                let chunk_text = format!("{}\n\n{}", chunk.heading_path_string(), chunk.content);
+                Some((chunk_key, chunk_text))
+            })
+            .collect();
+
+        // Generate embeddings one at a time
+        // A more efficient implementation would use embed_batch
+        for (chunk_key, chunk_text) in embeddings_to_generate {
+            match crate::embedding::model::generate_embedding(&chunk_text).await {
+                Ok(embedding) => {
+                    self.embeddings().insert(chunk_key, embedding);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to generate embedding for chunk {chunk_key}: {e}");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get all chunk embeddings for a document.
+    ///
+    /// Returns a vector of (chunk_key, embedding) tuples where chunk_key
+    /// is in the format `doc:{label}:c{start_line}`.
+    pub fn doc_chunk_embeddings(&self, label: &str) -> Vec<(String, Vec<f32>)> {
+        let prefix = format!("doc:{label}:c");
+        self.embeddings()
+            .iter()
+            .filter(|entry| entry.key().starts_with(&prefix))
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect()
+    }
 }
 
 /// Get file modification time as nanoseconds since UNIX epoch.

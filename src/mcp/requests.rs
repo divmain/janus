@@ -335,6 +335,136 @@ pub struct SemanticSearchRequest {
     pub threshold: Option<f32>,
 }
 
+/// Request parameters for listing documents
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, Default)]
+pub struct DocListRequest {
+    // No parameters - list all documents
+}
+
+/// Request parameters for showing a document
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DocShowRequest {
+    /// Document label (can be partial)
+    #[schemars(description = "Document label to show")]
+    pub label: String,
+    /// Optional start line (1-indexed)
+    #[schemars(description = "Optional start line number (1-indexed)")]
+    pub start_line: Option<usize>,
+    /// Optional end line (inclusive)
+    #[schemars(description = "Optional end line number (inclusive)")]
+    pub end_line: Option<usize>,
+}
+
+/// Request parameters for creating a document
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DocSetRequest {
+    /// Document label (filesystem-safe)
+    #[schemars(description = "Document label (filesystem-safe, max 50 chars)")]
+    pub label: String,
+    /// Document content (markdown body)
+    #[schemars(description = "Document content in markdown format")]
+    pub content: String,
+    /// Optional description
+    #[schemars(description = "Optional document description")]
+    pub description: Option<String>,
+    /// Optional tags for categorization
+    #[schemars(description = "Optional tags for categorization")]
+    pub tags: Option<Vec<String>>,
+}
+
+/// Request parameters for document semantic search
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DocSearchRequest {
+    /// Natural language search query
+    #[schemars(description = "Natural language search query")]
+    pub query: String,
+    /// Filter to a specific document by label (optional)
+    #[schemars(description = "Optional document label to filter search to a specific document")]
+    pub document: Option<String>,
+    /// Maximum results to return (default: 10)
+    #[schemars(description = "Maximum number of results to return")]
+    pub limit: Option<usize>,
+    /// Minimum similarity score 0.0-1.0 (default: 0.0)
+    #[schemars(description = "Minimum similarity score (0.0-1.0)")]
+    pub threshold: Option<f32>,
+}
+
+impl DocSetRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        // Validate label is not empty
+        if self.label.trim().is_empty() {
+            return Err("Document label cannot be empty".to_string());
+        }
+
+        // Validate label length (max 50 chars for filesystem safety)
+        if self.label.len() > 50 {
+            return Err(format!(
+                "Document label too long (max 50 chars): {} chars",
+                self.label.len()
+            ));
+        }
+
+        // Validate label characters (alphanumeric, spaces, hyphens, underscores, periods)
+        if !self
+            .label
+            .chars()
+            .all(|c| c.is_alphanumeric() || c.is_whitespace() || c == '-' || c == '_' || c == '.')
+        {
+            return Err(format!(
+                "Document label contains invalid characters: '{}'",
+                self.label
+            ));
+        }
+
+        // Validate content is not empty
+        if self.content.trim().is_empty() {
+            return Err("Document content cannot be empty".to_string());
+        }
+
+        // Validate content length (reasonable limit to prevent abuse)
+        if self.content.len() > 100_000 {
+            return Err(format!(
+                "Document content too large (max 100KB): {} chars",
+                self.content.len()
+            ));
+        }
+
+        // Validate description length if provided
+        if let Some(ref desc) = self.description {
+            if desc.len() > 500 {
+                return Err(format!(
+                    "Description too long (max 500 chars): {} chars",
+                    desc.len()
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl DocSearchRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.query.trim().is_empty() {
+            return Err("Search query cannot be empty".to_string());
+        }
+
+        if let Some(threshold) = self.threshold {
+            if !(0.0..=1.0).contains(&threshold) {
+                return Err(format!(
+                    "Threshold must be between 0.0 and 1.0, got {threshold}"
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

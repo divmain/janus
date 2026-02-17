@@ -97,6 +97,11 @@ src/
 │       ├── import.rs    #     parse_importable_plan() for markdown plan import
 │       ├── sections.rs  #     Structured vs free-form section parsing
 │       └── serialize.rs #     Plan file serialization (write back to disk)
+├── doc/                 # Document domain module (Project Knowledge Documents)
+│   ├── mod.rs           #   Doc facade, Entity trait impl, re-exports
+│   ├── types.rs         #   DocLabel, DocMetadata, DocChunk, DocLoadResult
+│   ├── parser.rs        #   Document parsing (YAML frontmatter + markdown body)
+│   └── chunker.rs       #   AST-based chunking with comrak
 ├── store/               # In-memory store (DashMap-backed, global singleton)
 │   ├── mod.rs           #   TicketStore struct, OnceCell singleton, init from disk
 │   ├── queries.rs       #   Search, filter, lookup, ticket map, depth computation
@@ -276,6 +281,26 @@ assert!(output.contains("t-"));
 - **Parent/Child**: Hierarchical ticket organization
 - **ID Format**: `<prefix>-<hash>` where hash is 4-8 chars (e.g., `j-a1b2`)
 - **Plan ID Format**: `plan-<hash>` where hash is 4-8 chars (e.g., `plan-a1b2`)
+- **Document Label Format**: Free-form filesystem-safe string (e.g., `architecture`, `api-design`)
+
+## Document File Format
+
+Documents are stored as `.md` files in `.janus/docs/` with YAML frontmatter:
+
+```markdown
+---
+label: architecture
+description: System architecture overview
+tags: ["architecture", "design"]
+created: 2024-01-01T00:00:00Z
+updated: 2024-01-15T00:00:00Z
+---
+# Architecture
+
+Document content...
+```
+
+Documents are chunked at heading boundaries for semantic search. Each chunk tracks its heading path (e.g., `["Architecture", "API Design"]`), content, and line numbers.
 
 ## Ticket File Format
 
@@ -310,7 +335,7 @@ Description and body content...
 Janus uses an in-memory store backed by `DashMap` concurrent hash maps. Key points:
 
 - **Singleton**: Global `OnceCell<TicketStore>` initialized once per process via `get_or_init_store()`
-- **Initialization**: Reads all `.md` files from `.janus/items/` and `.janus/plans/` into `DashMap` structures, loads pre-computed embeddings from `.janus/embeddings/`
+- **Initialization**: Reads all `.md` files from `.janus/items/`, `.janus/plans/`, and `.janus/docs/` into `DashMap` structures, loads pre-computed embeddings from `.janus/embeddings/`
 - **Concurrency**: `DashMap` provides lock-free concurrent reads and fine-grained locking for writes
 - **Filesystem Watcher**: For long-running processes (TUI, MCP server), a `notify`-based watcher monitors `.janus/` recursively, debounces events (150ms), and updates the store
 - **Source of truth**: Markdown files remain authoritative; the store is always derived from them

@@ -56,6 +56,16 @@ fn format_ambiguous_plan_id(id: &str, matches: &[String]) -> String {
     format_error_with_list("ambiguous plan ID", id, "matches multiple plans:", matches)
 }
 
+/// Format the AmbiguousDocLabel error message
+fn format_ambiguous_doc_label(id: &str, matches: &[String]) -> String {
+    format_error_with_list(
+        "ambiguous document label",
+        id,
+        "matches multiple documents:",
+        matches,
+    )
+}
+
 /// Format an invalid enum value error with the list of valid options
 fn format_invalid_enum_value(value: &str, valid_values: &[String]) -> String {
     format_error_with_list("invalid value", value, "must be one of:", valid_values)
@@ -550,6 +560,22 @@ pub enum JanusError {
     // MCP errors
     #[error("MCP server error: {0}")]
     McpServerError(String),
+
+    // Doc errors
+    #[error("document '{0}' not found")]
+    DocNotFound(String),
+
+    #[error("{}", format_ambiguous_doc_label(.0, .1))]
+    AmbiguousDocLabel(String, Vec<String>),
+
+    #[error("invalid document label: {0}")]
+    InvalidDocLabel(String),
+
+    #[error("document with label '{0}' already exists")]
+    DocAlreadyExists(String),
+
+    #[error("failed to load {} document file(s):\n{}", .0.len(), .0.join("\n"))]
+    DocLoadFailed(Vec<String>),
 
     // General errors
     #[error("internal error: {0}")]

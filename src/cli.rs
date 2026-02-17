@@ -327,6 +327,12 @@ pub enum Commands {
         action: PlanAction,
     },
 
+    /// Project knowledge document management
+    Doc {
+        #[command(subcommand)]
+        action: DocAction,
+    },
+
     /// Output ticket relationship graphs in DOT or Mermaid format
     Graph {
         /// Show dependencies only (blocking/blocked-by relationships)
@@ -889,22 +895,80 @@ pub enum PlanAction {
     },
 }
 
+#[derive(Subcommand)]
+pub enum DocAction {
+    /// List all documents
+    Ls {
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Display a document
+    Show {
+        /// Document label (can be partial)
+        label: String,
+        /// Show specific line range (e.g., "10-50" or "5")
+        #[arg(long)]
+        lines: Option<String>,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Create a new document
+    Create {
+        /// Document label
+        label: String,
+        /// Document title
+        #[arg(short, long)]
+        title: Option<String>,
+        /// Document description
+        #[arg(short, long)]
+        description: Option<String>,
+        /// Tags for the document (can be repeated)
+        #[arg(long)]
+        tag: Vec<String>,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Edit a document
+    Edit {
+        /// Document label (can be partial)
+        label: String,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Search documents using semantic similarity
+    Search {
+        /// Natural language search query
+        query: String,
+        /// Filter to a specific document by label (can be partial)
+        #[arg(short, long)]
+        document: Option<String>,
+        /// Maximum number of results to return
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+        /// Minimum similarity threshold (0.0-1.0)
+        #[arg(long)]
+        threshold: Option<f32>,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+}
+
 impl Commands {
     /// Execute the command, dispatching to the appropriate handler.
     pub async fn run(self) -> crate::error::Result<()> {
         use crate::commands::{
             CreateOptions, LsOptions, cmd_add_note, cmd_adopt, cmd_board, cmd_cache_prune,
             cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set,
-            cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_doctor,
-            cmd_edit, cmd_events_prune, cmd_graph, cmd_hook_disable, cmd_hook_enable,
-            cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add,
-            cmd_link_remove, cmd_ls_with_options, cmd_next, cmd_plan_add_phase,
-            cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_import,
-            cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next, cmd_plan_remove_phase,
-            cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder, cmd_plan_show,
-            cmd_plan_status, cmd_plan_verify, cmd_push, cmd_query, cmd_remote_browse,
-            cmd_remote_link, cmd_reopen, cmd_search, cmd_set, cmd_show, cmd_show_import_spec,
-            cmd_start, cmd_status, cmd_sync, cmd_view,
+            cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_doc_create,
+            cmd_doc_edit, cmd_doc_ls, cmd_doc_search, cmd_doc_show, cmd_doctor, cmd_edit,
+            cmd_events_prune, cmd_graph, cmd_hook_disable, cmd_hook_enable, cmd_hook_install,
+            cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add, cmd_link_remove,
+            cmd_ls_with_options, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket,
+            cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_import, cmd_plan_ls,
+            cmd_plan_move_ticket, cmd_plan_next, cmd_plan_remove_phase, cmd_plan_remove_ticket,
+            cmd_plan_rename, cmd_plan_reorder, cmd_plan_show, cmd_plan_status, cmd_plan_verify,
+            cmd_push, cmd_query, cmd_remote_browse, cmd_remote_link, cmd_reopen, cmd_search,
+            cmd_set, cmd_show, cmd_show_import_spec, cmd_start, cmd_status, cmd_sync, cmd_view,
         };
         use crate::error::JanusError;
 
@@ -1261,6 +1325,30 @@ impl Commands {
                 threshold,
                 output,
             } => cmd_search(&query, limit, threshold, output).await,
+
+            Commands::Doc { action } => match action {
+                DocAction::Ls { output } => cmd_doc_ls(output).await,
+                DocAction::Show {
+                    label,
+                    lines,
+                    output,
+                } => cmd_doc_show(&label, lines, output).await,
+                DocAction::Create {
+                    label,
+                    title,
+                    description,
+                    tag,
+                    output,
+                } => cmd_doc_create(&label, title, description, tag, output).await,
+                DocAction::Edit { label, output } => cmd_doc_edit(&label, output).await,
+                DocAction::Search {
+                    query,
+                    document,
+                    limit,
+                    threshold,
+                    output,
+                } => cmd_doc_search(&query, document.as_deref(), limit, threshold, output).await,
+            },
         }
     }
 }
