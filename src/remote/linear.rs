@@ -39,8 +39,6 @@ const LINEAR_API_URL: &str = "https://api.linear.app/graphql";
 /// This helper centralizes the HTTP client builder configuration to avoid duplication.
 fn build_linear_http_client() -> Result<Client> {
     Ok(Client::builder()
-        .http1_title_case_headers()
-        .http2_prior_knowledge()
         .timeout(Duration::from_secs(60))
         .connect_timeout(Duration::from_secs(30))
         .build()?)
