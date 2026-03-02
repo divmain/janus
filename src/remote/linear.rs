@@ -456,6 +456,17 @@ impl LinearProvider {
     }
 }
 
+/// Format an error with its full cause chain for better debugging.
+fn format_error_chain(err: &dyn std::error::Error) -> String {
+    let mut msg = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        msg.push_str(&format!(" -> {cause}"));
+        source = cause.source();
+    }
+    msg
+}
+
 /// Wrapper for Linear API errors that implements AsHttpError.
 ///
 /// Uses the shared ApiError type from the error module for common functionality.
@@ -490,7 +501,7 @@ impl AsHttpError for LinearError {
 impl From<reqwest::Error> for LinearError {
     fn from(err: reqwest::Error) -> Self {
         let status = err.status();
-        let message = err.to_string();
+        let message = format_error_chain(&err);
         let mut error = super::error::ApiError::new(message, "Linear");
         error.status = status;
         Self { inner: error }

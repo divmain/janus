@@ -18,6 +18,7 @@ const VALID_CONFIG_KEYS: &[&str] = &[
     "linear.api_key",
     "default.remote",
     "semantic_search.enabled",
+    "remote_timeout",
 ];
 
 /// Validate a config key is one of the known valid keys
@@ -69,6 +70,7 @@ pub fn cmd_config_show(output: OutputOptions) -> Result<()> {
         "semantic_search": {
             "enabled": config.semantic_search_enabled(),
         },
+        "remote_timeout": config.remote_timeout().as_secs(),
         "config_file": Config::config_path().to_string_lossy(),
     });
 
@@ -119,6 +121,15 @@ pub fn cmd_config_show(output: OutputOptions) -> Result<()> {
     text_output.push_str(&format!(
         "  enabled: {}\n",
         config.semantic_search_enabled()
+    ));
+
+    text_output.push('\n');
+
+    // Remote timeout
+    text_output.push_str(&format!("{}:\n", "remote".cyan()));
+    text_output.push_str(&format!(
+        "  timeout: {} seconds\n",
+        config.remote_timeout().as_secs()
     ));
 
     text_output.push('\n');
@@ -210,9 +221,27 @@ pub fn cmd_config_set(key: &str, value: &str, output: OutputOptions) -> Result<(
             let text = format!("Set {} to {}", "semantic_search.enabled".cyan(), enabled);
             (json, text)
         }
+        "remote_timeout" => {
+            let timeout = value.parse::<u64>().map_err(|_| {
+                JanusError::Config(format!(
+                    "invalid value '{value}' for remote_timeout. Expected: number (seconds)"
+                ))
+            })?;
+            config.set_remote_timeout(timeout);
+            config.save()?;
+            let json = json!({
+                "action": "config_set",
+                "key": key,
+                "value": timeout,
+                "success": true,
+            });
+            let text = format!("Set {} to {} seconds", "remote_timeout".cyan(), timeout);
+            (json, text)
+        }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{key}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled"
+                "unknown config key '{key}'. Valid keys: {}",
+                VALID_CONFIG_KEYS.join(", ")
             )));
         }
     };
@@ -308,9 +337,20 @@ pub fn cmd_config_get(key: &str, output: OutputOptions) -> Result<()> {
             let text = enabled.to_string();
             (json, text)
         }
+        "remote_timeout" => {
+            let timeout = config.remote_timeout().as_secs();
+            let json = json!({
+                "key": key,
+                "value": timeout,
+                "configured": true,
+            });
+            let text = format!("{timeout} seconds");
+            (json, text)
+        }
         _ => {
             return Err(JanusError::Config(format!(
-                "unknown config key '{key}'. Valid keys: github.token, linear.api_key, default.remote, semantic_search.enabled"
+                "unknown config key '{key}'. Valid keys: {}",
+                VALID_CONFIG_KEYS.join(", ")
             )));
         }
     };

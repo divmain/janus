@@ -90,7 +90,17 @@ impl AsHttpError for ApiError {
         if let Some(status) = self.status {
             return status.is_server_error();
         }
-        false
+
+        // Connection errors without HTTP status are transient (network issues,
+        // DNS failures, timeouts, connection refused, etc.)
+        let msg = self.message.to_lowercase();
+        msg.contains("error sending request")
+            || msg.contains("connection")
+            || msg.contains("timeout")
+            || msg.contains("timed out")
+            || msg.contains("dns")
+            || msg.contains("resolve")
+            || msg.contains("network")
     }
 
     fn is_rate_limited(&self) -> bool {
