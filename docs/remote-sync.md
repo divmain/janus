@@ -24,7 +24,7 @@ janus config set github.token ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Set default GitHub repository
-janus config set default_remote github:myorg/myrepo
+janus config set default.remote github:myorg/myrepo
 ```
 
 ### 3. Start Syncing
@@ -61,7 +61,7 @@ janus config set linear.api_key lin_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 export LINEAR_API_KEY=lin_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Set default Linear organization
-janus config set default_remote linear:myorg
+janus config set default.remote linear:myorg
 ```
 
 ### 3. Start Syncing
@@ -245,10 +245,10 @@ janus remote adopt github:myorg/repo/123
 janus remote adopt linear:myorg/PROJ-456
 ```
 
-The `default_remote` setting only affects `janus remote push` (where platform must be inferred). Always use full reference format for `janus remote adopt` and `janus remote link`.
+The `default.remote` setting only affects `janus remote push` (where platform must be inferred). Always use full reference format for `janus remote adopt` and `janus remote link`.
 
 ## Tips
 
 - Use environment variables for sensitive credentials (`GITHUB_TOKEN`, `LINEAR_API_KEY`) instead of storing in config files
 - Run `janus remote sync` regularly when collaborating via GitHub/Linear to keep local and remote in sync
-- Once `default_remote` is set, use short formats (e.g., `ENG-123` for Linear instead of `linear:org/ENG-123`)
+- Once `default.remote` is set, use short formats (e.g., `ENG-123` for Linear instead of `linear:org/ENG-123`)

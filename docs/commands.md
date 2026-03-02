@@ -375,8 +375,8 @@ janus config set github.token ghp_xxxxxxxxxxxx
 janus config set linear.api_key lin_api_xxxxxxxxxxxx
 
 # Default remote (platform:org or platform:org/repo)
-janus config set default_remote github:myorg/myrepo
-janus config set default_remote linear:myorg
+janus config set default.remote github:myorg/myrepo
+janus config set default.remote linear:myorg
 ```
 
 Tokens can also be set via environment variables:
@@ -390,7 +390,7 @@ Get a configuration value.
 ```bash
 janus config get <KEY>
 
-# Valid keys: github.token, linear.api_key, default_remote
+# Valid keys: github.token, linear.api_key, default.remote
 ```
 
 ### `janus config show`

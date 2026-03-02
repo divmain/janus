@@ -127,7 +127,7 @@ Sync tickets with GitHub Issues or Linear:
 ```bash
 # Configure GitHub
 janus config set github.token ghp_xxxxxxxxxxxx
-janus config set default_remote github:myorg/myrepo
+janus config set default.remote github:myorg/myrepo
 
 # Push a local ticket to GitHub
 janus remote push j-a1b2
