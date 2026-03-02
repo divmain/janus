@@ -14,18 +14,17 @@ use crate::remote::Platform;
 
 /// Validate a config key and convert underscore notation to dot notation suggestion
 fn validate_config_key(key: &str) -> Result<&str> {
-    // Allow keys that are explicitly valid (some have underscores in section names)
-    if key == "semantic_search.enabled" {
-        return Ok(key);
-    }
-
     // Check if key uses underscore notation that should be dot notation
-    // Only the first underscore should be replaced with a dot (e.g., linear_api_key -> linear.api_key)
-    if let Some(pos) = key.find('_') {
-        let dot_version = format!("{}.{}", &key[..pos], &key[pos + 1..]);
-        return Err(JanusError::Config(format!(
-            "invalid config key '{key}'. Use dot notation: '{dot_version}'"
-        )));
+    // Only suggest conversion when there are underscores but NO dots already present
+    // e.g., "linear_api_key" -> suggest "linear.api_key"
+    // But "linear.api_key" or "semantic_search.enabled" should proceed to valid key check
+    if !key.contains('.') {
+        if let Some(pos) = key.find('_') {
+            let dot_version = format!("{}.{}", &key[..pos], &key[pos + 1..]);
+            return Err(JanusError::Config(format!(
+                "invalid config key '{key}'. Use dot notation: '{dot_version}'"
+            )));
+        }
     }
     Ok(key)
 }
