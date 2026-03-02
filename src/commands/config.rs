@@ -12,21 +12,24 @@ use crate::config::Config;
 use crate::error::{JanusError, Result};
 use crate::remote::Platform;
 
-/// Validate a config key and convert underscore notation to dot notation suggestion
+/// List of valid config keys
+const VALID_CONFIG_KEYS: &[&str] = &[
+    "github.token",
+    "linear.api_key",
+    "default.remote",
+    "semantic_search.enabled",
+];
+
+/// Validate a config key is one of the known valid keys
 fn validate_config_key(key: &str) -> Result<&str> {
-    // Check if key uses underscore notation that should be dot notation
-    // Only suggest conversion when there are underscores but NO dots already present
-    // e.g., "linear_api_key" -> suggest "linear.api_key"
-    // But "linear.api_key" or "semantic_search.enabled" should proceed to valid key check
-    if !key.contains('.') {
-        if let Some(pos) = key.find('_') {
-            let dot_version = format!("{}.{}", &key[..pos], &key[pos + 1..]);
-            return Err(JanusError::Config(format!(
-                "invalid config key '{key}'. Use dot notation: '{dot_version}'"
-            )));
-        }
+    if VALID_CONFIG_KEYS.contains(&key) {
+        Ok(key)
+    } else {
+        let valid_keys_list = VALID_CONFIG_KEYS.join(", ");
+        Err(JanusError::Config(format!(
+            "unknown config key '{key}'. Valid keys: {valid_keys_list}"
+        )))
     }
-    Ok(key)
 }
 
 /// Mask a sensitive value by showing only the first 2 and last 2 characters

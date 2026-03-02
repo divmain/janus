@@ -76,21 +76,23 @@ fn test_config_file_created() {
 }
 
 #[test]
-fn test_config_rejects_underscore_keys() {
+fn test_config_rejects_unknown_keys() {
     let janus = JanusTest::new();
 
-    // Test that underscore keys are rejected with helpful error
+    // Test that invalid/unknown keys are rejected
+    let stderr = janus.run_failure(&["config", "set", "invalid.key", "value"]);
+    assert!(stderr.contains("unknown config key"));
+    assert!(stderr.contains("Valid keys"));
+
+    // Test with underscore notation (no longer converted, just unknown)
     let stderr = janus.run_failure(&["config", "set", "default_remote", "github:myorg/myrepo"]);
-    assert!(stderr.contains("invalid config key"));
-    assert!(stderr.contains("default.remote"));
+    assert!(stderr.contains("unknown config key"));
 
     // Test with linear_api_key
     let stderr = janus.run_failure(&["config", "set", "linear_api_key", "some_key"]);
-    assert!(stderr.contains("invalid config key"));
-    assert!(stderr.contains("linear.api_key"));
+    assert!(stderr.contains("unknown config key"));
 
     // Test with github_token
     let stderr = janus.run_failure(&["config", "set", "github_token", "some_token"]);
-    assert!(stderr.contains("invalid config key"));
-    assert!(stderr.contains("github.token"));
+    assert!(stderr.contains("unknown config key"));
 }
