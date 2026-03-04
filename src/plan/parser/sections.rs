@@ -3,11 +3,11 @@
 //! Handles parsing of phases, ticket lists, and list items within plan sections.
 
 use comrak::nodes::NodeValue;
-use comrak::{Arena, parse_document};
+use comrak::{parse_document, Arena};
 
 use crate::plan::types::{FreeFormSection, Phase};
 
-use super::{H2Section, comrak_options_with_tasklist, extract_text_content, parse_list_items};
+use super::{comrak_options_with_tasklist, extract_text_content, parse_list_items, H2Section};
 
 /// Parse a ticket list from markdown content using comrak AST, extracting just the ticket IDs.
 ///
@@ -345,11 +345,9 @@ mod tests {
         // Unknown subsections preserved
         assert_eq!(phase.extra_subsections.len(), 2);
         assert_eq!(phase.extra_subsections[0].heading, "Implementation Notes");
-        assert!(
-            phase.extra_subsections[0]
-                .content
-                .contains("important notes")
-        );
+        assert!(phase.extra_subsections[0]
+            .content
+            .contains("important notes"));
         assert_eq!(phase.extra_subsections[1].heading, "Risk Assessment");
         assert!(phase.extra_subsections[1].content.contains("Risk 1"));
 
