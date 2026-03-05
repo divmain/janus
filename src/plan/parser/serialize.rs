@@ -2,6 +2,7 @@
 //!
 //! Serializes `PlanMetadata` structures back to markdown format for writing to disk.
 
+use crate::markdown_formatter::format_markdown;
 use crate::plan::types::{FreeFormSection, Phase, PlanMetadata, PlanSection, TicketsSection};
 use crate::JanusError;
 
@@ -137,7 +138,8 @@ pub fn serialize_plan(metadata: &PlanMetadata) -> crate::Result<String> {
         }
     }
 
-    Ok(output)
+    // Apply markdown formatting to normalize whitespace and formatting
+    Ok(format_markdown(&output))
 }
 
 /// Serialize a phase to markdown format.

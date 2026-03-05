@@ -13,6 +13,7 @@ pub mod fs;
 pub mod graph;
 pub mod hooks;
 pub mod locator;
+pub mod markdown_formatter;
 pub mod mcp;
 pub mod next;
 pub mod parser;
