@@ -66,6 +66,10 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // State management - initialize with empty state, load asynchronously
     let init_result: State<InitResult> = hooks.use_state(|| InitResult::Ok);
     let all_tickets: State<Vec<TicketMetadata>> = hooks.use_state(Vec::new);
+    // Generation counter: incremented whenever all_tickets is replaced.
+    // Used to invalidate the handler-side FilteredCache so stale ticket data
+    // is never served after a watcher reload or granular refresh.
+    let ticket_generation: State<u64> = hooks.use_state(|| 0u64);
     let mut is_loading = hooks.use_state(|| true);
     let toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut search_query = hooks.use_state(String::new);
@@ -81,16 +85,22 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
     // NOTE: This must be created before update_status_handler so it can be cloned into it
-    let load_handler: Handler<()> =
-        hooks.use_async_handler(use_ticket_loader(all_tickets, is_loading, init_result));
+    let load_handler: Handler<()> = hooks.use_async_handler(use_ticket_loader(
+        all_tickets,
+        is_loading,
+        init_result,
+        Some(ticket_generation),
+    ));
 
     // Direct async handler for update status operations (replaces action queue pattern)
     let update_status_handler: Handler<(String, TicketStatus)> = hooks.use_async_handler({
         let toast_setter = toast;
         let all_tickets_setter = all_tickets;
+        let generation = ticket_generation;
         move |(ticket_id, status): (String, TicketStatus)| {
             let mut toast_setter = toast_setter;
             let mut all_tickets_setter = all_tickets_setter;
+            let mut generation = generation;
             async move {
                 match Ticket::find(&ticket_id).await {
                     Ok(ticket) => match ticket.update_field("status", &status.to_string()) {
@@ -110,6 +120,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                                 )
                                 .await;
                             all_tickets_setter.set(tickets);
+                            generation.set(generation.get().wrapping_add(1));
                         }
                         Err(e) => {
                             toast_setter.set(Some(Toast::error(format!("Failed to update: {e}"))));
@@ -176,7 +187,9 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         let mut toast = toast;
         let mut all_tickets = all_tickets;
         let mut pending_setter = pending_ticket_refresh;
+        let generation = ticket_generation;
         move |ticket_id: String| {
+            let mut generation = generation;
             async move {
                 // Refresh the specific ticket in the store first
                 crate::tui::repository::TicketRepository::refresh_ticket_in_store(&ticket_id).await;
@@ -187,6 +200,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                 )
                 .await;
                 all_tickets.set(tickets);
+                generation.set(generation.get().wrapping_add(1));
                 pending_setter.set(None);
                 toast.set(Some(Toast::success(format!("Saved {ticket_id}"))));
             }
@@ -277,6 +291,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                         edit_mode: &mut edit_mode,
                         edit_result: &mut edit_result,
                         all_tickets: &all_tickets,
+                        ticket_generation: &ticket_generation,
                         handlers: BoardAsyncHandlers {
                             update_status: &update_status_handler_for_events,
                         },
@@ -351,12 +366,20 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         .collect();
 
     // Get editing state for rendering using shared EditFormState
-    let (edit_ticket, edit_body) = {
+    let (edit_ticket, edit_body, edit_ticket_key) = {
         let edit_state = EditFormState {
             mode: &mut edit_mode,
             result: &mut edit_result,
         };
-        (edit_state.get_edit_ticket(), edit_state.get_edit_body())
+        let ticket = edit_state.get_edit_ticket();
+        let body = edit_state.get_edit_body();
+        // Derive a key from the ticket ID so iocraft creates a fresh EditForm
+        // component for each distinct ticket, preventing any stale state reuse.
+        let key = ticket
+            .as_ref()
+            .and_then(|t| t.id.as_ref().map(|id| id.to_string()))
+            .unwrap_or_default();
+        (ticket, body, key)
     };
 
     // Determine if we should show an empty state
@@ -695,10 +718,12 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                 })
             })
 
-            // Edit form overlay
+            // Edit form overlay — keyed by ticket ID so that switching
+            // to a different ticket always creates a fresh component.
             #(if is_editing {
                 Some(element! {
                     EditFormOverlay(
+                        key: edit_ticket_key.clone(),
                         ticket: edit_ticket.clone(),
                         initial_body: edit_body.clone(),
                         on_close: Some(edit_result),

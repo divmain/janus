@@ -13,6 +13,8 @@ use crate::types::TicketMetadata;
 /// - Loads tickets from the repository
 /// - Sets appropriate empty states based on results
 /// - Ensures minimum 100ms loading indicator display to prevent UI flicker
+/// - Optionally bumps a generation counter when tickets are updated, which is
+///   used to invalidate handler-side caches
 ///
 /// # Returns
 ///
@@ -27,7 +29,7 @@ use crate::types::TicketMetadata;
 /// let mut is_loading = hooks.use_state(|| true);
 ///
 /// let load_handler = hooks.use_async_handler(
-///     use_ticket_loader(all_tickets, is_loading, init_result)
+///     use_ticket_loader(all_tickets, is_loading, init_result, None)
 /// );
 ///
 /// // Trigger load
@@ -37,11 +39,13 @@ pub fn use_ticket_loader(
     tickets_setter: State<Vec<TicketMetadata>>,
     loading_setter: State<bool>,
     init_result_setter: State<InitResult>,
+    ticket_generation: Option<State<u64>>,
 ) -> impl Fn(()) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Clone {
     move |()| {
         let mut tickets_setter = tickets_setter;
         let mut loading_setter = loading_setter;
         let mut init_result_setter = init_result_setter;
+        let mut ticket_generation = ticket_generation;
 
         Box::pin(async move {
             let start = std::time::Instant::now();
@@ -67,6 +71,9 @@ pub fn use_ticket_loader(
             }
 
             tickets_setter.set(tickets);
+            if let Some(ref mut generation) = ticket_generation {
+                generation.set(generation.get().wrapping_add(1));
+            }
             loading_setter.set(false);
         })
     }

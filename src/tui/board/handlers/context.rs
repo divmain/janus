@@ -7,7 +7,7 @@ use iocraft::prelude::{Handler, State};
 
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::{EditFormState, EditMode};
-use crate::tui::search::{FilteredTicket, filter_tickets};
+use crate::tui::search::{filter_tickets, FilteredTicket};
 use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -25,6 +25,8 @@ const COLUMNS: [TicketStatus; 5] = [
 pub struct FilteredCache {
     /// The search query that was used to compute this cache
     query: String,
+    /// The ticket generation when this cache was computed
+    ticket_generation: u64,
     /// Filtered tickets grouped by column index
     column_tickets: Vec<Vec<FilteredTicket>>,
 }
@@ -49,6 +51,9 @@ pub struct BoardHandlerContext<'a> {
     pub edit_mode: &'a mut State<EditMode>,
     pub edit_result: &'a mut State<EditResult>,
     pub all_tickets: &'a State<Vec<TicketMetadata>>,
+    /// Generation counter that increments whenever all_tickets is updated.
+    /// Used to invalidate the handler cache when tickets change.
+    pub ticket_generation: &'a State<u64>,
     pub handlers: BoardAsyncHandlers<'a>,
     /// Cached filtered tickets to avoid repeated filtering on every keypress
     pub cache: &'a mut State<Option<FilteredCache>>,
@@ -82,13 +87,14 @@ impl<'a> BoardHandlerContext<'a> {
     /// Get cached filtered tickets for a column, computing if necessary
     fn get_cached_column_tickets(&mut self, column: usize) -> Vec<FilteredTicket> {
         let current_query = self.search_query.to_string();
+        let current_generation = self.ticket_generation.get();
 
-        // Check if cache is valid
+        // Check if cache is valid (must match both query and ticket generation)
         let cache_valid = self
             .cache
             .read()
             .as_ref()
-            .map(|c| c.query == current_query)
+            .map(|c| c.query == current_query && c.ticket_generation == current_generation)
             .unwrap_or(false);
 
         if !cache_valid {
@@ -125,6 +131,7 @@ impl<'a> BoardHandlerContext<'a> {
 
             self.cache.set(Some(FilteredCache {
                 query: current_query,
+                ticket_generation: current_generation,
                 column_tickets,
             }));
         }

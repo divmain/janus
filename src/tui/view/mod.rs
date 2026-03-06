@@ -86,7 +86,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
     let load_handler: Handler<()> =
-        hooks.use_async_handler(use_ticket_loader(all_tickets, is_loading, init_result));
+        hooks.use_async_handler(use_ticket_loader(all_tickets, is_loading, init_result, None));
 
     // Trigger initial load on mount
     let mut load_started = hooks.use_state(|| false);
@@ -531,12 +531,20 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     drop(tickets_ref_for_count);
 
     // Get editing state for rendering using shared EditFormState
-    let (edit_ticket, edit_body) = {
+    let (edit_ticket, edit_body, edit_ticket_key) = {
         let edit_state = EditFormState {
             mode: &mut edit_mode,
             result: &mut edit_result,
         };
-        (edit_state.get_edit_ticket(), edit_state.get_edit_body())
+        let ticket = edit_state.get_edit_ticket();
+        let body = edit_state.get_edit_body();
+        // Derive a key from the ticket ID so iocraft creates a fresh EditForm
+        // component for each distinct ticket, preventing any stale state reuse.
+        let key = ticket
+            .as_ref()
+            .and_then(|t| t.id.as_ref().map(|id| id.to_string()))
+            .unwrap_or_default();
+        (ticket, body, key)
     };
 
     // Determine if we should show an empty state
@@ -848,10 +856,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 })
             })
 
-            // Edit form overlay
+            // Edit form overlay — keyed by ticket ID so that switching
+            // to a different ticket always creates a fresh component.
             #(if is_editing {
                 Some(element! {
                     EditFormOverlay(
+                        key: edit_ticket_key.clone(),
                         ticket: edit_ticket.clone(),
                         initial_body: edit_body.clone(),
                         on_close: Some(edit_result),
