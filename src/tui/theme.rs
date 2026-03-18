@@ -43,6 +43,17 @@ pub struct Theme {
     pub semantic_indicator: Color,
     /// Border color when in semantic search mode
     pub semantic_search_border: Color,
+
+    // Markdown highlighting colors
+    pub md_heading_1: Color,
+    pub md_heading_2: Color,
+    pub md_heading_3: Color,
+    pub md_code_inline: Color,
+    pub md_code_fence: Color,
+    pub md_link: Color,
+    pub md_blockquote: Color,
+    pub md_list_marker: Color,
+    pub md_rule: Color,
 }
 
 impl Default for Theme {
@@ -106,6 +117,17 @@ impl Default for Theme {
                 g: 105,
                 b: 180,
             },
+
+            // Markdown highlighting defaults
+            md_heading_1: Color::Magenta,
+            md_heading_2: Color::Blue,
+            md_heading_3: Color::Cyan,
+            md_code_inline: Color::DarkYellow,
+            md_code_fence: Color::DarkGrey,
+            md_link: Color::Blue,
+            md_blockquote: Color::DarkGrey,
+            md_list_marker: Color::DarkCyan,
+            md_rule: Color::DarkGrey,
         }
     }
 }
@@ -139,6 +161,15 @@ impl Theme {
             TicketType::Task => self.type_task,
             TicketType::Epic => self.type_epic,
             TicketType::Chore => self.type_chore,
+        }
+    }
+
+    /// Get the color for a markdown heading level.
+    pub fn md_heading_color(&self, level: u8) -> Color {
+        match level {
+            1 => self.md_heading_1,
+            2 => self.md_heading_2,
+            _ => self.md_heading_3,
         }
     }
 }

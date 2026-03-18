@@ -2477,6 +2477,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "serial_test",
+ "syntect",
  "tabled",
  "tempfile",
  "thiserror 2.0.17",

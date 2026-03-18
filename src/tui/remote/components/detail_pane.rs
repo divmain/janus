@@ -166,6 +166,7 @@ fn render_remote_detail(
                                 scroll_offset: remote_scroll_offset,
                                 has_focus: false,
                                 placeholder: Some("No description".to_string()),
+                                markdown: true,
                             )
                         }
                     }
@@ -279,6 +280,7 @@ fn render_local_detail(
                                 scroll_offset: scroll_offset,
                                 has_focus: false,
                                 placeholder: Some("No description".to_string()),
+                                markdown: true,
                             )
                         }
                     }

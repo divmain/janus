@@ -11,6 +11,7 @@ pub mod components;
 pub mod edit;
 pub mod edit_state;
 pub mod handlers;
+pub mod highlight;
 pub mod hooks;
 pub mod navigation;
 pub mod remote;

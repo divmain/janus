@@ -228,6 +228,7 @@ pub fn TicketDetail(props: &TicketDetailProps) -> impl Into<AnyElement<'static>>
                         scroll_offset: props.scroll_offset,
                         has_focus: props.has_focus,
                         placeholder: None,
+                        markdown: true,
                     )
                 }
             }

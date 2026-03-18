@@ -2,9 +2,11 @@
 //!
 //! Provides a read-only view of multi-line text with scroll indicator showing
 //! "↑ X more above" / "↓ X more below" when content exceeds visible area.
+//! Supports optional markdown syntax highlighting when the `markdown` prop is true.
 
 use iocraft::prelude::*;
 
+use crate::tui::highlight::highlight_markdown;
 use crate::tui::theme::theme;
 
 /// Props for the TextViewer component
@@ -21,12 +23,17 @@ pub struct TextViewerProps {
 
     /// Optional placeholder text shown when text is empty
     pub placeholder: Option<String>,
+
+    /// When true, parse text as markdown and render with syntax highlighting.
+    /// When false, render as plain text (existing behavior).
+    pub markdown: bool,
 }
 
 /// Multi-line text viewer with scroll indicators
 ///
 /// Displays multi-line text content with scroll indicators when content
 /// exceeds the visible area. Supports placeholder text for empty content.
+/// When `markdown` is true, renders markdown with syntax highlighting.
 ///
 /// The actual visible height is controlled by the parent container's layout,
 /// while this component handles scroll indicator rendering based on the
@@ -34,10 +41,9 @@ pub struct TextViewerProps {
 #[component]
 pub fn TextViewer(props: &TextViewerProps) -> impl Into<AnyElement<'static>> {
     let theme = theme();
-    let scroll = props.scroll_offset;
 
     if props.text.is_empty() {
-        return element! {
+        let element: AnyElement<'static> = element! {
             View(
                 width: 100pct,
                 height: 100pct,
@@ -51,12 +57,94 @@ pub fn TextViewer(props: &TextViewerProps) -> impl Into<AnyElement<'static>> {
                     )
                 }))
             }
-        };
+        }
+        .into();
+        return element;
     }
 
+    if props.markdown {
+        let styled_lines = highlight_markdown(&props.text);
+        let total_lines = styled_lines.len();
+        let scroll = props.scroll_offset.min(total_lines.saturating_sub(1));
+
+        let has_content_above = scroll > 0;
+        let has_content_below = scroll + 1 < total_lines;
+
+        let mut elements: Vec<AnyElement<'static>> = Vec::new();
+
+        if has_content_above {
+            elements.push(
+                element! {
+                    View(height: 1, flex_shrink: 0.0) {
+                        Text(
+                            content: format!("↑ {} more above", scroll),
+                            color: theme.text_dimmed,
+                        )
+                    }
+                }
+                .into(),
+            );
+        }
+
+        let visible_lines: Vec<AnyElement<'static>> = styled_lines
+            .iter()
+            .skip(scroll)
+            .map(|styled_line| {
+                let contents = styled_line.to_mixed_text_contents();
+                element! {
+                    View(height: 1, flex_shrink: 0.0) {
+                        MixedText(contents: contents)
+                    }
+                }
+                .into()
+            })
+            .collect();
+
+        elements.push(
+            element! {
+                View(
+                    flex_grow: 1.0,
+                    flex_direction: FlexDirection::Column,
+                    overflow: Overflow::Hidden,
+                ) {
+                    #(visible_lines)
+                }
+            }
+            .into(),
+        );
+
+        if has_content_below {
+            let remaining = total_lines.saturating_sub(scroll + 1);
+            elements.push(
+                element! {
+                    View(height: 1, flex_shrink: 0.0) {
+                        Text(
+                            content: format!("↓ {} more below", remaining),
+                            color: theme.text_dimmed,
+                        )
+                    }
+                }
+                .into(),
+            );
+        }
+
+        let element: AnyElement<'static> = element! {
+            View(
+                width: 100pct,
+                height: 100pct,
+                flex_direction: FlexDirection::Column,
+            ) {
+                #(elements)
+            }
+        }
+        .into();
+        return element;
+    }
+
+    // Plain text rendering (existing behavior)
     let lines: Vec<&str> = props.text.lines().collect();
     let total_lines = lines.len();
-    let scroll = scroll.min(total_lines.saturating_sub(1));
+    let scroll = props.scroll_offset.min(total_lines.saturating_sub(1));
 
     let has_content_above = scroll > 0;
     let has_content_below = scroll + 1 < total_lines;
@@ -128,6 +216,7 @@ pub fn TextViewer(props: &TextViewerProps) -> impl Into<AnyElement<'static>> {
             #(elements)
         }
     }
+    .into()
 }
 
 #[cfg(test)]
@@ -141,6 +230,38 @@ mod tests {
         assert_eq!(props.scroll_offset, 0);
         assert!(!props.has_focus);
         assert!(props.placeholder.is_none());
+        assert!(!props.markdown);
+    }
+
+    #[test]
+    fn test_markdown_prop_default_is_false() {
+        let props = TextViewerProps::default();
+        assert!(!props.markdown);
+    }
+
+    #[test]
+    fn test_markdown_prop_with_empty_text() {
+        let props = TextViewerProps {
+            text: String::new(),
+            scroll_offset: 0,
+            has_focus: false,
+            placeholder: Some("No content".to_string()),
+            markdown: true,
+        };
+        assert!(props.text.is_empty());
+        assert!(props.markdown);
+    }
+
+    #[test]
+    fn test_markdown_prop_construction() {
+        let props = TextViewerProps {
+            text: "# Heading\n\nParagraph".to_string(),
+            scroll_offset: 0,
+            has_focus: false,
+            placeholder: None,
+            markdown: true,
+        };
+        assert!(props.markdown);
     }
 
     #[test]
@@ -150,6 +271,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: Some("No content".to_string()),
+            markdown: false,
         };
     }
 
@@ -160,6 +282,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -170,6 +293,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -180,6 +304,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -191,6 +316,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -202,6 +328,7 @@ mod tests {
             scroll_offset: 5,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -213,6 +340,7 @@ mod tests {
             scroll_offset: 9,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -223,6 +351,7 @@ mod tests {
             scroll_offset: 4,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -234,6 +363,7 @@ mod tests {
             scroll_offset: 5,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -245,6 +375,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -256,6 +387,7 @@ mod tests {
             scroll_offset: 8,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -266,6 +398,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -276,6 +409,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: true,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -286,6 +420,7 @@ mod tests {
             scroll_offset: 100,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
         assert_eq!(props.scroll_offset, 100);
     }
@@ -297,6 +432,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -307,6 +443,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 
@@ -317,6 +454,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: Some("No description".to_string()),
+            markdown: false,
         };
         assert_eq!(props.placeholder, Some("No description".to_string()));
     }
@@ -328,6 +466,7 @@ mod tests {
             scroll_offset: 0,
             has_focus: false,
             placeholder: None,
+            markdown: false,
         };
     }
 }

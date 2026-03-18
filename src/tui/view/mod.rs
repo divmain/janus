@@ -85,8 +85,12 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
     let store_error_modal = ModalState::<StoreErrorModalData>::use_state(&mut hooks);
 
     // Async load handler with minimum 100ms display time to prevent UI flicker
-    let load_handler: Handler<()> =
-        hooks.use_async_handler(use_ticket_loader(all_tickets, is_loading, init_result, None));
+    let load_handler: Handler<()> = hooks.use_async_handler(use_ticket_loader(
+        all_tickets,
+        is_loading,
+        init_result,
+        None,
+    ));
 
     // Trigger initial load on mount
     let mut load_started = hooks.use_state(|| false);
