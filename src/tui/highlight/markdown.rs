@@ -573,9 +573,11 @@ mod tests {
     fn test_whitespace_only() {
         let lines = highlight_markdown("   \n   ");
         // Should handle whitespace gracefully without panic
-        assert!(!lines
-            .iter()
-            .any(|l| l.segments.iter().any(|s| s.text.contains("label"))));
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.segments.iter().any(|s| s.text.contains("label")))
+        );
     }
 
     #[test]

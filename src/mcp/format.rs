@@ -456,6 +456,164 @@ pub fn format_children_as_markdown(
     output
 }
 
+/// Format full plan details as markdown for LLM consumption.
+/// This is equivalent to the CLI's `janus plan show` command output.
+pub fn format_plan_details_as_markdown(
+    plan_id: &str,
+    metadata: &crate::plan::types::PlanMetadata,
+    ticket_map: &HashMap<String, TicketMetadata>,
+    verbose_phases: &[String],
+) -> String {
+    use crate::plan::types::PlanSection;
+    use crate::plan::{compute_all_phase_statuses, compute_plan_status};
+
+    let mut output = String::new();
+    let plan_status = compute_plan_status(metadata, ticket_map);
+
+    // Header: Title with status badge and progress
+    if let Some(ref title) = metadata.title {
+        output.push_str(&format!("# {}\n", title));
+    } else {
+        output.push_str(&format!("# Plan: {}\n", plan_id));
+    }
+    output.push('\n');
+    output.push_str(&format!("**Status:** {}  \n", plan_status.status));
+    output.push_str(&format!(
+        "**Progress:** {}/{} tickets complete ({}%)\n",
+        plan_status.completed_count,
+        plan_status.total_count,
+        plan_status.progress_percent() as u32
+    ));
+
+    // Description
+    if let Some(ref description) = metadata.description {
+        output.push('\n');
+        output.push_str(&format!("{}\n", description));
+    }
+
+    // Acceptance Criteria
+    if !metadata.acceptance_criteria.is_empty() {
+        output.push('\n');
+        output.push_str("## Acceptance Criteria\n\n");
+        for criterion in &metadata.acceptance_criteria {
+            output.push_str(&format!("- [ ] {}\n", criterion));
+        }
+    }
+
+    // Sections (Phases, Tickets, Free-form)
+    let phase_statuses = compute_all_phase_statuses(metadata, ticket_map);
+    let mut phase_idx = 0;
+
+    for section in &metadata.sections {
+        output.push('\n');
+        match section {
+            PlanSection::Phase(phase) => {
+                let phase_status = phase_statuses.get(phase_idx);
+                phase_idx += 1;
+
+                // Phase header with status and progress
+                let status_str = phase_status
+                    .map(|s| format!(" [{}]", s.status))
+                    .unwrap_or_default();
+                let progress_str = phase_status
+                    .map(|s| format!(" ({}/{})\n", s.completed_count, s.total_count))
+                    .unwrap_or_default();
+
+                if phase.name.is_empty() {
+                    output.push_str(&format!(
+                        "## Phase {}{}{}",
+                        phase.number, status_str, progress_str
+                    ));
+                } else {
+                    output.push_str(&format!(
+                        "## Phase {}: {}{}{}",
+                        phase.number, phase.name, status_str, progress_str
+                    ));
+                }
+
+                // Phase description
+                if let Some(ref desc) = phase.description {
+                    output.push('\n');
+                    output.push_str(&format!("{}\n", desc));
+                }
+
+                // Phase success criteria
+                if !phase.success_criteria.is_empty() {
+                    output.push('\n');
+                    output.push_str("### Success Criteria\n\n");
+                    for criterion in &phase.success_criteria {
+                        output.push_str(&format!("- {}\n", criterion));
+                    }
+                }
+
+                // Phase tickets
+                if !phase.ticket_list.tickets.is_empty() {
+                    output.push('\n');
+                    output.push_str("### Tickets\n\n");
+                    let full_summary = verbose_phases.contains(&phase.number);
+                    for (i, ticket_id) in phase.ticket_list.tickets.iter().enumerate() {
+                        let line = if full_summary {
+                            format_plan_ticket_with_details(i + 1, ticket_id, ticket_map)
+                        } else {
+                            format_plan_ticket_entry(ticket_id, ticket_map)
+                        };
+                        output.push_str(&line);
+                    }
+                }
+            }
+            PlanSection::Tickets(ts) => {
+                output.push_str("## Tickets\n\n");
+                for (i, ticket_id) in ts.ticket_list.tickets.iter().enumerate() {
+                    output.push_str(&format!(
+                        "{}. {}\n",
+                        i + 1,
+                        format_plan_ticket_entry(ticket_id, ticket_map)
+                    ));
+                }
+            }
+            PlanSection::FreeForm(freeform) => {
+                output.push_str(&format!("## {}\n", freeform.heading));
+                if !freeform.content.is_empty() {
+                    output.push('\n');
+                    output.push_str(&freeform.content);
+                    output.push('\n');
+                }
+            }
+        }
+    }
+
+    output
+}
+
+/// Format a plan ticket entry with full details (for verbose phase display)
+fn format_plan_ticket_with_details(
+    _index: usize,
+    ticket_id: &str,
+    ticket_map: &HashMap<String, TicketMetadata>,
+) -> String {
+    if let Some(ticket) = ticket_map.get(ticket_id) {
+        let status = ticket.status.unwrap_or(TicketStatus::New);
+        let checkbox = if status == TicketStatus::Complete {
+            'x'
+        } else {
+            ' '
+        };
+        let title = format_ticket_title(ticket);
+        let status_suffix = if status == TicketStatus::InProgress {
+            " (in_progress)"
+        } else {
+            ""
+        };
+
+        format!(
+            "- [{}] **{}**: {}{}\n",
+            checkbox, ticket_id, title, status_suffix
+        )
+    } else {
+        format!("- [ ] **{}**: Unknown ticket\n", ticket_id)
+    }
+}
+
 /// Format next work items as markdown for LLM consumption
 pub fn format_next_work_as_markdown(
     work_items: &[WorkItem],

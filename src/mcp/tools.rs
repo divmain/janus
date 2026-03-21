@@ -18,6 +18,7 @@
 //! | `remove_dependency` | Remove a dependency between tickets |
 //! | `add_ticket_to_plan` | Add a ticket to a plan |
 //! | `get_plan_status` | Get plan progress information |
+//! | `show_plan_details` | Get full plan details with all sections |
 //! | `get_children` | Get tickets spawned from a parent |
 //! | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
 //! | `semantic_search` | Find tickets semantically similar to a query (requires semantic-search config) |
@@ -51,14 +52,15 @@ use crate::utils::iso_date;
 
 use super::format::{
     build_filter_summary, format_children_as_markdown, format_next_work_as_markdown,
-    format_plan_status_as_markdown, format_ticket_as_markdown, format_ticket_list_as_markdown,
+    format_plan_details_as_markdown, format_plan_status_as_markdown, format_ticket_as_markdown,
+    format_ticket_list_as_markdown,
 };
 use super::requests::{
     AddDependencyRequest, AddNoteRequest, AddTicketToPlanRequest, CreateTicketRequest,
     DocListRequest, DocSearchRequest, DocSetRequest, DocShowRequest, GetChildrenRequest,
     GetNextAvailableTicketRequest, GetPlanStatusRequest, ListTicketsRequest,
-    RemoveDependencyRequest, SemanticSearchRequest, ShowTicketRequest, SpawnSubtaskRequest,
-    UpdateStatusRequest,
+    RemoveDependencyRequest, SemanticSearchRequest, ShowPlanDetailsRequest, ShowTicketRequest,
+    SpawnSubtaskRequest, UpdateStatusRequest,
 };
 
 /// Helper to create ToolAnnotations with all fields set
@@ -396,6 +398,16 @@ impl JanusTools {
             "Search project knowledge documents semantically. Returns chunks with heading paths and line numbers.",
             DocSearchRequest,
             doc_search_impl,
+            false,
+            tool_annotations(true, false, true, false)
+        );
+
+        register_tool!(
+            router,
+            "show_plan_details",
+            "Show full plan details including title, description, acceptance criteria, phases, tickets, and all free-form sections. Returns markdown optimized for LLM consumption, equivalent to 'janus plan show'.",
+            ShowPlanDetailsRequest,
+            show_plan_details_impl,
             false,
             tool_annotations(true, false, true, false)
         );
@@ -1459,6 +1471,28 @@ impl JanusTools {
         }
 
         Ok(output)
+    }
+
+    /// Show full plan details including all sections.
+    /// Returns markdown optimized for LLM consumption.
+    async fn show_plan_details_impl(
+        &self,
+        Parameters(request): Parameters<ShowPlanDetailsRequest>,
+    ) -> Result<String, String> {
+        let plan = Plan::find(&request.plan_id)
+            .await
+            .map_err(|e| format!("Plan not found: {e}"))?;
+        let metadata = plan.read().map_err(|e| e.to_string())?;
+        let ticket_map = build_ticket_map()
+            .await
+            .map_err(|e| format!("failed to load tickets: {e}"))?;
+
+        Ok(format_plan_details_as_markdown(
+            &plan.id,
+            &metadata,
+            &ticket_map,
+            &[],
+        ))
     }
 }
 

@@ -143,8 +143,8 @@ fn test_mcp_tools_list() {
     assert!(response["result"]["tools"].is_array());
     let tools = response["result"]["tools"].as_array().unwrap();
 
-    // Should have 17 tools
-    assert_eq!(tools.len(), 17);
+    // Should have 18 tools
+    assert_eq!(tools.len(), 18);
 
     // Verify all tool names are present
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
@@ -158,6 +158,7 @@ fn test_mcp_tools_list() {
     assert!(tool_names.contains(&"remove_dependency"));
     assert!(tool_names.contains(&"add_ticket_to_plan"));
     assert!(tool_names.contains(&"get_plan_status"));
+    assert!(tool_names.contains(&"show_plan_details"));
     assert!(tool_names.contains(&"get_children"));
     assert!(tool_names.contains(&"semantic_search"));
     assert!(tool_names.contains(&"get_next_available_ticket"));
@@ -222,8 +223,8 @@ fn test_mcp_resource_templates_list() {
     assert!(response["result"]["resourceTemplates"].is_array());
     let templates = response["result"]["resourceTemplates"].as_array().unwrap();
 
-    // Should have 4 resource templates
-    assert_eq!(templates.len(), 4);
+    // Should have 5 resource templates
+    assert_eq!(templates.len(), 5);
 
     // Verify all template URIs are present
     let uri_templates: Vec<&str> = templates
@@ -233,6 +234,7 @@ fn test_mcp_resource_templates_list() {
     assert!(uri_templates.contains(&"janus://ticket/{id}"));
     assert!(uri_templates.contains(&"janus://plan/{id}"));
     assert!(uri_templates.contains(&"janus://plan/{id}/next"));
+    assert!(uri_templates.contains(&"janus://plan/{id}/details"));
     assert!(uri_templates.contains(&"janus://tickets/spawned-from/{id}"));
 }
 

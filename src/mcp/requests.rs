@@ -305,6 +305,14 @@ pub struct GetPlanStatusRequest {
     pub plan_id: String,
 }
 
+/// Request parameters for showing full plan details
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct ShowPlanDetailsRequest {
+    /// Plan ID (can be partial)
+    #[schemars(description = "ID of the plan to show details for")]
+    pub plan_id: String,
+}
+
 /// Request parameters for getting children of a ticket
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct GetChildrenRequest {

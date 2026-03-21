@@ -14,6 +14,7 @@
 //! | `janus://tickets/in-progress` | List of in-progress tickets (JSON) | application/json |
 //! | `janus://plan/{id}` | Plan with status (JSON) | application/json |
 //! | `janus://plan/{id}/next` | Next actionable items (JSON) | application/json |
+//! | `janus://plan/{id}/details` | Full plan details (markdown) | text/markdown |
 //! | `janus://tickets/spawned-from/{id}` | Children of ticket (JSON) | application/json |
 //! | `janus://graph/deps` | Dependency graph (DOT) | text/vnd.graphviz |
 //! | `janus://graph/spawning` | Spawning graph (DOT) | text/vnd.graphviz |
@@ -28,6 +29,7 @@ use serde_json::json;
 
 use crate::commands::graph::{RelationshipFilter, build_edges, generate_dot};
 use crate::commands::{get_next_items_phased, get_next_items_simple, ticket_to_json};
+use crate::mcp::format::format_plan_details_as_markdown;
 
 use crate::plan::{Plan, compute_all_phase_statuses, compute_plan_status};
 use crate::status::{all_deps_satisfied, has_unsatisfied_dep, is_dependency_satisfied};
@@ -173,6 +175,19 @@ pub fn list_all_resource_templates() -> Vec<ResourceTemplate> {
         },
         ResourceTemplate {
             raw: RawResourceTemplate {
+                uri_template: "janus://plan/{id}/details".to_string(),
+                name: "plan-details".to_string(),
+                title: Some("Plan Full Details".to_string()),
+                description: Some(
+                    "Full plan content including title, description, acceptance criteria, phases, tickets, and all sections. Returns markdown optimized for LLM consumption, equivalent to 'janus plan show'.".to_string(),
+                ),
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            },
+            annotations: None,
+        },
+        ResourceTemplate {
+            raw: RawResourceTemplate {
                 uri_template: "janus://tickets/spawned-from/{id}".to_string(),
                 name: "spawned-tickets".to_string(),
                 title: Some("Spawned Tickets".to_string()),
@@ -205,9 +220,11 @@ pub async fn read_resource(uri: &str) -> Result<ReadResourceResult, ResourceErro
     } else if uri == "janus://tickets/in-progress" {
         read_in_progress_tickets().await
     } else if let Some(rest) = uri.strip_prefix("janus://plan/") {
-        // Check if it's plan/{id}/next or just plan/{id}
+        // Check if it's plan/{id}/next, plan/{id}/details, or just plan/{id}
         if let Some(id) = rest.strip_suffix("/next") {
             read_plan_next(id).await
+        } else if let Some(id) = rest.strip_suffix("/details") {
+            read_plan_details(id).await
         } else {
             read_plan(rest).await
         }
@@ -513,6 +530,33 @@ async fn read_plan_next(id: &str) -> Result<ReadResourceResult, ResourceError> {
     })
 }
 
+/// Read full plan details as markdown (equivalent to `janus plan show`)
+async fn read_plan_details(id: &str) -> Result<ReadResourceResult, ResourceError> {
+    let plan = Plan::find(id)
+        .await
+        .map_err(|e| ResourceError::NotFound(format!("Plan '{id}' not found: {e}")))?;
+
+    let metadata = plan
+        .read()
+        .map_err(|e| ResourceError::Internal(format!("Failed to read plan: {e}")))?;
+
+    let ticket_map = build_ticket_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
+
+    // Use the CLI formatter to generate full plan output
+    let content = format_plan_details_as_markdown(&plan.id, &metadata, &ticket_map, &[]);
+
+    Ok(ReadResourceResult {
+        contents: vec![ResourceContents::TextResourceContents {
+            uri: format!("janus://plan/{}/details", plan.id),
+            mime_type: Some("text/markdown".to_string()),
+            text: content,
+            meta: None,
+        }],
+    })
+}
+
 /// Read tickets spawned from a parent ticket
 async fn read_spawned_from(id: &str) -> Result<ReadResourceResult, ResourceError> {
     let parent = Ticket::find(id)
@@ -613,7 +657,7 @@ mod tests {
     #[test]
     fn test_list_all_resource_templates() {
         let templates = list_all_resource_templates();
-        assert_eq!(templates.len(), 4);
+        assert_eq!(templates.len(), 5);
 
         let uri_templates: Vec<&str> = templates
             .iter()
@@ -622,6 +666,7 @@ mod tests {
         assert!(uri_templates.contains(&"janus://ticket/{id}"));
         assert!(uri_templates.contains(&"janus://plan/{id}"));
         assert!(uri_templates.contains(&"janus://plan/{id}/next"));
+        assert!(uri_templates.contains(&"janus://plan/{id}/details"));
         assert!(uri_templates.contains(&"janus://tickets/spawned-from/{id}"));
     }
 
