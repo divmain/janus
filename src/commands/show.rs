@@ -40,10 +40,10 @@ pub async fn cmd_show(id: &str, output: OutputOptions) -> Result<()> {
 
     // Find blockers (deps that are not satisfied per canonical definition)
     for dep_id in &metadata.deps {
-        if !is_dependency_satisfied(dep_id.as_ref(), &ticket_map) {
-            if let Some(dep) = ticket_map.get(dep_id.as_ref()) {
-                blockers.push(dep);
-            }
+        if !is_dependency_satisfied(dep_id.as_ref(), &ticket_map)
+            && let Some(dep) = ticket_map.get(dep_id.as_ref())
+        {
+            blockers.push(dep);
         }
     }
 

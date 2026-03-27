@@ -46,17 +46,17 @@ pub fn chunk_document(label: &str, content: &str) -> Result<Vec<DocChunk>> {
     );
 
     // Handle any remaining content as a final chunk
-    if let Some(start_line) = current_chunk_start {
-        if !current_chunk_content.trim().is_empty() {
-            let end_line = content.lines().count();
-            chunks.push(DocChunk::new(
-                label,
-                heading_stack.clone(),
-                current_chunk_content.trim().to_string(),
-                start_line,
-                end_line,
-            ));
-        }
+    if let Some(start_line) = current_chunk_start
+        && !current_chunk_content.trim().is_empty()
+    {
+        let end_line = content.lines().count();
+        chunks.push(DocChunk::new(
+            label,
+            heading_stack.clone(),
+            current_chunk_content.trim().to_string(),
+            start_line,
+            end_line,
+        ));
     }
 
     Ok(chunks)
@@ -79,17 +79,17 @@ fn walk_node<'a>(
     // Process heading nodes - these create chunk boundaries
     if let NodeValue::Heading(ref heading) = data.value {
         // Finish the current chunk before starting a new one
-        if let Some(start_line) = *current_chunk_start {
-            if !current_chunk_content.trim().is_empty() {
-                let end_line = data.sourcepos.start.line.saturating_sub(1).max(start_line);
-                chunks.push(DocChunk::new(
-                    label,
-                    heading_stack.clone(),
-                    current_chunk_content.trim().to_string(),
-                    start_line,
-                    end_line,
-                ));
-            }
+        if let Some(start_line) = *current_chunk_start
+            && !current_chunk_content.trim().is_empty()
+        {
+            let end_line = data.sourcepos.start.line.saturating_sub(1).max(start_line);
+            chunks.push(DocChunk::new(
+                label,
+                heading_stack.clone(),
+                current_chunk_content.trim().to_string(),
+                start_line,
+                end_line,
+            ));
         }
 
         // Extract heading text

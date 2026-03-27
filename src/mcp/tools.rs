@@ -839,10 +839,10 @@ impl JanusTools {
 
         // Find blockers (deps that are not satisfied per canonical definition)
         for dep_id in &metadata.deps {
-            if !is_dependency_satisfied(dep_id.as_ref(), &ticket_map) {
-                if let Some(dep) = ticket_map.get(dep_id.as_ref()) {
-                    blockers.push(dep);
-                }
+            if !is_dependency_satisfied(dep_id.as_ref(), &ticket_map)
+                && let Some(dep) = ticket_map.get(dep_id.as_ref())
+            {
+                blockers.push(dep);
             }
         }
 
@@ -2161,8 +2161,16 @@ mod tests {
 
     #[test]
     fn test_build_filter_summary_includes_size() {
-        let summary =
-            build_filter_summary(None, None, None, None, None, None, Some("medium,large"), None);
+        let summary = build_filter_summary(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("medium,large"),
+            None,
+        );
         assert_eq!(summary, "**Showing:** size=medium,large\n\n");
     }
 

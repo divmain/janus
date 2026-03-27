@@ -228,9 +228,8 @@ pub async fn cmd_set(
                     .filter(|s| !s.is_empty())
                     .collect();
                 for label in &labels {
-                    crate::types::validate_label(label).map_err(|e| {
-                        JanusError::InvalidInput(format!("{e}"))
-                    })?;
+                    crate::types::validate_label(label)
+                        .map_err(|e| JanusError::InvalidInput(format!("{e}")))?;
                 }
                 let json_value = serde_json::to_string(&labels).unwrap();
                 new_value = labels.join(",");

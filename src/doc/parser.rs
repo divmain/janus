@@ -130,11 +130,11 @@ pub fn serialize_doc(metadata: &DocMetadata) -> Result<String> {
     }
 
     // Add description if present
-    if let Some(description) = &metadata.description {
-        if !description.is_empty() {
-            body_parts.push(String::new());
-            body_parts.push(description.clone());
-        }
+    if let Some(description) = &metadata.description
+        && !description.is_empty()
+    {
+        body_parts.push(String::new());
+        body_parts.push(description.clone());
     }
 
     let body = if body_parts.is_empty() {

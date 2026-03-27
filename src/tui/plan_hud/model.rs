@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::events::{self, types::EventType};
-use crate::plan::types::{PlanMetadata, PlanSection, PlanStatus, PhaseStatus};
+use crate::plan::types::{PhaseStatus, PlanMetadata, PlanSection, PlanStatus};
 use crate::status::plan::{compute_all_phase_statuses, compute_plan_status};
 use crate::store::get_or_init_store;
 use crate::types::{TicketMetadata, TicketStatus};
@@ -107,15 +107,11 @@ pub fn build_scroll_rows(state: &HudState, is_compact: bool) -> Vec<ScrollRow> {
         for (phase_idx, _phase) in phases.iter().enumerate() {
             let ps = state.phase_statuses.get(phase_idx);
             let phase_status = ps.map(|p| p.status).unwrap_or(TicketStatus::New);
-            let is_active_phase = state
-                .phase_statuses
-                .iter()
-                .take(phase_idx)
-                .all(|p| {
+            let is_active_phase =
+                state.phase_statuses.iter().take(phase_idx).all(|p| {
                     p.status == TicketStatus::Complete || p.status == TicketStatus::Cancelled
-                })
-                && phase_status != TicketStatus::Complete
-                && phase_status != TicketStatus::Cancelled;
+                }) && phase_status != TicketStatus::Complete
+                    && phase_status != TicketStatus::Cancelled;
 
             rows.push(ScrollRow::PhaseHeader { phase_idx });
 
@@ -123,9 +119,7 @@ pub fn build_scroll_rows(state: &HudState, is_compact: bool) -> Vec<ScrollRow> {
             let show_tickets =
                 !is_compact || is_active_phase || phase_status != TicketStatus::Complete;
 
-            if show_tickets
-                && let Some(indices) = state.phase_tickets.get(phase_idx)
-            {
+            if show_tickets && let Some(indices) = state.phase_tickets.get(phase_idx) {
                 for &ticket_idx in indices {
                     rows.push(ScrollRow::Ticket { ticket_idx });
                 }
@@ -212,9 +206,9 @@ pub async fn load_hud_state(plan_id: &str) -> crate::error::Result<HudState> {
     let store = get_or_init_store().await?;
 
     // Get plan metadata from store
-    let plan = store
-        .get_plan(plan_id)
-        .ok_or_else(|| crate::error::JanusError::PlanNotFound(crate::types::PlanId::new_unchecked(plan_id)))?;
+    let plan = store.get_plan(plan_id).ok_or_else(|| {
+        crate::error::JanusError::PlanNotFound(crate::types::PlanId::new_unchecked(plan_id))
+    })?;
 
     // Build ticket map for status computation
     let ticket_map = store.build_ticket_map();
@@ -225,8 +219,7 @@ pub async fn load_hud_state(plan_id: &str) -> crate::error::Result<HudState> {
 
     // Collect all plan ticket IDs
     let all_ticket_ids: Vec<&str> = plan.all_tickets();
-    let plan_ticket_set: HashSet<String> =
-        all_ticket_ids.iter().map(|s| s.to_string()).collect();
+    let plan_ticket_set: HashSet<String> = all_ticket_ids.iter().map(|s| s.to_string()).collect();
 
     // Build a scoped ticket map (only plan tickets) for timing/events
     let scoped_ticket_map: HashMap<String, TicketMetadata> = ticket_map
@@ -322,7 +315,11 @@ fn load_events_data(
     plan_ticket_ids: &HashSet<String>,
     active_ticket_ids: &[String],
     ticket_map: &HashMap<String, TicketMetadata>,
-) -> (TimingState, Vec<ActivityEvent>, HashMap<String, std::time::Duration>) {
+) -> (
+    TimingState,
+    Vec<ActivityEvent>,
+    HashMap<String, std::time::Duration>,
+) {
     let events = events::read_events().unwrap_or_default();
 
     // Filter to plan-relevant events
@@ -368,9 +365,7 @@ fn load_events_data(
     let mut cycle_times: Vec<std::time::Duration> = Vec::new();
 
     for ticket_id in plan_ticket_ids {
-        let status = ticket_map
-            .get(ticket_id)
-            .and_then(|m| m.status);
+        let status = ticket_map.get(ticket_id).and_then(|m| m.status);
         if status != Some(TicketStatus::Complete) {
             continue;
         }
@@ -490,30 +485,58 @@ pub fn diff_states(old: &HudState, new: &HudState) -> Vec<(String, FlashType)> {
 fn format_event_description(event: &crate::events::types::Event) -> String {
     match event.event_type {
         EventType::StatusChanged => {
-            let from = event.data.get("from").and_then(|v| v.as_str()).unwrap_or("?");
+            let from = event
+                .data
+                .get("from")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             let to = event.data.get("to").and_then(|v| v.as_str()).unwrap_or("?");
             format!("status: {from} -> {to}")
         }
         EventType::FieldUpdated => {
-            let field = event.data.get("field").and_then(|v| v.as_str()).unwrap_or("?");
-            let to = event.data.get("new_value").and_then(|v| v.as_str()).unwrap_or("?");
+            let field = event
+                .data
+                .get("field")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let to = event
+                .data
+                .get("new_value")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             format!("{field} -> {to}")
         }
         EventType::NoteAdded => "note added".to_string(),
         EventType::DependencyAdded => {
-            let dep = event.data.get("depends_on").and_then(|v| v.as_str()).unwrap_or("?");
+            let dep = event
+                .data
+                .get("depends_on")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             format!("dep added: {dep}")
         }
         EventType::DependencyRemoved => {
-            let dep = event.data.get("depends_on").and_then(|v| v.as_str()).unwrap_or("?");
+            let dep = event
+                .data
+                .get("depends_on")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             format!("dep removed: {dep}")
         }
         EventType::LabelAdded => {
-            let label = event.data.get("label").and_then(|v| v.as_str()).unwrap_or("?");
+            let label = event
+                .data
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             format!("label +{label}")
         }
         EventType::LabelRemoved => {
-            let label = event.data.get("label").and_then(|v| v.as_str()).unwrap_or("?");
+            let label = event
+                .data
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
             format!("label -{label}")
         }
         EventType::LinkAdded => "link added".to_string(),
@@ -614,22 +637,13 @@ mod tests {
 
     #[test]
     fn test_format_event_time() {
-        assert_eq!(
-            format_event_time("2024-01-15T10:30:00.123Z"),
-            "10:30:00"
-        );
-        assert_eq!(
-            format_event_time("2024-01-15T23:59:59.000Z"),
-            "23:59:59"
-        );
+        assert_eq!(format_event_time("2024-01-15T10:30:00.123Z"), "10:30:00");
+        assert_eq!(format_event_time("2024-01-15T23:59:59.000Z"), "23:59:59");
     }
 
     #[test]
     fn test_parse_duration_between() {
-        let dur = parse_duration_between(
-            "2024-01-15T10:00:00.000Z",
-            "2024-01-15T10:30:00.000Z",
-        );
+        let dur = parse_duration_between("2024-01-15T10:00:00.000Z", "2024-01-15T10:30:00.000Z");
         assert!(dur.is_some());
         let d = dur.unwrap();
         assert_eq!(d.as_secs(), 1800); // 30 minutes
@@ -637,10 +651,7 @@ mod tests {
 
     #[test]
     fn test_parse_duration_between_reverse_returns_none() {
-        let dur = parse_duration_between(
-            "2024-01-15T10:30:00.000Z",
-            "2024-01-15T10:00:00.000Z",
-        );
+        let dur = parse_duration_between("2024-01-15T10:30:00.000Z", "2024-01-15T10:00:00.000Z");
         assert!(dur.is_none());
     }
 

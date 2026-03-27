@@ -985,9 +985,9 @@ impl Commands {
             cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_hud, cmd_plan_import,
             cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next, cmd_plan_remove_phase,
             cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder, cmd_plan_show,
-            cmd_plan_status, cmd_plan_verify,
-            cmd_push, cmd_query, cmd_remote_browse, cmd_remote_link, cmd_reopen, cmd_search,
-            cmd_set, cmd_show, cmd_show_import_spec, cmd_start, cmd_status, cmd_sync, cmd_view,
+            cmd_plan_status, cmd_plan_verify, cmd_push, cmd_query, cmd_remote_browse,
+            cmd_remote_link, cmd_reopen, cmd_search, cmd_set, cmd_show, cmd_show_import_spec,
+            cmd_start, cmd_status, cmd_sync, cmd_view,
         };
         use crate::error::JanusError;
 

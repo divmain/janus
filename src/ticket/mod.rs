@@ -508,11 +508,7 @@ impl Ticket {
             return Ok(false);
         }
 
-        let new_labels: Vec<String> = metadata
-            .labels
-            .into_iter()
-            .filter(|l| l != label)
-            .collect();
+        let new_labels: Vec<String> = metadata.labels.into_iter().filter(|l| l != label).collect();
 
         let json_value = if new_labels.is_empty() {
             "[]".to_string()
@@ -630,7 +626,9 @@ impl Ticket {
             ArrayField::Deps => &metadata.deps,
             ArrayField::Links => &metadata.links,
             ArrayField::Labels => {
-                unreachable!("labels are Vec<String>, not Vec<TicketId>; use add_label/remove_label instead")
+                unreachable!(
+                    "labels are Vec<String>, not Vec<TicketId>; use add_label/remove_label instead"
+                )
             }
         }
     }
@@ -860,15 +858,15 @@ impl Ticket {
 
         run_pre_hooks_async(HookEvent::PreDelete, &context).await?;
 
-        if let Err(e) = tokio_fs::remove_file(&self.file_path).await {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(JanusError::StorageError {
-                    operation: "delete",
-                    item_type: "ticket",
-                    path: self.file_path.clone(),
-                    source: e,
-                });
-            }
+        if let Err(e) = tokio_fs::remove_file(&self.file_path).await
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(JanusError::StorageError {
+                operation: "delete",
+                item_type: "ticket",
+                path: self.file_path.clone(),
+                source: e,
+            });
         }
 
         run_post_hooks_async(HookEvent::PostDelete, &context).await;
@@ -937,15 +935,15 @@ impl Entity for Ticket {
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        if let Err(e) = std::fs::remove_file(&self.file_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(JanusError::StorageError {
-                    operation: "delete",
-                    item_type: "ticket",
-                    path: self.file_path.clone(),
-                    source: e,
-                });
-            }
+        if let Err(e) = std::fs::remove_file(&self.file_path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(JanusError::StorageError {
+                operation: "delete",
+                item_type: "ticket",
+                path: self.file_path.clone(),
+                source: e,
+            });
         }
 
         run_post_hooks(HookEvent::PostDelete, &context);

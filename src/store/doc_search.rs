@@ -97,14 +97,14 @@ impl TicketStore {
                     key: key.clone(),
                     similarity,
                 });
-            } else if let Some(min) = heap.peek() {
-                if similarity > min.similarity {
-                    heap.pop();
-                    heap.push(ScoredDocCandidate {
-                        key: key.clone(),
-                        similarity,
-                    });
-                }
+            } else if let Some(min) = heap.peek()
+                && similarity > min.similarity
+            {
+                heap.pop();
+                heap.push(ScoredDocCandidate {
+                    key: key.clone(),
+                    similarity,
+                });
             }
         }
 
@@ -293,14 +293,14 @@ impl TicketStore {
                         key: key.clone(),
                         similarity,
                     });
-                } else if let Some(min) = heap.peek() {
-                    if similarity > min.similarity {
-                        heap.pop();
-                        heap.push(ScoredDocCandidate {
-                            key: key.clone(),
-                            similarity,
-                        });
-                    }
+                } else if let Some(min) = heap.peek()
+                    && similarity > min.similarity
+                {
+                    heap.pop();
+                    heap.push(ScoredDocCandidate {
+                        key: key.clone(),
+                        similarity,
+                    });
                 }
             }
         }

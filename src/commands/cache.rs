@@ -246,7 +246,7 @@ pub async fn cmd_cache_rebuild(output: OutputOptions) -> Result<()> {
                         } else {
                             valid_keys.insert(key);
                             embedded_count += 1;
-                            if !output.json && embedded_count % 10 == 0 {
+                            if !output.json && embedded_count.is_multiple_of(10) {
                                 println!("  Progress: {embedded_count}/{ticket_count}");
                             }
                         }
@@ -274,10 +274,10 @@ pub async fn cmd_cache_rebuild(output: OutputOptions) -> Result<()> {
     }
 
     // Prune orphaned embedding files
-    if let Err(e) = crate::store::TicketStore::prune_orphaned(&valid_keys) {
-        if !output.json {
-            eprintln!("Warning: failed to prune orphaned embeddings: {e}");
-        }
+    if let Err(e) = crate::store::TicketStore::prune_orphaned(&valid_keys)
+        && !output.json
+    {
+        eprintln!("Warning: failed to prune orphaned embeddings: {e}");
     }
 
     // Reload embeddings into the store

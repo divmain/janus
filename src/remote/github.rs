@@ -333,10 +333,10 @@ impl RemoteProvider for GitHubProvider {
                             let gh_err = GitHubError::from(e);
                             // Check for 404 via structured status code before
                             // the error is converted to a generic JanusError
-                            if let Some((status, _)) = gh_err.as_http_error() {
-                                if status == reqwest::StatusCode::NOT_FOUND {
-                                    return NotFoundOrOther::NotFound(gh_err);
-                                }
+                            if let Some((status, _)) = gh_err.as_http_error()
+                                && status == reqwest::StatusCode::NOT_FOUND
+                            {
+                                return NotFoundOrOther::NotFound(gh_err);
                             }
                             NotFoundOrOther::Other(gh_err)
                         })

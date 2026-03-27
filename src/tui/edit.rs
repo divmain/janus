@@ -571,7 +571,7 @@ pub fn EditFormOverlay<'a>(props: &EditFormProps, _hooks: Hooks) -> impl Into<An
             EditForm(
                 ticket: props.ticket.clone(),
                 initial_body: props.initial_body.clone(),
-                on_close: props.on_close.clone(),
+                on_close: props.on_close,
             )
         }
     }

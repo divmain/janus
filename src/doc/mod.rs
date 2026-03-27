@@ -133,15 +133,15 @@ impl Doc {
 
     /// Delete the document file.
     pub fn delete(&self) -> Result<()> {
-        if let Err(e) = fs::remove_file(&self.file_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(JanusError::StorageError {
-                    operation: "delete",
-                    item_type: "doc",
-                    path: self.file_path.clone(),
-                    source: e,
-                });
-            }
+        if let Err(e) = fs::remove_file(&self.file_path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(JanusError::StorageError {
+                operation: "delete",
+                item_type: "doc",
+                path: self.file_path.clone(),
+                source: e,
+            });
         }
         Ok(())
     }

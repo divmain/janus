@@ -90,23 +90,23 @@ impl TicketRepository {
         mut tickets: Vec<TicketMetadata>,
         ticket_id: &str,
     ) -> Vec<TicketMetadata> {
-        if let Ok(store) = get_or_init_store().await {
-            if let Some(updated) = store.get_ticket(ticket_id) {
-                // Find and replace the ticket in the vec
-                if let Some(pos) = tickets
-                    .iter()
-                    .position(|t| t.id.as_deref() == Some(ticket_id))
-                {
-                    tickets[pos] = updated;
-                } else {
-                    // Ticket was newly created — append and re-sort
-                    tickets.push(updated);
-                    tickets.sort_by(|a, b| {
-                        a.id.as_deref()
-                            .unwrap_or("")
-                            .cmp(b.id.as_deref().unwrap_or(""))
-                    });
-                }
+        if let Ok(store) = get_or_init_store().await
+            && let Some(updated) = store.get_ticket(ticket_id)
+        {
+            // Find and replace the ticket in the vec
+            if let Some(pos) = tickets
+                .iter()
+                .position(|t| t.id.as_deref() == Some(ticket_id))
+            {
+                tickets[pos] = updated;
+            } else {
+                // Ticket was newly created — append and re-sort
+                tickets.push(updated);
+                tickets.sort_by(|a, b| {
+                    a.id.as_deref()
+                        .unwrap_or("")
+                        .cmp(b.id.as_deref().unwrap_or(""))
+                });
             }
         }
         tickets

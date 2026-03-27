@@ -717,72 +717,72 @@ async fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Send
     eprintln!("Warning: performing full rescan of .janus/ directory");
 
     let items_dir = tickets_items_dir();
-    if items_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&items_dir) {
-            // Collect IDs currently on disk so we can detect deletions
-            let mut disk_ids = std::collections::HashSet::new();
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "md") {
-                    if let Some(stem) = path.file_stem() {
-                        disk_ids.insert(stem.to_string_lossy().to_string());
-                    }
-                    // Best-effort parse during rescan; failures are not retried
-                    let _ = process_ticket_file(&path, store).await;
+    if items_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&items_dir)
+    {
+        // Collect IDs currently on disk so we can detect deletions
+        let mut disk_ids = std::collections::HashSet::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "md") {
+                if let Some(stem) = path.file_stem() {
+                    disk_ids.insert(stem.to_string_lossy().to_string());
                 }
+                // Best-effort parse during rescan; failures are not retried
+                let _ = process_ticket_file(&path, store).await;
             }
-            // Remove tickets no longer on disk
-            let store_ids: Vec<String> = store.tickets().iter().map(|r| r.key().clone()).collect();
-            for id in store_ids {
-                if !disk_ids.contains(&id) {
-                    store.remove_ticket_with_cascade(&id);
-                }
+        }
+        // Remove tickets no longer on disk
+        let store_ids: Vec<String> = store.tickets().iter().map(|r| r.key().clone()).collect();
+        for id in store_ids {
+            if !disk_ids.contains(&id) {
+                store.remove_ticket_with_cascade(&id);
             }
         }
     }
 
     let p_dir = plans_dir();
-    if p_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&p_dir) {
-            let mut disk_ids = std::collections::HashSet::new();
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "md") {
-                    if let Some(stem) = path.file_stem() {
-                        disk_ids.insert(stem.to_string_lossy().to_string());
-                    }
-                    // Best-effort parse during rescan; failures are not retried
-                    let _ = process_plan_file(&path, store).await;
+    if p_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&p_dir)
+    {
+        let mut disk_ids = std::collections::HashSet::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "md") {
+                if let Some(stem) = path.file_stem() {
+                    disk_ids.insert(stem.to_string_lossy().to_string());
                 }
+                // Best-effort parse during rescan; failures are not retried
+                let _ = process_plan_file(&path, store).await;
             }
-            let store_ids: Vec<String> = store.plans().iter().map(|r| r.key().clone()).collect();
-            for id in store_ids {
-                if !disk_ids.contains(&id) {
-                    store.remove_plan(&id);
-                }
+        }
+        let store_ids: Vec<String> = store.plans().iter().map(|r| r.key().clone()).collect();
+        for id in store_ids {
+            if !disk_ids.contains(&id) {
+                store.remove_plan(&id);
             }
         }
     }
 
     let d_dir = docs_dir();
-    if d_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&d_dir) {
-            let mut disk_ids = std::collections::HashSet::new();
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "md") {
-                    if let Some(stem) = path.file_stem() {
-                        disk_ids.insert(stem.to_string_lossy().to_string());
-                    }
-                    // Best-effort parse during rescan; failures are not retried
-                    let _ = process_doc_file(&path, store).await;
+    if d_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&d_dir)
+    {
+        let mut disk_ids = std::collections::HashSet::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "md") {
+                if let Some(stem) = path.file_stem() {
+                    disk_ids.insert(stem.to_string_lossy().to_string());
                 }
+                // Best-effort parse during rescan; failures are not retried
+                let _ = process_doc_file(&path, store).await;
             }
-            let store_ids: Vec<String> = store.docs().iter().map(|r| r.key().clone()).collect();
-            for id in store_ids {
-                if !disk_ids.contains(&id) {
-                    store.remove_doc(&id);
-                }
+        }
+        let store_ids: Vec<String> = store.docs().iter().map(|r| r.key().clone()).collect();
+        for id in store_ids {
+            if !disk_ids.contains(&id) {
+                store.remove_doc(&id);
             }
         }
     }
@@ -826,14 +826,13 @@ fn is_ticket_path(path: &Path) -> bool {
     // Check if any ancestor component is "items" within a .janus directory
     let components: Vec<_> = path.components().collect();
     for (i, comp) in components.iter().enumerate() {
-        if let std::path::Component::Normal(s) = comp {
-            if *s == OsStr::new("items") && i > 0 {
-                if let std::path::Component::Normal(parent) = &components[i - 1] {
-                    if *parent == OsStr::new(".janus") {
-                        return true;
-                    }
-                }
-            }
+        if let std::path::Component::Normal(s) = comp
+            && *s == OsStr::new("items")
+            && i > 0
+            && let std::path::Component::Normal(parent) = &components[i - 1]
+            && *parent == OsStr::new(".janus")
+        {
+            return true;
         }
     }
     false
@@ -845,14 +844,13 @@ fn is_plan_path(path: &Path) -> bool {
 
     let components: Vec<_> = path.components().collect();
     for (i, comp) in components.iter().enumerate() {
-        if let std::path::Component::Normal(s) = comp {
-            if *s == OsStr::new("plans") && i > 0 {
-                if let std::path::Component::Normal(parent) = &components[i - 1] {
-                    if *parent == OsStr::new(".janus") {
-                        return true;
-                    }
-                }
-            }
+        if let std::path::Component::Normal(s) = comp
+            && *s == OsStr::new("plans")
+            && i > 0
+            && let std::path::Component::Normal(parent) = &components[i - 1]
+            && *parent == OsStr::new(".janus")
+        {
+            return true;
         }
     }
     false
@@ -864,14 +862,13 @@ fn is_doc_path(path: &Path) -> bool {
 
     let components: Vec<_> = path.components().collect();
     for (i, comp) in components.iter().enumerate() {
-        if let std::path::Component::Normal(s) = comp {
-            if *s == OsStr::new("docs") && i > 0 {
-                if let std::path::Component::Normal(parent) = &components[i - 1] {
-                    if *parent == OsStr::new(".janus") {
-                        return true;
-                    }
-                }
-            }
+        if let std::path::Component::Normal(s) = comp
+            && *s == OsStr::new("docs")
+            && i > 0
+            && let std::path::Component::Normal(parent) = &components[i - 1]
+            && *parent == OsStr::new(".janus")
+        {
+            return true;
         }
     }
     false
@@ -983,10 +980,10 @@ async fn process_plan_file(path: &Path, store: &TicketStore) -> ParseOutcome {
 
     match parse_plan_content(&content) {
         Ok(mut metadata) => {
-            if metadata.id.is_none() {
-                if let Some(stem) = path.file_stem() {
-                    metadata.id = Some(crate::types::PlanId::new_unchecked(stem.to_string_lossy()));
-                }
+            if metadata.id.is_none()
+                && let Some(stem) = path.file_stem()
+            {
+                metadata.id = Some(crate::types::PlanId::new_unchecked(stem.to_string_lossy()));
             }
             metadata.file_path = Some(path.to_path_buf());
             store.upsert_plan(metadata);
@@ -1031,12 +1028,12 @@ async fn process_doc_file(path: &Path, store: &TicketStore) -> ParseOutcome {
 
     match parse_doc_content(&content) {
         Ok(mut metadata) => {
-            if metadata.label.is_none() {
-                if let Some(stem) = path.file_stem() {
-                    metadata.label = Some(crate::doc::types::DocLabel::new_unchecked(
-                        stem.to_string_lossy(),
-                    ));
-                }
+            if metadata.label.is_none()
+                && let Some(stem) = path.file_stem()
+            {
+                metadata.label = Some(crate::doc::types::DocLabel::new_unchecked(
+                    stem.to_string_lossy(),
+                ));
             }
             metadata.file_path = Some(path.to_path_buf());
             store.upsert_doc(metadata);

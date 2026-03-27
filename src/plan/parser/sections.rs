@@ -34,10 +34,10 @@ pub fn parse_ticket_list(content: &str) -> Vec<String> {
                     NodeValue::Item(_) | NodeValue::TaskItem(_) => {
                         let text = extract_text_content(child);
                         // First whitespace-delimited token is the ticket ID
-                        if let Some(id) = text.split_whitespace().next() {
-                            if !id.is_empty() {
-                                tickets.push(id.to_string());
-                            }
+                        if let Some(id) = text.split_whitespace().next()
+                            && !id.is_empty()
+                        {
+                            tickets.push(id.to_string());
                         }
                     }
                     _ => {}

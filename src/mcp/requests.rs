@@ -54,34 +54,34 @@ impl CreateTicketRequest {
         validate_title_for_mcp(&self.title)?;
 
         // Validate priority range (0-4)
-        if let Some(p) = self.priority {
-            if p > 4 {
-                return Err(format!(
-                    "Priority must be between 0 (highest) and 4 (lowest), got {p}"
-                ));
-            }
+        if let Some(p) = self.priority
+            && p > 4
+        {
+            return Err(format!(
+                "Priority must be between 0 (highest) and 4 (lowest), got {p}"
+            ));
         }
 
         // Validate ticket_type if provided
-        if let Some(ref t) = self.ticket_type {
-            if t.parse::<crate::types::TicketType>().is_err() {
-                return Err(format!(
-                    "Invalid ticket_type '{}'. Valid values: {}",
-                    t,
-                    crate::types::TicketType::ALL_STRINGS.join(", ")
-                ));
-            }
+        if let Some(ref t) = self.ticket_type
+            && t.parse::<crate::types::TicketType>().is_err()
+        {
+            return Err(format!(
+                "Invalid ticket_type '{}'. Valid values: {}",
+                t,
+                crate::types::TicketType::ALL_STRINGS.join(", ")
+            ));
         }
 
         // Validate size if provided
-        if let Some(ref s) = self.size {
-            if s.parse::<crate::types::TicketSize>().is_err() {
-                return Err(format!(
-                    "Invalid size '{}'. Valid values: {} (or aliases: xs, s, m, l, xl)",
-                    s,
-                    crate::types::TicketSize::ALL_STRINGS.join(", ")
-                ));
-            }
+        if let Some(ref s) = self.size
+            && s.parse::<crate::types::TicketSize>().is_err()
+        {
+            return Err(format!(
+                "Invalid size '{}'. Valid values: {} (or aliases: xs, s, m, l, xl)",
+                s,
+                crate::types::TicketSize::ALL_STRINGS.join(", ")
+            ));
         }
 
         // Validate labels if provided
@@ -240,14 +240,14 @@ impl ListTicketsRequest {
     /// Returns Ok if valid, Err with message if invalid.
     pub(crate) fn validate(&self) -> Result<(), String> {
         // Validate ticket_type if provided
-        if let Some(ref t) = self.ticket_type {
-            if t.parse::<crate::types::TicketType>().is_err() {
-                return Err(format!(
-                    "Invalid ticket_type '{}'. Valid values: {}",
-                    t,
-                    crate::types::TicketType::ALL_STRINGS.join(", ")
-                ));
-            }
+        if let Some(ref t) = self.ticket_type
+            && t.parse::<crate::types::TicketType>().is_err()
+        {
+            return Err(format!(
+                "Invalid ticket_type '{}'. Valid values: {}",
+                t,
+                crate::types::TicketType::ALL_STRINGS.join(", ")
+            ));
         }
 
         // Validate size if provided (comma-separated list)
@@ -459,13 +459,13 @@ impl DocSetRequest {
         }
 
         // Validate description length if provided
-        if let Some(ref desc) = self.description {
-            if desc.len() > 500 {
-                return Err(format!(
-                    "Description too long (max 500 chars): {} chars",
-                    desc.len()
-                ));
-            }
+        if let Some(ref desc) = self.description
+            && desc.len() > 500
+        {
+            return Err(format!(
+                "Description too long (max 500 chars): {} chars",
+                desc.len()
+            ));
         }
 
         Ok(())
@@ -480,12 +480,12 @@ impl DocSearchRequest {
             return Err("Search query cannot be empty".to_string());
         }
 
-        if let Some(threshold) = self.threshold {
-            if !(0.0..=1.0).contains(&threshold) {
-                return Err(format!(
-                    "Threshold must be between 0.0 and 1.0, got {threshold}"
-                ));
-            }
+        if let Some(threshold) = self.threshold
+            && !(0.0..=1.0).contains(&threshold)
+        {
+            return Err(format!(
+                "Threshold must be between 0.0 and 1.0, got {threshold}"
+            ));
         }
 
         Ok(())

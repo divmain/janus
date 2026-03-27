@@ -113,12 +113,12 @@ fn reorder_phase_sections(
     let mut other_peek = other_sections.into_iter().peekable();
 
     for i in 0..total_len {
-        if let Some(&(orig_idx, _)) = other_peek.peek() {
-            if orig_idx == i {
-                let (_, section) = other_peek.next().unwrap();
-                new_sections.push(section);
-                continue;
-            }
+        if let Some(&(orig_idx, _)) = other_peek.peek()
+            && orig_idx == i
+        {
+            let (_, section) = other_peek.next().unwrap();
+            new_sections.push(section);
+            continue;
         }
         if let Some(phase) = phase_iter.next() {
             new_sections.push(phase);

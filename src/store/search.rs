@@ -78,14 +78,14 @@ impl TicketStore {
                     ticket_id: entry.key().clone(),
                     similarity,
                 });
-            } else if let Some(min) = heap.peek() {
-                if similarity > min.similarity {
-                    heap.pop();
-                    heap.push(ScoredCandidate {
-                        ticket_id: entry.key().clone(),
-                        similarity,
-                    });
-                }
+            } else if let Some(min) = heap.peek()
+                && similarity > min.similarity
+            {
+                heap.pop();
+                heap.push(ScoredCandidate {
+                    ticket_id: entry.key().clone(),
+                    similarity,
+                });
             }
         }
 

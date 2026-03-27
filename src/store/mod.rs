@@ -448,31 +448,29 @@ impl TicketStore {
             // Create a Ticket instance to perform the file operations
             if let Ok(ticket) = crate::ticket::Ticket::new(file_path.clone()) {
                 // Remove from deps if present
-                if has_in_deps {
-                    if let Err(e) =
+                if has_in_deps
+                    && let Err(e) =
                         ticket.remove_from_array_field(crate::types::ArrayField::Deps, deleted_id)
-                    {
-                        tracing::warn!(
-                            "Failed to remove {} from deps of ticket {}: {}",
-                            deleted_id,
-                            ticket_id,
-                            e
-                        );
-                    }
+                {
+                    tracing::warn!(
+                        "Failed to remove {} from deps of ticket {}: {}",
+                        deleted_id,
+                        ticket_id,
+                        e
+                    );
                 }
 
                 // Remove from links if present
-                if has_in_links {
-                    if let Err(e) =
+                if has_in_links
+                    && let Err(e) =
                         ticket.remove_from_array_field(crate::types::ArrayField::Links, deleted_id)
-                    {
-                        tracing::warn!(
-                            "Failed to remove {} from links of ticket {}: {}",
-                            deleted_id,
-                            ticket_id,
-                            e
-                        );
-                    }
+                {
+                    tracing::warn!(
+                        "Failed to remove {} from links of ticket {}: {}",
+                        deleted_id,
+                        ticket_id,
+                        e
+                    );
                 }
 
                 // Update the in-memory store to reflect the changes

@@ -10,7 +10,7 @@ use crate::tui::theme::theme;
 use crate::types::TicketStatus;
 
 use super::model::{
-    format_duration, ActivityEvent, FlashEntry, FlashType, HudTicket, FLASH_DURATION_SECS,
+    ActivityEvent, FLASH_DURATION_SECS, FlashEntry, FlashType, HudTicket, format_duration,
 };
 
 // ============================================================================

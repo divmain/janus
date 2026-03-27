@@ -28,11 +28,11 @@ pub mod view;
 
 pub use analytics::{StatusCounts, TicketAnalytics};
 pub use board::{KanbanBoard, KanbanBoardProps};
-pub use plan_hud::{PlanHud, PlanHudProps};
 pub use edit::{
     EditField, EditForm, EditFormOverlay, EditFormProps, EditResult, extract_body_for_edit,
 };
 pub use handlers::{SearchAction, handle_search_input};
+pub use plan_hud::{PlanHud, PlanHudProps};
 pub use remote::RemoteTui;
 pub use repository::{InitResult, TicketRepository};
 pub use screen_base::{

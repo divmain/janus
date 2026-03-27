@@ -668,7 +668,7 @@ fn f32_vec_to_bytes(vector: &[f32]) -> Vec<u8> {
 ///
 /// Returns `None` if the byte length is not a multiple of 4.
 fn bytes_to_f32_vec(data: &[u8]) -> Option<Vec<f32>> {
-    if data.len() % 4 != 0 {
+    if !data.len().is_multiple_of(4) {
         return None;
     }
 

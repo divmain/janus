@@ -142,17 +142,17 @@ impl TicketFilter for SpawningFilter {
         };
 
         // Filter by exact depth
-        if let Some(target_depth) = self.depth {
-            if ticket_depth != target_depth {
-                return false;
-            }
+        if let Some(target_depth) = self.depth
+            && ticket_depth != target_depth
+        {
+            return false;
         }
 
         // Filter by max depth
-        if let Some(max) = self.max_depth {
-            if ticket_depth > max {
-                return false;
-            }
+        if let Some(max) = self.max_depth
+            && ticket_depth > max
+        {
+            return false;
         }
 
         true
@@ -340,10 +340,10 @@ impl TicketQuery {
             for or_group in &self.or_filter_groups {
                 // Check which filtered tickets match ANY filter in this group
                 for ticket in &filtered {
-                    if or_group.iter().any(|f| f.matches(ticket, &context)) {
-                        if let Some(id) = &ticket.id {
-                            matched_ids.insert(id.clone());
-                        }
+                    if or_group.iter().any(|f| f.matches(ticket, &context))
+                        && let Some(id) = &ticket.id
+                    {
+                        matched_ids.insert(id.clone());
                     }
                 }
             }
@@ -356,10 +356,10 @@ impl TicketQuery {
         sort::sort_tickets_by(&mut filtered, self.sort_by);
 
         // Apply limit
-        if let Some(limit) = self.limit {
-            if limit < filtered.len() {
-                filtered.truncate(limit);
-            }
+        if let Some(limit) = self.limit
+            && limit < filtered.len()
+        {
+            filtered.truncate(limit);
         }
 
         filtered

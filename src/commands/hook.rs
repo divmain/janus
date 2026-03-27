@@ -311,17 +311,17 @@ fn write_hook_files(
 fn update_hook_config(recipe_config: &RecipeConfig, output: OutputOptions) -> Result<bool> {
     let mut config_updated = false;
 
-    if let Some(hooks_config) = &recipe_config.hooks {
-        if let Some(scripts) = &hooks_config.scripts {
-            let mut config = Config::load()?;
-            for (event, script) in scripts {
-                config.hooks.scripts.insert(event.clone(), script.clone());
-            }
-            config.save()?;
-            config_updated = true;
-            if !output.json {
-                println!("  Updated {}", "config.yaml".green());
-            }
+    if let Some(hooks_config) = &recipe_config.hooks
+        && let Some(scripts) = &hooks_config.scripts
+    {
+        let mut config = Config::load()?;
+        for (event, script) in scripts {
+            config.hooks.scripts.insert(event.clone(), script.clone());
+        }
+        config.save()?;
+        config_updated = true;
+        if !output.json {
+            println!("  Updated {}", "config.yaml".green());
         }
     }
 

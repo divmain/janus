@@ -259,15 +259,15 @@ impl Plan {
 
         run_pre_hooks(HookEvent::PreDelete, &context)?;
 
-        if let Err(e) = fs::remove_file(&self.file_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(JanusError::StorageError {
-                    operation: "delete",
-                    item_type: "plan",
-                    path: self.file_path.clone(),
-                    source: e,
-                });
-            }
+        if let Err(e) = fs::remove_file(&self.file_path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(JanusError::StorageError {
+                operation: "delete",
+                item_type: "plan",
+                path: self.file_path.clone(),
+                source: e,
+            });
         }
 
         run_post_hooks(HookEvent::PostDelete, &context);

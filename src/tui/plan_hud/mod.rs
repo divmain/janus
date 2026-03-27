@@ -131,9 +131,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                             // Toast for phase completions
                             for (key, flash_type) in &transitions {
                                 if *flash_type == FlashType::PhaseCompleted {
-                                    let phase_name = key
-                                        .strip_prefix("phase-")
-                                        .unwrap_or(key);
+                                    let phase_name = key.strip_prefix("phase-").unwrap_or(key);
                                     toast.set(Some(Toast::success(format!(
                                         "Phase {phase_name} complete!"
                                     ))));
@@ -177,8 +175,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 let cleaned: HashMap<String, FlashEntry> = current
                     .into_iter()
                     .filter(|(_, entry)| {
-                        entry.created.elapsed().as_secs()
-                            < model::FLASH_DURATION_SECS
+                        entry.created.elapsed().as_secs() < model::FLASH_DURATION_SECS
                     })
                     .collect();
                 flashes.set(cleaned);
@@ -337,9 +334,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     match code {
                         // Quit
                         KeyCode::Char('q') => should_exit.set(true),
-                        KeyCode::Char('c')
-                            if modifiers.contains(KeyModifiers::CONTROL) =>
-                        {
+                        KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
                             should_exit.set(true);
                         }
 
@@ -414,9 +409,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                             let current = selected_index.get().unwrap_or(0);
                             let new_nav = (current + page).min(total_navigable.saturating_sub(1));
                             selected_index.set(Some(new_nav));
-                            scroll_offset.set(
-                                (scroll_offset.get() + page).min(max_scroll),
-                            );
+                            scroll_offset.set((scroll_offset.get() + page).min(max_scroll));
                         }
                         KeyCode::PageUp => {
                             if total_navigable == 0 {
@@ -426,9 +419,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                             let current = selected_index.get().unwrap_or(0);
                             let new_nav = current.saturating_sub(page);
                             selected_index.set(Some(new_nav));
-                            scroll_offset.set(
-                                scroll_offset.get().saturating_sub(page),
-                            );
+                            scroll_offset.set(scroll_offset.get().saturating_sub(page));
                         }
 
                         // Copy active ticket ID
@@ -481,9 +472,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
 
     // Build shortcuts
     let shortcuts = if is_showing_detail {
-        ShortcutsBuilder::new()
-            .add("Esc", "Close")
-            .build()
+        ShortcutsBuilder::new().add("Esc", "Close").build()
     } else if is_wide {
         let mut builder = ShortcutsBuilder::new()
             .add("j/k", "Navigate")
@@ -541,9 +530,10 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
         .map(|d| format!("~{}", format_duration(d)));
 
     // Resolve which ticket to show in the wide-mode detail panel
-    let panel_ticket_id: Option<String> = detail_override.read().clone().or_else(|| {
-        state.and_then(|s| s.active_ticket_ids.first().cloned())
-    });
+    let panel_ticket_id: Option<String> = detail_override
+        .read()
+        .clone()
+        .or_else(|| state.and_then(|s| s.active_ticket_ids.first().cloned()));
     let panel_ticket = panel_ticket_id.as_ref().and_then(|id| {
         state.and_then(|s| {
             s.tickets
@@ -552,21 +542,25 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 .and_then(|t| t.metadata.clone())
         })
     });
-    let panel_body = panel_ticket_id.as_ref().and_then(|id| {
-        state.and_then(|s| {
-            s.tickets
-                .iter()
-                .find(|t| t.id == *id)
-                .and_then(|t| t.metadata.as_ref().and_then(|m| m.body.clone()))
+    let panel_body = panel_ticket_id
+        .as_ref()
+        .and_then(|id| {
+            state.and_then(|s| {
+                s.tickets
+                    .iter()
+                    .find(|t| t.id == *id)
+                    .and_then(|t| t.metadata.as_ref().and_then(|m| m.body.clone()))
+            })
         })
-    }).unwrap_or_default();
+        .unwrap_or_default();
 
     // Determine active time string for the panel ticket
-    let panel_active_time = if panel_ticket_id.as_ref() == state.and_then(|s| s.active_ticket_ids.first()) {
-        active_time_str.clone()
-    } else {
-        None
-    };
+    let panel_active_time =
+        if panel_ticket_id.as_ref() == state.and_then(|s| s.active_ticket_ids.first()) {
+            active_time_str.clone()
+        } else {
+            None
+        };
 
     // Activity events for detail panel
     let panel_events = state.map(|s| s.activity_events.clone()).unwrap_or_default();
@@ -583,9 +577,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
         .is_some_and(|s| s.status == TicketStatus::Complete && total > 0);
 
     // Build header line
-    let header_line = format!(
-        "{plan_title} ({plan_id_display})"
-    );
+    let header_line = format!("{plan_title} ({plan_id_display})");
     let progress_line_suffix = {
         let mut parts = vec![
             format!(" {progress_pct} ({completed}/{total})"),
@@ -609,18 +601,18 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 .and_then(|t| t.metadata.clone())
         })
     });
-    let detail_body = show_detail.read().clone().and_then(|id| {
-        state.and_then(|s| {
-            s.tickets
-                .iter()
-                .find(|t| t.id == id)
-                .and_then(|t| {
-                    t.metadata
-                        .as_ref()
-                        .and_then(|m| m.body.clone())
-                })
+    let detail_body = show_detail
+        .read()
+        .clone()
+        .and_then(|id| {
+            state.and_then(|s| {
+                s.tickets
+                    .iter()
+                    .find(|t| t.id == id)
+                    .and_then(|t| t.metadata.as_ref().and_then(|m| m.body.clone()))
+            })
         })
-    }).unwrap_or_default();
+        .unwrap_or_default();
 
     // Drop the read guard before rendering
     drop(state_ref);
@@ -735,18 +727,11 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     let phase_status = ps.map(|p| p.status).unwrap_or(TicketStatus::New);
                     let phase_completed = ps.map(|p| p.completed_count).unwrap_or(0);
                     let phase_total = ps.map(|p| p.total_count).unwrap_or(0);
-                    let is_active_phase = state
-                        .phase_statuses
-                        .iter()
-                        .take(*phase_idx)
-                        .all(|p| {
-                            p.status == TicketStatus::Complete
-                                || p.status == TicketStatus::Cancelled
-                        })
-                        && phase_status != TicketStatus::Complete
+                    let is_active_phase = state.phase_statuses.iter().take(*phase_idx).all(|p| {
+                        p.status == TicketStatus::Complete || p.status == TicketStatus::Cancelled
+                    }) && phase_status != TicketStatus::Complete
                         && phase_status != TicketStatus::Cancelled;
-                    let phase_flash =
-                        get_flash(&flash_map, &format!("phase-{}", phase.number));
+                    let phase_flash = get_flash(&flash_map, &format!("phase-{}", phase.number));
 
                     element! {
                         PhaseHeader(
@@ -767,9 +752,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     let ticket = state.tickets.get(*ticket_idx);
                     let nav_idx = navigable_for_render.get(ticket_idx).copied();
                     let is_selected = nav_idx.is_some() && selected_index.get() == nav_idx;
-                    let flash = ticket
-                        .map(|t| get_flash(&flash_map, &t.id))
-                        .unwrap_or(None);
+                    let flash = ticket.map(|t| get_flash(&flash_map, &t.id)).unwrap_or(None);
 
                     // Determine which phase layout to use
                     let ticket_layout = if state.is_simple {
