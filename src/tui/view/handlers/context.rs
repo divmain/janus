@@ -3,6 +3,8 @@
 //! This module organizes the TUI state into logical groups, making it easier
 //! to understand which state each handler needs and simplifying testing.
 
+use std::path::PathBuf;
+
 use iocraft::prelude::{Handler, State};
 
 use crate::tui::components::Toast;
@@ -82,6 +84,9 @@ pub struct ViewHandlerContext<'a> {
     pub data: ViewData<'a>,
     pub edit: EditState<'a>,
     pub handlers: AsyncHandlers<'a>,
+    /// Deferred external editor launch — set by the `Shift+E` handler,
+    /// consumed by the component body on the next render cycle.
+    pub pending_external_edit: &'a mut State<Option<PathBuf>>,
 }
 
 impl<'a> ViewHandlerContext<'a> {

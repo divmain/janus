@@ -3,6 +3,8 @@
 //! This struct provides a clean interface for handlers to access and modify
 //! the board state without needing to pass dozens of individual parameters.
 
+use std::path::PathBuf;
+
 use iocraft::prelude::{Handler, State};
 
 use crate::tui::edit::EditResult;
@@ -57,6 +59,9 @@ pub struct BoardHandlerContext<'a> {
     pub handlers: BoardAsyncHandlers<'a>,
     /// Cached filtered tickets to avoid repeated filtering on every keypress
     pub cache: &'a mut State<Option<FilteredCache>>,
+    /// Deferred external editor launch — set by the `Shift+E` handler,
+    /// consumed by the component body on the next render cycle.
+    pub pending_external_edit: &'a mut State<Option<PathBuf>>,
 }
 
 impl<'a> BoardHandlerContext<'a> {

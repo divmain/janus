@@ -6,6 +6,8 @@
 pub mod handlers;
 pub mod model;
 
+use std::path::PathBuf;
+
 use iocraft::prelude::*;
 
 use crate::ticket::Ticket;
@@ -20,6 +22,7 @@ use crate::tui::repository::InitResult;
 use crate::tui::screen_base::{ScreenLayout, should_process_key_event};
 use crate::tui::search::FilteredTicket;
 use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
+use crate::tui::services::ExternalEditor;
 use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -71,7 +74,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // is never served after a watcher reload or granular refresh.
     let ticket_generation: State<u64> = hooks.use_state(|| 0u64);
     let mut is_loading = hooks.use_state(|| true);
-    let toast: State<Option<Toast>> = hooks.use_state(|| None);
+    let mut toast: State<Option<Toast>> = hooks.use_state(|| None);
     let mut search_query = hooks.use_state(String::new);
     let mut should_exit = hooks.use_state(|| false);
     let mut needs_reload = hooks.use_state(|| false);
@@ -156,11 +159,28 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     let mut column_scroll_offsets = hooks.use_state(|| [0usize; 5]);
     let mut search_focused = hooks.use_state(|| false);
 
+    // External editor deferred launch state
+    let mut pending_external_edit: State<Option<PathBuf>> = hooks.use_state(|| None);
+
     // Reload tickets if needed - use async handler instead of sync
     if needs_reload.get() && !is_loading.get() {
         needs_reload.set(false);
         is_loading.set(true);
         load_handler.clone()(());
+    }
+
+    // Handle deferred external editor launch
+    let pending_edit_path = pending_external_edit.read().clone();
+    if let Some(path) = pending_edit_path {
+        pending_external_edit.set(None);
+        match ExternalEditor::open_ticket_file(&path) {
+            Ok(()) => {
+                needs_reload.set(true);
+            }
+            Err(e) => {
+                toast.set(Some(Toast::error(format!("{e}"))));
+            }
+        }
     }
 
     // Handle edit form result using shared EditFormState
@@ -296,6 +316,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
                             update_status: &update_status_handler_for_events,
                         },
                         cache: &mut cache,
+                        pending_external_edit: &mut pending_external_edit,
                     };
 
                     handlers::handle_key_event(&mut ctx, code, modifiers);

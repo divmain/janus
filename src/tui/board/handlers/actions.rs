@@ -1,4 +1,4 @@
-//! Action handlers (q, /, e, Enter, n, y)
+//! Action handlers (q, /, e, E, Enter, n, y)
 
 use std::fs;
 
@@ -35,6 +35,10 @@ pub fn handle(
         }
         KeyCode::Char('n') => {
             handle_create_new(ctx);
+            HandleResult::Handled
+        }
+        KeyCode::Char('E') => {
+            handle_open_external_editor(ctx);
             HandleResult::Handled
         }
         KeyCode::Char('y') => {
@@ -81,5 +85,17 @@ fn handle_copy_ticket_id(ctx: &mut BoardHandlerContext<'_>) {
             .is_err()
     {
         // Silently fail if clipboard operations don't work
+    }
+}
+
+/// Open the selected ticket in $EDITOR (deferred execution via pending_external_edit)
+fn handle_open_external_editor(ctx: &mut BoardHandlerContext<'_>) {
+    let col = ctx.current_column.get();
+    let row = ctx.current_row.get();
+
+    if let Some(ticket) = ctx.get_ticket_at(col, row)
+        && let Some(ref file_path) = ticket.file_path
+    {
+        ctx.pending_external_edit.set(Some(file_path.clone()));
     }
 }

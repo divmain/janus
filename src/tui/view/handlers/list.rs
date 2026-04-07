@@ -42,6 +42,10 @@ pub fn handle_list(
             handle_cycle_status(ctx);
             HandleResult::Handled
         }
+        KeyCode::Char('E') => {
+            handle_open_external_editor(ctx);
+            HandleResult::Handled
+        }
         KeyCode::Char('e') | KeyCode::Enter => {
             handle_edit_ticket(ctx);
             HandleResult::Handled
@@ -83,6 +87,10 @@ pub fn handle_detail(
         }
         KeyCode::Char('/') => {
             ctx.app.active_pane.set(Pane::Search);
+            HandleResult::Handled
+        }
+        KeyCode::Char('E') => {
+            handle_open_external_editor(ctx);
             HandleResult::Handled
         }
         KeyCode::Char('e') | KeyCode::Enter => {
@@ -240,5 +248,20 @@ fn handle_copy_ticket_id(ctx: &mut ViewHandlerContext<'_>) {
             .is_err()
     {
         // Silently fail if clipboard operations don't work
+    }
+}
+
+/// Open the selected ticket's file in the external editor (`$EDITOR`)
+///
+/// This sets the `pending_external_edit` state, which is consumed by the
+/// component body on the next render cycle using the deferred execution pattern.
+fn handle_open_external_editor(ctx: &mut ViewHandlerContext<'_>) {
+    if let Some(ft) = ctx
+        .data
+        .filtered_tickets
+        .get(ctx.data.list_nav.selected_index.get())
+        && let Some(ref file_path) = ft.ticket.file_path
+    {
+        ctx.pending_external_edit.set(Some(file_path.clone()));
     }
 }

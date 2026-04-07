@@ -23,7 +23,7 @@ use crate::tui::hooks::use_ticket_loader;
 use crate::tui::repository::{InitResult, load_ticket_body};
 use crate::tui::screen_base::{ScreenLayout, calculate_list_height, should_process_key_event};
 use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
-use crate::tui::services::TicketService;
+use crate::tui::services::{ExternalEditor, TicketService};
 use crate::tui::state::Pane;
 use crate::types::TicketMetadata;
 
@@ -75,6 +75,9 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
 
     // Triage mode state
     let is_triage_mode = hooks.use_state(|| false);
+
+    // External editor deferred launch state
+    let mut pending_external_edit: State<Option<PathBuf>> = hooks.use_state(|| None);
 
     // Search state - search is executed on Enter, not while typing
     let mut search_state = SearchState::use_state(&mut hooks);
@@ -264,6 +267,20 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
         // Invalidate the cached body so it's re-read from the (possibly updated) file.
         cached_body_path.set(None);
         load_handler.clone()(());
+    }
+
+    // Handle deferred external editor launch
+    let pending_edit_path = pending_external_edit.read().clone();
+    if let Some(path) = pending_edit_path {
+        pending_external_edit.set(None);
+        match ExternalEditor::open_ticket_file(&path) {
+            Ok(()) => {
+                needs_reload.set(true);
+            }
+            Err(e) => {
+                toast.set(Some(Toast::error(format!("{e}"))));
+            }
+        }
     }
 
     // Handle edit form result using shared EditFormState
@@ -506,6 +523,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                             cycle_status: &cycle_status_handler_for_events,
                             mark_triaged: &mark_triaged_handler_for_events,
                         },
+                        pending_external_edit: &mut pending_external_edit,
                     };
                     handlers::handle_key_event(&mut ctx, code, modifiers);
                 }
