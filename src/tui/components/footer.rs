@@ -106,6 +106,7 @@ pub fn browser_shortcuts() -> Vec<Shortcut> {
         .add("s", "Cycle Status")
         .add("Tab", "Switch Pane")
         .add("C-t", "Triage")
+        .add("E", "$EDITOR")
         .add("y", "Copy ID")
         .build()
 }
@@ -120,6 +121,7 @@ pub fn board_shortcuts() -> Vec<Shortcut> {
         .add("h/l", "Column")
         .add("s/S", "Move Right/Left")
         .add("1-5", "Toggle Column")
+        .add("E", "$EDITOR")
         .add("y", "Copy ID")
         .build()
 }

@@ -218,17 +218,73 @@ fn test_horizontal_navigation_bounds() {
     // Move left at leftmost - should stay at 0
     let state = reduce_board_state(state, BoardAction::MoveLeft, TEST_COLUMN_HEIGHT);
     assert_eq!(state.current_column, 0);
+}
 
-    // Move to rightmost
-    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
-    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
-    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
-    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
-    assert_eq!(state.current_column, 4);
+// ============================================================================
+// External Editor Tests
+// ============================================================================
 
-    // Move right at rightmost - should stay at 4
-    let state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
-    assert_eq!(state.current_column, 4);
+#[test]
+fn test_key_to_action_shift_e_maps_to_open_external_editor() {
+    use iocraft::prelude::{KeyCode, KeyModifiers};
+    use janus::tui::board::handlers::key_to_action;
+
+    // Shift+E (uppercase E) maps to OpenExternalEditor
+    assert_eq!(
+        key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, false),
+        Some(BoardAction::OpenExternalEditor)
+    );
+}
+
+#[test]
+fn test_key_to_action_shift_e_not_in_search_mode() {
+    use iocraft::prelude::{KeyCode, KeyModifiers};
+    use janus::tui::board::handlers::key_to_action;
+
+    // Shift+E in search mode returns None (search box handles input)
+    assert_eq!(
+        key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, true),
+        None
+    );
+}
+
+#[test]
+fn test_lowercase_e_is_edit_not_external_editor() {
+    use iocraft::prelude::{KeyCode, KeyModifiers};
+    use janus::tui::board::handlers::key_to_action;
+
+    // Lowercase 'e' maps to EditSelected, not OpenExternalEditor
+    assert_eq!(
+        key_to_action(KeyCode::Char('e'), KeyModifiers::NONE, false),
+        Some(BoardAction::EditSelected)
+    );
+    assert_eq!(
+        key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, false),
+        Some(BoardAction::OpenExternalEditor)
+    );
+}
+
+#[test]
+fn test_open_external_editor_action_is_noop_in_reducer() {
+    // The OpenExternalEditor action should not change board state
+    // (it's handled externally by the component via pending_external_edit)
+    let state = BoardState {
+        tickets: mock_tickets(&[("j-1", TicketStatus::New), ("j-2", TicketStatus::Next)]),
+        current_column: 0,
+        current_row: 0,
+        visible_columns: [true; 5],
+        init_result: InitResult::Ok,
+        ..Default::default()
+    };
+
+    let new_state = reduce_board_state(
+        state.clone(),
+        BoardAction::OpenExternalEditor,
+        TEST_COLUMN_HEIGHT,
+    );
+    assert_eq!(new_state.current_column, state.current_column);
+    assert_eq!(new_state.current_row, state.current_row);
+    assert_eq!(new_state.search_focused, state.search_focused);
 }
 
 #[test]

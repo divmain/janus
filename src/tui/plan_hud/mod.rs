@@ -204,7 +204,7 @@ pub fn PlanHud<'a>(props: &PlanHudProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 needs_reload.set(true);
             }
             Err(e) => {
-                toast.set(Some(Toast::error(format!("{e}"))));
+                toast.set(Some(ExternalEditor::error_to_toast(&e)));
             }
         }
     }

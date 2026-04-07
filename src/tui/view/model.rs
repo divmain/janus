@@ -98,6 +98,10 @@ pub enum ViewAction {
     /// Cancel the current edit operation
     CancelEdit,
 
+    // Actions
+    /// Open selected ticket in external $EDITOR
+    OpenExternalEditor,
+
     // App
     /// Quit the application
     Quit,
@@ -355,6 +359,7 @@ pub fn reduce_view_state(
         // These actions are handled by the component's async logic,
         // but we still need to match them to avoid warnings
         ViewAction::EditSelected
+        | ViewAction::OpenExternalEditor
         | ViewAction::CycleStatus
         | ViewAction::Quit
         | ViewAction::Reload => {
@@ -420,6 +425,7 @@ pub fn key_to_action(
         KeyCode::Char('q') => Some(ViewAction::Quit),
         KeyCode::Char('/') => Some(ViewAction::FocusSearch),
         KeyCode::Char('e') | KeyCode::Enter => Some(ViewAction::EditSelected),
+        KeyCode::Char('E') => Some(ViewAction::OpenExternalEditor),
         KeyCode::Char('n') => Some(ViewAction::CreateNew),
         KeyCode::Char('s') => Some(ViewAction::CycleStatus),
         KeyCode::Char('r') => Some(ViewAction::Reload),
@@ -754,6 +760,33 @@ mod tests {
     }
 
     #[test]
+    fn test_key_to_action_external_editor() {
+        // Shift+E (uppercase E) maps to OpenExternalEditor in both List and Detail panes
+        assert_eq!(
+            key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, Pane::List),
+            Some(ViewAction::OpenExternalEditor)
+        );
+        assert_eq!(
+            key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, Pane::Detail),
+            Some(ViewAction::OpenExternalEditor)
+        );
+        // Lowercase 'e' is EditSelected, not external editor
+        assert_eq!(
+            key_to_action(KeyCode::Char('e'), KeyModifiers::NONE, Pane::List),
+            Some(ViewAction::EditSelected)
+        );
+    }
+
+    #[test]
+    fn test_key_to_action_external_editor_not_in_search_mode() {
+        // Shift+E in search mode should not map to anything (search box handles input)
+        assert_eq!(
+            key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, Pane::Search),
+            None
+        );
+    }
+
+    #[test]
     fn test_key_to_action_detail_escape() {
         // Escape in detail pane should go back
         assert_eq!(
@@ -1079,5 +1112,72 @@ mod tests {
         let vm = compute_view_model(&state, 10);
         assert_eq!(vm.list.scroll_offset, 20);
         assert_eq!(vm.list.selected_index, 25);
+    }
+
+    // ========================================================================
+    // External Editor: file path resolution tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_selected_ticket_resolves_file_path() {
+        let mut ticket = make_ticket("j-1", "Has file path", TicketStatus::New);
+        ticket.file_path = Some(std::path::PathBuf::from("/tmp/j-1.md"));
+
+        let state = ViewState {
+            tickets: vec![ticket],
+            selected_index: 0,
+            ..default_state()
+        };
+
+        let selected = get_selected_ticket(&state);
+        assert!(selected.is_some());
+        assert_eq!(
+            selected.unwrap().file_path,
+            Some(std::path::PathBuf::from("/tmp/j-1.md"))
+        );
+    }
+
+    #[test]
+    fn test_get_selected_ticket_no_file_path() {
+        let ticket = make_ticket("j-1", "No file path", TicketStatus::New);
+        assert!(ticket.file_path.is_none());
+
+        let state = ViewState {
+            tickets: vec![ticket],
+            selected_index: 0,
+            ..default_state()
+        };
+
+        let selected = get_selected_ticket(&state);
+        assert!(selected.is_some());
+        assert!(selected.unwrap().file_path.is_none());
+    }
+
+    #[test]
+    fn test_get_selected_ticket_empty_list() {
+        let state = default_state();
+        let selected = get_selected_ticket(&state);
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn test_get_selected_ticket_resolves_from_filtered_list() {
+        let ticket1 = make_ticket("j-1", "Alpha task", TicketStatus::New);
+        let mut ticket2 = make_ticket("j-2", "Beta task", TicketStatus::New);
+        ticket2.file_path = Some(std::path::PathBuf::from("/tmp/j-2.md"));
+
+        let state = ViewState {
+            tickets: vec![ticket1, ticket2],
+            search_query: "Beta".to_string(),
+            selected_index: 0,
+            ..default_state()
+        };
+
+        // With search "Beta", filtered list contains only j-2
+        let selected = get_selected_ticket(&state);
+        assert!(selected.is_some());
+        let t = selected.unwrap();
+        assert_eq!(t.id.as_deref(), Some("j-2"));
+        assert_eq!(t.file_path, Some(std::path::PathBuf::from("/tmp/j-2.md")));
     }
 }

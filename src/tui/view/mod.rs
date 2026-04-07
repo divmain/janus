@@ -278,7 +278,7 @@ pub fn IssueBrowser<'a>(_props: &IssueBrowserProps, mut hooks: Hooks) -> impl In
                 needs_reload.set(true);
             }
             Err(e) => {
-                toast.set(Some(Toast::error(format!("{e}"))));
+                toast.set(Some(ExternalEditor::error_to_toast(&e)));
             }
         }
     }

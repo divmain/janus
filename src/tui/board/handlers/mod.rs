@@ -85,6 +85,7 @@ pub fn key_to_action(
         KeyCode::Esc => Some(BoardAction::Quit),
         KeyCode::Char('/') => Some(BoardAction::FocusSearch),
         KeyCode::Char('e') | KeyCode::Enter => Some(BoardAction::EditSelected),
+        KeyCode::Char('E') => Some(BoardAction::OpenExternalEditor),
         KeyCode::Char('n') => Some(BoardAction::CreateNew),
         KeyCode::Char('y') => Some(BoardAction::CopyTicketId),
         KeyCode::Char('r') => Some(BoardAction::Reload),
@@ -269,6 +270,29 @@ mod tests {
         // Arrow keys in search mode should be handled by search, not navigation
         assert_eq!(key_to_action(KeyCode::Left, KeyModifiers::NONE, true), None);
         assert_eq!(key_to_action(KeyCode::Down, KeyModifiers::NONE, true), None);
+    }
+
+    #[test]
+    fn test_key_to_action_external_editor() {
+        // Shift+E (uppercase E) maps to OpenExternalEditor
+        assert_eq!(
+            key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, false),
+            Some(BoardAction::OpenExternalEditor)
+        );
+        // Lowercase 'e' is EditSelected, not external editor
+        assert_eq!(
+            key_to_action(KeyCode::Char('e'), KeyModifiers::NONE, false),
+            Some(BoardAction::EditSelected)
+        );
+    }
+
+    #[test]
+    fn test_key_to_action_external_editor_not_in_search_mode() {
+        // Shift+E in search mode should not map to anything (search box handles input)
+        assert_eq!(
+            key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, true),
+            None
+        );
     }
 
     #[test]

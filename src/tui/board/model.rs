@@ -126,6 +126,8 @@ pub enum BoardAction {
     // Actions
     /// Copy the selected ticket's ID to clipboard
     CopyTicketId,
+    /// Open selected ticket in external $EDITOR
+    OpenExternalEditor,
 
     // App
     /// Quit the application
@@ -488,6 +490,7 @@ pub fn reduce_board_state(
         | BoardAction::MoveTicketStatusRight
         | BoardAction::MoveTicketStatusLeft
         | BoardAction::CopyTicketId
+        | BoardAction::OpenExternalEditor
         | BoardAction::Quit
         | BoardAction::Reload => {
             // These require async I/O or system context, handled externally

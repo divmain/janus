@@ -740,3 +740,102 @@ fn test_complex_user_session() {
     let state = reduce_view_state(state, ViewAction::CyclePaneBackward, 10);
     assert_eq!(state.active_pane, Pane::List);
 }
+
+// ============================================================================
+// External Editor Tests
+// ============================================================================
+
+#[test]
+fn test_key_to_action_shift_e_maps_to_open_external_editor() {
+    // Shift+E (uppercase E) maps to OpenExternalEditor in List pane
+    assert_eq!(
+        key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, Pane::List),
+        Some(ViewAction::OpenExternalEditor)
+    );
+    // Also works in Detail pane
+    assert_eq!(
+        key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, Pane::Detail),
+        Some(ViewAction::OpenExternalEditor)
+    );
+}
+
+#[test]
+fn test_key_to_action_shift_e_not_in_search_mode() {
+    // Shift+E in search mode returns None (search box handles input)
+    assert_eq!(
+        key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, Pane::Search),
+        None
+    );
+}
+
+#[test]
+fn test_lowercase_e_is_edit_not_external_editor() {
+    // Lowercase 'e' maps to EditSelected, not OpenExternalEditor
+    assert_eq!(
+        key_to_action(KeyCode::Char('e'), KeyModifiers::NONE, Pane::List),
+        Some(ViewAction::EditSelected)
+    );
+    assert_eq!(
+        key_to_action(KeyCode::Char('E'), KeyModifiers::NONE, Pane::List),
+        Some(ViewAction::OpenExternalEditor)
+    );
+}
+
+#[test]
+fn test_external_editor_file_path_resolution() {
+    // Verify that get_selected_ticket correctly resolves the file path
+    // for the selected ticket (same logic used by external editor handler)
+    use std::path::PathBuf;
+
+    let mut ticket = TicketBuilder::new("j-edit1")
+        .title("Editable ticket")
+        .status(TicketStatus::New)
+        .build();
+    ticket.file_path = Some(PathBuf::from("/tmp/janus/items/j-edit1.md"));
+
+    let state = ViewState {
+        tickets: vec![ticket],
+        selected_index: 0,
+        init_result: InitResult::Ok,
+        ..Default::default()
+    };
+
+    let selected = get_selected_ticket(&state);
+    assert!(selected.is_some());
+    let t = selected.unwrap();
+    assert_eq!(
+        t.file_path,
+        Some(PathBuf::from("/tmp/janus/items/j-edit1.md"))
+    );
+}
+
+#[test]
+fn test_external_editor_no_ticket_selected_empty_list() {
+    // When no tickets exist, get_selected_ticket returns None (external editor is a no-op)
+    let state = ViewState {
+        tickets: vec![],
+        selected_index: 0,
+        init_result: InitResult::Ok,
+        ..Default::default()
+    };
+
+    assert!(get_selected_ticket(&state).is_none());
+}
+
+#[test]
+fn test_external_editor_ticket_without_file_path() {
+    // When the selected ticket has no file_path, external editor should not launch
+    let ticket = mock_ticket("j-nofile", TicketStatus::New);
+    assert!(ticket.file_path.is_none());
+
+    let state = ViewState {
+        tickets: vec![ticket],
+        selected_index: 0,
+        init_result: InitResult::Ok,
+        ..Default::default()
+    };
+
+    let selected = get_selected_ticket(&state);
+    assert!(selected.is_some());
+    assert!(selected.unwrap().file_path.is_none());
+}
