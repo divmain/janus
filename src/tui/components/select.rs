@@ -161,6 +161,7 @@ impl Selectable for TicketType {
             TicketType::Task,
             TicketType::Epic,
             TicketType::Chore,
+            TicketType::Todo,
         ]
     }
 
@@ -175,6 +176,7 @@ impl Selectable for TicketType {
             TicketType::Task => 2,
             TicketType::Epic => 3,
             TicketType::Chore => 4,
+            TicketType::Todo => 5,
         }
     }
 
@@ -185,6 +187,7 @@ impl Selectable for TicketType {
             2 => Some(TicketType::Task),
             3 => Some(TicketType::Epic),
             4 => Some(TicketType::Chore),
+            5 => Some(TicketType::Todo),
             _ => None,
         }
     }
@@ -242,7 +245,10 @@ mod tests {
     fn test_type_selectable() {
         assert_eq!(TicketType::Bug.index(), 0);
         assert_eq!(TicketType::Bug.next(), TicketType::Feature);
-        assert_eq!(TicketType::Chore.next(), TicketType::Bug);
+        assert_eq!(TicketType::Chore.next(), TicketType::Todo);
+        assert_eq!(TicketType::Todo.next(), TicketType::Bug);
+        assert_eq!(TicketType::Todo.index(), 5);
+        assert_eq!(TicketType::from_index(5), Some(TicketType::Todo));
     }
 
     #[test]

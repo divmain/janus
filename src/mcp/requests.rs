@@ -21,8 +21,8 @@ pub struct CreateTicketRequest {
     #[schemars(description = "The title for the new ticket (max 200 chars, non-empty)")]
     pub title: String,
 
-    /// Ticket type: bug, feature, task, epic, or chore (default: task)
-    #[schemars(description = "Type of ticket: bug, feature, task, epic, or chore")]
+    /// Ticket type: bug, feature, task, epic, chore, or todo (default: task)
+    #[schemars(description = "Type of ticket: bug, feature, task, epic, chore, or todo")]
     #[serde(rename = "type")]
     pub ticket_type: Option<String>,
 

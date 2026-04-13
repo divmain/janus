@@ -47,7 +47,7 @@ pub enum Commands {
         #[arg(short, long, default_value = DEFAULT_PRIORITY_STR, value_parser = parse_priority)]
         priority: TicketPriority,
 
-        /// Type: bug, feature, task, epic, chore (case-insensitive, default: task)
+        /// Type: bug, feature, task, epic, chore, todo (case-insensitive, default: task)
         #[arg(short = 't', long = "type", default_value = "task", value_parser = parse_type)]
         ticket_type: TicketType,
 

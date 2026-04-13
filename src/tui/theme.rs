@@ -25,6 +25,7 @@ pub struct Theme {
     pub type_task: Color,
     pub type_epic: Color,
     pub type_chore: Color,
+    pub type_todo: Color,
 
     // UI colors
     pub border: Color,
@@ -85,6 +86,7 @@ impl Default for Theme {
                 g: 120,
                 b: 120,
             },
+            type_todo: Color::Yellow,
 
             // UI colors
             border: Color::Rgb {
@@ -161,6 +163,7 @@ impl Theme {
             TicketType::Task => self.type_task,
             TicketType::Epic => self.type_epic,
             TicketType::Chore => self.type_chore,
+            TicketType::Todo => self.type_todo,
         }
     }
 

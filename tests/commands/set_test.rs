@@ -70,7 +70,7 @@ fn test_set_type() {
 fn test_set_type_all_values() {
     let janus = JanusTest::new();
 
-    for ticket_type in &["bug", "feature", "task", "epic", "chore"] {
+    for ticket_type in &["bug", "feature", "task", "epic", "chore", "todo"] {
         let id = janus.run_success(&["create", "Test"]).trim().to_string();
         janus.run_success(&["set", &id, "type", ticket_type]);
 

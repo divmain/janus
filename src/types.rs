@@ -425,11 +425,12 @@ pub enum TicketType {
     Task,
     Epic,
     Chore,
+    Todo,
 }
 
 impl TicketType {
     /// All valid string representations of this enum.
-    pub const ALL_STRINGS: &[&str] = &["bug", "feature", "task", "epic", "chore"];
+    pub const ALL_STRINGS: &[&str] = &["bug", "feature", "task", "epic", "chore", "todo"];
 
     /// Get the next ticket type in the cycle
     pub fn next(self) -> Self {
@@ -438,18 +439,20 @@ impl TicketType {
             TicketType::Feature => TicketType::Task,
             TicketType::Task => TicketType::Epic,
             TicketType::Epic => TicketType::Chore,
-            TicketType::Chore => TicketType::Bug,
+            TicketType::Chore => TicketType::Todo,
+            TicketType::Todo => TicketType::Bug,
         }
     }
 
     /// Get the previous ticket type in the cycle
     pub fn prev(self) -> Self {
         match self {
-            TicketType::Bug => TicketType::Chore,
+            TicketType::Bug => TicketType::Todo,
             TicketType::Feature => TicketType::Bug,
             TicketType::Task => TicketType::Feature,
             TicketType::Epic => TicketType::Task,
             TicketType::Chore => TicketType::Epic,
+            TicketType::Todo => TicketType::Chore,
         }
     }
 }
@@ -457,13 +460,14 @@ impl TicketType {
 enum_display_fromstr!(
     TicketType,
     JanusError::invalid_ticket_type,
-    ["bug", "feature", "task", "epic", "chore"],
+    ["bug", "feature", "task", "epic", "chore", "todo"],
     {
         Bug => "bug",
         Feature => "feature",
         Task => "task",
         Epic => "epic",
         Chore => "chore",
+        Todo => "todo",
     }
 );
 
@@ -1242,6 +1246,7 @@ mod tests {
         assert_eq!("task".parse::<TicketType>().unwrap(), TicketType::Task);
         assert_eq!("epic".parse::<TicketType>().unwrap(), TicketType::Epic);
         assert_eq!("chore".parse::<TicketType>().unwrap(), TicketType::Chore);
+        assert_eq!("todo".parse::<TicketType>().unwrap(), TicketType::Todo);
 
         // Uppercase
         assert_eq!("BUG".parse::<TicketType>().unwrap(), TicketType::Bug);
@@ -1252,6 +1257,7 @@ mod tests {
         assert_eq!("TASK".parse::<TicketType>().unwrap(), TicketType::Task);
         assert_eq!("EPIC".parse::<TicketType>().unwrap(), TicketType::Epic);
         assert_eq!("CHORE".parse::<TicketType>().unwrap(), TicketType::Chore);
+        assert_eq!("TODO".parse::<TicketType>().unwrap(), TicketType::Todo);
 
         // Mixed case
         assert_eq!("Bug".parse::<TicketType>().unwrap(), TicketType::Bug);
@@ -1264,6 +1270,64 @@ mod tests {
         // Invalid
         assert!("invalid".parse::<TicketType>().is_err());
         assert!("".parse::<TicketType>().is_err());
+    }
+
+    #[test]
+    fn test_ticket_type_todo_display() {
+        assert_eq!(TicketType::Todo.to_string(), "todo");
+    }
+
+    #[test]
+    fn test_ticket_type_todo_roundtrip() {
+        let todo = TicketType::Todo;
+        let serialized = todo.to_string();
+        let parsed: TicketType = serialized.parse().unwrap();
+        assert_eq!(parsed, TicketType::Todo);
+    }
+
+    #[test]
+    fn test_ticket_type_todo_serde_roundtrip() {
+        let todo = TicketType::Todo;
+        let json = serde_json::to_string(&todo).unwrap();
+        assert_eq!(json, "\"todo\"");
+        let deserialized: TicketType = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, TicketType::Todo);
+    }
+
+    #[test]
+    fn test_ticket_type_next_prev_cycle_includes_todo() {
+        // Todo is between Chore and Bug in the cycle
+        assert_eq!(TicketType::Chore.next(), TicketType::Todo);
+        assert_eq!(TicketType::Todo.next(), TicketType::Bug);
+        assert_eq!(TicketType::Bug.prev(), TicketType::Todo);
+        assert_eq!(TicketType::Todo.prev(), TicketType::Chore);
+    }
+
+    #[test]
+    fn test_ticket_type_full_cycle() {
+        // Walk the full next() cycle and verify we visit every variant
+        let start = TicketType::Bug;
+        let mut current = start.next();
+        let mut visited = vec![start];
+        while current != start {
+            visited.push(current);
+            current = current.next();
+        }
+        assert_eq!(visited.len(), 6);
+        assert!(visited.contains(&TicketType::Todo));
+    }
+
+    #[test]
+    fn test_ticket_type_all_strings_includes_todo() {
+        assert!(TicketType::ALL_STRINGS.contains(&"todo"));
+        assert_eq!(TicketType::ALL_STRINGS.len(), 6);
+    }
+
+    #[test]
+    fn test_ticket_type_todo_is_not_default() {
+        // Default should remain Task, not Todo
+        assert_eq!(TicketType::default(), TicketType::Task);
+        assert_ne!(TicketType::default(), TicketType::Todo);
     }
 
     #[test]
