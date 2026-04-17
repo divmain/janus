@@ -24,7 +24,7 @@ use crate::tui::search::FilteredTicket;
 use crate::tui::search_orchestrator::{SearchState, compute_filtered_tickets};
 use crate::tui::services::ExternalEditor;
 use crate::tui::theme::theme;
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::{TicketMetadata, TicketStatus, TicketType};
 
 use handlers::{BoardAsyncHandlers, BoardHandlerContext, FilteredCache};
 use model::{COLUMN_KEYS, COLUMN_NAMES, COLUMNS};
@@ -33,11 +33,17 @@ use model::{COLUMN_KEYS, COLUMN_NAMES, COLUMNS};
 #[derive(Default, Props)]
 pub struct KanbanBoardProps {}
 
-/// Get tickets for a specific column from the filtered list
+/// Get tickets for a specific column from the filtered list.
+///
+/// Todos are excluded from the board because they represent unplanned work
+/// that hasn't been scheduled yet. They remain visible in `janus view` and
+/// the other list commands, and can be pulled into the board workflow by
+/// changing their type (e.g. `janus set <id> type task`).
 fn get_column_tickets(filtered: &[FilteredTicket], status: TicketStatus) -> Vec<FilteredTicket> {
     filtered
         .iter()
         .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
+        .filter(|ft| ft.ticket.ticket_type != Some(TicketType::Todo))
         .cloned()
         .collect()
 }
@@ -244,7 +250,9 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     let filtered = compute_filtered_tickets(&all_tickets.read(), &search_state, &query_str);
 
-    // Group filtered tickets by status for rendering
+    // Group filtered tickets by status for rendering. `get_column_tickets` also
+    // excludes Todos, which are intentionally invisible on the board — see the
+    // function's docstring for the rationale.
     let tickets_by_status: Vec<Vec<FilteredTicket>> = COLUMNS
         .iter()
         .map(|status| get_column_tickets(&filtered, *status))
@@ -331,7 +339,9 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         system.exit();
     }
 
-    let total_tickets = filtered.len();
+    // The header count reflects what's visible on the board, so exclude the
+    // Todos that `get_column_tickets` dropped above.
+    let total_tickets: usize = tickets_by_status.iter().map(|col| col.len()).sum();
     let tickets_ref_for_count = all_tickets.read();
     let all_ticket_count = tickets_ref_for_count.len();
     drop(tickets_ref_for_count);
@@ -814,5 +824,42 @@ mod tests {
         let wip_tickets = get_column_tickets(&tickets, TicketStatus::InProgress);
         assert_eq!(wip_tickets.len(), 1);
         assert_eq!(wip_tickets[0].ticket.id.as_deref(), Some("j-c3d4"));
+    }
+
+    #[test]
+    fn test_get_column_tickets_excludes_todos() {
+        use crate::types::{TicketPriority, TicketType};
+
+        let tickets = vec![
+            FilteredTicket {
+                ticket: Arc::new(TicketMetadata {
+                    id: Some(TicketId::new_unchecked("j-task1")),
+                    status: Some(TicketStatus::New),
+                    priority: Some(TicketPriority::P2),
+                    ticket_type: Some(TicketType::Task),
+                    ..Default::default()
+                }),
+                score: 0,
+                title_indices: vec![],
+                is_semantic: false,
+            },
+            FilteredTicket {
+                ticket: Arc::new(TicketMetadata {
+                    id: Some(TicketId::new_unchecked("j-todo1")),
+                    status: Some(TicketStatus::New),
+                    priority: Some(TicketPriority::P3),
+                    ticket_type: Some(TicketType::Todo),
+                    ..Default::default()
+                }),
+                score: 0,
+                title_indices: vec![],
+                is_semantic: false,
+            },
+        ];
+
+        // Same status, but the Todo should be filtered out of the board.
+        let new_tickets = get_column_tickets(&tickets, TicketStatus::New);
+        assert_eq!(new_tickets.len(), 1);
+        assert_eq!(new_tickets[0].ticket.id.as_deref(), Some("j-task1"));
     }
 }

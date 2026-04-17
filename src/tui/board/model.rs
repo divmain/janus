@@ -11,7 +11,7 @@ use crate::tui::components::{
 };
 use crate::tui::repository::InitResult;
 use crate::tui::search::{FilteredTicket, filter_tickets};
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::{TicketMetadata, TicketStatus, TicketType};
 
 // Column configuration constants
 /// The 5 kanban columns in order
@@ -591,11 +591,15 @@ pub fn find_prev_visible_column(visible: &[bool; 5], current: usize) -> usize {
     }
 }
 
-/// Get tickets for a specific column from the filtered list
+/// Get tickets for a specific column from the filtered list.
+///
+/// Todos are excluded from the board — see the board module's `get_column_tickets`
+/// for the rationale.
 fn get_column_tickets(filtered: &[FilteredTicket], status: TicketStatus) -> Vec<FilteredTicket> {
     filtered
         .iter()
         .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
+        .filter(|ft| ft.ticket.ticket_type != Some(TicketType::Todo))
         .cloned()
         .collect()
 }
@@ -605,6 +609,8 @@ fn get_column_tickets(filtered: &[FilteredTicket], status: TicketStatus) -> Vec<
 /// Can be called with either:
 /// - A BoardState reference (from model code)
 /// - Individual tickets and search query (from handlers)
+///
+/// Todos are excluded so the count matches what the board actually renders.
 pub fn get_column_ticket_count(
     tickets: &[TicketMetadata],
     search_query: &str,
@@ -620,6 +626,7 @@ pub fn get_column_ticket_count(
     filtered
         .iter()
         .filter(|ft| ft.ticket.status.unwrap_or_default() == status)
+        .filter(|ft| ft.ticket.ticket_type != Some(TicketType::Todo))
         .count()
 }
 
@@ -1111,6 +1118,31 @@ mod tests {
 
         let done_tickets = get_column_tickets(&filtered, TicketStatus::Complete);
         assert_eq!(done_tickets.len(), 0);
+    }
+
+    #[test]
+    fn test_get_column_tickets_excludes_todos() {
+        let mut todo_ticket = make_ticket("j-todo", "Todo idea", TicketStatus::New);
+        todo_ticket.ticket_type = Some(TicketType::Todo);
+
+        let filtered = vec![
+            FilteredTicket {
+                ticket: Arc::new(make_ticket("j-task", "Real task", TicketStatus::New)),
+                score: 0,
+                title_indices: vec![],
+                is_semantic: false,
+            },
+            FilteredTicket {
+                ticket: Arc::new(todo_ticket),
+                score: 0,
+                title_indices: vec![],
+                is_semantic: false,
+            },
+        ];
+
+        let new_tickets = get_column_tickets(&filtered, TicketStatus::New);
+        assert_eq!(new_tickets.len(), 1, "Todo should be hidden from the board");
+        assert_eq!(new_tickets[0].ticket.id.as_deref(), Some("j-task"));
     }
 
     #[test]

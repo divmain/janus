@@ -11,7 +11,7 @@ use crate::tui::edit::EditResult;
 use crate::tui::edit_state::{EditFormState, EditMode};
 use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
-use crate::types::{TicketMetadata, TicketStatus};
+use crate::types::{TicketMetadata, TicketStatus, TicketType};
 
 /// The 5 kanban columns in order
 const COLUMNS: [TicketStatus; 5] = [
@@ -123,12 +123,14 @@ impl<'a> BoardHandlerContext<'a> {
                 filter_tickets(&tickets_read, &current_query)
             };
 
+            // Todos are excluded from the board — see `get_column_tickets` for rationale.
             let column_tickets: Vec<Vec<FilteredTicket>> = COLUMNS
                 .iter()
                 .map(|status| {
                     filtered
                         .iter()
                         .filter(|ft| ft.ticket.status.unwrap_or_default() == *status)
+                        .filter(|ft| ft.ticket.ticket_type != Some(TicketType::Todo))
                         .cloned()
                         .collect()
                 })
