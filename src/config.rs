@@ -40,6 +40,10 @@ pub struct Config {
     /// Remote operation timeout in seconds (default: 30)
     #[serde(default = "default_remote_timeout")]
     pub remote_timeout: u64,
+
+    /// Auto-archive configuration
+    #[serde(default, skip_serializing_if = "ArchiveConfig::is_default")]
+    pub archive: ArchiveConfig,
 }
 
 fn default_remote_timeout() -> u64 {
@@ -139,6 +143,46 @@ impl SemanticSearchConfig {
     /// Check if this config has default values
     pub fn is_default(&self) -> bool {
         self.enabled == default_semantic_search_enabled()
+    }
+}
+
+/// Auto-archive configuration.
+///
+/// Controls how long a completed ticket stays in the Complete column before the
+/// auto-sweep moves it to Archived. The sweep runs when `janus board` launches and
+/// when `janus archive` is invoked manually.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveConfig {
+    /// Days a ticket can stay in Complete before being auto-archived.
+    /// `0` disables auto-archive entirely.
+    #[serde(default = "default_archive_days")]
+    pub days: u32,
+}
+
+fn default_archive_days() -> u32 {
+    7
+}
+
+impl Default for ArchiveConfig {
+    fn default() -> Self {
+        Self {
+            days: default_archive_days(),
+        }
+    }
+}
+
+impl ArchiveConfig {
+    pub fn is_default(&self) -> bool {
+        self.days == default_archive_days()
+    }
+
+    /// Returns None if auto-archive is disabled, otherwise the threshold duration.
+    pub fn threshold(&self) -> Option<std::time::Duration> {
+        if self.days == 0 {
+            None
+        } else {
+            Some(std::time::Duration::from_secs(self.days as u64 * 86_400))
+        }
     }
 }
 

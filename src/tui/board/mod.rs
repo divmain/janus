@@ -27,7 +27,7 @@ use crate::tui::theme::theme;
 use crate::types::{TicketMetadata, TicketStatus};
 
 use handlers::{BoardAsyncHandlers, BoardHandlerContext, FilteredCache};
-use model::{COLUMN_KEYS, COLUMN_NAMES, COLUMNS};
+use model::{COLUMN_COUNT, COLUMN_KEYS, COLUMN_NAMES, COLUMNS, DEFAULT_VISIBLE_COLUMNS};
 
 /// Props for the KanbanBoard component
 #[derive(Default, Props)]
@@ -147,8 +147,10 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Subscribe to store watcher events for live external updates.
     hooks.use_future(crate::tui::hooks::use_store_watcher(needs_reload));
 
-    // Column visibility state (all visible by default)
-    let mut visible_columns = hooks.use_state(|| [true; 5]);
+    // Column visibility state. Archived is hidden by default (toggle with `A`)
+    // so existing users don't see a new column filled with old tickets the first
+    // time they run `janus board` after upgrading.
+    let mut visible_columns = hooks.use_state(|| DEFAULT_VISIBLE_COLUMNS);
 
     // Cache for filtered tickets to avoid recomputing on every keystroke
     let mut cache: State<Option<FilteredCache>> = hooks.use_state(|| None);
@@ -156,7 +158,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Navigation state
     let mut current_column = hooks.use_state(|| 0usize);
     let mut current_row = hooks.use_state(|| 0usize);
-    let mut column_scroll_offsets = hooks.use_state(|| [0usize; 5]);
+    let mut column_scroll_offsets = hooks.use_state(|| [0usize; COLUMN_COUNT]);
     let mut search_focused = hooks.use_state(|| false);
 
     // External editor deferred launch state
@@ -340,7 +342,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Create column toggle handlers OUTSIDE the iterator to follow rules of hooks
     // Hooks must be called in the same order every render
-    let column_toggle_handlers: Vec<Handler<()>> = (0..5)
+    let column_toggle_handlers: Vec<Handler<()>> = (0..COLUMN_COUNT)
         .map(|i| {
             hooks.use_async_handler({
                 let cols = visible_columns;
@@ -362,7 +364,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Build column toggle indicators using ClickableText components
     let visible_cols = visible_columns.get();
-    let column_toggles_elements: Vec<AnyElement<'static>> = (0..5)
+    let column_toggles_elements: Vec<AnyElement<'static>> = (0..COLUMN_COUNT)
         .map(|i| {
             let is_visible = visible_cols[i];
             let key = COLUMN_KEYS[i];
@@ -431,7 +433,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
 
     // Create scroll handlers for ALL 5 columns OUTSIDE the iterator
     // This follows the rules of hooks - hooks must be called in the same order every render
-    let scroll_up_handlers: Vec<Handler<()>> = (0..5)
+    let scroll_up_handlers: Vec<Handler<()>> = (0..COLUMN_COUNT)
         .map(|col_idx| {
             hooks.use_async_handler({
                 let col_scroll_offsets = column_scroll_offsets;
@@ -447,7 +449,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         })
         .collect();
 
-    let scroll_down_handlers: Vec<Handler<()>> = (0..5)
+    let scroll_down_handlers: Vec<Handler<()>> = (0..COLUMN_COUNT)
         .map(|col_idx| {
             hooks.use_async_handler({
                 let col_scroll_offsets = column_scroll_offsets;
@@ -466,7 +468,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         })
         .collect();
 
-    let page_up_handlers: Vec<Handler<()>> = (0..5)
+    let page_up_handlers: Vec<Handler<()>> = (0..COLUMN_COUNT)
         .map(|col_idx| {
             hooks.use_async_handler({
                 let col_scroll_offsets = column_scroll_offsets;
@@ -483,7 +485,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
         })
         .collect();
 
-    let page_down_handlers: Vec<Handler<()>> = (0..5)
+    let page_down_handlers: Vec<Handler<()>> = (0..COLUMN_COUNT)
         .map(|col_idx| {
             hooks.use_async_handler({
                 let col_scroll_offsets = column_scroll_offsets;
@@ -503,7 +505,7 @@ pub fn KanbanBoard<'a>(_props: &KanbanBoardProps, mut hooks: Hooks) -> impl Into
     // Create card click handlers for all 5 columns OUTSIDE the iterator
     // This follows the rules of hooks - hooks must be called in the same order every render
     // The handler accepts the row index as a parameter to select the correct ticket
-    let card_click_handlers: Vec<Handler<usize>> = (0..5)
+    let card_click_handlers: Vec<Handler<usize>> = (0..COLUMN_COUNT)
         .map(|col_idx| {
             hooks.use_async_handler({
                 let cur_col = current_column;
@@ -765,15 +767,17 @@ mod tests {
 
     #[test]
     fn test_columns_constant() {
-        assert_eq!(COLUMNS.len(), 5);
+        assert_eq!(COLUMNS.len(), COLUMN_COUNT);
         assert_eq!(COLUMNS[0], TicketStatus::New);
         assert_eq!(COLUMNS[4], TicketStatus::Cancelled);
+        assert_eq!(COLUMNS[5], TicketStatus::Archived);
     }
 
     #[test]
     fn test_column_names() {
-        assert_eq!(COLUMN_NAMES.len(), 5);
+        assert_eq!(COLUMN_NAMES.len(), COLUMN_COUNT);
         assert_eq!(COLUMN_NAMES[0], "NEW");
+        assert_eq!(COLUMN_NAMES[5], "ARCHIVED");
     }
 
     #[test]

@@ -356,13 +356,21 @@ pub enum TicketStatus {
     InProgress,
     Complete,
     Cancelled,
+    Archived,
 }
 
 impl TicketStatus {
     /// All valid string representations of this enum.
-    pub const ALL_STRINGS: &[&str] = &["new", "next", "in_progress", "complete", "cancelled"];
+    pub const ALL_STRINGS: &[&str] = &[
+        "new",
+        "next",
+        "in_progress",
+        "complete",
+        "cancelled",
+        "archived",
+    ];
 
-    /// Returns true if this status represents a terminal state (complete or cancelled).
+    /// Returns true if this status represents a terminal state (complete, cancelled, archived).
     /// Terminal states indicate no further work is expected on the ticket.
     ///
     /// This method delegates to `crate::status::is_terminal()` for centralized status logic.
@@ -385,18 +393,20 @@ impl TicketStatus {
             TicketStatus::Next => TicketStatus::InProgress,
             TicketStatus::InProgress => TicketStatus::Complete,
             TicketStatus::Complete => TicketStatus::Cancelled,
-            TicketStatus::Cancelled => TicketStatus::New,
+            TicketStatus::Cancelled => TicketStatus::Archived,
+            TicketStatus::Archived => TicketStatus::New,
         }
     }
 
     /// Get the previous status in the cycle
     pub fn prev(self) -> Self {
         match self {
-            TicketStatus::New => TicketStatus::Cancelled,
+            TicketStatus::New => TicketStatus::Archived,
             TicketStatus::Next => TicketStatus::New,
             TicketStatus::InProgress => TicketStatus::Next,
             TicketStatus::Complete => TicketStatus::InProgress,
             TicketStatus::Cancelled => TicketStatus::Complete,
+            TicketStatus::Archived => TicketStatus::Cancelled,
         }
     }
 }
@@ -404,13 +414,14 @@ impl TicketStatus {
 enum_display_fromstr!(
     TicketStatus,
     JanusError::invalid_status,
-    ["new", "next", "in_progress", "complete", "cancelled"],
+    ["new", "next", "in_progress", "complete", "cancelled", "archived"],
     {
         New => "new",
         Next => "next",
         InProgress => "in_progress",
         Complete => "complete",
         Cancelled => "cancelled",
+        Archived => "archived",
     }
 );
 
@@ -647,6 +658,7 @@ pub enum TicketField {
     Deps,
     Links,
     Created,
+    CompletedAt,
     Type,
     Priority,
     Size,
@@ -707,6 +719,7 @@ impl TicketField {
             TicketField::Deps => "deps",
             TicketField::Links => "links",
             TicketField::Created => "created",
+            TicketField::CompletedAt => "completed-at",
             TicketField::Type => "type",
             TicketField::Priority => "priority",
             TicketField::Size => "size",
@@ -730,6 +743,7 @@ impl TicketField {
             Deps,
             Links,
             Created,
+            CompletedAt,
             Type,
             Priority,
             Size,
@@ -784,6 +798,13 @@ pub struct TicketMetadata {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<CreatedAt>,
+
+    /// Timestamp when the ticket first entered a terminal status (complete/cancelled/archived).
+    /// Used by the auto-archive sweep to decide when a completed ticket is old enough
+    /// to move to archived. Populated lazily the first time a ticket transitions to a
+    /// terminal status; older tickets without this field fall back to file mtime.
+    #[serde(rename = "completed-at", skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<CreatedAt>,
 
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub ticket_type: Option<TicketType>,
@@ -985,6 +1006,11 @@ pub struct TicketSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<CreatedAt>,
 
+    /// Timestamp when the ticket first entered a terminal status.
+    /// See `TicketMetadata::completed_at` for details.
+    #[serde(rename = "completed-at", skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<CreatedAt>,
+
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub ticket_type: Option<TicketType>,
 
@@ -1055,6 +1081,7 @@ impl From<&TicketMetadata> for TicketSummary {
             deps: meta.deps.clone(),
             links: meta.links.clone(),
             created: meta.created.clone(),
+            completed_at: meta.completed_at.clone(),
             ticket_type: meta.ticket_type,
             priority: meta.priority,
             size: meta.size,

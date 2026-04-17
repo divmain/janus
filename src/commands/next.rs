@@ -34,14 +34,10 @@ pub async fn cmd_next(limit: usize, output: OutputOptions) -> Result<()> {
             .print(output);
     }
 
-    // Check if all tickets are complete or cancelled
-    let all_complete = ticket_map.values().all(|t| {
-        matches!(
-            t.status,
-            Some(crate::types::TicketStatus::Complete)
-                | Some(crate::types::TicketStatus::Cancelled)
-        )
-    });
+    // Check if every ticket has reached a terminal state (complete/cancelled/archived).
+    let all_complete = ticket_map
+        .values()
+        .all(|t| t.status.is_some_and(|s| s.is_terminal()));
 
     if all_complete {
         return CommandOutput::new(json!([]))

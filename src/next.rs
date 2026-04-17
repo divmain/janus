@@ -398,6 +398,7 @@ mod tests {
             deps: deps.iter().map(|s| TicketId::new_unchecked(*s)).collect(),
             links: Vec::new(),
             created: Some(crate::types::CreatedAt::new_unchecked(created)),
+            completed_at: None,
             ticket_type: Some(crate::types::TicketType::Task),
             priority: Some(ticket_priority),
             size: None,

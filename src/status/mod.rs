@@ -14,11 +14,14 @@ pub use plan::{
     compute_plan_status, resolve_ticket_or_warn,
 };
 
-/// Returns true if a status represents a terminal state (complete or cancelled).
+/// Returns true if a status represents a terminal state (complete, cancelled, archived).
 ///
 /// Terminal states indicate no further work is expected on the ticket.
 pub const fn is_terminal(status: TicketStatus) -> bool {
-    matches!(status, TicketStatus::Complete | TicketStatus::Cancelled)
+    matches!(
+        status,
+        TicketStatus::Complete | TicketStatus::Cancelled | TicketStatus::Archived
+    )
 }
 
 /// Returns true if a status indicates work has not yet started (new or next).

@@ -35,7 +35,7 @@ fn test_navigation_action_sequence() {
             ("j-2", TicketStatus::New),
             ("j-3", TicketStatus::Next),
         ]),
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -58,7 +58,7 @@ fn test_navigation_sequence_with_row_adjustment() {
         ]),
         current_column: 0,
         current_row: 2, // Third ticket in column 0
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -77,7 +77,7 @@ fn test_navigation_sequence_with_row_adjustment() {
 fn test_column_toggle_sequence() {
     let state = BoardState {
         current_column: 1,
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -94,7 +94,7 @@ fn test_column_toggle_sequence() {
 #[test]
 fn test_toggle_multiple_columns() {
     let state = BoardState {
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -110,7 +110,7 @@ fn test_toggle_multiple_columns() {
 #[test]
 fn test_toggle_column_back_on() {
     let state = BoardState {
-        visible_columns: [true, false, true, true, true],
+        visible_columns: [true, false, true, true, true, true],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -187,7 +187,7 @@ fn test_vertical_navigation_bounds() {
         tickets: mock_tickets(&[("j-1", TicketStatus::New), ("j-2", TicketStatus::New)]),
         current_column: 0,
         current_row: 0,
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -210,7 +210,7 @@ fn test_vertical_navigation_bounds() {
 fn test_horizontal_navigation_bounds() {
     let state = BoardState {
         current_column: 0,
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -272,7 +272,7 @@ fn test_open_external_editor_action_is_noop_in_reducer() {
         tickets: mock_tickets(&[("j-1", TicketStatus::New), ("j-2", TicketStatus::Next)]),
         current_column: 0,
         current_row: 0,
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -291,7 +291,7 @@ fn test_open_external_editor_action_is_noop_in_reducer() {
 fn test_navigation_skips_hidden_columns() {
     let state = BoardState {
         current_column: 0,
-        visible_columns: [true, false, false, true, false], // Only 0 and 3 visible
+        visible_columns: [true, false, false, true, false, false], // Only 0 and 3 visible
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -328,7 +328,7 @@ fn test_board_with_rich_ticket_data() {
     let state = BoardState {
         tickets: vec![ticket],
         current_column: 2, // InProgress
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -359,7 +359,7 @@ fn test_get_ticket_at_helper() {
             ("j-2", TicketStatus::New),
             ("j-3", TicketStatus::InProgress),
         ]),
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
@@ -388,40 +388,41 @@ fn test_get_ticket_at_helper() {
 #[test]
 fn test_find_next_visible_column_edge_cases() {
     // All visible - standard navigation
-    let visible = [true; 5];
+    let visible = [true; 6];
     assert_eq!(find_next_visible_column(&visible, 0), 1);
-    assert_eq!(find_next_visible_column(&visible, 4), 4); // Stay at end
+    assert_eq!(find_next_visible_column(&visible, 4), 5);
+    assert_eq!(find_next_visible_column(&visible, 5), 5); // Stay at end
 
     // Only first visible
-    let visible = [true, false, false, false, false];
+    let visible = [true, false, false, false, false, false];
     assert_eq!(find_next_visible_column(&visible, 0), 0);
 
     // Only last visible
-    let visible = [false, false, false, false, true];
-    assert_eq!(find_next_visible_column(&visible, 4), 4);
+    let visible = [false, false, false, false, false, true];
+    assert_eq!(find_next_visible_column(&visible, 5), 5);
 
     // None visible - should stay in place
-    let visible = [false; 5];
+    let visible = [false; 6];
     assert_eq!(find_next_visible_column(&visible, 2), 2);
 }
 
 #[test]
 fn test_find_prev_visible_column_edge_cases() {
     // All visible - standard navigation
-    let visible = [true; 5];
+    let visible = [true; 6];
     assert_eq!(find_prev_visible_column(&visible, 4), 3);
     assert_eq!(find_prev_visible_column(&visible, 0), 0); // Stay at start
 
     // Only first visible
-    let visible = [true, false, false, false, false];
+    let visible = [true, false, false, false, false, false];
     assert_eq!(find_prev_visible_column(&visible, 0), 0);
 
     // Only last visible
-    let visible = [false, false, false, false, true];
+    let visible = [false, false, false, false, true, false];
     assert_eq!(find_prev_visible_column(&visible, 4), 4);
 
     // Sparse visibility
-    let visible = [true, false, true, false, true];
+    let visible = [true, false, true, false, true, false];
     assert_eq!(find_prev_visible_column(&visible, 4), 2);
     assert_eq!(find_prev_visible_column(&visible, 2), 0);
 }
@@ -429,14 +430,14 @@ fn test_find_prev_visible_column_edge_cases() {
 #[test]
 fn test_toggle_out_of_bounds_column() {
     let state = BoardState {
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };
 
     // Toggle column 10 (out of bounds) - should do nothing
     let state = reduce_board_state(state, BoardAction::ToggleColumn(10), TEST_COLUMN_HEIGHT);
-    assert_eq!(state.visible_columns, [true; 5]);
+    assert_eq!(state.visible_columns, [true; 6]);
 }
 
 #[test]
@@ -450,7 +451,7 @@ fn test_complex_navigation_scenario() {
             ("j-4", TicketStatus::InProgress),
             ("j-5", TicketStatus::Complete),
         ]),
-        visible_columns: [true; 5],
+        visible_columns: [true; 6],
         init_result: InitResult::Ok,
         ..Default::default()
     };

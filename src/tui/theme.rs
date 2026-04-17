@@ -13,6 +13,7 @@ pub struct Theme {
     pub status_in_progress: Color,
     pub status_complete: Color,
     pub status_cancelled: Color,
+    pub status_archived: Color,
 
     // Priority colors
     pub priority_p0: Color,
@@ -68,6 +69,11 @@ impl Default for Theme {
                 r: 120,
                 g: 120,
                 b: 120,
+            },
+            status_archived: Color::Rgb {
+                r: 90,
+                g: 90,
+                b: 90,
             },
 
             // Priority colors
@@ -141,6 +147,7 @@ impl Theme {
             TicketStatus::InProgress => self.status_in_progress,
             TicketStatus::Complete => self.status_complete,
             TicketStatus::Cancelled => self.status_cancelled,
+            TicketStatus::Archived => self.status_archived,
         }
     }
 

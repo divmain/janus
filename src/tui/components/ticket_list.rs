@@ -210,6 +210,7 @@ pub fn TicketRow(props: &TicketRowProps) -> impl Into<AnyElement<'static>> {
         TicketStatus::InProgress => "wip",
         TicketStatus::Complete => "don",
         TicketStatus::Cancelled => "can",
+        TicketStatus::Archived => "arc",
     };
 
     element! {

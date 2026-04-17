@@ -32,6 +32,7 @@ impl TicketAnalytics {
                 Some(TicketStatus::InProgress) => counts.in_progress += 1,
                 Some(TicketStatus::Complete) => counts.complete += 1,
                 Some(TicketStatus::Cancelled) => counts.cancelled += 1,
+                Some(TicketStatus::Archived) => counts.archived += 1,
                 None => counts.new += 1, // Default to new
             }
         }
@@ -60,6 +61,7 @@ pub struct StatusCounts {
     pub in_progress: usize,
     pub complete: usize,
     pub cancelled: usize,
+    pub archived: usize,
 }
 
 impl StatusCounts {
@@ -71,12 +73,13 @@ impl StatusCounts {
             TicketStatus::InProgress => self.in_progress,
             TicketStatus::Complete => self.complete,
             TicketStatus::Cancelled => self.cancelled,
+            TicketStatus::Archived => self.archived,
         }
     }
 
     /// Get total count of all tickets
     pub fn total(&self) -> usize {
-        self.new + self.next + self.in_progress + self.complete + self.cancelled
+        self.new + self.next + self.in_progress + self.complete + self.cancelled + self.archived
     }
 }
 

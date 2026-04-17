@@ -20,6 +20,8 @@ struct TicketFrontmatter {
     links: Vec<TicketId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     created: Option<CreatedAt>,
+    #[serde(rename = "completed-at", skip_serializing_if = "Option::is_none")]
+    completed_at: Option<CreatedAt>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     ticket_type: Option<TicketType>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,6 +73,7 @@ fn ticket_metadata_from_document(frontmatter_raw: &str, body: &str) -> Result<Ti
         deps: frontmatter.deps,
         links: frontmatter.links,
         created: frontmatter.created,
+        completed_at: frontmatter.completed_at,
         ticket_type: frontmatter.ticket_type,
         priority: frontmatter.priority,
         size: frontmatter.size,

@@ -367,9 +367,9 @@ impl RemoteStatus {
     /// same remote status:
     ///
     /// - `New`, `Next`, `InProgress` all map to `Open`
-    /// - `Complete`, `Cancelled` both map to `Closed`
+    /// - `Complete`, `Cancelled`, `Archived` all map to `Closed`
     ///
-    /// This is inherent to mapping Janus's 5-state system to a 2-state remote
+    /// This is inherent to mapping Janus's 6-state system to a 2-state remote
     /// system (e.g., GitHub Open/Closed). The original Janus status cannot be
     /// recovered from the remote status alone.
     pub fn from_ticket_status(status: TicketStatus) -> Self {
@@ -379,6 +379,7 @@ impl RemoteStatus {
             TicketStatus::InProgress => RemoteStatus::Open,
             TicketStatus::Complete => RemoteStatus::Closed,
             TicketStatus::Cancelled => RemoteStatus::Closed,
+            TicketStatus::Archived => RemoteStatus::Closed,
         }
     }
 

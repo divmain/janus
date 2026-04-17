@@ -273,6 +273,7 @@ fn render_local_list(props: &ListPaneProps) -> Option<AnyElement<'static>> {
                         crate::types::TicketStatus::InProgress => "wip",
                         crate::types::TicketStatus::Complete => "don",
                         crate::types::TicketStatus::Cancelled => "can",
+                        crate::types::TicketStatus::Archived => "arc",
                     };
 
                     element! {

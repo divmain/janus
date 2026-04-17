@@ -124,6 +124,7 @@ impl Selectable for TicketStatus {
             TicketStatus::InProgress,
             TicketStatus::Complete,
             TicketStatus::Cancelled,
+            TicketStatus::Archived,
         ]
     }
 
@@ -138,6 +139,7 @@ impl Selectable for TicketStatus {
             TicketStatus::InProgress => 2,
             TicketStatus::Complete => 3,
             TicketStatus::Cancelled => 4,
+            TicketStatus::Archived => 5,
         }
     }
 
@@ -148,6 +150,7 @@ impl Selectable for TicketStatus {
             2 => Some(TicketStatus::InProgress),
             3 => Some(TicketStatus::Complete),
             4 => Some(TicketStatus::Cancelled),
+            5 => Some(TicketStatus::Archived),
             _ => None,
         }
     }
@@ -234,8 +237,11 @@ mod tests {
     fn test_status_selectable() {
         assert_eq!(TicketStatus::New.index(), 0);
         assert_eq!(TicketStatus::New.next(), TicketStatus::Next);
-        assert_eq!(TicketStatus::New.prev(), TicketStatus::Cancelled);
+        assert_eq!(TicketStatus::New.prev(), TicketStatus::Archived);
         assert_eq!(TicketStatus::from_index(2), Some(TicketStatus::InProgress));
+        assert_eq!(TicketStatus::from_index(5), Some(TicketStatus::Archived));
+        assert_eq!(TicketStatus::Cancelled.next(), TicketStatus::Archived);
+        assert_eq!(TicketStatus::Archived.next(), TicketStatus::New);
     }
 
     #[test]
@@ -255,8 +261,9 @@ mod tests {
     #[test]
     fn test_options_for() {
         let status_opts = options_for::<TicketStatus>();
-        assert_eq!(status_opts.len(), 5);
+        assert_eq!(status_opts.len(), 6);
         assert_eq!(status_opts[0], "new");
+        assert_eq!(status_opts[5], "archived");
 
         let priority_opts = options_for::<TicketPriority>();
         assert_eq!(priority_opts.len(), 5);

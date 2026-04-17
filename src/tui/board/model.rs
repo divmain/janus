@@ -14,20 +14,37 @@ use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::types::{TicketMetadata, TicketStatus};
 
 // Column configuration constants
-/// The 5 kanban columns in order
-pub const COLUMNS: [TicketStatus; 5] = [
+/// Number of columns rendered by the kanban board.
+pub const COLUMN_COUNT: usize = 6;
+
+/// The kanban columns in order. Archived is last and hidden by default —
+/// see `DEFAULT_VISIBLE_COLUMNS`.
+pub const COLUMNS: [TicketStatus; COLUMN_COUNT] = [
     TicketStatus::New,
     TicketStatus::Next,
     TicketStatus::InProgress,
     TicketStatus::Complete,
     TicketStatus::Cancelled,
+    TicketStatus::Archived,
 ];
 
 /// Column display names
-pub const COLUMN_NAMES: [&str; 5] = ["NEW", "NEXT", "IN PROGRESS", "COMPLETE", "CANCELLED"];
+pub const COLUMN_NAMES: [&str; COLUMN_COUNT] = [
+    "NEW",
+    "NEXT",
+    "IN PROGRESS",
+    "COMPLETE",
+    "CANCELLED",
+    "ARCHIVED",
+];
 
 /// Column toggle keys for header display
-pub const COLUMN_KEYS: [char; 5] = ['N', 'X', 'I', 'C', '_'];
+pub const COLUMN_KEYS: [char; COLUMN_COUNT] = ['N', 'X', 'I', 'C', '_', 'A'];
+
+/// Default visibility for each column. Archived starts hidden so existing users
+/// don't see a new column filled with old tickets the first time they run board
+/// after upgrading.
+pub const DEFAULT_VISIBLE_COLUMNS: [bool; COLUMN_COUNT] = [true, true, true, true, true, false];
 
 /// Raw state that changes during user interaction
 #[derive(Debug, Clone, Default)]
@@ -43,9 +60,9 @@ pub struct BoardState {
     /// Index of the currently selected row within the column
     pub current_row: usize,
     /// Visibility state for each column
-    pub visible_columns: [bool; 5],
+    pub visible_columns: [bool; COLUMN_COUNT],
     /// Scroll offset for each column (index of first visible card)
-    pub column_scroll_offsets: [usize; 5],
+    pub column_scroll_offsets: [usize; COLUMN_COUNT],
     /// Whether tickets are currently being loaded
     pub is_loading: bool,
     /// Result of repository initialization
@@ -546,7 +563,7 @@ pub fn reduce_board_state(
 /// Find the next visible column, wrapping around if necessary
 ///
 /// Returns the same column if no other columns are visible.
-pub fn find_next_visible_column(visible: &[bool; 5], current: usize) -> usize {
+pub fn find_next_visible_column(visible: &[bool; COLUMN_COUNT], current: usize) -> usize {
     let visible_idx: Vec<usize> = visible
         .iter()
         .enumerate()
@@ -570,7 +587,7 @@ pub fn find_next_visible_column(visible: &[bool; 5], current: usize) -> usize {
 /// Find the previous visible column, wrapping around if necessary
 ///
 /// Returns the same column if no other columns are visible.
-pub fn find_prev_visible_column(visible: &[bool; 5], current: usize) -> usize {
+pub fn find_prev_visible_column(visible: &[bool; COLUMN_COUNT], current: usize) -> usize {
     let visible_idx: Vec<usize> = visible
         .iter()
         .enumerate()
@@ -683,8 +700,8 @@ mod tests {
             search_focused: false,
             current_column: 0,
             current_row: 0,
-            visible_columns: [true; 5],
-            column_scroll_offsets: [0; 5],
+            visible_columns: [true; COLUMN_COUNT],
+            column_scroll_offsets: [0; COLUMN_COUNT],
             is_loading: false,
             init_result: InitResult::Ok,
             toast: None,
@@ -701,17 +718,18 @@ mod tests {
 
     #[test]
     fn test_find_next_visible_column_all_visible() {
-        let visible = [true; 5];
+        let visible = [true; COLUMN_COUNT];
         assert_eq!(find_next_visible_column(&visible, 0), 1);
         assert_eq!(find_next_visible_column(&visible, 1), 2);
         assert_eq!(find_next_visible_column(&visible, 3), 4);
+        assert_eq!(find_next_visible_column(&visible, 4), 5);
         // At last column, stays there
-        assert_eq!(find_next_visible_column(&visible, 4), 4);
+        assert_eq!(find_next_visible_column(&visible, 5), 5);
     }
 
     #[test]
     fn test_find_next_visible_column_skips_hidden() {
-        let visible = [true, false, false, true, false];
+        let visible = [true, false, false, true, false, false];
         assert_eq!(find_next_visible_column(&visible, 0), 3);
         // From 3, nowhere to go
         assert_eq!(find_next_visible_column(&visible, 3), 3);
@@ -719,7 +737,7 @@ mod tests {
 
     #[test]
     fn test_find_prev_visible_column_all_visible() {
-        let visible = [true; 5];
+        let visible = [true; COLUMN_COUNT];
         assert_eq!(find_prev_visible_column(&visible, 4), 3);
         assert_eq!(find_prev_visible_column(&visible, 3), 2);
         assert_eq!(find_prev_visible_column(&visible, 1), 0);
@@ -729,7 +747,7 @@ mod tests {
 
     #[test]
     fn test_find_prev_visible_column_skips_hidden() {
-        let visible = [true, false, false, true, false];
+        let visible = [true, false, false, true, false, false];
         assert_eq!(find_prev_visible_column(&visible, 3), 0);
         // From 0, nowhere to go
         assert_eq!(find_prev_visible_column(&visible, 0), 0);
@@ -737,7 +755,7 @@ mod tests {
 
     #[test]
     fn test_find_next_visible_column_none_visible() {
-        let visible = [false; 5];
+        let visible = [false; COLUMN_COUNT];
         // Returns current when none visible
         assert_eq!(find_next_visible_column(&visible, 2), 2);
     }
@@ -753,7 +771,7 @@ mod tests {
     fn test_reduce_move_right() {
         let state = BoardState {
             current_column: 0,
-            visible_columns: [true; 5],
+            visible_columns: [true; COLUMN_COUNT],
             ..default_state()
         };
         let new_state = reduce_board_state(state, BoardAction::MoveRight, TEST_COLUMN_HEIGHT);
@@ -764,7 +782,7 @@ mod tests {
     fn test_reduce_move_left() {
         let state = BoardState {
             current_column: 2,
-            visible_columns: [true; 5],
+            visible_columns: [true; COLUMN_COUNT],
             ..default_state()
         };
         let new_state = reduce_board_state(state, BoardAction::MoveLeft, TEST_COLUMN_HEIGHT);
@@ -810,7 +828,7 @@ mod tests {
     #[test]
     fn test_reduce_toggle_column() {
         let state = BoardState {
-            visible_columns: [true; 5],
+            visible_columns: [true; COLUMN_COUNT],
             ..default_state()
         };
         let new_state = reduce_board_state(state, BoardAction::ToggleColumn(1), TEST_COLUMN_HEIGHT);
@@ -823,7 +841,7 @@ mod tests {
     fn test_reduce_toggle_column_adjusts_selection() {
         let state = BoardState {
             current_column: 1,
-            visible_columns: [true; 5],
+            visible_columns: [true; COLUMN_COUNT],
             ..default_state()
         };
         // Toggle off column 1 (where we are)
@@ -905,7 +923,7 @@ mod tests {
         let state = default_state();
         let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
-        assert_eq!(view_model.columns.len(), 5); // All visible
+        assert_eq!(view_model.columns.len(), COLUMN_COUNT); // All visible
         assert_eq!(view_model.total_all_tickets, 0);
         assert_eq!(view_model.total_filtered_tickets, 0);
         assert!(view_model.selected_ticket.is_none());
@@ -965,7 +983,7 @@ mod tests {
     #[test]
     fn test_compute_view_model_hidden_columns() {
         let state = BoardState {
-            visible_columns: [true, false, false, true, false],
+            visible_columns: [true, false, false, true, false, false],
             tickets: vec![make_ticket("j-1", "Task", TicketStatus::New)],
             ..default_state()
         };
@@ -997,12 +1015,12 @@ mod tests {
     #[test]
     fn test_compute_view_model_column_toggles_string() {
         let state = BoardState {
-            visible_columns: [true, true, false, true, false],
+            visible_columns: [true, true, false, true, false, true],
             ..default_state()
         };
         let view_model = compute_board_view_model(&state, TEST_COLUMN_HEIGHT);
 
-        assert_eq!(view_model.column_toggles, "[N][X][ ][C][ ]");
+        assert_eq!(view_model.column_toggles, "[N][X][ ][C][ ][A]");
     }
 
     #[test]
@@ -1145,7 +1163,7 @@ mod tests {
                 .collect(),
             current_column: 0,
             current_row: 4,
-            column_scroll_offsets: [0; 5],
+            column_scroll_offsets: [0; COLUMN_COUNT],
             ..default_state()
         };
 
@@ -1176,7 +1194,7 @@ mod tests {
                 .collect(),
             current_column: 0,
             current_row: 5,
-            column_scroll_offsets: [5, 0, 0, 0, 0], // Scrolled down
+            column_scroll_offsets: [5, 0, 0, 0, 0, 0], // Scrolled down
             ..default_state()
         };
 
@@ -1198,7 +1216,7 @@ mod tests {
                 .collect(),
             current_column: 0,
             current_row: 10,
-            column_scroll_offsets: [5, 0, 0, 0, 0],
+            column_scroll_offsets: [5, 0, 0, 0, 0, 0],
             ..default_state()
         };
 
@@ -1218,7 +1236,7 @@ mod tests {
                 .collect(),
             current_column: 0,
             current_row: 0,
-            column_scroll_offsets: [0; 5],
+            column_scroll_offsets: [0; COLUMN_COUNT],
             ..default_state()
         };
 
@@ -1240,7 +1258,7 @@ mod tests {
                 .collect(),
             current_column: 0,
             current_row: 0,
-            column_scroll_offsets: [0; 5],
+            column_scroll_offsets: [0; COLUMN_COUNT],
             ..default_state()
         };
 
@@ -1257,7 +1275,7 @@ mod tests {
                 .collect(),
             current_column: 0,
             current_row: 15,
-            column_scroll_offsets: [10, 0, 0, 0, 0],
+            column_scroll_offsets: [10, 0, 0, 0, 0, 0],
             ..default_state()
         };
 
@@ -1282,8 +1300,8 @@ mod tests {
                 },
                 current_column: 0,
                 current_row: 8,
-                column_scroll_offsets: [4, 0, 0, 0, 0],
-                visible_columns: [true; 5],
+                column_scroll_offsets: [4, 0, 0, 0, 0, 0],
+                visible_columns: [true; COLUMN_COUNT],
                 ..default_state()
             };
 
@@ -1305,8 +1323,8 @@ mod tests {
                 .collect(),
             current_column: 0,
             current_row: 7,
-            column_scroll_offsets: [5, 0, 0, 0, 0], // Scrolled down 5
-            visible_columns: [true; 5],
+            column_scroll_offsets: [5, 0, 0, 0, 0, 0], // Scrolled down 5
+            visible_columns: [true; COLUMN_COUNT],
             ..default_state()
         };
 

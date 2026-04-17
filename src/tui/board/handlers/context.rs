@@ -7,20 +7,12 @@ use std::path::PathBuf;
 
 use iocraft::prelude::{Handler, State};
 
+use crate::tui::board::model::{COLUMN_COUNT, COLUMNS};
 use crate::tui::edit::EditResult;
 use crate::tui::edit_state::{EditFormState, EditMode};
 use crate::tui::search::{FilteredTicket, filter_tickets};
 use crate::tui::search_orchestrator::SearchState as SearchOrchestrator;
 use crate::types::{TicketMetadata, TicketStatus};
-
-/// The 5 kanban columns in order
-const COLUMNS: [TicketStatus; 5] = [
-    TicketStatus::New,
-    TicketStatus::Next,
-    TicketStatus::InProgress,
-    TicketStatus::Complete,
-    TicketStatus::Cancelled,
-];
 
 /// Cached filtered tickets grouped by column
 #[derive(Clone)]
@@ -45,10 +37,10 @@ pub struct BoardHandlerContext<'a> {
     pub search_orchestrator: &'a mut SearchOrchestrator,
     pub should_exit: &'a mut State<bool>,
     pub needs_reload: &'a mut State<bool>,
-    pub visible_columns: &'a mut State<[bool; 5]>,
+    pub visible_columns: &'a mut State<[bool; COLUMN_COUNT]>,
     pub current_column: &'a mut State<usize>,
     pub current_row: &'a mut State<usize>,
-    pub column_scroll_offsets: &'a mut State<[usize; 5]>,
+    pub column_scroll_offsets: &'a mut State<[usize; COLUMN_COUNT]>,
     pub column_height: usize,
     pub edit_mode: &'a mut State<EditMode>,
     pub edit_result: &'a mut State<EditResult>,

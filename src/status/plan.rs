@@ -103,7 +103,7 @@ pub fn compute_plan_status(
 
     let completed_count = statuses
         .iter()
-        .filter(|s| **s == TicketStatus::Complete)
+        .filter(|s| matches!(**s, TicketStatus::Complete | TicketStatus::Archived))
         .count();
 
     let status = compute_aggregate_status(&statuses);
@@ -159,7 +159,7 @@ fn compute_phase_status_impl(
 
     let completed_count = statuses
         .iter()
-        .filter(|s| **s == TicketStatus::Complete)
+        .filter(|s| matches!(**s, TicketStatus::Complete | TicketStatus::Archived))
         .count();
 
     let status = compute_aggregate_status(&statuses);
@@ -223,7 +223,11 @@ pub fn compute_aggregate_status(statuses: &[TicketStatus]) -> TicketStatus {
 
     let all_terminal = statuses.iter().all(|&s| is_terminal(s));
     let all_not_started = statuses.iter().all(|&s| is_not_started(s));
-    let has_complete = statuses.contains(&TicketStatus::Complete);
+    // Archived tickets roll up as "complete" for plan-status purposes — they
+    // represent finished work, just older finished work.
+    let has_complete = statuses
+        .iter()
+        .any(|s| matches!(s, TicketStatus::Complete | TicketStatus::Archived));
     let has_cancelled = statuses.contains(&TicketStatus::Cancelled);
 
     match (all_terminal, all_not_started, has_complete, has_cancelled) {

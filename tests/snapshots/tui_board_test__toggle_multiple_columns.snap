@@ -1,5 +1,6 @@
 ---
 source: tests/tui_board_test.rs
+assertion_line: 107
 expression: state.visible_columns
 ---
 [
@@ -7,5 +8,6 @@ expression: state.visible_columns
     false,
     false,
     false,
+    true,
     true,
 ]

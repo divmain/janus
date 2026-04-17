@@ -182,6 +182,25 @@ impl Ticket {
         // Capture old value for event logging
         let old_value = self.extract_field_value_for_logging(&raw_content, field);
 
+        // When transitioning status into a terminal state for the first time, also stamp
+        // `completed-at`. This covers direct `update_field("status", ...)` callers (set
+        // command, TUI cycle-status, etc.) so every status-writing path gets the stamp.
+        let completed_at_value = if field == "status" {
+            let new_status = value.parse::<crate::types::TicketStatus>().ok();
+            let is_new_terminal = new_status.is_some_and(|s| s.is_terminal());
+            let old_metadata = parse(&raw_content).ok();
+            let was_terminal = old_metadata
+                .as_ref()
+                .and_then(|m| m.status)
+                .is_some_and(|s| s.is_terminal());
+            let already_stamped = old_metadata
+                .as_ref()
+                .is_some_and(|m| m.completed_at.is_some());
+            (is_new_terminal && !was_terminal && !already_stamped).then(crate::utils::iso_date)
+        } else {
+            None
+        };
+
         let context = self
             .hook_context()
             .with_field_name(field)
@@ -190,7 +209,10 @@ impl Ticket {
         crate::fs::with_write_hooks(
             context,
             || {
-                let new_content = update_field_in_content(&raw_content, field, value)?;
+                let mut new_content = update_field_in_content(&raw_content, field, value)?;
+                if let Some(ts) = completed_at_value.as_deref() {
+                    new_content = update_field_in_content(&new_content, "completed-at", ts)?;
+                }
                 self.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
@@ -272,13 +294,18 @@ impl Ticket {
         let raw_content = self.read_content()?;
 
         // Capture old status for event logging
-        let old_status = if let Ok(metadata) = parse(&raw_content) {
-            metadata.status.map(|s| s.to_string())
-        } else {
-            None
-        };
+        let old_metadata = parse(&raw_content).ok();
+        let old_status = old_metadata.as_ref().and_then(|m| m.status);
 
         let new_status_str = new_status.to_string();
+
+        // Decide whether this transition should stamp `completed-at`. Stamp only on the
+        // first time a ticket reaches a terminal state, and preserve an existing stamp
+        // so that, e.g., Complete → Archived keeps the original completion time.
+        let needs_completed_at_stamp = new_status.is_terminal()
+            && old_status.is_none_or(|s| !s.is_terminal())
+            && old_metadata.as_ref().is_none_or(|m| m.completed_at.is_none());
+        let completed_at_value = needs_completed_at_stamp.then(crate::utils::iso_date);
 
         // Update the status field
         let context = self
@@ -289,7 +316,11 @@ impl Ticket {
         crate::fs::with_write_hooks(
             context,
             || {
-                let new_content = update_field_in_content(&raw_content, "status", &new_status_str)?;
+                let mut new_content =
+                    update_field_in_content(&raw_content, "status", &new_status_str)?;
+                if let Some(ts) = completed_at_value.as_deref() {
+                    new_content = update_field_in_content(&new_content, "completed-at", ts)?;
+                }
                 self.write_raw(&new_content)
             },
             Some(HookEvent::TicketUpdated),
@@ -311,9 +342,10 @@ impl Ticket {
         };
 
         // Log the status change event at the domain layer (write boundary)
+        let old_status_str = old_status.map(|s| s.to_string());
         crate::events::log_status_changed(
             &self.id,
-            old_status.as_deref().unwrap_or("new"),
+            old_status_str.as_deref().unwrap_or("new"),
             &new_status_str,
             summary_for_log.as_deref(),
             actor,

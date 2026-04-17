@@ -52,8 +52,9 @@ mod tests {
     fn test_ticket_status_cycle() {
         assert_eq!(TicketStatus::New.next(), TicketStatus::Next);
         assert_eq!(TicketStatus::Next.prev(), TicketStatus::New);
-        assert_eq!(TicketStatus::Cancelled.next(), TicketStatus::New);
-        assert_eq!(TicketStatus::New.prev(), TicketStatus::Cancelled);
+        assert_eq!(TicketStatus::Cancelled.next(), TicketStatus::Archived);
+        assert_eq!(TicketStatus::Archived.next(), TicketStatus::New);
+        assert_eq!(TicketStatus::New.prev(), TicketStatus::Archived);
     }
 
     #[test]

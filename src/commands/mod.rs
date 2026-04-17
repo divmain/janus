@@ -1,6 +1,7 @@
 use crate::cli::OutputOptions;
 
 mod add_note;
+mod archive;
 mod board;
 mod cache;
 mod config;
@@ -29,6 +30,7 @@ pub mod sync;
 mod view;
 
 pub use add_note::cmd_add_note;
+pub use archive::cmd_archive;
 pub use board::cmd_board;
 pub use cache::{cmd_cache_prune, cmd_cache_rebuild, cmd_cache_status};
 pub use config::{cmd_config_get, cmd_config_set, cmd_config_show};

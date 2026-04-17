@@ -126,6 +126,7 @@ pub fn status_icon(status: TicketStatus) -> &'static str {
         TicketStatus::Next => "◎",
         TicketStatus::New => "○",
         TicketStatus::Cancelled => "✗",
+        TicketStatus::Archived => "▣",
     }
 }
 
@@ -137,6 +138,7 @@ pub fn phase_status_icon(status: TicketStatus) -> &'static str {
         TicketStatus::New => "○",
         TicketStatus::Cancelled => "✗",
         TicketStatus::Next => "◎",
+        TicketStatus::Archived => "▣",
     }
 }
 

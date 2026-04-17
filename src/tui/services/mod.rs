@@ -94,6 +94,7 @@ impl TicketService {
             TicketStatus::InProgress => TicketStatus::Complete,
             TicketStatus::Complete => TicketStatus::New,
             TicketStatus::Cancelled => TicketStatus::New,
+            TicketStatus::Archived => TicketStatus::New,
         }
     }
 

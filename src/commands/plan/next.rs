@@ -122,8 +122,8 @@ pub fn get_next_items_phased(
                 .and_then(|t| t.status)
                 .unwrap_or(TicketStatus::New);
 
-            // Skip completed/cancelled tickets
-            if status == TicketStatus::Complete || status == TicketStatus::Cancelled {
+            // Skip tickets that have reached a terminal state.
+            if status.is_terminal() {
                 continue;
             }
 
@@ -186,8 +186,8 @@ pub fn get_next_items_simple(
             .and_then(|t| t.status)
             .unwrap_or(TicketStatus::New);
 
-        // Skip completed/cancelled tickets
-        if status == TicketStatus::Complete || status == TicketStatus::Cancelled {
+        // Skip tickets that have reached a terminal state.
+        if status.is_terminal() {
             continue;
         }
 

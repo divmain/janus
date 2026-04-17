@@ -293,6 +293,24 @@ pub enum Commands {
     /// View issues on a Kanban board
     Board,
 
+    /// Move old completed tickets to archived status.
+    ///
+    /// Scans tickets in Complete status and moves any whose age exceeds the
+    /// configured threshold (`archive.days` in config.yaml, default 7 days)
+    /// to Archived. The same sweep runs automatically on `janus board` launch.
+    Archive {
+        /// Override the configured archive threshold for this run (days).
+        #[arg(long)]
+        days: Option<u32>,
+
+        /// Print what would be archived without making changes.
+        #[arg(long)]
+        dry_run: bool,
+
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+
     /// Manage remote issues (use --help for subcommands)
     Remote {
         #[command(subcommand)]
@@ -975,7 +993,8 @@ impl Commands {
     /// Execute the command, dispatching to the appropriate handler.
     pub async fn run(self) -> crate::error::Result<()> {
         use crate::commands::{
-            CreateOptions, LsOptions, cmd_add_note, cmd_adopt, cmd_board, cmd_cache_prune,
+            CreateOptions, LsOptions, cmd_add_note, cmd_adopt, cmd_archive, cmd_board,
+            cmd_cache_prune,
             cmd_cache_rebuild, cmd_cache_status, cmd_close, cmd_config_get, cmd_config_set,
             cmd_config_show, cmd_create, cmd_dep_add, cmd_dep_remove, cmd_dep_tree, cmd_doc_create,
             cmd_doc_edit, cmd_doc_ls, cmd_doc_search, cmd_doc_show, cmd_doctor, cmd_edit,
@@ -1130,6 +1149,11 @@ impl Commands {
 
             Commands::View => cmd_view().await,
             Commands::Board => cmd_board().await,
+            Commands::Archive {
+                days,
+                dry_run,
+                output,
+            } => cmd_archive(days, dry_run, output).await,
 
             Commands::Remote { action } => match action {
                 RemoteAction::Browse { provider } => cmd_remote_browse(provider.as_deref()).await,

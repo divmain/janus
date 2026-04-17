@@ -24,5 +24,6 @@ where
         TicketStatus::InProgress => badge.cyan().to_string(),
         TicketStatus::Complete => badge.green().to_string(),
         TicketStatus::Cancelled => badge.dimmed().to_string(),
+        TicketStatus::Archived => badge.dimmed().to_string(),
     }
 }
