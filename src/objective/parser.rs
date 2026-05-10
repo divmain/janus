@@ -30,8 +30,8 @@ struct ObjectiveFrontmatter {
     uuid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     created: Option<CreatedAt>,
-    #[serde(rename = "satisfied-by", skip_serializing_if = "Option::is_none")]
-    satisfied_by: Option<String>,
+    #[serde(rename = "satisfied-by", default, skip_serializing_if = "Vec::is_empty")]
+    satisfied_by: Vec<String>,
 }
 
 /// Parse an objective file's content into ObjectiveMetadata.
@@ -165,7 +165,8 @@ mod tests {
 id: objv-a1b2
 uuid: 550e8400-e29b-41d4-a716-446655440000
 created: 2024-01-01T00:00:00Z
-satisfied-by: plan-x1y2
+satisfied-by:
+  - plan-x1y2
 ---
 # My Objective
 
@@ -193,7 +194,7 @@ Some note content.
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
         );
         assert_eq!(metadata.created.as_deref(), Some("2024-01-01T00:00:00Z"));
-        assert_eq!(metadata.satisfied_by, Some("plan-x1y2".to_string()));
+        assert_eq!(metadata.satisfied_by, vec!["plan-x1y2".to_string()]);
         assert_eq!(metadata.title, Some("My Objective".to_string()));
         assert_eq!(
             metadata.description,
@@ -226,7 +227,7 @@ An objective without satisfaction.
 
         let metadata = parse_objective_content(content).unwrap();
         assert_eq!(metadata.id.as_deref(), Some("objv-test"));
-        assert!(metadata.satisfied_by.is_none());
+        assert!(metadata.satisfied_by.is_empty());
         assert_eq!(metadata.title, Some("Unrealized Objective".to_string()));
         assert_eq!(metadata.acceptance_criteria.len(), 1);
     }

@@ -1,7 +1,7 @@
 //! Objective status computation logic.
 //!
-//! Status is auto-computed at read time from the `satisfied_by` reference.
-//! If `satisfied_by` is absent or the referenced entity isn't complete,
+//! Status is auto-computed at read time from the `satisfied_by` references.
+//! If `satisfied_by` is empty or any referenced entity isn't complete,
 //! status is `Unrealized`. Otherwise, status is `Achieved`.
 
 use std::collections::HashMap;
@@ -10,67 +10,55 @@ use crate::plan::types::PlanMetadata;
 use crate::status::is_terminal;
 use crate::types::{ObjectiveStatus, TicketMetadata, TicketStatus};
 
-/// Compute the status of an objective based on its `satisfied_by` reference.
+/// Compute the status of an objective based on its `satisfied_by` references.
 ///
 /// # Rules
 ///
-/// - If `satisfied_by` is `None` → `Unrealized`
-/// - If it starts with `plan-`, look it up in `plan_map`. If found, check whether
-///   all its tickets (from `ticket_map`) are complete or cancelled. If so → `Achieved`,
+/// - If `satisfied_by` is empty → `Unrealized`
+/// - For each reference: if it starts with `plan-`, look it up in `plan_map`. If found, check whether
+///   all its tickets (from `ticket_map`) are complete or cancelled. If so → contributes to `Achieved`,
 ///   otherwise → `Unrealized`.
 /// - Otherwise, treat as a ticket ID. If found in `ticket_map` and status is
-///   `Complete` or `Archived` → `Achieved`, else → `Unrealized`.
-/// - If the referenced entity is not found (dangling reference) → `Unrealized`.
+///   `Complete` or `Archived` → contributes to `Achieved`, else → `Unrealized`.
+/// - If any referenced entity is not found (dangling reference) → `Unrealized`.
+/// - Only if ALL references are achieved → `Achieved`.
 pub fn compute_objective_status(
-    satisfied_by: Option<&str>,
+    satisfied_by: &[String],
     ticket_map: &HashMap<String, TicketMetadata>,
     plan_map: &HashMap<String, PlanMetadata>,
 ) -> ObjectiveStatus {
-    let Some(ref_id) = satisfied_by else {
+    if satisfied_by.is_empty() {
         return ObjectiveStatus::Unrealized;
-    };
+    }
 
-    if ref_id.starts_with("plan-") {
-        // Look up plan and check if all its tickets are terminal
-        if let Some(plan_meta) = plan_map.get(ref_id) {
-            let all_ticket_ids = plan_meta.all_tickets();
+    let all_achieved = satisfied_by.iter().all(|ref_id| {
+        is_ref_achieved(ref_id, ticket_map, plan_map)
+    });
 
-            if all_ticket_ids.is_empty() {
-                // Plan with no tickets is not considered achieved
-                return ObjectiveStatus::Unrealized;
-            }
-
-            // Check that all referenced tickets are terminal (complete or cancelled)
-            let all_terminal = all_ticket_ids.iter().all(|tid| {
-                ticket_map
-                    .get(*tid)
-                    .is_some_and(|t| t.status.is_some_and(is_terminal))
-            });
-
-            if all_terminal {
-                ObjectiveStatus::Achieved
-            } else {
-                ObjectiveStatus::Unrealized
-            }
-        } else {
-            // Dangling plan reference
-            ObjectiveStatus::Unrealized
-        }
+    if all_achieved {
+        ObjectiveStatus::Achieved
     } else {
-        // Treat as ticket ID
-        if let Some(ticket) = ticket_map.get(ref_id) {
-            if matches!(
-                ticket.status,
-                Some(TicketStatus::Complete) | Some(TicketStatus::Archived)
-            ) {
-                ObjectiveStatus::Achieved
-            } else {
-                ObjectiveStatus::Unrealized
-            }
-        } else {
-            // Dangling ticket reference
-            ObjectiveStatus::Unrealized
-        }
+        ObjectiveStatus::Unrealized
+    }
+}
+
+fn is_ref_achieved(
+    ref_id: &str,
+    ticket_map: &HashMap<String, TicketMetadata>,
+    plan_map: &HashMap<String, PlanMetadata>,
+) -> bool {
+    if ref_id.starts_with("plan-") {
+        plan_map.get(ref_id).is_some_and(|plan_meta| {
+            let all_ticket_ids = plan_meta.all_tickets();
+            !all_ticket_ids.is_empty()
+                && all_ticket_ids.iter().all(|tid| {
+                    ticket_map.get(*tid).is_some_and(|t| t.status.is_some_and(is_terminal))
+                })
+        })
+    } else {
+        ticket_map.get(ref_id).is_some_and(|ticket| {
+            matches!(ticket.status, Some(TicketStatus::Complete) | Some(TicketStatus::Archived))
+        })
     }
 }
 
@@ -105,7 +93,7 @@ mod tests {
         let plan_map = HashMap::new();
 
         assert_eq!(
-            compute_objective_status(None, &ticket_map, &plan_map),
+            compute_objective_status(&[], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }
@@ -120,7 +108,7 @@ mod tests {
         let plan_map = HashMap::new();
 
         assert_eq!(
-            compute_objective_status(Some("j-done"), &ticket_map, &plan_map),
+            compute_objective_status(&["j-done".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Achieved
         );
     }
@@ -136,7 +124,7 @@ mod tests {
 
         // Archived tickets have still satisfied the objective
         assert_eq!(
-            compute_objective_status(Some("j-arch"), &ticket_map, &plan_map),
+            compute_objective_status(&["j-arch".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Achieved
         );
     }
@@ -151,7 +139,7 @@ mod tests {
         let plan_map = HashMap::new();
 
         assert_eq!(
-            compute_objective_status(Some("j-wip"), &ticket_map, &plan_map),
+            compute_objective_status(&["j-wip".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }
@@ -167,7 +155,7 @@ mod tests {
 
         // Only Complete maps to Achieved for single tickets
         assert_eq!(
-            compute_objective_status(Some("j-can"), &ticket_map, &plan_map),
+            compute_objective_status(&["j-can".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }
@@ -178,7 +166,7 @@ mod tests {
         let plan_map = HashMap::new();
 
         assert_eq!(
-            compute_objective_status(Some("j-nonexistent"), &ticket_map, &plan_map),
+            compute_objective_status(&["j-nonexistent".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }
@@ -196,14 +184,14 @@ mod tests {
         );
 
         assert_eq!(
-            compute_objective_status(Some("plan-done"), &ticket_map, &plan_map),
+            compute_objective_status(&["plan-done".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Achieved
         );
     }
 
     #[test]
     fn test_plan_mixed_terminal() {
-        // All tickets are terminal (complete or cancelled) → Achieved
+        // All tickets are terminal (complete or cancelled) -> Achieved
         let mut ticket_map = HashMap::new();
         ticket_map.insert("t1".to_string(), make_ticket("t1", TicketStatus::Complete));
         ticket_map.insert("t2".to_string(), make_ticket("t2", TicketStatus::Cancelled));
@@ -215,14 +203,14 @@ mod tests {
         );
 
         assert_eq!(
-            compute_objective_status(Some("plan-mix"), &ticket_map, &plan_map),
+            compute_objective_status(&["plan-mix".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Achieved
         );
     }
 
     #[test]
     fn test_plan_with_archived_tickets() {
-        // Plan with a mix of complete and archived tickets → all terminal → Achieved
+        // Plan with a mix of complete and archived tickets -> all terminal -> Achieved
         let mut ticket_map = HashMap::new();
         ticket_map.insert("t1".to_string(), make_ticket("t1", TicketStatus::Complete));
         ticket_map.insert("t2".to_string(), make_ticket("t2", TicketStatus::Archived));
@@ -234,7 +222,7 @@ mod tests {
         );
 
         assert_eq!(
-            compute_objective_status(Some("plan-arch"), &ticket_map, &plan_map),
+            compute_objective_status(&["plan-arch".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Achieved
         );
     }
@@ -252,7 +240,7 @@ mod tests {
         );
 
         assert_eq!(
-            compute_objective_status(Some("plan-wip"), &ticket_map, &plan_map),
+            compute_objective_status(&["plan-wip".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }
@@ -264,7 +252,7 @@ mod tests {
         plan_map.insert("plan-empty".to_string(), make_plan("plan-empty", vec![]));
 
         assert_eq!(
-            compute_objective_status(Some("plan-empty"), &ticket_map, &plan_map),
+            compute_objective_status(&["plan-empty".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }
@@ -275,7 +263,7 @@ mod tests {
         let plan_map = HashMap::new();
 
         assert_eq!(
-            compute_objective_status(Some("plan-nonexistent"), &ticket_map, &plan_map),
+            compute_objective_status(&["plan-nonexistent".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }
@@ -293,9 +281,78 @@ mod tests {
             make_plan("plan-miss", vec!["t1", "t2"]),
         );
 
-        // Missing ticket means not all are terminal → Unrealized
+        // Missing ticket means not all are terminal -> Unrealized
         assert_eq!(
-            compute_objective_status(Some("plan-miss"), &ticket_map, &plan_map),
+            compute_objective_status(&["plan-miss".to_string()], &ticket_map, &plan_map),
+            ObjectiveStatus::Unrealized
+        );
+    }
+
+    #[test]
+    fn test_multiple_refs_all_complete() {
+        let mut ticket_map = HashMap::new();
+        ticket_map.insert("j-a".to_string(), make_ticket("j-a", TicketStatus::Complete));
+        ticket_map.insert("j-b".to_string(), make_ticket("j-b", TicketStatus::Complete));
+        let plan_map = HashMap::new();
+
+        assert_eq!(
+            compute_objective_status(&["j-a".to_string(), "j-b".to_string()], &ticket_map, &plan_map),
+            ObjectiveStatus::Achieved
+        );
+    }
+
+    #[test]
+    fn test_multiple_refs_one_incomplete() {
+        let mut ticket_map = HashMap::new();
+        ticket_map.insert("j-a".to_string(), make_ticket("j-a", TicketStatus::Complete));
+        ticket_map.insert("j-b".to_string(), make_ticket("j-b", TicketStatus::InProgress));
+        let plan_map = HashMap::new();
+
+        assert_eq!(
+            compute_objective_status(&["j-a".to_string(), "j-b".to_string()], &ticket_map, &plan_map),
+            ObjectiveStatus::Unrealized
+        );
+    }
+
+    #[test]
+    fn test_multiple_refs_mixed_ticket_and_plan() {
+        let mut ticket_map = HashMap::new();
+        ticket_map.insert("j-a".to_string(), make_ticket("j-a", TicketStatus::Complete));
+        ticket_map.insert("t1".to_string(), make_ticket("t1", TicketStatus::Complete));
+
+        let mut plan_map = HashMap::new();
+        plan_map.insert(
+            "plan-mix".to_string(),
+            make_plan("plan-mix", vec!["t1"]),
+        );
+
+        assert_eq!(
+            compute_objective_status(&["j-a".to_string(), "plan-mix".to_string()], &ticket_map, &plan_map),
+            ObjectiveStatus::Achieved
+        );
+    }
+
+    #[test]
+    fn test_multiple_refs_one_cancelled() {
+        let mut ticket_map = HashMap::new();
+        ticket_map.insert("j-a".to_string(), make_ticket("j-a", TicketStatus::Complete));
+        ticket_map.insert("j-b".to_string(), make_ticket("j-b", TicketStatus::Cancelled));
+        let plan_map = HashMap::new();
+
+        assert_eq!(
+            compute_objective_status(&["j-a".to_string(), "j-b".to_string()], &ticket_map, &plan_map),
+            ObjectiveStatus::Unrealized
+        );
+    }
+
+    #[test]
+    fn test_multiple_refs_one_dangling() {
+        let mut ticket_map = HashMap::new();
+        ticket_map.insert("j-a".to_string(), make_ticket("j-a", TicketStatus::Complete));
+        let plan_map = HashMap::new();
+
+        assert_eq!(
+            compute_objective_status(&["j-a".to_string(), "j-missing".to_string()], &ticket_map, &plan_map),
             ObjectiveStatus::Unrealized
         );
     }

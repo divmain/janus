@@ -16,13 +16,13 @@ use crate::store::get_or_init_store;
 /// * `title` - The objective title
 /// * `description` - Optional description text
 /// * `criteria` - Acceptance criteria (list of strings)
-/// * `satisfied_by` - Optional ticket or plan ID that satisfies this objective
+/// * `satisfied_by` - Ticket or plan IDs that satisfy this objective
 /// * `output` - Output options (JSON vs text)
 pub async fn cmd_objective_create(
     title: &str,
     description: Option<&str>,
     criteria: &[String],
-    satisfied_by: Option<&str>,
+    satisfied_by: &[String],
     output: OutputOptions,
 ) -> Result<()> {
     // Validate title
@@ -52,8 +52,8 @@ pub async fn cmd_objective_create(
     if !criteria.is_empty() {
         builder = builder.acceptance_criteria(criteria.to_vec());
     }
-    if let Some(ref_id) = satisfied_by {
-        builder = builder.satisfied_by(ref_id);
+    for ref_id in satisfied_by {
+        builder = builder.add_satisfied_by(ref_id);
     }
 
     let (id, content) = builder.build()?;

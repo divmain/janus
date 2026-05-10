@@ -663,7 +663,7 @@ async fn read_objective(id: &str) -> Result<ReadResourceResult, ResourceError> {
         .await
         .map_err(|e| ResourceError::Internal(format!("Failed to load plans: {e}")))?;
 
-    let status = compute_objective_status(metadata.satisfied_by.as_deref(), &ticket_map, &plan_map);
+    let status = compute_objective_status(&metadata.satisfied_by, &ticket_map, &plan_map);
 
     // Format as markdown
     let mut content = String::new();
@@ -671,10 +671,12 @@ async fn read_objective(id: &str) -> Result<ReadResourceResult, ResourceError> {
     content.push_str(&format!("# {title}\n\n"));
     content.push_str(&format!("**ID:** {}\n", objective.id));
     content.push_str(&format!("**Status:** {status}\n"));
-    content.push_str(&format!(
-        "**Satisfied By:** {}\n",
-        metadata.satisfied_by.as_deref().unwrap_or("None")
-    ));
+    let satisfied_by_str = if metadata.satisfied_by.is_empty() {
+        "None".to_string()
+    } else {
+        metadata.satisfied_by.join(", ")
+    };
+    content.push_str(&format!("**Satisfied By:** {satisfied_by_str}\n"));
     if let Some(ref created) = metadata.created {
         let date = created
             .as_ref()

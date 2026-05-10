@@ -20,9 +20,9 @@ pub struct ObjectiveMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<CreatedAt>,
 
-    /// Reference to a ticket or plan that satisfies this objective
-    #[serde(rename = "satisfied-by", skip_serializing_if = "Option::is_none")]
-    pub satisfied_by: Option<String>,
+    /// References to tickets or plans that satisfy this objective
+    #[serde(rename = "satisfied-by", default, skip_serializing_if = "Vec::is_empty")]
+    pub satisfied_by: Vec<String>,
 
     // Runtime-only fields (not persisted to YAML frontmatter)
     /// Title extracted from H1 heading
@@ -128,7 +128,7 @@ mod tests {
         assert!(meta.id.is_none());
         assert!(meta.uuid.is_none());
         assert!(meta.created.is_none());
-        assert!(meta.satisfied_by.is_none());
+        assert!(meta.satisfied_by.is_empty());
         assert!(meta.title.is_none());
         assert!(meta.description.is_none());
         assert!(meta.acceptance_criteria.is_empty());
@@ -142,13 +142,13 @@ mod tests {
         let meta = ObjectiveMetadata {
             id: Some(ObjectiveId::new_unchecked("objv-test")),
             uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
-            satisfied_by: Some("plan-x1y2".to_string()),
+            satisfied_by: vec!["plan-x1y2".to_string()],
             ..Default::default()
         };
 
         let yaml_str = yaml::to_string(&meta).unwrap();
         assert!(yaml_str.contains("id: objv-test"));
-        assert!(yaml_str.contains("satisfied-by: plan-x1y2"));
+        assert!(yaml_str.contains("- plan-x1y2"));
     }
 
     #[test]
@@ -172,7 +172,8 @@ mod tests {
         let yaml_str = r#"
 id: objv-test
 uuid: 550e8400-e29b-41d4-a716-446655440000
-satisfied-by: plan-x1y2
+satisfied-by:
+  - plan-x1y2
 "#;
         let meta: ObjectiveMetadata = yaml::from_str(yaml_str).unwrap();
         assert_eq!(meta.id.as_deref(), Some("objv-test"));
@@ -180,7 +181,20 @@ satisfied-by: plan-x1y2
             meta.uuid,
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
         );
-        assert_eq!(meta.satisfied_by, Some("plan-x1y2".to_string()));
+        assert_eq!(meta.satisfied_by, vec!["plan-x1y2".to_string()]);
+    }
+
+    #[test]
+    fn test_objective_metadata_deserialization_sequence() {
+        use serde_yaml_ng as yaml;
+
+        let yaml_str = r#"
+id: objv-test
+satisfied-by:
+  - plan-x1y2
+"#;
+        let meta: ObjectiveMetadata = yaml::from_str(yaml_str).unwrap();
+        assert_eq!(meta.satisfied_by, vec!["plan-x1y2".to_string()]);
     }
 
     #[test]

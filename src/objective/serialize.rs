@@ -66,10 +66,14 @@ pub fn serialize_objective(metadata: &ObjectiveMetadata) -> Result<String> {
     }
 
     // Add satisfied-by
-    if let Some(satisfied_by) = &metadata.satisfied_by {
+    if !metadata.satisfied_by.is_empty() {
+        let refs: Vec<yaml::Value> = metadata.satisfied_by
+            .iter()
+            .map(|r| yaml::Value::String(r.clone()))
+            .collect();
         frontmatter.insert(
             yaml::Value::String("satisfied-by".to_string()),
-            yaml::Value::String(satisfied_by.clone()),
+            yaml::Value::Sequence(refs),
         );
     }
 
@@ -142,7 +146,7 @@ mod tests {
             id: Some(ObjectiveId::new_unchecked("objv-test")),
             uuid: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
             created: Some(CreatedAt::new_unchecked("2024-01-01T00:00:00Z")),
-            satisfied_by: Some("plan-x1y2".to_string()),
+            satisfied_by: vec!["plan-x1y2".to_string()],
             title: Some("Test Objective".to_string()),
             description: Some("A test objective description.".to_string()),
             acceptance_criteria: vec!["Criterion 1".to_string(), "Criterion 2".to_string()],
@@ -153,7 +157,7 @@ mod tests {
         assert!(content.contains("id: objv-test"));
         assert!(content.contains("uuid: 550e8400"));
         assert!(content.contains("created:") && content.contains("2024-01-01T00:00:00Z"));
-        assert!(content.contains("satisfied-by: plan-x1y2"));
+        assert!(content.contains("- plan-x1y2"));
         assert!(content.contains("# Test Objective"));
         assert!(content.contains("## Description"));
         assert!(content.contains("A test objective description."));
@@ -200,7 +204,8 @@ mod tests {
 id: objv-rt01
 uuid: 550e8400-e29b-41d4-a716-446655440000
 created: 2024-01-01T00:00:00Z
-satisfied-by: plan-x1y2
+satisfied-by:
+  - plan-x1y2
 ---
 # Roundtrip Test
 
@@ -227,7 +232,7 @@ A note.
         let reparsed = parse_objective_content(&serialized).unwrap();
         assert_eq!(reparsed.id, metadata.id);
         assert_eq!(reparsed.uuid, metadata.uuid);
-        assert_eq!(reparsed.satisfied_by, metadata.satisfied_by);
+        assert_eq!(reparsed.satisfied_by, vec!["plan-x1y2".to_string()]);
         assert_eq!(reparsed.title, metadata.title);
         assert_eq!(
             reparsed.acceptance_criteria.len(),

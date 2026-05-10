@@ -29,7 +29,9 @@
 //! | `create_objective` | Create a new objective |
 //! | `show_objective` | Get full objective content with computed status |
 //! | `list_objectives` | List objectives with optional status filter |
-//! | `update_objective` | Update an objective's satisfied-by field |
+//! | `objective_ref_add` | Add a satisfied-by reference to an objective |
+//! | `objective_ref_remove` | Remove a satisfied-by reference from an objective |
+//! | `objective_ref_reset` | Reset all satisfied-by references on an objective |
 //! | `delete_objective` | Delete an objective permanently |
 //! | `add_objective_note` | Add a timestamped note to an objective |
 //! | `add_objective_criterion` | Add an acceptance criterion to an objective |
@@ -67,9 +69,10 @@ use super::requests::{
     AddObjectiveNoteRequest, AddTicketToPlanRequest, CreateObjectiveRequest, CreateTicketRequest,
     DeleteObjectiveRequest, DocListRequest, DocSearchRequest, DocSetRequest, DocShowRequest,
     GetChildrenRequest, GetNextAvailableTicketRequest, GetPlanStatusRequest, ListObjectivesRequest,
-    ListTicketsRequest, RemoveDependencyRequest, RemoveLabelRequest, SemanticSearchRequest,
+    ListTicketsRequest, ObjectiveRefAddRequest, ObjectiveRefRemoveRequest, ObjectiveRefResetRequest,
+    RemoveDependencyRequest, RemoveLabelRequest, SemanticSearchRequest,
     ShowObjectiveRequest, ShowPlanDetailsRequest, ShowTicketRequest, SpawnSubtaskRequest,
-    UpdateObjectiveRequest, UpdateStatusRequest,
+    UpdateStatusRequest,
 };
 
 /// Helper to create ToolAnnotations with all fields set
@@ -474,10 +477,30 @@ impl JanusTools {
 
         register_tool!(
             router,
-            "update_objective",
-            "Update an objective's satisfied-by field to link it to a ticket or plan.",
-            UpdateObjectiveRequest,
-            update_objective_impl,
+            "objective_ref_add",
+            "Add a ticket or plan reference to an objective's satisfied-by list.",
+            ObjectiveRefAddRequest,
+            objective_ref_add_impl,
+            false,
+            tool_annotations(false, false, true, false)
+        );
+
+        register_tool!(
+            router,
+            "objective_ref_remove",
+            "Remove a ticket or plan reference from an objective's satisfied-by list.",
+            ObjectiveRefRemoveRequest,
+            objective_ref_remove_impl,
+            false,
+            tool_annotations(false, false, true, false)
+        );
+
+        register_tool!(
+            router,
+            "objective_ref_reset",
+            "Remove all references from an objective's satisfied-by list.",
+            ObjectiveRefResetRequest,
+            objective_ref_reset_impl,
             false,
             tool_annotations(false, false, true, false)
         );
@@ -1701,8 +1724,10 @@ impl JanusTools {
             builder = builder.acceptance_criteria(criteria.clone());
         }
 
-        if let Some(ref sat_by) = request.satisfied_by {
-            builder = builder.satisfied_by(sat_by);
+        if let Some(ref refs) = request.satisfied_by {
+            for ref_id in refs {
+                builder = builder.add_satisfied_by(ref_id);
+            }
         }
 
         let (id, content) = builder.build().map_err(|e| e.to_string())?;
@@ -1754,7 +1779,7 @@ impl JanusTools {
             .map_err(|e| format!("failed to load plans: {e}"))?;
 
         let status =
-            compute_objective_status(metadata.satisfied_by.as_deref(), &ticket_map, &plan_map);
+            compute_objective_status(&metadata.satisfied_by, &ticket_map, &plan_map);
 
         // Format as LLM-friendly markdown
         let mut output = String::new();
@@ -1764,10 +1789,12 @@ impl JanusTools {
 
         output.push_str(&format!("**ID:** {}\n", objective.id));
         output.push_str(&format!("**Status:** {status}\n"));
-        output.push_str(&format!(
-            "**Satisfied By:** {}\n",
-            metadata.satisfied_by.as_deref().unwrap_or("None")
-        ));
+        let satisfied_by_str = if metadata.satisfied_by.is_empty() {
+            "None".to_string()
+        } else {
+            metadata.satisfied_by.join(", ")
+        };
+        output.push_str(&format!("**Satisfied By:** {satisfied_by_str}\n"));
         if let Some(ref created) = metadata.created {
             let date = created
                 .as_ref()
@@ -1842,7 +1869,7 @@ impl JanusTools {
         let mut rows: Vec<(String, String, String, String)> = Vec::new();
         for obj in &objectives {
             let status =
-                compute_objective_status(obj.satisfied_by.as_deref(), &ticket_map, &plan_map);
+                compute_objective_status(&obj.satisfied_by, &ticket_map, &plan_map);
 
             if let Some(filter) = status_filter
                 && status != filter
@@ -1852,7 +1879,11 @@ impl JanusTools {
 
             let id = obj.id.as_deref().unwrap_or("unknown").to_string();
             let title = obj.title.as_deref().unwrap_or("Untitled").to_string();
-            let satisfied_by = obj.satisfied_by.as_deref().unwrap_or("-").to_string();
+            let satisfied_by = if obj.satisfied_by.is_empty() {
+                "-".to_string()
+            } else {
+                obj.satisfied_by.join(", ")
+            };
             rows.push((id, title, status.to_string(), satisfied_by));
         }
 
@@ -1879,10 +1910,10 @@ impl JanusTools {
         Ok(output)
     }
 
-    /// Update an objective's satisfied-by field.
-    async fn update_objective_impl(
+    /// Add a ticket or plan reference to an objective's satisfied-by list.
+    async fn objective_ref_add_impl(
         &self,
-        Parameters(request): Parameters<UpdateObjectiveRequest>,
+        Parameters(request): Parameters<ObjectiveRefAddRequest>,
     ) -> Result<String, String> {
         use crate::objective::Objective;
 
@@ -1892,62 +1923,90 @@ impl JanusTools {
             .await
             .map_err(|e| format!("Objective not found: {e}"))?;
 
-        if let Some(ref sat_by) = request.satisfied_by {
-            if sat_by.is_empty() {
-                // Remove the field
-                let raw_content = objective.read_content().map_err(|e| e.to_string())?;
-                let new_content = crate::ticket::remove_field(&raw_content, "satisfied-by")
-                    .map_err(|e| e.to_string())?;
-                objective.write(&new_content).map_err(|e| e.to_string())?;
+        objective
+            .add_ref_with_actor(&request.ref_id, Some(Actor::Mcp))
+            .map_err(|e| e.to_string())?;
 
-                crate::events::log_objective_field_updated(
-                    &objective.id,
-                    "satisfied-by",
-                    None,
-                    None,
-                    Some(Actor::Mcp),
-                );
-            } else {
-                // Update the field
-                objective
-                    .update_field("satisfied-by", sat_by)
-                    .map_err(|e| e.to_string())?;
-
-                // The update_field method logs with None actor, so log again with Mcp actor
-                // Actually, update_field already logs. But we need to check if it uses the right actor.
-                // Looking at the code, update_field logs with None actor. We need to log with Mcp.
-                // Since update_field already logged with None, we accept that for now.
-                // The event is already logged in update_field with actor=None.
-                // We can't easily override it, so this is acceptable.
-            }
-
-            // Refresh store
-            if let Ok(store) = get_or_init_store().await {
-                store.refresh_objective_in_store(&objective.id).await;
-            } else {
-                warn!(
-                    "Failed to refresh objective {} in store - store initialization failed",
-                    &objective.id
-                );
-            }
-
-            if sat_by.is_empty() {
-                Ok(format!(
-                    "Cleared satisfied-by on objective **{}**",
-                    objective.id
-                ))
-            } else {
-                Ok(format!(
-                    "Updated objective **{}** satisfied-by to **{}**",
-                    objective.id, sat_by
-                ))
-            }
+        // Refresh store
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_objective_in_store(&objective.id).await;
         } else {
-            Ok(format!(
-                "No changes made to objective **{}** (no fields to update)",
-                objective.id
-            ))
+            warn!(
+                "Failed to refresh objective {} in store - store initialization failed",
+                &objective.id
+            );
         }
+
+        Ok(format!(
+            "Added reference **{}** to objective **{}** satisfied-by list",
+            request.ref_id, objective.id
+        ))
+    }
+
+    /// Remove a ticket or plan reference from an objective's satisfied-by list.
+    async fn objective_ref_remove_impl(
+        &self,
+        Parameters(request): Parameters<ObjectiveRefRemoveRequest>,
+    ) -> Result<String, String> {
+        use crate::objective::Objective;
+
+        request.validate()?;
+
+        let objective = Objective::find(&request.id)
+            .await
+            .map_err(|e| format!("Objective not found: {e}"))?;
+
+        objective
+            .remove_ref_with_actor(&request.ref_id, Some(Actor::Mcp))
+            .map_err(|e| e.to_string())?;
+
+        // Refresh store
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_objective_in_store(&objective.id).await;
+        } else {
+            warn!(
+                "Failed to refresh objective {} in store - store initialization failed",
+                &objective.id
+            );
+        }
+
+        Ok(format!(
+            "Removed reference **{}** from objective **{}** satisfied-by list",
+            request.ref_id, objective.id
+        ))
+    }
+
+    /// Remove all references from an objective's satisfied-by list.
+    async fn objective_ref_reset_impl(
+        &self,
+        Parameters(request): Parameters<ObjectiveRefResetRequest>,
+    ) -> Result<String, String> {
+        use crate::objective::Objective;
+
+        request.validate()?;
+
+        let objective = Objective::find(&request.id)
+            .await
+            .map_err(|e| format!("Objective not found: {e}"))?;
+
+        objective
+            .reset_refs_with_actor(Some(Actor::Mcp))
+            .map_err(|e| e.to_string())?;
+
+        // Refresh store
+        if let Ok(store) = get_or_init_store().await {
+            store.refresh_objective_in_store(&objective.id).await;
+        } else {
+            warn!(
+                "Failed to refresh objective {} in store - store initialization failed",
+                &objective.id
+            );
+        }
+
+        Ok(format!(
+            "Cleared all references from objective **{}** satisfied-by list",
+            objective.id
+        ))
     }
 
     /// Delete an objective permanently.
@@ -2750,7 +2809,9 @@ mod annotation_tests {
             "add_ticket_to_plan",
             "doc_set",
             "create_objective",
-            "update_objective",
+            "objective_ref_add",
+            "objective_ref_remove",
+            "objective_ref_reset",
             "delete_objective",
             "add_objective_note",
             "add_objective_criterion",

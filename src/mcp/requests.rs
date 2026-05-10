@@ -513,9 +513,9 @@ pub struct CreateObjectiveRequest {
     #[schemars(description = "Optional list of acceptance criteria")]
     pub acceptance_criteria: Option<Vec<String>>,
 
-    /// Reference to a ticket or plan that satisfies this objective
-    #[schemars(description = "Optional ticket or plan ID that satisfies this objective")]
-    pub satisfied_by: Option<String>,
+    /// Ticket and/or plan IDs that satisfy this objective
+    #[schemars(description = "Ticket and/or plan IDs that satisfy this objective")]
+    pub satisfied_by: Option<Vec<String>>,
 }
 
 impl CreateObjectiveRequest {
@@ -570,21 +570,61 @@ impl ListObjectivesRequest {
     }
 }
 
-/// Request parameters for updating an objective
+/// Request parameters for adding a reference to an objective's satisfied-by list
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-pub struct UpdateObjectiveRequest {
-    /// Objective ID (can be partial)
-    #[schemars(description = "ID of the objective to update")]
+pub struct ObjectiveRefAddRequest {
+    /// Objective ID (full or partial)
+    #[schemars(description = "Objective ID (full or partial)")]
     pub id: String,
-
-    /// New value for satisfied-by field (ticket or plan ID). Use empty string to clear.
-    #[schemars(
-        description = "New value for satisfied-by field (ticket or plan ID). Use empty string to clear."
-    )]
-    pub satisfied_by: Option<String>,
+    /// Ticket or plan ID to add as a satisfied-by reference
+    #[schemars(description = "Ticket or plan ID to add as a satisfied-by reference")]
+    pub ref_id: String,
 }
 
-impl UpdateObjectiveRequest {
+impl ObjectiveRefAddRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Objective ID cannot be empty".to_string());
+        }
+        if self.ref_id.trim().is_empty() {
+            return Err("Reference ID cannot be empty".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// Request parameters for removing a reference from an objective's satisfied-by list
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct ObjectiveRefRemoveRequest {
+    /// Objective ID (full or partial)
+    #[schemars(description = "Objective ID (full or partial)")]
+    pub id: String,
+    /// Ticket or plan ID to remove from the satisfied-by list
+    #[schemars(description = "Ticket or plan ID to remove from the satisfied-by list")]
+    pub ref_id: String,
+}
+
+impl ObjectiveRefRemoveRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Objective ID cannot be empty".to_string());
+        }
+        if self.ref_id.trim().is_empty() {
+            return Err("Reference ID cannot be empty".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// Request parameters for resetting all references in an objective's satisfied-by list
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct ObjectiveRefResetRequest {
+    /// Objective ID (full or partial)
+    #[schemars(description = "Objective ID (full or partial)")]
+    pub id: String,
+}
+
+impl ObjectiveRefResetRequest {
     pub(crate) fn validate(&self) -> Result<(), String> {
         if self.id.trim().is_empty() {
             return Err("Objective ID cannot be empty".to_string());

@@ -40,7 +40,7 @@ pub async fn cmd_objective_ls(status_filter: Option<&str>, output: OutputOptions
         .iter()
         .map(|meta| {
             let status =
-                compute_objective_status(meta.satisfied_by.as_deref(), &ticket_map, &plan_map);
+                compute_objective_status(&meta.satisfied_by, &ticket_map, &plan_map);
             (meta, status)
         })
         .filter(|(_, status)| filter.is_none() || filter == Some(*status))
@@ -69,7 +69,11 @@ pub async fn cmd_objective_ls(status_filter: Option<&str>, output: OutputOptions
                 let id = meta.id.as_deref().unwrap_or("???");
                 let title = meta.title.as_deref().unwrap_or("");
                 let status_badge = format_objective_status(status);
-                let sat_by = meta.satisfied_by.as_deref().unwrap_or("-");
+                let sat_by = if meta.satisfied_by.is_empty() {
+                    "-".to_string()
+                } else {
+                    meta.satisfied_by.join(", ")
+                };
                 format!(
                     "{:16} {} {:16} {}",
                     id.cyan(),

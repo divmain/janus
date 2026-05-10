@@ -15,7 +15,7 @@ pub struct ObjectiveBuilder {
     title: String,
     description: Option<String>,
     acceptance_criteria: Vec<String>,
-    satisfied_by: Option<String>,
+    satisfied_by: Vec<String>,
 }
 
 impl ObjectiveBuilder {
@@ -25,7 +25,7 @@ impl ObjectiveBuilder {
             title: title.to_string(),
             description: None,
             acceptance_criteria: Vec::new(),
-            satisfied_by: None,
+            satisfied_by: Vec::new(),
         }
     }
 
@@ -41,9 +41,15 @@ impl ObjectiveBuilder {
         self
     }
 
-    /// Set the satisfied-by reference (ticket ID or plan ID).
-    pub fn satisfied_by(mut self, ref_id: &str) -> Self {
-        self.satisfied_by = Some(ref_id.to_string());
+    /// Add a single ticket or plan reference to the satisfied-by list.
+    pub fn add_satisfied_by(mut self, ref_id: &str) -> Self {
+        self.satisfied_by.push(ref_id.to_string());
+        self
+    }
+
+    /// Set all satisfied-by references at once, replacing any previously added.
+    pub fn satisfied_by_refs(mut self, refs: Vec<String>) -> Self {
+        self.satisfied_by = refs;
         self
     }
 
@@ -114,7 +120,7 @@ mod tests {
         let (id, content) = ObjectiveBuilder::new("Full Objective")
             .description("A detailed description.")
             .acceptance_criteria(vec!["Criterion A".to_string(), "Criterion B".to_string()])
-            .satisfied_by("plan-x1y2")
+            .add_satisfied_by("plan-x1y2")
             .build()
             .unwrap();
 
@@ -123,7 +129,7 @@ mod tests {
         assert!(content.contains("A detailed description."));
         assert!(content.contains("- Criterion A"));
         assert!(content.contains("- Criterion B"));
-        assert!(content.contains("satisfied-by: plan-x1y2"));
+        assert!(content.contains("- plan-x1y2"));
 
         // Verify round-trip
         let metadata = parse_objective_content(&content).unwrap();
@@ -133,6 +139,25 @@ mod tests {
             Some("A detailed description.".to_string())
         );
         assert_eq!(metadata.acceptance_criteria.len(), 2);
-        assert_eq!(metadata.satisfied_by, Some("plan-x1y2".to_string()));
+        assert_eq!(metadata.satisfied_by, vec!["plan-x1y2".to_string()]);
+    }
+
+    #[test]
+    fn test_builder_multiple_refs() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let _guard = JanusRootGuard::new(temp.path().join(".janus"));
+
+        let (id, content) = ObjectiveBuilder::new("Multi Ref Objective")
+            .add_satisfied_by("j-abc1")
+            .add_satisfied_by("plan-xyz2")
+            .build()
+            .unwrap();
+
+        assert!(id.starts_with("objv-"));
+        assert!(content.contains("- j-abc1"));
+        assert!(content.contains("- plan-xyz2"));
+
+        let metadata = parse_objective_content(&content).unwrap();
+        assert_eq!(metadata.satisfied_by, vec!["j-abc1".to_string(), "plan-xyz2".to_string()]);
     }
 }

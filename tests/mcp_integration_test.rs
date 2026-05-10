@@ -143,8 +143,8 @@ fn test_mcp_tools_list() {
     assert!(response["result"]["tools"].is_array());
     let tools = response["result"]["tools"].as_array().unwrap();
 
-    // Should have 26 tools (20 ticket/plan/doc tools + 6 objective tools)
-    assert_eq!(tools.len(), 27);
+    // Should have 29 tools (20 ticket/plan/doc tools + 9 objective tools)
+    assert_eq!(tools.len(), 29);
 
     // Verify all tool names are present
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
@@ -171,7 +171,9 @@ fn test_mcp_tools_list() {
     assert!(tool_names.contains(&"create_objective"));
     assert!(tool_names.contains(&"show_objective"));
     assert!(tool_names.contains(&"list_objectives"));
-    assert!(tool_names.contains(&"update_objective"));
+    assert!(tool_names.contains(&"objective_ref_add"));
+    assert!(tool_names.contains(&"objective_ref_remove"));
+    assert!(tool_names.contains(&"objective_ref_reset"));
     assert!(tool_names.contains(&"delete_objective"));
     assert!(tool_names.contains(&"add_objective_note"));
     assert!(tool_names.contains(&"add_objective_criterion"));

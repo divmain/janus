@@ -240,8 +240,8 @@ mod tests {
     fn test_tools_router_has_tools() {
         let server = JanusTools::new();
         let tools = server.router().list_all();
-        // We should have 26 tools (20 ticket/plan/doc tools + 6 objective tools)
-        assert_eq!(tools.len(), 27);
+        // We should have 29 tools (20 ticket/plan/doc tools + 9 objective tools)
+        assert_eq!(tools.len(), 29);
 
         // Verify tool names
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
@@ -268,7 +268,9 @@ mod tests {
         assert!(tool_names.contains(&"create_objective"));
         assert!(tool_names.contains(&"show_objective"));
         assert!(tool_names.contains(&"list_objectives"));
-        assert!(tool_names.contains(&"update_objective"));
+        assert!(tool_names.contains(&"objective_ref_add"));
+        assert!(tool_names.contains(&"objective_ref_remove"));
+        assert!(tool_names.contains(&"objective_ref_reset"));
         assert!(tool_names.contains(&"delete_objective"));
         assert!(tool_names.contains(&"add_objective_note"));
         assert!(tool_names.contains(&"add_objective_criterion"));

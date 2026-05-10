@@ -615,6 +615,12 @@ pub enum JanusError {
     #[error("failed to load {} objective file(s):\n{}", .0.len(), .0.join("\n"))]
     ObjectiveLoadFailed(Vec<String>),
 
+    #[error("reference '{0}' already exists on objective '{1}'")]
+    DuplicateObjectiveRef(String, String),
+
+    #[error("reference '{0}' not found on objective '{1}'")]
+    ObjectiveRefNotFound(String, String),
+
     #[error("{}", format_invalid_enum_value(.value, .valid_values))]
     InvalidObjectiveStatus {
         value: String,

@@ -6,7 +6,7 @@
 //! satisfied-by references.
 //!
 //! Objective status (`Unrealized` / `Achieved`) is auto-computed at read time
-//! from the `satisfied_by` reference and never stored in frontmatter.
+//! from the `satisfied_by` references and never stored in frontmatter.
 
 pub mod builder;
 pub mod parser;
@@ -291,12 +291,119 @@ impl Objective {
     fn extract_field_value_for_logging(&self, raw_content: &str, field: &str) -> Option<String> {
         if let Ok(metadata) = parse_objective_content(raw_content) {
             match field {
-                "satisfied-by" => metadata.satisfied_by,
+                "satisfied-by" => {
+                    if metadata.satisfied_by.is_empty() {
+                        None
+                    } else {
+                        Some(metadata.satisfied_by.join(", "))
+                    }
+                }
                 _ => None,
             }
         } else {
             None
         }
+    }
+
+    fn format_refs_for_logging(refs: &[String]) -> String {
+        if refs.is_empty() {
+            String::new()
+        } else {
+            refs.join(", ")
+        }
+    }
+
+    /// Add a ticket or plan reference to the satisfied-by list.
+    ///
+    /// Returns an error if the reference is already present (no duplicates).
+    pub fn add_ref(&self, ref_id: &str) -> Result<()> {
+        self.add_ref_with_actor(ref_id, None)
+    }
+
+    /// Add a ticket or plan reference with a specific event actor.
+    pub fn add_ref_with_actor(
+        &self,
+        ref_id: &str,
+        actor: Option<crate::events::Actor>,
+    ) -> Result<()> {
+        let mut metadata = self.read()?;
+        if metadata.satisfied_by.contains(&ref_id.to_string()) {
+            return Err(JanusError::DuplicateObjectiveRef(
+                ref_id.to_string(),
+                self.id.clone(),
+            ));
+        }
+        let old_value = Self::format_refs_for_logging(&metadata.satisfied_by);
+        metadata.satisfied_by.push(ref_id.to_string());
+        let new_value = Self::format_refs_for_logging(&metadata.satisfied_by);
+        let content = crate::objective::serialize::serialize_objective(&metadata)?;
+        self.write(&content)?;
+        crate::events::log_objective_field_updated(
+            &self.id,
+            "satisfied-by",
+            Some(&old_value),
+            Some(&new_value),
+            actor,
+        );
+        Ok(())
+    }
+
+    /// Remove a ticket or plan reference from the satisfied-by list.
+    ///
+    /// Returns an error if the reference is not present.
+    pub fn remove_ref(&self, ref_id: &str) -> Result<()> {
+        self.remove_ref_with_actor(ref_id, None)
+    }
+
+    /// Remove a ticket or plan reference with a specific event actor.
+    pub fn remove_ref_with_actor(
+        &self,
+        ref_id: &str,
+        actor: Option<crate::events::Actor>,
+    ) -> Result<()> {
+        let mut metadata = self.read()?;
+        let old_value = Self::format_refs_for_logging(&metadata.satisfied_by);
+        let initial_len = metadata.satisfied_by.len();
+        metadata.satisfied_by.retain(|r| r != ref_id);
+        if metadata.satisfied_by.len() == initial_len {
+            return Err(JanusError::ObjectiveRefNotFound(
+                ref_id.to_string(),
+                self.id.clone(),
+            ));
+        }
+        let new_value = Self::format_refs_for_logging(&metadata.satisfied_by);
+        let content = crate::objective::serialize::serialize_objective(&metadata)?;
+        self.write(&content)?;
+        crate::events::log_objective_field_updated(
+            &self.id,
+            "satisfied-by",
+            Some(&old_value),
+            Some(&new_value),
+            actor,
+        );
+        Ok(())
+    }
+
+    /// Remove all references from the satisfied-by list.
+    pub fn reset_refs(&self) -> Result<()> {
+        self.reset_refs_with_actor(None)
+    }
+
+    /// Remove all references with a specific event actor.
+    pub fn reset_refs_with_actor(&self, actor: Option<crate::events::Actor>) -> Result<()> {
+        let mut metadata = self.read()?;
+        let old_value = Self::format_refs_for_logging(&metadata.satisfied_by);
+        metadata.satisfied_by.clear();
+        let content = crate::objective::serialize::serialize_objective(&metadata)?;
+        self.write(&content)?;
+        crate::events::log_objective_field_updated(
+            &self.id,
+            "satisfied-by",
+            Some(&old_value),
+            None,
+            actor,
+        );
+        Ok(())
     }
 
     /// Build a hook context for this objective.
@@ -631,7 +738,8 @@ A test.
 id: objv-rwrt
 uuid: 550e8400-e29b-41d4-a716-446655440000
 created: 2024-01-01T00:00:00Z
-satisfied-by: plan-x1y2
+satisfied-by:
+  - plan-x1y2
 ---
 # RW Roundtrip
 
@@ -653,7 +761,7 @@ Description here.
         let metadata = obj.read().unwrap();
         assert_eq!(metadata.id.as_deref(), Some("objv-rwrt"));
         assert_eq!(metadata.title, Some("RW Roundtrip".to_string()));
-        assert_eq!(metadata.satisfied_by, Some("plan-x1y2".to_string()));
+        assert_eq!(metadata.satisfied_by, vec!["plan-x1y2".to_string()]);
         assert_eq!(metadata.acceptance_criteria.len(), 2);
     }
 

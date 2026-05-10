@@ -1007,9 +1007,9 @@ pub enum ObjectiveAction {
         /// Acceptance criteria (can be specified multiple times)
         #[arg(short = 'c', long = "criterion")]
         criteria: Vec<String>,
-        /// Ticket or plan ID that satisfies this objective
+        /// Ticket or plan IDs that satisfy this objective (repeatable)
         #[arg(long = "satisfied-by")]
-        satisfied_by: Option<String>,
+        satisfied_by: Vec<String>,
         #[command(flatten)]
         output: OutputOptions,
     },
@@ -1048,16 +1048,10 @@ pub enum ObjectiveAction {
         #[command(flatten)]
         output: OutputOptions,
     },
-    /// Set a field on an objective
-    Set {
-        /// Objective ID (full or partial)
-        id: String,
-        /// Field name (currently only: satisfied-by)
-        field: String,
-        /// New value (use empty string to clear)
-        value: String,
-        #[command(flatten)]
-        output: OutputOptions,
+    /// Manage satisfied-by references
+    Ref {
+        #[command(subcommand)]
+        action: ObjectiveRefAction,
     },
     /// Add a note to an objective
     AddNote {
@@ -1080,6 +1074,38 @@ pub enum ObjectiveAction {
     },
 }
 
+#[derive(Subcommand)]
+pub enum ObjectiveRefAction {
+    /// Add a ticket or plan reference
+    Add {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Ticket or plan ID to add
+        ref_id: String,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Remove a ticket or plan reference
+    Del {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Ticket or plan ID to remove
+        ref_id: String,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Remove all references
+    Reset {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+}
+
 impl Commands {
     /// Execute the command, dispatching to the appropriate handler.
     pub async fn run(self) -> crate::error::Result<()> {
@@ -1092,7 +1118,8 @@ impl Commands {
             cmd_hook_install, cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add,
             cmd_link_remove, cmd_ls_with_options, cmd_next, cmd_objective_add_criterion,
             cmd_objective_add_note, cmd_objective_create, cmd_objective_delete, cmd_objective_edit,
-            cmd_objective_ls, cmd_objective_set, cmd_objective_show, cmd_plan_add_phase,
+            cmd_objective_ls, cmd_objective_ref_add, cmd_objective_ref_del,
+            cmd_objective_ref_reset, cmd_objective_show, cmd_plan_add_phase,
             cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_hud,
             cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next,
             cmd_plan_remove_phase, cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder,
@@ -1502,7 +1529,7 @@ impl Commands {
                         &title,
                         description.as_deref(),
                         &criteria,
-                        satisfied_by.as_deref(),
+                        &satisfied_by,
                         output,
                     )
                     .await
@@ -1517,12 +1544,17 @@ impl Commands {
                 ObjectiveAction::Delete { id, yes, output } => {
                     cmd_objective_delete(&id, yes, output).await
                 }
-                ObjectiveAction::Set {
-                    id,
-                    field,
-                    value,
-                    output,
-                } => cmd_objective_set(&id, &field, &value, output).await,
+                ObjectiveAction::Ref { action } => match action {
+                    ObjectiveRefAction::Add { id, ref_id, output } => {
+                        cmd_objective_ref_add(&id, &ref_id, output).await
+                    }
+                    ObjectiveRefAction::Del { id, ref_id, output } => {
+                        cmd_objective_ref_del(&id, &ref_id, output).await
+                    }
+                    ObjectiveRefAction::Reset { id, force, output } => {
+                        cmd_objective_ref_reset(&id, force, output).await
+                    }
+                },
                 ObjectiveAction::AddNote { id, text, output } => {
                     cmd_objective_add_note(&id, &text, output).await
                 }

@@ -39,7 +39,7 @@ pub async fn cmd_objective_show(id: &str, raw: bool, output: OutputOptions) -> R
     let ticket_map = build_ticket_map().await?;
     let plan_map = build_plan_map().await?;
 
-    let status = compute_objective_status(metadata.satisfied_by.as_deref(), &ticket_map, &plan_map);
+    let status = compute_objective_status(&metadata.satisfied_by, &ticket_map, &plan_map);
 
     if output.json {
         return CommandOutput::new(json!({
@@ -65,8 +65,8 @@ pub async fn cmd_objective_show(id: &str, raw: bool, output: OutputOptions) -> R
     println!("{} {}", "Title:".bold(), title);
     println!("{} {}", "Status:".bold(), status_badge);
 
-    if let Some(ref sat_by) = metadata.satisfied_by {
-        println!("{} {}", "Satisfied by:".bold(), sat_by.cyan());
+    if !metadata.satisfied_by.is_empty() {
+        println!("{} {}", "Satisfied by:".bold(), metadata.satisfied_by.join(", ").cyan());
     }
 
     if let Some(ref created) = metadata.created {
