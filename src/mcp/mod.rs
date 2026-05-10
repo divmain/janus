@@ -240,8 +240,8 @@ mod tests {
     fn test_tools_router_has_tools() {
         let server = JanusTools::new();
         let tools = server.router().list_all();
-        // We should have 20 tools (including semantic_search, 4 doc tools, show_plan_details, add_label, remove_label)
-        assert_eq!(tools.len(), 20);
+        // We should have 26 tools (20 ticket/plan/doc tools + 6 objective tools)
+        assert_eq!(tools.len(), 27);
 
         // Verify tool names
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
@@ -265,6 +265,13 @@ mod tests {
         assert!(tool_names.contains(&"get_children"));
         assert!(tool_names.contains(&"get_next_available_ticket"));
         assert!(tool_names.contains(&"semantic_search"));
+        assert!(tool_names.contains(&"create_objective"));
+        assert!(tool_names.contains(&"show_objective"));
+        assert!(tool_names.contains(&"list_objectives"));
+        assert!(tool_names.contains(&"update_objective"));
+        assert!(tool_names.contains(&"delete_objective"));
+        assert!(tool_names.contains(&"add_objective_note"));
+        assert!(tool_names.contains(&"add_objective_criterion"));
     }
 
     #[test]
@@ -288,8 +295,8 @@ mod tests {
     #[test]
     fn test_resource_templates_list() {
         let templates = list_all_resource_templates();
-        // We should have 5 resource templates
-        assert_eq!(templates.len(), 5);
+        // We should have 6 resource templates (5 existing + 1 objective)
+        assert_eq!(templates.len(), 6);
 
         let uri_templates: Vec<&str> = templates
             .iter()
@@ -300,6 +307,7 @@ mod tests {
         assert!(uri_templates.contains(&"janus://plan/{id}/next"));
         assert!(uri_templates.contains(&"janus://plan/{id}/details"));
         assert!(uri_templates.contains(&"janus://tickets/spawned-from/{id}"));
+        assert!(uri_templates.contains(&"janus://objective/{id}"));
     }
 
     #[test]

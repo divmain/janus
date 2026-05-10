@@ -97,6 +97,11 @@ pub fn docs_dir() -> PathBuf {
     janus_root().join("docs")
 }
 
+/// Returns the path to the objectives directory.
+pub fn objectives_dir() -> PathBuf {
+    janus_root().join("objectives")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

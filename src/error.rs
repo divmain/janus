@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::types::{PlanId, TicketId};
+use crate::types::{ObjectiveId, PlanId, TicketId};
 
 /// Generic helper to format error messages with a prefix, a key, and a list of items
 fn format_error_with_list(prefix: &str, key: &str, label: &str, items: &[String]) -> String {
@@ -56,6 +56,16 @@ fn format_ambiguous_plan_id(id: &str, matches: &[String]) -> String {
     format_error_with_list("ambiguous plan ID", id, "matches multiple plans:", matches)
 }
 
+/// Format the AmbiguousObjectiveId error message
+fn format_ambiguous_objective_id(id: &str, matches: &[String]) -> String {
+    format_error_with_list(
+        "ambiguous objective ID",
+        id,
+        "matches multiple objectives:",
+        matches,
+    )
+}
+
 /// Format the AmbiguousDocLabel error message
 fn format_ambiguous_doc_label(id: &str, matches: &[String]) -> String {
     format_error_with_list(
@@ -81,6 +91,13 @@ impl JanusError {
 
     pub fn invalid_ticket_type(value: impl Into<String>, valid_values: &[&str]) -> Self {
         JanusError::InvalidTicketType {
+            value: value.into(),
+            valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn invalid_objective_status(value: impl Into<String>, valid_values: &[&str]) -> Self {
+        JanusError::InvalidObjectiveStatus {
             value: value.into(),
             valid_values: valid_values.iter().map(|s| s.to_string()).collect(),
         }
@@ -584,6 +601,25 @@ pub enum JanusError {
 
     #[error("failed to load {} document file(s):\n{}", .0.len(), .0.join("\n"))]
     DocLoadFailed(Vec<String>),
+
+    // Objective errors
+    #[error("objective '{0}' not found")]
+    ObjectiveNotFound(ObjectiveId),
+
+    #[error("{}", format_ambiguous_objective_id(.0, .1))]
+    AmbiguousObjectiveId(String, Vec<String>),
+
+    #[error("invalid objective ID format: {0}")]
+    InvalidObjectiveIdFormat(String),
+
+    #[error("failed to load {} objective file(s):\n{}", .0.len(), .0.join("\n"))]
+    ObjectiveLoadFailed(Vec<String>),
+
+    #[error("{}", format_invalid_enum_value(.value, .valid_values))]
+    InvalidObjectiveStatus {
+        value: String,
+        valid_values: Vec<String>,
+    },
 
     // General errors
     #[error("internal error: {0}")]

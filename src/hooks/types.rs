@@ -22,6 +22,12 @@ pub enum HookEvent {
     PlanUpdated,
     /// Fired after a plan is deleted
     PlanDeleted,
+    /// Fired after a new objective is created
+    ObjectiveCreated,
+    /// Fired after an existing objective is updated
+    ObjectiveUpdated,
+    /// Fired after an objective is deleted
+    ObjectiveDeleted,
     /// Fired before writing any item to disk (can abort)
     PreWrite,
     /// Fired after writing any item to disk
@@ -46,6 +52,9 @@ impl HookEvent {
             HookEvent::PlanCreated => "plan_created",
             HookEvent::PlanUpdated => "plan_updated",
             HookEvent::PlanDeleted => "plan_deleted",
+            HookEvent::ObjectiveCreated => "objective_created",
+            HookEvent::ObjectiveUpdated => "objective_updated",
+            HookEvent::ObjectiveDeleted => "objective_deleted",
             HookEvent::PreWrite => "pre_write",
             HookEvent::PostWrite => "post_write",
             HookEvent::PreDelete => "pre_delete",
@@ -61,6 +70,9 @@ impl HookEvent {
             HookEvent::PlanCreated,
             HookEvent::PlanUpdated,
             HookEvent::PlanDeleted,
+            HookEvent::ObjectiveCreated,
+            HookEvent::ObjectiveUpdated,
+            HookEvent::ObjectiveDeleted,
             HookEvent::PreWrite,
             HookEvent::PostWrite,
             HookEvent::PreDelete,
@@ -72,13 +84,16 @@ impl HookEvent {
 enum_display_fromstr!(
     HookEvent,
     crate::error::JanusError::invalid_hook_event,
-    ["ticket_created", "ticket_updated", "plan_created", "plan_updated", "plan_deleted", "pre_write", "post_write", "pre_delete", "post_delete"],
+    ["ticket_created", "ticket_updated", "plan_created", "plan_updated", "plan_deleted", "objective_created", "objective_updated", "objective_deleted", "pre_write", "post_write", "pre_delete", "post_delete"],
     {
         TicketCreated => "ticket_created",
         TicketUpdated => "ticket_updated",
         PlanCreated => "plan_created",
         PlanUpdated => "plan_updated",
         PlanDeleted => "plan_deleted",
+        ObjectiveCreated => "objective_created",
+        ObjectiveUpdated => "objective_updated",
+        ObjectiveDeleted => "objective_deleted",
         PreWrite => "pre_write",
         PostWrite => "post_write",
         PreDelete => "pre_delete",
@@ -190,8 +205,11 @@ mod tests {
     #[test]
     fn test_hook_event_all() {
         let all = HookEvent::all();
-        assert_eq!(all.len(), 9);
+        assert_eq!(all.len(), 12);
         assert!(all.contains(&HookEvent::TicketCreated));
+        assert!(all.contains(&HookEvent::ObjectiveCreated));
+        assert!(all.contains(&HookEvent::ObjectiveUpdated));
+        assert!(all.contains(&HookEvent::ObjectiveDeleted));
         assert!(all.contains(&HookEvent::PostDelete));
     }
 
@@ -239,6 +257,9 @@ mod tests {
             ("plan_created", HookEvent::PlanCreated),
             ("plan_updated", HookEvent::PlanUpdated),
             ("plan_deleted", HookEvent::PlanDeleted),
+            ("objective_created", HookEvent::ObjectiveCreated),
+            ("objective_updated", HookEvent::ObjectiveUpdated),
+            ("objective_deleted", HookEvent::ObjectiveDeleted),
             ("pre_write", HookEvent::PreWrite),
             ("post_write", HookEvent::PostWrite),
             ("pre_delete", HookEvent::PreDelete),

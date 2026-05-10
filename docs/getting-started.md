@@ -13,6 +13,7 @@ Janus stores tickets as Markdown files with YAML frontmatter in your project dir
 
 - **Tickets**: `.janus/items/*.md`
 - **Plans**: `.janus/plans/*.md`
+- **Objectives**: `.janus/objectives/*.md`
 - **Configuration**: `.janus/config.yaml`
 
 Initialize by creating your first ticket - Janus will create the directory structure automatically.
@@ -233,5 +234,6 @@ See [Semantic Search Guide](semantic-search.md) for details.
 
 - [Remote Sync](remote-sync.md) - Sync with GitHub Issues or Linear
 - [Plans](plans.md) - Organize tickets into larger goals
+- [Objectives](objectives.md) - Define high-level goals and track satisfaction
 - [TUI Guide](tui.md) - Master the interactive interfaces
 - [Commands Reference](commands.md) - Full CLI reference

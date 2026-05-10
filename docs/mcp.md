@@ -1,6 +1,6 @@
 # MCP Server
 
-Janus includes an MCP (Model Context Protocol) server that allows AI agents to interact with your tickets and plans. The server uses STDIO transport for local integration with AI assistants.
+Janus includes an MCP (Model Context Protocol) server that allows AI agents to interact with your tickets, plans, and objectives. The server uses STDIO transport for local integration with AI assistants.
 
 ## Starting the MCP Server
 
@@ -14,7 +14,7 @@ janus mcp --version
 
 ## Available Tools
 
-The MCP server exposes 13 tools for ticket and plan management:
+The MCP server exposes 20 tools for ticket, plan, and objective management:
 
 | Tool | Description |
 |------|-------------|
@@ -31,10 +31,17 @@ The MCP server exposes 13 tools for ticket and plan management:
 | `get_children` | Get all tickets spawned from a parent ticket |
 | `get_next_available_ticket` | Query the backlog for the next ticket(s) to work on |
 | `semantic_search` | Find tickets semantically similar to a query |
+| `create_objective` | Create a new objective |
+| `show_objective` | Show objective details with computed status |
+| `list_objectives` | List all objectives, optionally filter by status |
+| `update_objective` | Update an objective's satisfied-by field |
+| `delete_objective` | Delete an objective |
+| `add_objective_note` | Add a timestamped note to an objective |
+| `add_objective_criterion` | Add an acceptance criterion to an objective (input is sanitized) |
 
 ## Available Resources
 
-The MCP server exposes 9 resources for read-only access to Janus data:
+The MCP server exposes 10 resources for read-only access to Janus data:
 
 ### Static Resources
 
@@ -54,6 +61,7 @@ The MCP server exposes 9 resources for read-only access to Janus data:
 | `janus://plan/{id}` | Plan details with computed status and phases | application/json |
 | `janus://plan/{id}/next` | Next actionable items in a plan | application/json |
 | `janus://tickets/spawned-from/{id}` | Children of a specific parent ticket | application/json |
+| `janus://objective/{id}` | Full objective details with computed status | text/markdown |
 
 ## Example MCP Usage
 

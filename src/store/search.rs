@@ -3,7 +3,8 @@ use std::collections::BinaryHeap;
 
 use super::TicketStore;
 use crate::embedding::model::cosine_similarity;
-use crate::types::TicketMetadata;
+use crate::objective::types::ObjectiveMetadata;
+use crate::types::{EntityType, TicketMetadata};
 
 /// Result of a semantic search, containing the matched ticket and its similarity score.
 #[derive(Debug, Clone)]
@@ -11,6 +12,19 @@ pub struct SearchResult {
     /// The matched ticket metadata.
     pub ticket: TicketMetadata,
     /// Cosine similarity score between the query embedding and the ticket embedding.
+    pub similarity: f32,
+}
+
+/// Result of a unified semantic search across tickets and objectives.
+#[derive(Debug, Clone)]
+pub struct UnifiedSearchResult {
+    /// The type of entity this result represents.
+    pub entity_type: EntityType,
+    /// The matched ticket metadata (present when entity_type is Ticket).
+    pub ticket: Option<TicketMetadata>,
+    /// The matched objective metadata (present when entity_type is Objective).
+    pub objective: Option<ObjectiveMetadata>,
+    /// Cosine similarity score.
     pub similarity: f32,
 }
 
@@ -111,12 +125,93 @@ impl TicketStore {
 
         results
     }
+
+    /// Perform unified semantic search across both tickets and objectives.
+    ///
+    /// Unlike `semantic_search` which only returns ticket matches, this method
+    /// searches the shared embeddings DashMap and resolves matches against both
+    /// the tickets and objectives DashMaps.
+    ///
+    /// Doc embeddings (keyed with `doc:` prefix) are excluded — use `doc_search`
+    /// for document-level search.
+    pub fn unified_semantic_search(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> Vec<UnifiedSearchResult> {
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        let mut heap: BinaryHeap<ScoredCandidate> = BinaryHeap::with_capacity(limit + 1);
+
+        for entry in self.embeddings().iter() {
+            // Skip doc embeddings — they have their own search
+            if entry.key().starts_with("doc:") {
+                continue;
+            }
+
+            let similarity = cosine_similarity(query_embedding, entry.value());
+
+            if heap.len() < limit {
+                heap.push(ScoredCandidate {
+                    ticket_id: entry.key().clone(),
+                    similarity,
+                });
+            } else if let Some(min) = heap.peek()
+                && similarity > min.similarity
+            {
+                heap.pop();
+                heap.push(ScoredCandidate {
+                    ticket_id: entry.key().clone(),
+                    similarity,
+                });
+            }
+        }
+
+        // Drain the heap and look up entity metadata in both tickets and objectives.
+        let mut results: Vec<UnifiedSearchResult> = heap
+            .into_iter()
+            .filter_map(|candidate| {
+                // Try ticket lookup first
+                if let Some(ticket_ref) = self.tickets().get(&candidate.ticket_id) {
+                    return Some(UnifiedSearchResult {
+                        entity_type: EntityType::Ticket,
+                        ticket: Some(ticket_ref.value().clone()),
+                        objective: None,
+                        similarity: candidate.similarity,
+                    });
+                }
+
+                // Try objective lookup
+                if let Some(objective_ref) = self.objectives().get(&candidate.ticket_id) {
+                    return Some(UnifiedSearchResult {
+                        entity_type: EntityType::Objective,
+                        ticket: None,
+                        objective: Some(objective_ref.value().clone()),
+                        similarity: candidate.similarity,
+                    });
+                }
+
+                None
+            })
+            .collect();
+
+        results.sort_by(|a, b| {
+            b.similarity
+                .partial_cmp(&a.similarity)
+                .unwrap_or(Ordering::Equal)
+        });
+
+        results
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::objective::types::ObjectiveMetadata;
     use crate::store::TicketStore;
-    use crate::types::{TicketId, TicketMetadata, TicketStatus};
+    use crate::types::{EntityType, ObjectiveId, TicketId, TicketMetadata, TicketStatus};
 
     /// Helper to create a store with tickets and mock embeddings.
     fn test_store_with_embeddings() -> TicketStore {
@@ -426,5 +521,78 @@ mod tests {
         for result in &filtered {
             assert!(result.similarity >= threshold);
         }
+    }
+
+    #[test]
+    fn test_unified_semantic_search_includes_objectives() {
+        let store = TicketStore::empty();
+
+        // Add a ticket
+        store.upsert_ticket(TicketMetadata {
+            id: Some(TicketId::new_unchecked("j-auth")),
+            title: Some("Auth ticket".to_string()),
+            status: Some(TicketStatus::New),
+            ..Default::default()
+        });
+        store
+            .embeddings()
+            .insert("j-auth".to_string(), vec![0.9, 0.1, 0.0]);
+
+        // Add an objective
+        store.upsert_objective(ObjectiveMetadata {
+            id: Some(ObjectiveId::new_unchecked("objv-goal")),
+            title: Some("Security goal".to_string()),
+            ..Default::default()
+        });
+        store
+            .embeddings()
+            .insert("objv-goal".to_string(), vec![0.8, 0.2, 0.0]);
+
+        // Unified search should find both
+        let query = vec![1.0_f32, 0.0, 0.0];
+        let results = store.unified_semantic_search(&query, 10);
+
+        assert_eq!(results.len(), 2);
+
+        // Verify we got both entity types
+        let has_ticket = results.iter().any(|r| r.entity_type == EntityType::Ticket);
+        let has_objective = results
+            .iter()
+            .any(|r| r.entity_type == EntityType::Objective);
+        assert!(has_ticket, "should find ticket result");
+        assert!(has_objective, "should find objective result");
+
+        // Regular semantic_search should only find the ticket
+        let ticket_only = store.semantic_search(&query, 10);
+        assert_eq!(ticket_only.len(), 1);
+        assert_eq!(ticket_only[0].ticket.id.as_deref(), Some("j-auth"));
+    }
+
+    #[test]
+    fn test_unified_semantic_search_excludes_doc_embeddings() {
+        let store = TicketStore::empty();
+
+        // Add a ticket with embedding
+        store.upsert_ticket(TicketMetadata {
+            id: Some(TicketId::new_unchecked("j-test")),
+            title: Some("Test ticket".to_string()),
+            status: Some(TicketStatus::New),
+            ..Default::default()
+        });
+        store
+            .embeddings()
+            .insert("j-test".to_string(), vec![0.9, 0.1, 0.0]);
+
+        // Add a doc embedding (should be excluded from unified search)
+        store
+            .embeddings()
+            .insert("doc:test-doc".to_string(), vec![0.95, 0.05, 0.0]);
+
+        let query = vec![1.0_f32, 0.0, 0.0];
+        let results = store.unified_semantic_search(&query, 10);
+
+        // Should only find the ticket, not the doc
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entity_type, EntityType::Ticket);
     }
 }

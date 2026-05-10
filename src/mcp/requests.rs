@@ -492,6 +492,177 @@ impl DocSearchRequest {
     }
 }
 
+// ============================================================================
+// Objective Request Types
+// ============================================================================
+
+/// Request parameters for creating a new objective
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct CreateObjectiveRequest {
+    /// Title of the objective (required)
+    #[schemars(description = "The title for the new objective (max 200 chars, non-empty)")]
+    pub title: String,
+
+    /// Description/body content for the objective
+    #[schemars(description = "Optional description text for the objective body")]
+    pub description: Option<String>,
+
+    /// Acceptance criteria for the objective
+    #[schemars(description = "Optional list of acceptance criteria")]
+    pub acceptance_criteria: Option<Vec<String>>,
+
+    /// Reference to a ticket or plan that satisfies this objective
+    #[schemars(description = "Optional ticket or plan ID that satisfies this objective")]
+    pub satisfied_by: Option<String>,
+}
+
+impl CreateObjectiveRequest {
+    /// Validate all fields in the request.
+    /// Returns Ok if valid, Err with message if invalid.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        validate_title_for_mcp(&self.title)?;
+
+        if let Some(ref desc) = self.description {
+            validate_description(desc, "Description")?;
+        }
+        Ok(())
+    }
+}
+
+/// Request parameters for showing an objective
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct ShowObjectiveRequest {
+    /// Objective ID (can be partial)
+    #[schemars(description = "ID of the objective to show (full or partial)")]
+    pub id: String,
+}
+
+impl ShowObjectiveRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Objective ID cannot be empty".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// Request parameters for listing objectives
+#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
+pub struct ListObjectivesRequest {
+    /// Filter by status: unrealized or achieved
+    #[schemars(description = "Filter by status: unrealized or achieved")]
+    pub status: Option<String>,
+}
+
+impl ListObjectivesRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if let Some(ref s) = self.status
+            && s.parse::<crate::types::ObjectiveStatus>().is_err()
+        {
+            return Err(format!(
+                "Invalid objective status '{}'. Valid values: unrealized, achieved",
+                s
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Request parameters for updating an objective
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct UpdateObjectiveRequest {
+    /// Objective ID (can be partial)
+    #[schemars(description = "ID of the objective to update")]
+    pub id: String,
+
+    /// New value for satisfied-by field (ticket or plan ID). Use empty string to clear.
+    #[schemars(
+        description = "New value for satisfied-by field (ticket or plan ID). Use empty string to clear."
+    )]
+    pub satisfied_by: Option<String>,
+}
+
+impl UpdateObjectiveRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Objective ID cannot be empty".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// Request parameters for deleting an objective
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct DeleteObjectiveRequest {
+    /// Objective ID (can be partial)
+    #[schemars(description = "ID of the objective to delete")]
+    pub id: String,
+}
+
+impl DeleteObjectiveRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Objective ID cannot be empty".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// Request parameters for adding a note to an objective
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct AddObjectiveNoteRequest {
+    /// Objective ID (can be partial)
+    #[schemars(description = "ID of the objective to add a note to")]
+    pub id: String,
+
+    /// Note content to add
+    #[schemars(
+        description = "The note text to add (will be timestamped, max 5000 chars, non-empty)"
+    )]
+    pub note: String,
+}
+
+impl AddObjectiveNoteRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Objective ID cannot be empty".to_string());
+        }
+        validate_note(&self.note)
+    }
+}
+
+/// Request parameters for adding an acceptance criterion to an objective
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct AddObjectiveCriterionRequest {
+    /// Objective ID (can be partial)
+    #[schemars(description = "ID of the objective to add a criterion to")]
+    pub id: String,
+
+    /// Criterion text to add (will be sanitized: newlines collapsed, headings stripped, etc.)
+    #[schemars(
+        description = "The acceptance criterion text to add. Will be sanitized for safe markdown bullet insertion (newlines collapsed, headings stripped, max 5000 chars, non-empty)."
+    )]
+    pub criterion: String,
+}
+
+impl AddObjectiveCriterionRequest {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Objective ID cannot be empty".to_string());
+        }
+        if self.criterion.trim().is_empty() {
+            return Err("Criterion text cannot be empty".to_string());
+        }
+        if self.criterion.len() > 5000 {
+            return Err(format!(
+                "Criterion text is too long ({} chars, max 5000)",
+                self.criterion.len()
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Request parameters for adding a label to a ticket
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct AddLabelRequest {

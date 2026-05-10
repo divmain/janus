@@ -1,12 +1,12 @@
 # Daily Digest Hook Recipe
 
-Automatically log ticket and plan activity to generate daily standup digests.
+Automatically log ticket, plan, and objective activity to generate daily standup digests.
 
 ## What It Does
 
 This recipe:
 
-1. **Logs activity** - Captures ticket and plan events to a JSON Lines file
+1. **Logs activity** - Captures ticket, plan, and objective events to a JSON Lines file
 2. **Generates digests** - Produces markdown summaries grouped by date and activity type
 
 ## Installation
@@ -23,6 +23,7 @@ Once installed, activity is automatically logged when:
 - Tickets are created
 - Tickets are updated (status changes, field edits)
 - Plans are created
+- Objectives are created or updated
 
 ### Generating a Digest
 
@@ -52,8 +53,8 @@ Activity is logged to `.janus/activity-log.jsonl` in [JSON Lines](https://jsonli
 | Field | Description |
 |-------|-------------|
 | `timestamp` | ISO8601 UTC timestamp |
-| `event` | Event type: `ticket_created`, `ticket_updated`, `plan_created` |
-| `item_type` | `ticket` or `plan` |
+| `event` | Event type: `ticket_created`, `ticket_updated`, `plan_created`, `objective_created`, `objective_updated`, `objective_deleted` |
+| `item_type` | `ticket`, `plan`, or `objective` |
 | `item_id` | The item's ID (e.g., `j-a1b2`) |
 | `item_path` | Full filesystem path to the item |
 | `field` | Field that changed (updates only) |
@@ -135,7 +136,7 @@ The logging hook uses these janus environment variables:
 |----------|-------------|
 | `JANUS_ROOT` | Path to `.janus` directory |
 | `JANUS_EVENT` | Event type |
-| `JANUS_ITEM_TYPE` | Item type (ticket/plan) |
+| `JANUS_ITEM_TYPE` | Item type (ticket/plan/objective) |
 | `JANUS_ITEM_ID` | Item ID |
 | `JANUS_ITEM_PATH` | Full path to item file |
 | `JANUS_FIELD` | Changed field (updates) |

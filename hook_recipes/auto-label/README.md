@@ -211,6 +211,6 @@ If you see malformed YAML after the hook runs:
 
 ## Limitations
 
-- Only processes tickets (not plans)
+- Only processes tickets (not plans or objectives)
 - Patterns are simple substring matches (not regex)
 - The fallback sed/awk implementation may not handle all YAML edge cases

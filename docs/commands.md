@@ -524,6 +524,91 @@ phased: true
 - [ ] All phases complete
 ```
 
+## Objective Commands
+
+Objectives define high-level goals that can be satisfied by completing a ticket or plan. Stored in `.janus/objectives/` with IDs like `objv-a1b2`.
+
+### `janus objective create`
+
+Create a new objective.
+
+```bash
+janus objective create <title> [OPTIONS]
+
+Options:
+  -d, --description <TEXT>       Description text
+      --criterion <TEXT>         Acceptance criterion (can be specified multiple times)
+      --satisfied-by <ID>        Ticket or plan ID that satisfies this objective
+```
+
+### `janus objective show`
+
+Display objective details including auto-computed status.
+
+```bash
+janus objective show <ID> [--raw] [--json]
+```
+
+Use `--raw` for raw markdown output.
+
+### `janus objective ls`
+
+List all objectives with computed statuses.
+
+```bash
+janus objective ls [OPTIONS]
+
+Options:
+      --status <STATUS>    Filter by status: unrealized, achieved
+      --json               Output as JSON
+```
+
+### `janus objective edit`
+
+Open the objective in `$EDITOR`.
+
+```bash
+janus objective edit <ID>
+```
+
+### `janus objective delete`
+
+Delete an objective.
+
+```bash
+janus objective delete <ID> [-y]
+```
+
+Use `-y` to skip confirmation.
+
+### `janus objective set`
+
+Set an objective field.
+
+```bash
+janus objective set <ID> satisfied-by <TICKET_OR_PLAN_ID>
+```
+
+Use an empty string to clear the field.
+
+### `janus objective add-note`
+
+Add a timestamped note to an objective.
+
+```bash
+janus objective add-note <ID> --text <TEXT>
+```
+
+### `janus objective add-criterion`
+
+Add an acceptance criterion to an objective. The text is sanitized for safe markdown bullet insertion (newlines collapsed, headings stripped, bullet markers removed).
+
+```bash
+janus objective add-criterion <ID> "The system must handle edge cases gracefully"
+```
+
+If no `## Acceptance Criteria` section exists, one is created automatically.
+
 ## Cache Management
 
 The cache stores pre-computed embeddings for semantic search as `.bin` files in `.janus/embeddings/`. See [Cache Guide](cache.md) for details.

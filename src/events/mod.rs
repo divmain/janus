@@ -481,6 +481,83 @@ pub fn log_doc_created(label: &str, title: &str, actor: Option<Actor>) {
     );
 }
 
+/// Log an objective creation event
+pub fn log_objective_created(id: &str, title: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::ObjectiveCreated,
+            EntityType::Objective,
+            id,
+            serde_json::json!({
+                "title": title,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
+}
+
+/// Log an objective updated event
+pub fn log_objective_updated(id: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::ObjectiveUpdated,
+            EntityType::Objective,
+            id,
+            serde_json::json!({}),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
+}
+
+/// Log an objective deletion event
+pub fn log_objective_deleted(id: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::ObjectiveDeleted,
+            EntityType::Objective,
+            id,
+            serde_json::json!({}),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
+}
+
+/// Log an objective field update event
+pub fn log_objective_field_updated(
+    id: &str,
+    field: &str,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    actor: Option<Actor>,
+) {
+    log_event(
+        Event::new(
+            EventType::ObjectiveFieldUpdated,
+            EntityType::Objective,
+            id,
+            serde_json::json!({
+                "field": field,
+                "old_value": old_value,
+                "new_value": new_value,
+            }),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
+}
+
+/// Log an objective note added event
+pub fn log_objective_note_added(id: &str, actor: Option<Actor>) {
+    log_event(
+        Event::new(
+            EventType::ObjectiveNoteAdded,
+            EntityType::Objective,
+            id,
+            serde_json::json!({}),
+        )
+        .with_actor(actor.unwrap_or_default()),
+    );
+}
+
 /// Log a ticket moved event (between phases)
 pub fn log_ticket_moved(plan_id: &str, ticket_id: &str, from_phase: &str, to_phase: &str) {
     log_event(Event::new(
@@ -646,9 +723,14 @@ mod tests {
         log_phase_added("plan-1", "2", "Phase 2");
         log_phase_removed("plan-1", "1", "Phase 1", 2);
         log_ticket_moved("plan-1", "j-test", "Phase 1", "Phase 2");
+        log_objective_created("objv-test", "Test Objective", None);
+        log_objective_updated("objv-test", None);
+        log_objective_deleted("objv-test", None);
+        log_objective_field_updated("objv-test", "satisfied-by", None, Some("plan-1"), None);
+        log_objective_note_added("objv-test", None);
 
         let events = read_events().unwrap();
-        assert_eq!(events.len(), 14);
+        assert_eq!(events.len(), 19);
     }
 
     #[test]

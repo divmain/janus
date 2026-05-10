@@ -12,15 +12,18 @@ Hooks allow you to run custom scripts before or after Janus operations. This ena
 
 | Event | When It Fires |
 |-------|---------------|
-| `pre_write` | Before any ticket/plan write |
-| `post_write` | After any ticket/plan write |
-| `pre_delete` | Before a ticket/plan is deleted |
-| `post_delete` | After a ticket/plan is deleted |
+| `pre_write` | Before any ticket, plan, or objective write |
+| `post_write` | After any ticket, plan, or objective write |
+| `pre_delete` | Before a ticket, plan, or objective is deleted |
+| `post_delete` | After a ticket, plan, or objective is deleted |
 | `ticket_created` | After a new ticket is created |
 | `ticket_updated` | After a ticket is modified |
 | `plan_created` | After a new plan is created |
 | `plan_updated` | After a plan is modified |
 | `plan_deleted` | After a plan is deleted |
+| `objective_created` | After a new objective is created |
+| `objective_updated` | After an objective is modified |
+| `objective_deleted` | After an objective is deleted |
 
 ## Environment Variables
 
@@ -29,7 +32,7 @@ Hooks receive context via environment variables:
 | Variable | Description |
 |----------|-------------|
 | `JANUS_EVENT` | The event name (e.g., `post_write`, `ticket_created`) |
-| `JANUS_ITEM_TYPE` | Either `ticket` or `plan` |
+| `JANUS_ITEM_TYPE` | `ticket`, `plan`, or `objective` |
 | `JANUS_ITEM_ID` | The ticket or plan ID |
 | `JANUS_FILE_PATH` | Path to the item's markdown file |
 | `JANUS_ROOT` | Path to the `.janus/` directory |
@@ -51,6 +54,7 @@ hooks:
     post_write: post-write.sh
     ticket_created: notify-slack.sh
     plan_created: notify-team.sh
+    objective_created: notify-team.sh
 ```
 
 Hook scripts should be placed in `.janus/hooks/` and must be executable (`chmod +x`).
@@ -192,7 +196,7 @@ janus hook install git-sync
 
 - **Auto-commit**: After any Janus write operation, changes are committed with a descriptive message
 - **Auto-push**: Changes are pushed to the remote (fails silently if offline)
-- **Selective sync**: Only `items/` and `plans/` are synced; hooks and config stay local
+- **Selective sync**: Only `items/`, `plans/`, and `objectives/` are synced; hooks and config stay local
 
 ### Manual Sync
 
@@ -208,5 +212,6 @@ To pull remote changes and push local changes:
 |-----------|---------|-------|
 | `items/` | Yes | All tickets |
 | `plans/` | Yes | All plans |
+| `objectives/` | Yes | All objectives |
 | `hooks/` | No | Each machine has its own |
 | `config.yaml` | No | Contains local settings/tokens |

@@ -1,6 +1,6 @@
 # Plans
 
-Plans organize tickets into larger goals with optional phases. They provide computed status tracking and progress summaries.
+Plans organize tickets into larger goals with optional phases. They provide computed status tracking and progress summaries. Plans can be referenced by objectives via the `satisfied-by` field.
 
 ## Plan Types
 

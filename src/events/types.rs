@@ -32,6 +32,13 @@ pub enum EventType {
     PhaseRemoved,
     TicketMoved,
 
+    // Objective events
+    ObjectiveCreated,
+    ObjectiveUpdated,
+    ObjectiveDeleted,
+    ObjectiveFieldUpdated,
+    ObjectiveNoteAdded,
+
     // Doc events
     DocCreated,
 
@@ -42,7 +49,7 @@ pub enum EventType {
 enum_display_fromstr!(
     EventType,
     crate::error::JanusError::invalid_event_type,
-    ["ticket_created", "status_changed", "note_added", "field_updated", "dependency_added", "dependency_removed", "link_added", "link_removed", "label_added", "label_removed", "plan_created", "ticket_added_to_plan", "ticket_removed_from_plan", "phase_added", "phase_removed", "ticket_moved", "doc_created", "cache_rebuilt"],
+    ["ticket_created", "status_changed", "note_added", "field_updated", "dependency_added", "dependency_removed", "link_added", "link_removed", "label_added", "label_removed", "plan_created", "ticket_added_to_plan", "ticket_removed_from_plan", "phase_added", "phase_removed", "ticket_moved", "objective_created", "objective_updated", "objective_deleted", "objective_field_updated", "objective_note_added", "doc_created", "cache_rebuilt"],
     {
         TicketCreated => "ticket_created",
         StatusChanged => "status_changed",
@@ -60,6 +67,11 @@ enum_display_fromstr!(
         PhaseAdded => "phase_added",
         PhaseRemoved => "phase_removed",
         TicketMoved => "ticket_moved",
+        ObjectiveCreated => "objective_created",
+        ObjectiveUpdated => "objective_updated",
+        ObjectiveDeleted => "objective_deleted",
+        ObjectiveFieldUpdated => "objective_field_updated",
+        ObjectiveNoteAdded => "objective_note_added",
         DocCreated => "doc_created",
         CacheRebuilt => "cache_rebuilt",
     }

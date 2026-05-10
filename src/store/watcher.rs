@@ -102,6 +102,8 @@ pub enum StoreEvent {
     PlansChanged,
     /// One or more documents were created, modified, or deleted.
     DocsChanged,
+    /// One or more objectives were created, modified, or deleted.
+    ObjectivesChanged,
 }
 
 /// Entity type for retry tracking.
@@ -110,6 +112,7 @@ enum EntityType {
     Ticket,
     Plan,
     Doc,
+    Objective,
 }
 
 /// Tracks retry state for a file that failed to parse.
@@ -154,6 +157,7 @@ impl RetryQueue {
                 EntityType::Ticket => "ticket",
                 EntityType::Plan => "plan",
                 EntityType::Doc => "document",
+                EntityType::Objective => "objective",
             };
             eprintln!(
                 "Warning: giving up on parsing {entity_name} after {MAX_RETRY_ATTEMPTS} attempts: {}",
@@ -168,6 +172,7 @@ impl RetryQueue {
                 EntityType::Ticket => "ticket",
                 EntityType::Plan => "plan",
                 EntityType::Doc => "document",
+                EntityType::Objective => "objective",
             };
             eprintln!(
                 "Warning: failed to parse {entity_name} (will retry): {}",
@@ -538,6 +543,7 @@ async fn process_batch(
     let mut changed_ticket_ids: Vec<String> = Vec::new();
     let mut plans_changed = false;
     let mut docs_changed = false;
+    let mut objectives_changed = false;
 
     for (path, kind) in pending.drain() {
         // Only process .md files
@@ -548,8 +554,9 @@ async fn process_batch(
         let is_ticket = is_ticket_path(&path);
         let is_plan = is_plan_path(&path);
         let is_doc = is_doc_path(&path);
+        let is_objective = is_objective_path(&path);
 
-        if !is_ticket && !is_plan && !is_doc {
+        if !is_ticket && !is_plan && !is_doc && !is_objective {
             continue;
         }
 
@@ -586,6 +593,14 @@ async fn process_batch(
                         }
                         ParseOutcome::Skipped => {}
                     }
+                } else if is_objective {
+                    match process_objective_file(&path, store).await {
+                        ParseOutcome::Success => objectives_changed = true,
+                        ParseOutcome::ParseFailed => {
+                            retries.schedule(path, EntityType::Objective);
+                        }
+                        ParseOutcome::Skipped => {}
+                    }
                 }
             }
             FileAction::Remove => {
@@ -599,6 +614,9 @@ async fn process_batch(
                     } else if is_doc {
                         store.remove_doc(&id);
                         docs_changed = true;
+                    } else if is_objective {
+                        store.remove_objective(&id);
+                        objectives_changed = true;
                     }
                 }
             }
@@ -628,6 +646,10 @@ async fn process_batch(
     if docs_changed {
         let _ = broadcast_tx.send(StoreEvent::DocsChanged);
     }
+
+    if objectives_changed {
+        let _ = broadcast_tx.send(StoreEvent::ObjectivesChanged);
+    }
 }
 
 /// Process pending retries for files that previously failed to parse.
@@ -648,12 +670,14 @@ async fn process_retries(
     let mut changed_ticket_ids: Vec<String> = Vec::new();
     let mut plans_changed = false;
     let mut docs_changed = false;
+    let mut objectives_changed = false;
 
     for (path, entity_type) in ready {
         let outcome = match entity_type {
             EntityType::Ticket => process_ticket_file(&path, store).await,
             EntityType::Plan => process_plan_file(&path, store).await,
             EntityType::Doc => process_doc_file(&path, store).await,
+            EntityType::Objective => process_objective_file(&path, store).await,
         };
 
         match outcome {
@@ -670,6 +694,9 @@ async fn process_retries(
                     }
                     EntityType::Doc => {
                         docs_changed = true;
+                    }
+                    EntityType::Objective => {
+                        objectives_changed = true;
                     }
                 }
             }
@@ -699,6 +726,9 @@ async fn process_retries(
     if docs_changed {
         let _ = broadcast_tx.send(StoreEvent::DocsChanged);
     }
+    if objectives_changed {
+        let _ = broadcast_tx.send(StoreEvent::ObjectivesChanged);
+    }
 }
 
 /// Perform a full rescan of all ticket, plan, and doc files on disk.
@@ -712,7 +742,7 @@ async fn process_retries(
 /// retry queue is cleared before a rescan since we're reading everything
 /// fresh.
 async fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Sender<StoreEvent>) {
-    use crate::types::{docs_dir, plans_dir, tickets_items_dir};
+    use crate::types::{docs_dir, objectives_dir, plans_dir, tickets_items_dir};
 
     eprintln!("Warning: performing full rescan of .janus/ directory");
 
@@ -787,9 +817,33 @@ async fn full_rescan(store: &'static TicketStore, broadcast_tx: &broadcast::Send
         }
     }
 
+    let o_dir = objectives_dir();
+    if o_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&o_dir)
+    {
+        let mut disk_ids = std::collections::HashSet::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "md") {
+                if let Some(stem) = path.file_stem() {
+                    disk_ids.insert(stem.to_string_lossy().to_string());
+                }
+                // Best-effort parse during rescan; failures are not retried
+                let _ = process_objective_file(&path, store).await;
+            }
+        }
+        let store_ids: Vec<String> = store.objectives().iter().map(|r| r.key().clone()).collect();
+        for id in store_ids {
+            if !disk_ids.contains(&id) {
+                store.remove_objective(&id);
+            }
+        }
+    }
+
     let _ = broadcast_tx.send(StoreEvent::TicketsChanged);
     let _ = broadcast_tx.send(StoreEvent::PlansChanged);
     let _ = broadcast_tx.send(StoreEvent::DocsChanged);
+    let _ = broadcast_tx.send(StoreEvent::ObjectivesChanged);
 }
 
 /// Classify a notify event kind into one of our simplified actions.
@@ -846,6 +900,24 @@ fn is_plan_path(path: &Path) -> bool {
     for (i, comp) in components.iter().enumerate() {
         if let std::path::Component::Normal(s) = comp
             && *s == OsStr::new("plans")
+            && i > 0
+            && let std::path::Component::Normal(parent) = &components[i - 1]
+            && *parent == OsStr::new(".janus")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if a path is within the objectives directory.
+fn is_objective_path(path: &Path) -> bool {
+    use std::ffi::OsStr;
+
+    let components: Vec<_> = path.components().collect();
+    for (i, comp) in components.iter().enumerate() {
+        if let std::path::Component::Normal(s) = comp
+            && *s == OsStr::new("objectives")
             && i > 0
             && let std::path::Component::Normal(parent) = &components[i - 1]
             && *parent == OsStr::new(".janus")
@@ -1037,6 +1109,85 @@ async fn process_doc_file(path: &Path, store: &TicketStore) -> ParseOutcome {
             }
             metadata.file_path = Some(path.to_path_buf());
             store.upsert_doc(metadata);
+            ParseOutcome::Success
+        }
+        Err(_) => {
+            // Don't log here — the RetryQueue handles rate-limited warnings.
+            // The store is intentionally NOT modified, preserving last-known-good state.
+            ParseOutcome::ParseFailed
+        }
+    }
+}
+
+/// Read and parse an objective file, updating the store.
+///
+/// Returns a `ParseOutcome` indicating whether the store was updated,
+/// the parse failed (eligible for retry), or the file was skipped.
+///
+/// On parse failure, the store is **not** modified — the last-known-good
+/// state is preserved so callers can schedule a retry.
+///
+/// If the file no longer exists (race with deletion), removes the objective
+/// from the store and returns `Skipped` (no retry needed).
+async fn process_objective_file(path: &Path, store: &TicketStore) -> ParseOutcome {
+    use crate::objective::parser::parse_objective_content;
+
+    let content = match tokio::fs::read_to_string(path).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // File was deleted between event and processing — treat as removal.
+            if let Some(stem) = path.file_stem() {
+                store.remove_objective(&stem.to_string_lossy());
+            }
+            return ParseOutcome::Success;
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: failed to read objective file {}: {e}",
+                path.display()
+            );
+            return ParseOutcome::Skipped;
+        }
+    };
+
+    match parse_objective_content(&content) {
+        Ok(mut metadata) => {
+            if metadata.id.is_none()
+                && let Some(stem) = path.file_stem()
+            {
+                metadata.id = Some(crate::types::ObjectiveId::new_unchecked(
+                    stem.to_string_lossy(),
+                ));
+            }
+            metadata.file_path = Some(path.to_path_buf());
+
+            // Capture the ID before upsert consumes ownership
+            let objective_id = metadata.id.clone();
+            store.upsert_objective(metadata);
+
+            // Remove stale embedding and regenerate
+            if let Some(id) = &objective_id {
+                store.embeddings().remove(id.as_ref());
+
+                // Generate new embedding asynchronously with concurrency limit
+                let id_clone = id.clone();
+                tokio::spawn(async move {
+                    let permit = EMBEDDING_SEMAPHORE.acquire().await;
+                    let _permit = match permit {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::warn!("Failed to acquire embedding semaphore: {e}");
+                            return;
+                        }
+                    };
+
+                    if let Ok(store) = crate::store::get_or_init_store().await
+                        && let Err(e) = store.ensure_objective_embedding(&id_clone).await
+                    {
+                        tracing::warn!("Failed to generate embedding for {id_clone}: {e}");
+                    }
+                });
+            }
             ParseOutcome::Success
         }
         Err(_) => {
