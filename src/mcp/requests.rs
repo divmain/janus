@@ -142,8 +142,10 @@ pub struct UpdateStatusRequest {
     #[schemars(description = "ID of the ticket to update")]
     pub id: String,
 
-    /// New status: new, next, in_progress, complete, or cancelled
-    #[schemars(description = "New status: new, next, in_progress, complete, or cancelled")]
+    /// New status: new, next, in_progress, complete, cancelled, or archived
+    #[schemars(
+        description = "New status: new, next, in_progress, complete, cancelled, or archived"
+    )]
     pub status: String,
 
     /// Optional summary when closing (completing/cancelling) a ticket
@@ -197,7 +199,7 @@ impl AddNoteRequest {
 pub struct ListTicketsRequest {
     /// Filter by status (e.g., "new", "in_progress")
     #[schemars(
-        description = "Filter by ticket status. When not specified, only open tickets are returned (Complete and Cancelled are excluded). Set to 'complete' or 'cancelled' to see closed tickets."
+        description = "Filter by ticket status. When not specified, only open tickets are returned (Complete, Cancelled, and Archived are excluded). Set to 'complete', 'cancelled', or 'archived' to see closed tickets."
     )]
     pub status: Option<String>,
 

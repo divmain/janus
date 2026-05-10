@@ -264,7 +264,7 @@ impl JanusTools {
         register_tool!(
             router,
             "update_status",
-            "Change a ticket's status. Valid statuses: new, next, in_progress, complete, cancelled.",
+            "Change a ticket's status. Valid statuses: new, next, in_progress, complete, cancelled, archived.",
             UpdateStatusRequest,
             update_status_impl,
             false,
@@ -652,7 +652,7 @@ impl JanusTools {
     }
 
     /// Update a ticket's status.
-    /// When closing (complete/cancelled), optionally include a summary.
+    /// When closing (complete/cancelled/archived), optionally include a summary.
     async fn update_status_impl(
         &self,
         Parameters(request): Parameters<UpdateStatusRequest>,
@@ -667,7 +667,7 @@ impl JanusTools {
         // Validate and parse status
         let new_status = TicketStatus::from_str(&request.status).map_err(|_| {
             format!(
-                "Invalid status '{}'. Must be one of: new, next, in_progress, complete, cancelled",
+                "Invalid status '{}'. Must be one of: new, next, in_progress, complete, cancelled, archived",
                 request.status
             )
         })?;

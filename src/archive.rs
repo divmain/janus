@@ -12,6 +12,7 @@ use jiff::Timestamp;
 
 use crate::config::Config;
 use crate::error::Result;
+use crate::events::Actor;
 use crate::ticket::Ticket;
 use crate::types::{TicketMetadata, TicketStatus};
 
@@ -41,13 +42,16 @@ impl ArchiveResult {
 /// disabled (`archive.days = 0`) or the config cannot be loaded, returns an
 /// empty result without error so callers can invoke this unconditionally at
 /// startup.
-pub async fn sweep_completed_tickets(tickets: &[TicketMetadata]) -> Result<ArchiveResult> {
+pub async fn sweep_completed_tickets(
+    tickets: &[TicketMetadata],
+    actor: Actor,
+) -> Result<ArchiveResult> {
     let config = Config::load().unwrap_or_default();
     let Some(threshold) = config.archive.threshold() else {
         return Ok(ArchiveResult::default());
     };
 
-    sweep_with_threshold(tickets, threshold).await
+    sweep_with_threshold(tickets, threshold, actor).await
 }
 
 /// Run the sweep with an explicit threshold. Separated from `sweep_completed_tickets`
@@ -55,6 +59,7 @@ pub async fn sweep_completed_tickets(tickets: &[TicketMetadata]) -> Result<Archi
 pub async fn sweep_with_threshold(
     tickets: &[TicketMetadata],
     threshold: Duration,
+    actor: Actor,
 ) -> Result<ArchiveResult> {
     let now = SystemTime::now();
     let mut result = ArchiveResult::default();
@@ -76,10 +81,13 @@ pub async fn sweep_with_threshold(
 
         let id_str = id.to_string();
         match Ticket::find(&id_str).await {
-            Ok(t) => match t.update_status(TicketStatus::Archived, None) {
-                Ok(()) => result.archived_ids.push(id_str),
-                Err(e) => result.errors.push((id_str, e.to_string())),
-            },
+            Ok(t) => {
+                match t.update_status_with_actor(TicketStatus::Archived, None, Some(actor.clone()))
+                {
+                    Ok(()) => result.archived_ids.push(id_str),
+                    Err(e) => result.errors.push((id_str, e.to_string())),
+                }
+            }
             Err(e) => result.errors.push((id_str, e.to_string())),
         }
     }
@@ -91,11 +99,7 @@ pub async fn sweep_with_threshold(
 /// falling back to the file's mtime when unavailable. Returns `None` when
 /// neither signal is usable (e.g., ticket has no file path and no timestamp).
 pub fn ticket_age(ticket: &TicketMetadata, now: SystemTime) -> Option<Duration> {
-    if let Some(stamp) = ticket
-        .completed_at
-        .as_ref()
-        .and_then(|c| c.to_timestamp())
-    {
+    if let Some(stamp) = ticket.completed_at.as_ref().and_then(|c| c.to_timestamp()) {
         return duration_between(stamp, now);
     }
     ticket

@@ -79,22 +79,24 @@ enum_display_fromstr!(
 
 /// The actor that triggered the event
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum Actor {
     #[default]
     Cli,
     Mcp,
     Hook,
+    AutoArchive,
 }
 
 enum_display_fromstr!(
     Actor,
     crate::error::JanusError::invalid_actor,
-    ["cli", "mcp", "hook"],
+    ["cli", "mcp", "hook", "auto_archive"],
     {
         Cli => "cli",
         Mcp => "mcp",
         Hook => "hook",
+        AutoArchive => "auto_archive",
     }
 );
 
@@ -195,6 +197,10 @@ mod tests {
         assert_eq!(serde_json::to_string(&Actor::Cli).unwrap(), "\"cli\"");
         assert_eq!(serde_json::to_string(&Actor::Mcp).unwrap(), "\"mcp\"");
         assert_eq!(serde_json::to_string(&Actor::Hook).unwrap(), "\"hook\"");
+        assert_eq!(
+            serde_json::to_string(&Actor::AutoArchive).unwrap(),
+            "\"auto_archive\""
+        );
     }
 
     #[test]

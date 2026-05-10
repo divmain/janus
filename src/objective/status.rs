@@ -19,7 +19,7 @@ use crate::types::{ObjectiveStatus, TicketMetadata, TicketStatus};
 ///   all its tickets (from `ticket_map`) are complete or cancelled. If so → `Achieved`,
 ///   otherwise → `Unrealized`.
 /// - Otherwise, treat as a ticket ID. If found in `ticket_map` and status is
-///   `Complete` → `Achieved`, else → `Unrealized`.
+///   `Complete` or `Archived` → `Achieved`, else → `Unrealized`.
 /// - If the referenced entity is not found (dangling reference) → `Unrealized`.
 pub fn compute_objective_status(
     satisfied_by: Option<&str>,
@@ -59,7 +59,10 @@ pub fn compute_objective_status(
     } else {
         // Treat as ticket ID
         if let Some(ticket) = ticket_map.get(ref_id) {
-            if ticket.status == Some(TicketStatus::Complete) {
+            if matches!(
+                ticket.status,
+                Some(TicketStatus::Complete) | Some(TicketStatus::Archived)
+            ) {
                 ObjectiveStatus::Achieved
             } else {
                 ObjectiveStatus::Unrealized
@@ -118,6 +121,22 @@ mod tests {
 
         assert_eq!(
             compute_objective_status(Some("j-done"), &ticket_map, &plan_map),
+            ObjectiveStatus::Achieved
+        );
+    }
+
+    #[test]
+    fn test_ticket_archived() {
+        let mut ticket_map = HashMap::new();
+        ticket_map.insert(
+            "j-arch".to_string(),
+            make_ticket("j-arch", TicketStatus::Archived),
+        );
+        let plan_map = HashMap::new();
+
+        // Archived tickets have still satisfied the objective
+        assert_eq!(
+            compute_objective_status(Some("j-arch"), &ticket_map, &plan_map),
             ObjectiveStatus::Achieved
         );
     }
@@ -197,6 +216,25 @@ mod tests {
 
         assert_eq!(
             compute_objective_status(Some("plan-mix"), &ticket_map, &plan_map),
+            ObjectiveStatus::Achieved
+        );
+    }
+
+    #[test]
+    fn test_plan_with_archived_tickets() {
+        // Plan with a mix of complete and archived tickets → all terminal → Achieved
+        let mut ticket_map = HashMap::new();
+        ticket_map.insert("t1".to_string(), make_ticket("t1", TicketStatus::Complete));
+        ticket_map.insert("t2".to_string(), make_ticket("t2", TicketStatus::Archived));
+
+        let mut plan_map = HashMap::new();
+        plan_map.insert(
+            "plan-arch".to_string(),
+            make_plan("plan-arch", vec!["t1", "t2"]),
+        );
+
+        assert_eq!(
+            compute_objective_status(Some("plan-arch"), &ticket_map, &plan_map),
             ObjectiveStatus::Achieved
         );
     }

@@ -304,7 +304,9 @@ impl Ticket {
         // so that, e.g., Complete → Archived keeps the original completion time.
         let needs_completed_at_stamp = new_status.is_terminal()
             && old_status.is_none_or(|s| !s.is_terminal())
-            && old_metadata.as_ref().is_none_or(|m| m.completed_at.is_none());
+            && old_metadata
+                .as_ref()
+                .is_none_or(|m| m.completed_at.is_none());
         let completed_at_value = needs_completed_at_stamp.then(crate::utils::iso_date);
 
         // Update the status field

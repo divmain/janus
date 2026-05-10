@@ -116,6 +116,10 @@ pub trait Selectable: Sized + Clone + Copy + 'static {
     }
 }
 
+/// `Archived` is included in the selectable values for the edit form dropdown,
+/// allowing users to manually archive a ticket when needed. However, `Archived`
+/// is typically auto-managed by the archive sweep and should not appear in the
+/// board's quick-cycle (see `TicketService::next_status` in `services/mod.rs`).
 impl Selectable for TicketStatus {
     fn all_values() -> Vec<Self> {
         vec![

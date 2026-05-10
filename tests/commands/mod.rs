@@ -4,6 +4,7 @@
 mod common;
 
 mod aliases_test;
+mod archive_test;
 mod create_test;
 mod dep_test;
 mod graph_test;

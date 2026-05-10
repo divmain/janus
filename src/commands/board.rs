@@ -7,6 +7,7 @@ use iocraft::prelude::*;
 
 use crate::archive::sweep_completed_tickets;
 use crate::error::{JanusError, Result};
+use crate::events::Actor;
 use crate::store::{get_or_init_store, start_watching};
 use crate::tui::KanbanBoard;
 
@@ -20,7 +21,7 @@ pub async fn cmd_board() -> Result<()> {
     // doesn't contain tickets that should have rolled off. Failures here are
     // non-fatal — we'd rather show the board than block on a sweep error.
     let tickets = store.get_all_tickets();
-    let _ = sweep_completed_tickets(&tickets).await;
+    let _ = sweep_completed_tickets(&tickets, Actor::AutoArchive).await;
 
     element!(KanbanBoard)
         .fullscreen()
