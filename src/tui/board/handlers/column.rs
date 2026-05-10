@@ -79,7 +79,10 @@ fn handle_move_left(ctx: &mut BoardHandlerContext<'_>) {
 }
 
 /// Adjust current column to first visible column if current is hidden
-pub fn adjust_column_after_toggle(current_column: &mut State<usize>, visible: &[bool; COLUMN_COUNT]) {
+pub fn adjust_column_after_toggle(
+    current_column: &mut State<usize>,
+    visible: &[bool; COLUMN_COUNT],
+) {
     let current = current_column.get();
     if !visible[current]
         && let Some(first_visible) = visible.iter().position(|&v| v)

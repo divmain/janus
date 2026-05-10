@@ -87,6 +87,14 @@ impl TicketService {
     // =========================================================================
 
     /// Get the next status in the cycle
+    ///
+    /// The board quick-cycle intentionally excludes `Archived` as a target status.
+    /// `Archived` is auto-managed by the archive sweep (tickets move there after
+    /// sitting in `Complete` for a configurable number of days). Users who need to
+    /// manually archive a ticket should use the edit form or CLI instead.
+    ///
+    /// Cycle: New → Next → InProgress → Complete → New (wrapping).
+    /// Cancelled and Archived both reset to New.
     fn next_status(current: TicketStatus) -> TicketStatus {
         match current {
             TicketStatus::New => TicketStatus::Next,

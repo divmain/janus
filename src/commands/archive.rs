@@ -13,6 +13,7 @@ use crate::archive::{ArchiveResult, sweep_with_threshold, ticket_age};
 use crate::cli::OutputOptions;
 use crate::config::Config;
 use crate::error::Result;
+use crate::events::Actor;
 use crate::store::get_or_init_store;
 use crate::types::TicketStatus;
 
@@ -59,7 +60,7 @@ pub async fn cmd_archive(
         .print(output);
     }
 
-    let result = sweep_with_threshold(&tickets, threshold).await?;
+    let result = sweep_with_threshold(&tickets, threshold, Actor::AutoArchive).await?;
     let text = format_result(&result, days);
     CommandOutput::new(json!({
         "archived": result.archived_ids,
