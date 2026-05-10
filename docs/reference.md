@@ -62,6 +62,12 @@ Format: `plan-<4-char-hash>`
 
 Example: `plan-a1b2`
 
+### Objective IDs
+
+Format: `objv-<hash>` where hash is 4-8 alphanumeric characters
+
+Examples: `objv-a1b2`, `objv-f7e3c9`
+
 ## Ticket File Format
 
 Tickets are stored as Markdown files in `.janus/items/` with YAML frontmatter:
@@ -174,12 +180,55 @@ Execute the migration.
 - **Structured**: `## Acceptance Criteria`, `## Tickets`, `## Phase N: Name` are parsed
 - **Free-form**: Any other H2 sections are preserved verbatim
 
+## Objective File Format
+
+Objectives are stored in `.janus/objectives/` as Markdown files with YAML frontmatter:
+
+```markdown
+---
+id: objv-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+satisfied-by: plan-x1y2
+---
+# Objective Title
+
+## Description
+
+Detailed description of the objective...
+
+## Acceptance Criteria
+
+- Criterion one
+- Criterion two
+
+## Notes
+
+### 2024-01-15T10:30:00Z
+
+A timestamped note...
+```
+
+### Objective Frontmatter Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier (`objv-<hash>`) |
+| `uuid` | string | UUID for external reference |
+| `created` | datetime | ISO 8601 creation timestamp |
+| `satisfied-by` | string | Ticket or plan ID that satisfies this objective |
+
+### Objective Status
+
+Status is auto-computed (never stored): `unrealized` when `satisfied_by` is absent or the referenced entity is incomplete; `achieved` when the referenced ticket is complete or all tickets in the referenced plan are complete/cancelled.
+
 ## Directory Structure
 
 ```
 .janus/
 ├── items/           # Ticket files (*.md)
 ├── plans/           # Plan files (*.md)
+├── objectives/      # Objective files (*.md)
 ├── hooks/           # Hook scripts
 ├── embeddings/      # Embedding cache (*.bin files)
 └── config.yaml      # Configuration
@@ -188,7 +237,7 @@ Execute the migration.
 ### Store Architecture
 
 Janus uses an in-memory store (DashMap) for fast queries:
-- **No database**: Store is rebuilt from Markdown files on process start
+- **No database**: Store is rebuilt from Markdown files (`.janus/items/`, `.janus/plans/`, `.janus/objectives/`) on process start
 - **Embeddings**: Stored as `.bin` files in `.janus/embeddings/`, keyed by `blake3(file_path + ":" + mtime_ns)`
 - **Filesystem watcher**: Live updates for long-running processes (TUI, MCP server)
 

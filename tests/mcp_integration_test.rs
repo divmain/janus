@@ -143,8 +143,8 @@ fn test_mcp_tools_list() {
     assert!(response["result"]["tools"].is_array());
     let tools = response["result"]["tools"].as_array().unwrap();
 
-    // Should have 20 tools
-    assert_eq!(tools.len(), 20);
+    // Should have 26 tools (20 ticket/plan/doc tools + 6 objective tools)
+    assert_eq!(tools.len(), 27);
 
     // Verify all tool names are present
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
@@ -168,6 +168,13 @@ fn test_mcp_tools_list() {
     assert!(tool_names.contains(&"doc_show"));
     assert!(tool_names.contains(&"doc_set"));
     assert!(tool_names.contains(&"doc_search"));
+    assert!(tool_names.contains(&"create_objective"));
+    assert!(tool_names.contains(&"show_objective"));
+    assert!(tool_names.contains(&"list_objectives"));
+    assert!(tool_names.contains(&"update_objective"));
+    assert!(tool_names.contains(&"delete_objective"));
+    assert!(tool_names.contains(&"add_objective_note"));
+    assert!(tool_names.contains(&"add_objective_criterion"));
 }
 
 // ============================================================================
@@ -225,8 +232,8 @@ fn test_mcp_resource_templates_list() {
     assert!(response["result"]["resourceTemplates"].is_array());
     let templates = response["result"]["resourceTemplates"].as_array().unwrap();
 
-    // Should have 5 resource templates
-    assert_eq!(templates.len(), 5);
+    // Should have 6 resource templates (5 existing + 1 objective)
+    assert_eq!(templates.len(), 6);
 
     // Verify all template URIs are present
     let uri_templates: Vec<&str> = templates
@@ -238,6 +245,7 @@ fn test_mcp_resource_templates_list() {
     assert!(uri_templates.contains(&"janus://plan/{id}/next"));
     assert!(uri_templates.contains(&"janus://plan/{id}/details"));
     assert!(uri_templates.contains(&"janus://tickets/spawned-from/{id}"));
+    assert!(uri_templates.contains(&"janus://objective/{id}"));
 }
 
 // ============================================================================

@@ -1,6 +1,6 @@
 # Semantic Search
 
-Semantic search lets you find tickets by meaning rather than exact keywords. Instead of searching for "login bug", you can search for "authentication problems" and find relevant tickets even if they don't contain those exact words.
+Semantic search lets you find tickets and objectives by meaning rather than exact keywords. Instead of searching for "login bug", you can search for "authentication problems" and find relevant tickets even if they don't contain those exact words.
 
 ## Enabling/Disabling Semantic Search
 
@@ -73,7 +73,7 @@ See [MCP Guide](mcp.md) for integration details.
 
 ## How It Works
 
-1. **Embedding generation**: Each ticket's title and description are converted to a vector embedding using a local AI model (fastembed). Embeddings are generated on-demand or during cache rebuild operations.
+1. **Embedding generation**: Each ticket's title and description are converted to a vector embedding using a local AI model (fastembed). Objectives are also embedded from their title, description, and acceptance criteria. Embeddings are generated on-demand or during cache rebuild operations.
 2. **Storage**: Embeddings are stored as binary files in `.janus/embeddings/`. Each embedding file is content-addressable, keyed by `blake3(file_path + ":" + mtime_ns)` for automatic cache invalidation when ticket files change.
 3. **Query processing**: Search queries are converted to vectors using the same model
 4. **Similarity matching**: Results are ranked by brute-force cosine similarity between query and ticket embeddings using the in-memory store
@@ -83,7 +83,7 @@ All processing happens locally - no data is sent to external services.
 ## Performance
 
 - **Initial embedding generation**: Generating embeddings for all tickets takes a few seconds (depends on ticket count)
-- **Incremental updates**: Only new/modified tickets need embedding generation. The store automatically detects changes via filesystem watching in long-running processes (TUI, MCP server)
+- **Incremental updates**: Only new/modified tickets and objectives need embedding generation. The store automatically detects changes via filesystem watching in long-running processes (TUI, MCP server)
 - **Search**: Sub-second for most queries using brute-force cosine similarity on the in-memory store
 
 ## Troubleshooting
@@ -98,13 +98,13 @@ janus cache rebuild
 
 ### Orphaned embedding files
 
-Over time, deleted tickets may leave behind orphaned embedding files. To clean up:
+Over time, deleted tickets or objectives may leave behind orphaned embedding files. To clean up:
 
 ```bash
 janus cache prune
 ```
 
-This removes embedding files for tickets that no longer exist.
+This removes embedding files for tickets or objectives that no longer exist.
 
 ## Tips
 

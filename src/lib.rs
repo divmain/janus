@@ -17,6 +17,7 @@ pub mod locator;
 pub mod markdown_formatter;
 pub mod mcp;
 pub mod next;
+pub mod objective;
 pub mod parser;
 pub mod paths;
 pub mod plan;
@@ -55,7 +56,7 @@ pub use ticket::{
     get_all_tickets_from_disk,
 };
 pub use types::{
-    ArrayField, CreatedAt, EntityType, PlanId, TicketData, TicketId, TicketMetadata,
-    TicketPriority, TicketStatus, TicketSummary, TicketType, docs_dir, janus_root, plans_dir,
-    tickets_items_dir,
+    ArrayField, CreatedAt, EntityType, ObjectiveId, ObjectiveStatus, PlanId, TicketData, TicketId,
+    TicketMetadata, TicketPriority, TicketStatus, TicketSummary, TicketType, docs_dir, janus_root,
+    objectives_dir, plans_dir, tickets_items_dir,
 };

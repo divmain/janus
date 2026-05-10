@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use crate::types::{plans_dir, tickets_items_dir};
+use crate::types::{objectives_dir, plans_dir, tickets_items_dir};
 
 /// Returns the file path for a ticket with the given ID.
 ///
@@ -22,6 +22,14 @@ pub fn ticket_path(id: &str) -> PathBuf {
 /// This function does not verify that the file exists.
 pub fn plan_path(id: &str) -> PathBuf {
     plans_dir().join(format!("{id}.md"))
+}
+
+/// Returns the file path for an objective with the given ID.
+///
+/// The path is constructed as `<objectives_dir>/<id>.md`.
+/// This function does not verify that the file exists.
+pub fn objective_path(id: &str) -> PathBuf {
+    objectives_dir().join(format!("{id}.md"))
 }
 
 #[cfg(test)]

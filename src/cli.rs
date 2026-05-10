@@ -359,6 +359,12 @@ pub enum Commands {
         action: DocAction,
     },
 
+    /// Manage objectives
+    Objective {
+        #[command(subcommand)]
+        action: ObjectiveAction,
+    },
+
     /// Output ticket relationship graphs in DOT or Mermaid format
     Graph {
         /// Show dependencies only (blocking/blocked-by relationships)
@@ -989,6 +995,91 @@ pub enum DocAction {
     },
 }
 
+#[derive(Subcommand)]
+pub enum ObjectiveAction {
+    /// Create a new objective
+    Create {
+        /// Title for the objective
+        title: String,
+        /// Description text
+        #[arg(short, long)]
+        description: Option<String>,
+        /// Acceptance criteria (can be specified multiple times)
+        #[arg(short = 'c', long = "criterion")]
+        criteria: Vec<String>,
+        /// Ticket or plan ID that satisfies this objective
+        #[arg(long = "satisfied-by")]
+        satisfied_by: Option<String>,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Show objective details
+    Show {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Show raw markdown
+        #[arg(long)]
+        raw: bool,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// List objectives
+    Ls {
+        /// Filter by status: unrealized, achieved
+        #[arg(long)]
+        status: Option<String>,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Edit objective in $EDITOR
+    Edit {
+        /// Objective ID (full or partial)
+        id: String,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Delete an objective
+    Delete {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Skip confirmation prompt
+        #[arg(short = 'y', long)]
+        yes: bool,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Set a field on an objective
+    Set {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Field name (currently only: satisfied-by)
+        field: String,
+        /// New value (use empty string to clear)
+        value: String,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Add a note to an objective
+    AddNote {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Note text
+        #[arg(short, long)]
+        text: String,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+    /// Add an acceptance criterion to an objective
+    AddCriterion {
+        /// Objective ID (full or partial)
+        id: String,
+        /// Criterion text (sanitized for safe markdown insertion)
+        criterion: String,
+        #[command(flatten)]
+        output: OutputOptions,
+    },
+}
+
 impl Commands {
     /// Execute the command, dispatching to the appropriate handler.
     pub async fn run(self) -> crate::error::Result<()> {
@@ -1000,7 +1091,9 @@ impl Commands {
             cmd_doc_edit, cmd_doc_ls, cmd_doc_search, cmd_doc_show, cmd_doctor, cmd_edit,
             cmd_events_prune, cmd_graph, cmd_hook_disable, cmd_hook_enable, cmd_hook_install,
             cmd_hook_list, cmd_hook_log, cmd_hook_run, cmd_link_add, cmd_link_remove,
-            cmd_ls_with_options, cmd_next, cmd_plan_add_phase, cmd_plan_add_ticket,
+            cmd_ls_with_options, cmd_next, cmd_objective_add_criterion, cmd_objective_add_note,
+            cmd_objective_create, cmd_objective_delete, cmd_objective_edit, cmd_objective_ls,
+            cmd_objective_set, cmd_objective_show, cmd_plan_add_phase, cmd_plan_add_ticket,
             cmd_plan_create, cmd_plan_delete, cmd_plan_edit, cmd_plan_hud, cmd_plan_import,
             cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next, cmd_plan_remove_phase,
             cmd_plan_remove_ticket, cmd_plan_rename, cmd_plan_reorder, cmd_plan_show,
@@ -1396,6 +1489,49 @@ impl Commands {
                     threshold,
                     output,
                 } => cmd_doc_search(&query, document.as_deref(), limit, threshold, output).await,
+            },
+
+            Commands::Objective { action } => match action {
+                ObjectiveAction::Create {
+                    title,
+                    description,
+                    criteria,
+                    satisfied_by,
+                    output,
+                } => {
+                    cmd_objective_create(
+                        &title,
+                        description.as_deref(),
+                        &criteria,
+                        satisfied_by.as_deref(),
+                        output,
+                    )
+                    .await
+                }
+                ObjectiveAction::Show { id, raw, output } => {
+                    cmd_objective_show(&id, raw, output).await
+                }
+                ObjectiveAction::Ls { status, output } => {
+                    cmd_objective_ls(status.as_deref(), output).await
+                }
+                ObjectiveAction::Edit { id, output } => cmd_objective_edit(&id, output).await,
+                ObjectiveAction::Delete { id, yes, output } => {
+                    cmd_objective_delete(&id, yes, output).await
+                }
+                ObjectiveAction::Set {
+                    id,
+                    field,
+                    value,
+                    output,
+                } => cmd_objective_set(&id, &field, &value, output).await,
+                ObjectiveAction::AddNote { id, text, output } => {
+                    cmd_objective_add_note(&id, &text, output).await
+                }
+                ObjectiveAction::AddCriterion {
+                    id,
+                    criterion,
+                    output,
+                } => cmd_objective_add_criterion(&id, &criterion, output).await,
             },
         }
     }

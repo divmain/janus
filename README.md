@@ -15,6 +15,7 @@ _Janus: ancient Roman deity, guardian of doorways and gates, protector of the st
 - **JSON queries**: Export tickets as JSON with flexible filtering
 - **Semantic search**: Find tickets by intent using AI-powered vector embeddings
 - **Project Knowledge Documents**: Store project knowledge as semantically-searchable markdown files in `.janus/docs/`
+- **Objectives**: Track high-level goals with auto-computed status based on linked tickets and plans
 
 ## Installation
 
@@ -81,6 +82,10 @@ P0 (critical) through P4 (nice to have). Default is P2.
 
 Tickets can depend on other tickets. Use `janus ls --ready` to see tickets with all dependencies complete, or `janus ls --blocked` to see what's waiting.
 
+### Objectives
+
+Objectives represent high-level goals. Each objective can reference a ticket or plan via `satisfied_by` — when the referenced entity is complete, the objective's status automatically becomes `achieved`. Statuses: `unrealized` (default) and `achieved`.
+
 ## Key Commands
 
 | Command | Alias | Description |
@@ -101,6 +106,11 @@ Tickets can depend on other tickets. Use `janus ls --ready` to see tickets with 
 | `janus doc show <label>` | | Show document content |
 | `janus doc create <label>` | | Create new document |
 | `janus doc search <query>` | | Search document contents |
+| `janus objective create "Title"` | | Create a new objective |
+| `janus objective show <id>` | | View objective details with status |
+| `janus objective ls` | | List objectives |
+| `janus objective set <id> satisfied-by <ref>` | | Link to a ticket or plan |
+| `janus objective add-criterion <id> "text"` | | Add an acceptance criterion |
 
 Partial IDs work - use just the first few unique characters (e.g., `j-a1` instead of `j-a1b2`).
 
@@ -175,6 +185,26 @@ janus doc search --document architecture "API design"
 
 Documents are stored in `.janus/docs/` with YAML frontmatter, chunked at headings for semantic search, and accessible via CLI and MCP tools.
 
+## Objectives
+
+Define high-level goals and track their completion:
+
+```bash
+# Create an objective
+janus objective create "Launch v2.0"
+
+# Link it to a plan (status auto-computed from plan completion)
+janus objective set objv-a1b2 satisfied-by plan-x1y2
+
+# View status and details
+janus objective show objv-a1b2
+
+# List all objectives
+janus objective ls
+```
+
+Objectives are stored in `.janus/objectives/` as Markdown files with YAML frontmatter. Status is never stored directly — it is computed as `achieved` when the `satisfied_by` reference is complete, and `unrealized` otherwise.
+
 ## Hooks
 
 Run custom scripts on ticket events (create, update, status change):
@@ -207,6 +237,7 @@ See [MCP Guide](docs/mcp.md) for integration setup.
 | [TUI Guide](docs/tui.md) | Keyboard shortcuts and modes |
 | [Plans](docs/plans.md) | Organizing tickets into plans |
 | [Project Knowledge Documents](docs/docs.md) | Managing project knowledge |
+| [Objectives](docs/objectives.md) | High-level goal tracking |
 | [Hooks](docs/hooks.md) | Automation and scripting |
 | [MCP Server](docs/mcp.md) | AI assistant integration |
 | [Semantic Search](docs/semantic-search.md) | Natural language ticket search |

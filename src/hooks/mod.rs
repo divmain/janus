@@ -21,7 +21,7 @@
 //!
 //! Hook scripts receive context via environment variables:
 //! - `JANUS_EVENT`: The event name (e.g., "ticket_created")
-//! - `JANUS_ITEM_TYPE`: The item type ("ticket" or "plan")
+//! - `JANUS_ITEM_TYPE`: The item type ("ticket", "plan", or "objective")
 //! - `JANUS_ITEM_ID`: The item ID (e.g., "j-1234")
 //! - `JANUS_FILE_PATH`: Path to the item file
 //! - `JANUS_FIELD_NAME`: Field being modified (for updates)

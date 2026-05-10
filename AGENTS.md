@@ -4,7 +4,7 @@ This document provides essential information for AI coding agents working in thi
 
 ## Project Overview
 
-Janus is a plain-text issue tracking CLI tool written in Rust. It stores tickets as Markdown files with YAML frontmatter in a `.janus` directory. The project provides commands for creating, managing, and querying tickets, with optional sync to GitHub Issues and Linear.
+Janus is a plain-text issue tracking CLI tool written in Rust. It stores tickets, objectives, plans, and documents as Markdown files with YAML frontmatter in a `.janus` directory. The project provides commands for creating, managing, and querying these entities, with optional sync to GitHub Issues and Linear.
 
 ## Technology Stack
 
@@ -72,16 +72,17 @@ src/
 ├── lib.rs               # Library root, module declarations, public re-exports
 ├── cli.rs               # Clap CLI definitions (Cli struct, Commands enum, all subcommand args)
 ├── config.rs            # App config (.janus/config.yaml): remote, auth, hooks, search settings
-├── entity.rs            # Entity trait: shared async interface for Ticket and Plan (find/read/write/delete)
+├── entity.rs            # Entity trait: shared async interface for Ticket, Plan, and Objective (find/read/write/delete)
 ├── error.rs             # JanusError enum (100+ variants) and Result<T> type alias
 ├── graph.rs             # Dependency graph algorithms, circular dependency detection
-├── locator.rs           # Path utilities: ticket_path(id), plan_path(id)
+├── locator.rs           # Path utilities: ticket_path(id), plan_path(id), objective_path(id)
 ├── macros.rs            # enum_display_fromstr! macro for Display/FromStr on enums
 ├── next.rs              # NextWorkFinder: optimal work queue from priorities/deps/status
 ├── parser.rs            # Document parsing: YAML frontmatter extraction, markdown section manipulation
 ├── paths.rs             # Thread-local Janus root override (JanusRootGuard) for test isolation
-├── types.rs             # Core domain types: TicketId, PlanId, TicketStatus, TicketType, TicketPriority,
-│                        #   TicketSize, TicketMetadata, TicketData, ArrayField, path helpers
+├── types.rs             # Core domain types: TicketId, PlanId, ObjectiveId, TicketStatus, TicketType,
+│                        #   TicketPriority, TicketSize, ObjectiveStatus, TicketMetadata, TicketData,
+│                        #   ArrayField, path helpers
 ├── ticket/              # Ticket domain module
 │   ├── mod.rs           #   Ticket struct (facade), Entity trait impl, re-exports
 │   ├── builder.rs       #   TicketBuilder: builder pattern for creating tickets
@@ -97,6 +98,13 @@ src/
 │       ├── import.rs    #     parse_importable_plan() for markdown plan import
 │       ├── sections.rs  #     Structured vs free-form section parsing
 │       └── serialize.rs #     Plan file serialization (write back to disk)
+├── objective/           # Objective domain module
+│   ├── mod.rs           #   Objective facade, Entity trait impl, re-exports
+│   ├── types.rs         #   ObjectiveMetadata, importable types
+│   ├── parser.rs        #   Objective file parsing (YAML frontmatter + markdown body)
+│   ├── builder.rs       #   ObjectiveBuilder: builder pattern for creating objectives
+│   ├── serialize.rs     #   Objective file serialization (write back to disk)
+│   └── status.rs        #   Objective status computation (unrealized/achieved from satisfied_by)
 ├── doc/                 # Document domain module (Project Knowledge Documents)
 │   ├── mod.rs           #   Doc facade, Entity trait impl, re-exports
 │   ├── types.rs         #   DocLabel, DocMetadata, DocChunk, DocLoadResult
@@ -137,6 +145,7 @@ src/
 │   ├── plan/            #   Plan subcommands (create, delete, rename, edit, import, show_import_spec,
 │   │                    #     ls, next, add/remove phase, reorder, show, status,
 │   │                    #     add/remove/move ticket, verify, formatters)
+│   ├── objective/       #   Objective subcommands (create, show, ls, edit, delete, set, add_note, add_criterion)
 │   └── sync/            #   Remote sync (cmd_adopt, cmd_push, cmd_remote_link, cmd_sync,
 │                        #     sanitize, sync_executor, sync_strategy, sync_ui)
 ├── display/             # CLI output formatting (colored badges, JSON output, formatters)
@@ -147,7 +156,7 @@ src/
 ├── mcp/                 # MCP server (Model Context Protocol via STDIO); grep for register_tool!
 ├── query/               # Query builder: composable ticket filters and sorting
 ├── remote/              # Remote sync: GitHub (octocrab) and Linear (cynic GraphQL) providers
-├── status/              # Status computation for tickets and plans: predicates, aggregation
+├── status/              # Status computation for tickets, plans, and objectives: predicates, aggregation
 ├── tui/                 # Terminal UI (see src/tui/**/*.rs): view, board, remote manager,
 │                        #   components, services, theme, navigation, search, state, etc.
 └── utils/               # Utilities: ID generation, IO helpers, text processing, dir scanning, validation
@@ -169,8 +178,9 @@ src/
 - **Domain terms**: Business logic concepts:
   - `TicketStore`, `TicketMetadata`, `TicketBuilder` — ticket domain
   - `PlanMetadata`, `Phase`, `PlanStatus` — plan domain
+  - `ObjectiveMetadata`, `ObjectiveStatus`, `ObjectiveBuilder` — objective domain
 
-When adding new types, use `Janus*` for project-level infrastructure and domain terms (`Ticket*`, `Plan*`) for business concepts.
+When adding new types, use `Janus*` for project-level infrastructure and domain terms (`Ticket*`, `Plan*`, `Objective*`) for business concepts.
 
 ### Imports
 
@@ -217,7 +227,7 @@ pub enum JanusError {
 - Use `enum_display_fromstr!` macro (in `src/macros.rs`) for enum `Display`/`FromStr` implementations
 - Use `#[serde(rename_all = "lowercase")]` or `#[serde(rename_all = "snake_case")]` for enum serialization
 - Use `#[serde(skip_serializing_if = "Option::is_none")]` for optional metadata fields
-- Use `#[serde(transparent)]` for newtype wrappers (`TicketId`, `PlanId`)
+- Use `#[serde(transparent)]` for newtype wrappers (`TicketId`, `PlanId`, `ObjectiveId`)
 
 ### Command Functions
 
@@ -228,11 +238,11 @@ pub enum JanusError {
 
 ### Async Patterns
 
-- **Finding entities is async**: `Ticket::find()`, `Plan::find()` require store initialization (`get_or_init_store().await`)
+- **Finding entities is async**: `Ticket::find()`, `Plan::find()`, `Objective::find()` require store initialization (`get_or_init_store().await`)
 - **File I/O is sync by default**: `ticket.read()`, `ticket.write()`, `ticket.update_field()` use `std::fs`
 - **Async file I/O variants exist**: `read_async()`, `read_content_async()`, `delete_async()` use `tokio::fs`
 - **Repository functions are async**: `get_all_tickets()`, `build_ticket_map()` go through the store
-- **Entity trait**: Shared interface (`find`, `read`, `write`, `delete`, `exists`) implemented by both `Ticket` and `Plan`
+- **Entity trait**: Shared interface (`find`, `read`, `write`, `delete`, `exists`) implemented by `Ticket`, `Plan`, and `Objective`
 
 ## Test Conventions
 
@@ -279,8 +289,10 @@ assert!(output.contains("t-"));
 - **Dependencies**: Tickets can depend on other tickets (blocks/blocked-by)
 - **Links**: Bidirectional relationships between tickets
 - **Parent/Child**: Hierarchical ticket organization
+- **Objective statuses**: `unrealized`, `achieved` (auto-computed from `satisfied_by` reference, never stored in frontmatter)
 - **ID Format**: `<prefix>-<hash>` where hash is 4-8 chars (e.g., `j-a1b2`)
 - **Plan ID Format**: `plan-<hash>` where hash is 4-8 chars (e.g., `plan-a1b2`)
+- **Objective ID Format**: `objv-<hash>` where hash is 4-8 chars (e.g., `objv-a1b2`)
 - **Document Label Format**: Free-form filesystem-safe string (e.g., `architecture`, `api-design`)
 
 ## Document File Format
@@ -301,6 +313,35 @@ Document content...
 ```
 
 Documents are chunked at heading boundaries for semantic search. Each chunk tracks its heading path (e.g., `["Architecture", "API Design"]`), content, and line numbers.
+
+## Objective File Format
+
+Objectives are stored as `.md` files in `.janus/objectives/` with YAML frontmatter:
+
+```markdown
+---
+id: objv-a1b2
+uuid: 550e8400-e29b-41d4-a716-446655440000
+created: 2024-01-01T00:00:00Z
+satisfied-by:              # optional, ticket or plan ID that satisfies this objective
+---
+# Objective Title
+
+## Description
+
+What this objective aims to achieve...
+
+## Acceptance Criteria
+
+- Criterion 1
+- Criterion 2
+
+## Notes
+
+- 2024-01-15: Additional context...
+```
+
+Objective status (`unrealized` or `achieved`) is auto-computed from the `satisfied_by` reference and never stored in frontmatter. If `satisfied_by` references a complete ticket or plan, the objective is `achieved`; otherwise it is `unrealized`.
 
 ## Ticket File Format
 
@@ -335,7 +376,7 @@ Description and body content...
 Janus uses an in-memory store backed by `DashMap` concurrent hash maps. Key points:
 
 - **Singleton**: Global `OnceCell<TicketStore>` initialized once per process via `get_or_init_store()`
-- **Initialization**: Reads all `.md` files from `.janus/items/`, `.janus/plans/`, and `.janus/docs/` into `DashMap` structures, loads pre-computed embeddings from `.janus/embeddings/`
+- **Initialization**: Reads all `.md` files from `.janus/items/`, `.janus/plans/`, `.janus/objectives/`, and `.janus/docs/` into `DashMap` structures, loads pre-computed embeddings from `.janus/embeddings/`
 - **Concurrency**: `DashMap` provides lock-free concurrent reads and fine-grained locking for writes
 - **Filesystem Watcher**: For long-running processes (TUI, MCP server), a `notify`-based watcher monitors `.janus/` recursively, debounces events (150ms), and updates the store
 - **Source of truth**: Markdown files remain authoritative; the store is always derived from them
@@ -366,11 +407,11 @@ let status = compute_plan_status(&metadata, &ticket_map);
 
 ## Hooks
 
-Hooks are scripts in `.janus/hooks/` that run in response to mutations. Configured via `.janus/config.yaml` under the `hooks` key. There are 9 hook events: `ticket_created`, `ticket_updated`, `plan_created`, `plan_updated`, `plan_deleted`, `pre_write`, `post_write`, `pre_delete`, `post_delete`. Pre-hooks (`pre_write`, `pre_delete`) can abort operations by returning non-zero exit codes; post-hook failures are logged but do not abort. Hook scripts receive context via environment variables (`JANUS_EVENT`, `JANUS_ITEM_TYPE`, `JANUS_ITEM_ID`, `JANUS_FILE_PATH`, `JANUS_FIELD_NAME`, `JANUS_OLD_VALUE`, `JANUS_NEW_VALUE`, `JANUS_ROOT`). See `src/hooks/types.rs` for `HookEvent` and `HookContext`. Installable recipes are in `hook_recipes/`.
+Hooks are scripts in `.janus/hooks/` that run in response to mutations. Configured via `.janus/config.yaml` under the `hooks` key. There are 12 hook events: `ticket_created`, `ticket_updated`, `plan_created`, `plan_updated`, `plan_deleted`, `objective_created`, `objective_updated`, `objective_deleted`, `pre_write`, `post_write`, `pre_delete`, `post_delete`. Pre-hooks (`pre_write`, `pre_delete`) can abort operations by returning non-zero exit codes; post-hook failures are logged but do not abort. Hook scripts receive context via environment variables (`JANUS_EVENT`, `JANUS_ITEM_TYPE`, `JANUS_ITEM_ID`, `JANUS_FILE_PATH`, `JANUS_FIELD_NAME`, `JANUS_OLD_VALUE`, `JANUS_NEW_VALUE`, `JANUS_ROOT`). See `src/hooks/types.rs` for `HookEvent` and `HookContext`. Installable recipes are in `hook_recipes/`.
 
 ## Event Logging
 
-All mutations are logged as NDJSON to `.janus/events.ndjson` (appended with `O_APPEND` for atomicity; failures are non-fatal). Each record includes `timestamp`, `event_type`, `entity_type`, `entity_id`, `actor`, and `data`. The 3 actor types are `cli`, `mcp`, `hook` (see `src/events/types.rs` for `EventType` and `Actor` enums). When adding new mutations, call the appropriate event log helper (e.g., `log_ticket_created()`, `log_status_changed()`, `log_field_updated()`) from `src/events/`.
+All mutations are logged as NDJSON to `.janus/events.ndjson` (appended with `O_APPEND` for atomicity; failures are non-fatal). Each record includes `timestamp`, `event_type`, `entity_type`, `entity_id`, `actor`, and `data`. The 3 actor types are `cli`, `mcp`, `hook` (see `src/events/types.rs` for `EventType` and `Actor` enums). When adding new mutations, call the appropriate event log helper (e.g., `log_ticket_created()`, `log_status_changed()`, `log_field_updated()`, `log_objective_created()`) from `src/events/`.
 
 ## MCP Server
 
@@ -381,7 +422,7 @@ The MCP server (`src/mcp/`) exposes Janus functionality to AI agents via STDIO t
 3. Register it with `register_tool!(router, "name", "description", RequestType, method_name, optional_args_bool)`
 4. Log the mutation event with `Actor::Mcp`
 
-Resources (static and template-based) are defined in `src/mcp/resources.rs`.
+Resources (static and template-based) are defined in `src/mcp/resources.rs`. Objective tools (create, show, list, update, delete, add note) and the `janus://objective/{id}` resource template are included.
 
 ## Additional Documentation
 

@@ -18,6 +18,7 @@
 //! | `janus://tickets/spawned-from/{id}` | Children of ticket (JSON) | application/json |
 //! | `janus://graph/deps` | Dependency graph (DOT) | text/vnd.graphviz |
 //! | `janus://graph/spawning` | Spawning graph (DOT) | text/vnd.graphviz |
+//! | `janus://objective/{id}` | Full objective details with status | text/markdown |
 
 use std::collections::HashSet;
 
@@ -199,6 +200,19 @@ pub fn list_all_resource_templates() -> Vec<ResourceTemplate> {
             },
             annotations: None,
         },
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "janus://objective/{id}".to_string(),
+                name: "objective".to_string(),
+                title: Some("Objective Details".to_string()),
+                description: Some(
+                    "Full objective details with computed status".to_string(),
+                ),
+                mime_type: Some("text/markdown".to_string()),
+                icons: None,
+            },
+            annotations: None,
+        },
     ]
 }
 
@@ -211,7 +225,9 @@ pub fn list_all_resource_templates() -> Vec<ResourceTemplate> {
 /// Returns the resource content or an error if the resource is not found.
 pub async fn read_resource(uri: &str) -> Result<ReadResourceResult, ResourceError> {
     // Parse the URI and dispatch to the appropriate handler
-    if let Some(id) = uri.strip_prefix("janus://ticket/") {
+    if let Some(id) = uri.strip_prefix("janus://objective/") {
+        read_objective(id).await
+    } else if let Some(id) = uri.strip_prefix("janus://ticket/") {
         read_ticket(id).await
     } else if uri == "janus://tickets/ready" {
         read_ready_tickets().await
@@ -627,6 +643,76 @@ async fn read_graph_spawning() -> Result<ReadResourceResult, ResourceError> {
     })
 }
 
+/// Read an objective's full details with computed status
+async fn read_objective(id: &str) -> Result<ReadResourceResult, ResourceError> {
+    use crate::objective::{Objective, compute_objective_status};
+    use crate::plan::build_plan_map;
+
+    let objective = Objective::find(id)
+        .await
+        .map_err(|e| ResourceError::NotFound(format!("Objective '{id}' not found: {e}")))?;
+
+    let metadata = objective
+        .read()
+        .map_err(|e| ResourceError::Internal(format!("Failed to read objective: {e}")))?;
+
+    let ticket_map = build_ticket_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load tickets: {e}")))?;
+    let plan_map = build_plan_map()
+        .await
+        .map_err(|e| ResourceError::Internal(format!("Failed to load plans: {e}")))?;
+
+    let status = compute_objective_status(metadata.satisfied_by.as_deref(), &ticket_map, &plan_map);
+
+    // Format as markdown
+    let mut content = String::new();
+    let title = metadata.title.as_deref().unwrap_or("Untitled");
+    content.push_str(&format!("# {title}\n\n"));
+    content.push_str(&format!("**ID:** {}\n", objective.id));
+    content.push_str(&format!("**Status:** {status}\n"));
+    content.push_str(&format!(
+        "**Satisfied By:** {}\n",
+        metadata.satisfied_by.as_deref().unwrap_or("None")
+    ));
+    if let Some(ref created) = metadata.created {
+        let date = created
+            .as_ref()
+            .split('T')
+            .next()
+            .unwrap_or(created.as_ref());
+        content.push_str(&format!("**Created:** {date}\n"));
+    }
+
+    if let Some(ref desc) = metadata.description {
+        content.push_str("\n## Description\n\n");
+        content.push_str(desc.trim());
+        content.push('\n');
+    }
+
+    if !metadata.acceptance_criteria.is_empty() {
+        content.push_str("\n## Acceptance Criteria\n\n");
+        for criterion in &metadata.acceptance_criteria {
+            content.push_str(&format!("- {criterion}\n"));
+        }
+    }
+
+    if let Some(ref notes) = metadata.notes_raw {
+        content.push_str("\n## Notes\n");
+        content.push_str(notes);
+        content.push('\n');
+    }
+
+    Ok(ReadResourceResult {
+        contents: vec![ResourceContents::TextResourceContents {
+            uri: format!("janus://objective/{}", objective.id),
+            mime_type: Some("text/markdown".to_string()),
+            text: content,
+            meta: None,
+        }],
+    })
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -657,7 +743,7 @@ mod tests {
     #[test]
     fn test_list_all_resource_templates() {
         let templates = list_all_resource_templates();
-        assert_eq!(templates.len(), 5);
+        assert_eq!(templates.len(), 6);
 
         let uri_templates: Vec<&str> = templates
             .iter()
@@ -668,6 +754,7 @@ mod tests {
         assert!(uri_templates.contains(&"janus://plan/{id}/next"));
         assert!(uri_templates.contains(&"janus://plan/{id}/details"));
         assert!(uri_templates.contains(&"janus://tickets/spawned-from/{id}"));
+        assert!(uri_templates.contains(&"janus://objective/{id}"));
     }
 
     #[test]

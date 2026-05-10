@@ -9,6 +9,7 @@ This recipe posts rich embed messages to a Discord channel when:
 - **New tickets are created** - Blue embed showing ticket ID, type, and priority
 - **Tickets are completed** - Green embed celebrating the completion
 - **New plans are created** - Purple embed announcing the new plan
+- **New objectives are created** - Gold embed announcing the new objective
 
 ## Setup
 
@@ -102,6 +103,9 @@ To notify on other events, add cases to the `send_notification()` function:
 ticket_status_changed)
     # Custom handling for status changes
     ;;
+objective_created|objective_updated|objective_deleted)
+    # Custom handling for objective events
+    ;;
 ```
 
 ### Add Mentions
@@ -143,6 +147,7 @@ ticket_created)
 | `JANUS_TICKET_ID` | Auto | Ticket ID (ticket events) |
 | `JANUS_TICKET_STATUS` | Auto | Current ticket status |
 | `JANUS_PLAN_ID` | Auto | Plan ID (plan events) |
+| `JANUS_OBJECTIVE_ID` | Auto | Objective ID (objective events) |
 
 ## Troubleshooting
 

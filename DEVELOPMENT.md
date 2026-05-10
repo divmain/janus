@@ -10,8 +10,8 @@ See [AGENTS.md](AGENTS.md) for detailed information on:
 - Project structure and file organization
 - Code style guidelines and conventions
 - Caching architecture and implementation
-- Domain concepts (tickets, plans, statuses, etc.)
-- Common patterns for working with tickets and plans
+- Domain concepts (tickets, plans, objectives, statuses, etc.)
+- Common patterns for working with tickets, plans, and objectives
 
 ## Prerequisites
 

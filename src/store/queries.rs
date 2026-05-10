@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use dashmap::mapref::multiple::RefMulti;
 
 use super::TicketStore;
+use crate::objective::types::ObjectiveMetadata;
 use crate::plan::types::PlanMetadata;
 use crate::types::{TicketMetadata, TicketSize, TicketSummary};
 use crate::utils::{parse_priority_filter, strip_priority_shorthand};
@@ -267,6 +268,49 @@ impl TicketStore {
             .collect();
         matches.sort();
         matches
+    }
+
+    // -------------------------------------------------------------------------
+    // Objective queries
+    // -------------------------------------------------------------------------
+
+    /// Get a single objective by exact ID.
+    pub fn get_objective(&self, id: &str) -> Option<ObjectiveMetadata> {
+        self.objectives().get(id).map(|r| r.value().clone())
+    }
+
+    /// Find objectives by partial ID substring match, returning matching IDs.
+    ///
+    /// Uses the same match strategy as `find_plan_by_partial_id`:
+    /// exact match first, then prefix/substring. Returns sorted matches.
+    pub fn find_objective_by_partial_id(&self, partial_id: &str) -> Vec<String> {
+        let mut matches: Vec<String> = self
+            .objectives()
+            .iter()
+            .filter(|r| r.key().contains(partial_id))
+            .map(|r| r.key().clone())
+            .collect();
+        matches.sort();
+        matches
+    }
+
+    /// Get all objectives as a Vec, sorted by id for deterministic ordering.
+    pub fn get_all_objective_metadata(&self) -> Vec<ObjectiveMetadata> {
+        let mut results: Vec<ObjectiveMetadata> = self
+            .objectives()
+            .iter()
+            .map(|r| r.value().clone())
+            .collect();
+        sort_by_id(&mut results, |o| o.id.as_deref());
+        results
+    }
+
+    /// Build a HashMap of objective_id -> metadata.
+    pub fn build_objective_map(&self) -> HashMap<String, ObjectiveMetadata> {
+        self.objectives()
+            .iter()
+            .map(|r| (r.key().clone(), r.value().clone()))
+            .collect()
     }
 }
 

@@ -9,6 +9,7 @@ This recipe notifies your Slack channel when:
 - A new ticket is created
 - A ticket is marked as complete
 - A new plan is created
+- A new objective is created
 
 ## Setup
 
@@ -71,3 +72,6 @@ Available events you can add:
 - `ticket_deleted` - When a ticket is deleted
 - `plan_updated` - When a plan is modified
 - `plan_deleted` - When a plan is deleted
+- `objective_created` - When an objective is created
+- `objective_updated` - When an objective is modified
+- `objective_deleted` - When an objective is deleted

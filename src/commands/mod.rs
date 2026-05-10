@@ -19,6 +19,7 @@ pub mod interactive;
 mod link;
 mod ls;
 mod next;
+mod objective;
 mod plan;
 mod query;
 mod remote_browse;
@@ -47,6 +48,11 @@ pub use hook::{
 pub use link::{cmd_link_add, cmd_link_remove};
 pub use ls::{LsOptions, cmd_ls_with_options};
 pub use next::cmd_next;
+pub use objective::{
+    cmd_objective_add_criterion, cmd_objective_add_note, cmd_objective_create,
+    cmd_objective_delete, cmd_objective_edit, cmd_objective_ls, cmd_objective_set,
+    cmd_objective_show,
+};
 pub use plan::{
     NextItemResult, cmd_plan_add_phase, cmd_plan_add_ticket, cmd_plan_create, cmd_plan_delete,
     cmd_plan_edit, cmd_plan_hud, cmd_plan_import, cmd_plan_ls, cmd_plan_move_ticket, cmd_plan_next,

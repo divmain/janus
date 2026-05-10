@@ -27,6 +27,7 @@ To manually sync (pull remote changes + push local):
 
 - `items/` - All tickets
 - `plans/` - All plans
+- `objectives/` - All objectives
 
 ## What stays local
 

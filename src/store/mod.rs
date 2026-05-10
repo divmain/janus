@@ -8,10 +8,12 @@ use tokio::sync::OnceCell;
 use crate::doc::parser::parse_doc_content;
 use crate::doc::types::DocMetadata;
 use crate::error::Result;
+use crate::objective::parser::parse_objective_content;
+use crate::objective::types::ObjectiveMetadata;
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
 use crate::ticket::parse_ticket;
-use crate::types::{TicketMetadata, docs_dir, plans_dir, tickets_items_dir};
+use crate::types::{TicketMetadata, docs_dir, objectives_dir, plans_dir, tickets_items_dir};
 
 /// A warning that occurred during store initialization.
 #[derive(Debug, Clone)]
@@ -86,6 +88,14 @@ impl InitWarnings {
             .filter(|w| w.entity_type == "doc")
             .collect()
     }
+
+    /// Get objective warnings only.
+    pub fn objective_warnings(&self) -> Vec<InitWarning> {
+        self.get_all()
+            .into_iter()
+            .filter(|w| w.entity_type == "objective")
+            .collect()
+    }
 }
 
 /// Trait for entity metadata that can be loaded from files.
@@ -148,6 +158,21 @@ impl EntityMetadata for DocMetadata {
     }
 }
 
+impl EntityMetadata for ObjectiveMetadata {
+    fn id(&self) -> Option<&str> {
+        self.id.as_ref().map(|id| id.as_ref())
+    }
+    fn set_id(&mut self, id: String) {
+        self.id = Some(crate::types::ObjectiveId::new_unchecked(id));
+    }
+    fn file_path(&self) -> Option<&PathBuf> {
+        self.file_path.as_ref()
+    }
+    fn set_file_path(&mut self, path: PathBuf) {
+        self.file_path = Some(path);
+    }
+}
+
 pub mod doc_search;
 pub mod embeddings;
 pub mod queries;
@@ -165,6 +190,7 @@ pub struct TicketStore {
     tickets: DashMap<String, TicketMetadata>,
     plans: DashMap<String, PlanMetadata>,
     docs: DashMap<String, DocMetadata>,
+    objectives: DashMap<String, ObjectiveMetadata>,
     embeddings: DashMap<String, Vec<f32>>,
     /// Warnings captured during initialization
     init_warnings: InitWarnings,
@@ -209,6 +235,17 @@ pub async fn get_or_init_store() -> Result<&'static TicketStore> {
                         tracing::warn!("Failed to generate embeddings: {e}");
                     }
                 }
+
+                match store.ensure_all_objective_embeddings().await {
+                    Ok((generated, total)) => {
+                        if generated > 0 {
+                            eprintln!("Generated embeddings for {generated}/{total} objectives");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to generate objective embeddings: {e}");
+                    }
+                }
             }
 
             Ok(store)
@@ -230,6 +267,7 @@ impl TicketStore {
             tickets: DashMap::new(),
             plans: DashMap::new(),
             docs: DashMap::new(),
+            objectives: DashMap::new(),
             embeddings: DashMap::new(),
             init_warnings: InitWarnings::new(),
         }
@@ -260,6 +298,12 @@ impl TicketStore {
         let d_dir = docs_dir();
         if tokio_fs::try_exists(&d_dir).await.unwrap_or(false) {
             store.load_docs_from_dir(&d_dir).await;
+        }
+
+        // Load objectives
+        let o_dir = objectives_dir();
+        if tokio_fs::try_exists(&o_dir).await.unwrap_or(false) {
+            store.load_objectives_from_dir(&o_dir).await;
         }
 
         // Load embeddings (requires tickets to be loaded first)
@@ -372,6 +416,21 @@ impl TicketStore {
                 self.docs.insert(label.to_string(), metadata);
             }
         })
+        .await;
+    }
+
+    /// Load all objective files from a directory into the store.
+    async fn load_objectives_from_dir(&self, dir: &Path) {
+        self.load_entities_from_dir(
+            dir,
+            "objective",
+            parse_objective_content,
+            |metadata: ObjectiveMetadata| {
+                if let Some(id) = metadata.id.clone() {
+                    self.objectives.insert(id.to_string(), metadata);
+                }
+            },
+        )
         .await;
     }
 
@@ -536,6 +595,28 @@ impl TicketStore {
         }
     }
 
+    /// Insert or update an objective in the store.
+    pub fn upsert_objective(&self, metadata: ObjectiveMetadata) {
+        if let Some(id) = metadata.id.clone() {
+            self.objectives.insert(id.to_string(), metadata);
+        } else {
+            self.init_warnings.add(InitWarning {
+                file_path: metadata.file_path.clone(),
+                message: "Skipping objective upsert: missing ID in frontmatter".to_string(),
+                entity_type: "objective".to_string(),
+            });
+        }
+    }
+
+    /// Remove an objective from the store by ID.
+    ///
+    /// Also removes the corresponding embedding entry to prevent orphaned
+    /// embeddings from inflating coverage counts.
+    pub fn remove_objective(&self, id: &str) {
+        self.objectives.remove(id);
+        self.embeddings.remove(id);
+    }
+
     /// Get a reference to the embeddings DashMap (for use by embeddings/search modules).
     pub(crate) fn embeddings(&self) -> &DashMap<String, Vec<f32>> {
         &self.embeddings
@@ -554,6 +635,11 @@ impl TicketStore {
     /// Get a reference to the docs DashMap (for use by query modules).
     pub(crate) fn docs(&self) -> &DashMap<String, DocMetadata> {
         &self.docs
+    }
+
+    /// Get a reference to the objectives DashMap (for use by query modules).
+    pub(crate) fn objectives(&self) -> &DashMap<String, ObjectiveMetadata> {
+        &self.objectives
     }
 
     /// Get the initialization warnings captured during store loading.
@@ -642,6 +728,37 @@ impl TicketStore {
         };
         self.upsert_doc(metadata);
     }
+
+    /// Re-read a specific objective from disk and upsert it into the store.
+    ///
+    /// This is the objective equivalent of `refresh_ticket_in_store`. It should be
+    /// called after a mutation writes objective changes to disk, so the in-memory
+    /// store is immediately consistent.
+    pub async fn refresh_objective_in_store(&self, objective_id: &str) {
+        let objective = match crate::objective::Objective::find(objective_id).await {
+            Ok(o) => o,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to find objective '{}' for store refresh: {}",
+                    objective_id,
+                    e
+                );
+                return;
+            }
+        };
+        let metadata = match objective.read() {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to read objective '{}' for store refresh: {}",
+                    objective_id,
+                    e
+                );
+                return;
+            }
+        };
+        self.upsert_objective(metadata);
+    }
 }
 
 #[cfg(test)]
@@ -701,6 +818,31 @@ created: 2024-01-01T00:00:00Z
 # {title}
 
 Document content for {label}.
+"#
+        )
+    }
+
+    /// Create a minimal objective markdown file content for testing.
+    #[allow(dead_code)]
+    pub fn make_objective_content(id: &str, title: &str) -> String {
+        // Derive a deterministic but unique UUID from the objective ID
+        let uuid = format!("550e8400-e29b-41d4-a716-{:0>12}", id.replace('-', ""));
+        format!(
+            r#"---
+id: {id}
+uuid: {uuid}
+created: 2024-01-01T00:00:00Z
+---
+# {title}
+
+## Description
+
+Description for {id}.
+
+## Acceptance Criteria
+
+- Criterion 1
+- Criterion 2
 "#
         )
     }
@@ -767,6 +909,7 @@ mod tests {
         assert_eq!(store.tickets.len(), 0);
         assert_eq!(store.plans.len(), 0);
         assert_eq!(store.docs.len(), 0);
+        assert_eq!(store.objectives.len(), 0);
         assert_eq!(store.embeddings.len(), 0);
     }
 

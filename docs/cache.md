@@ -9,7 +9,7 @@ Janus uses an in-memory store with content-addressable embedding caching to make
 The store is kept in-process memory using `DashMap` concurrent hash maps:
 
 - **Store Location**: In-process memory (no database files)
-- **Initialization**: On process start, all tickets and plans are read from `.janus/items/` and `.janus/plans/` into `DashMap` structures
+- **Initialization**: On process start, all tickets, plans, and objectives are read from `.janus/items/`, `.janus/plans/`, and `.janus/objectives/` into `DashMap` structures
 - **Concurrency**: `DashMap` provides lock-free concurrent reads and fine-grained locking for writes
 - **Filesystem Watcher**: For long-running processes (TUI, MCP server), a `notify`-based watcher monitors `.janus/` recursively, debounces events (150ms), and updates the store automatically
 - **Source of truth**: Markdown files remain authoritative; the store is always derived from them
@@ -75,7 +75,7 @@ When semantic search is enabled, embeddings are stored as `.bin` files in `.janu
 
 ### How It Works
 
-1. Embeddings are generated for each ticket's title and description
+1. Embeddings are generated for each ticket's title and description, and for each objective's title, description, and acceptance criteria
 2. Embeddings are stored as `.bin` files in `.janus/embeddings/`
 3. The filename is derived from `blake3(file_path + ":" + mtime_ns)` for automatic invalidation
 4. Queries are converted to vectors and compared against stored embeddings using cosine similarity

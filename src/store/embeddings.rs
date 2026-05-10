@@ -69,9 +69,9 @@ impl TicketStore {
         Ok(hash.to_hex().to_string())
     }
 
-    /// Load all embeddings from `.janus/embeddings/` for current tickets.
+    /// Load all embeddings from `.janus/embeddings/` for current tickets and objectives.
     ///
-    /// For each ticket, computes the expected key from file_path + mtime,
+    /// For each ticket and objective, computes the expected key from file_path + mtime,
     /// checks if `.janus/embeddings/{key}.bin` exists, and loads it into
     /// the embeddings DashMap.
     ///
@@ -83,7 +83,7 @@ impl TicketStore {
     /// # Errors
     ///
     /// Returns `JanusError` if a critical error occurs during loading.
-    /// Individual ticket failures (missing file, invalid embedding, etc.)
+    /// Individual failures (missing file, invalid embedding, etc.)
     /// are logged and skipped rather than causing the entire operation to fail.
     pub fn load_embeddings(&self) -> crate::error::Result<()> {
         self.embeddings().clear();
@@ -108,32 +108,35 @@ impl TicketStore {
             })
             .collect();
 
+        // Snapshot objective data similarly.
+        let objective_info: Vec<(String, std::path::PathBuf)> = self
+            .objectives()
+            .iter()
+            .filter_map(|entry| {
+                let objective = entry.value();
+                let id = objective.id.clone()?.to_string();
+                let file_path = objective.file_path.clone()?;
+                Some((id, file_path))
+            })
+            .collect();
+
         // Phase 2: Perform all disk I/O (mtime lookups, file reads), collecting
         // valid (id, vector) pairs into a local Vec. This keeps filesystem work
         // separate from DashMap inserts, reducing contention for concurrent
         // readers (watcher upserts, TUI reads).
         let mut loaded: Vec<(String, Vec<f32>)> = Vec::new();
 
+        // Load ticket embeddings
         for (id, file_path) in ticket_info {
-            let mtime_ns = match file_mtime_ns(&file_path) {
-                Some(ns) => ns,
-                None => continue,
-            };
+            if let Some(vector) = load_embedding_for_file(&emb_dir, &file_path) {
+                loaded.push((id, vector));
+            }
+        }
 
-            let key = match Self::embedding_key(&file_path, mtime_ns) {
-                Ok(k) => k,
-                Err(e) => {
-                    tracing::warn!("Failed to compute embedding key for {file_path:?}: {e}");
-                    continue;
-                }
-            };
-            let bin_path = emb_dir.join(format!("{key}.bin"));
-
-            if let Ok(data) = fs::read(&bin_path) {
-                // Use centralized validation helper
-                if let Some(vector) = validate_and_parse_embedding(&data) {
-                    loaded.push((id, vector));
-                }
+        // Load objective embeddings
+        for (id, file_path) in objective_info {
+            if let Some(vector) = load_embedding_for_file(&emb_dir, &file_path) {
+                loaded.push((id, vector));
             }
         }
 
@@ -561,6 +564,211 @@ impl TicketStore {
         Ok((generated, total))
     }
 
+    /// Ensure an objective has an embedding generated and saved.
+    ///
+    /// This method:
+    /// 1. Looks up the objective from the store by ID
+    /// 2. Gets file_path, title, description, acceptance_criteria from metadata
+    /// 3. Computes embedding key from file_path + current mtime
+    /// 4. Checks if .bin file already exists for that key (optimization)
+    /// 5. If not, generates embedding via generate_embedding()
+    /// 6. Saves to disk via save_embedding()
+    /// 7. Inserts into in-memory embeddings DashMap
+    ///
+    /// # Errors
+    ///
+    /// Returns `JanusError` if:
+    /// - The objective is not found in the store
+    /// - The objective has no file_path
+    /// - The file modification time cannot be read
+    /// - The embedding key cannot be computed
+    /// - The embedding generation fails
+    /// - The embedding cannot be saved to disk
+    pub async fn ensure_objective_embedding(&self, objective_id: &str) -> crate::error::Result<()> {
+        use crate::types::ObjectiveId;
+
+        // Snapshot required fields from the objectives DashMap into owned locals,
+        // then drop the guard before touching the embeddings DashMap.
+        let (file_path, title, description, acceptance_criteria) = {
+            let objective = self.objectives().get(objective_id).ok_or_else(|| {
+                JanusError::ObjectiveNotFound(ObjectiveId::new_unchecked(objective_id))
+            })?;
+
+            let file_path = objective
+                .file_path
+                .clone()
+                .ok_or_else(|| JanusError::EmbeddingNoFilePath(objective_id.to_string()))?;
+            let title = objective.title.clone().unwrap_or_default();
+            let description = objective.description.clone().unwrap_or_default();
+            let acceptance_criteria = objective.acceptance_criteria.clone();
+            (file_path, title, description, acceptance_criteria)
+        }; // objective guard (Ref) dropped here
+
+        // Get current mtime (fresh, not cached)
+        let mtime_ns = file_mtime_ns(&file_path).ok_or_else(|| JanusError::StorageError {
+            operation: "get mtime",
+            item_type: "file",
+            path: file_path.clone(),
+            source: std::io::Error::other("failed to read file modification time"),
+        })?;
+
+        // Compute embedding key
+        let key = Self::embedding_key(&file_path, mtime_ns)?;
+
+        // Check if .bin file already exists
+        let emb_dir = embeddings_dir();
+        let bin_path = emb_dir.join(format!("{key}.bin"));
+
+        // Build embedding text from title + description + acceptance criteria
+        let mut embedding_text = title;
+        if !description.is_empty() {
+            embedding_text.push_str("\n\n");
+            embedding_text.push_str(&description);
+        }
+        if !acceptance_criteria.is_empty() {
+            embedding_text.push_str("\n\n");
+            embedding_text.push_str(&acceptance_criteria.join("\n"));
+        }
+
+        let final_embedding = if bin_path.exists() {
+            // Embedding already exists on disk - attempt to load it
+            match fs::read(&bin_path)
+                .ok()
+                .and_then(|data| validate_and_parse_embedding(&data))
+            {
+                Some(vector) => vector,
+                None => {
+                    // Loading failed, fall through to regeneration
+                    let embedding = crate::embedding::model::generate_embedding(&embedding_text)
+                        .await
+                        .map_err(|e| JanusError::EmbeddingGenerationFailed(e.to_string()))?;
+                    Self::save_embedding(&key, &embedding).map_err(|e| {
+                        JanusError::EmbeddingSaveFailed {
+                            key: key.clone(),
+                            source: e,
+                        }
+                    })?;
+                    embedding
+                }
+            }
+        } else {
+            // Generate new embedding
+            let embedding = crate::embedding::model::generate_embedding(&embedding_text)
+                .await
+                .map_err(|e| JanusError::EmbeddingGenerationFailed(e.to_string()))?;
+            Self::save_embedding(&key, &embedding).map_err(|e| {
+                JanusError::EmbeddingSaveFailed {
+                    key: key.clone(),
+                    source: e,
+                }
+            })?;
+            embedding
+        };
+
+        // Insert into in-memory store
+        self.embeddings()
+            .insert(objective_id.to_string(), final_embedding);
+
+        Ok(())
+    }
+
+    /// Ensure all objectives have embeddings generated.
+    ///
+    /// Returns (generated_count, total_count) for progress reporting.
+    pub async fn ensure_all_objective_embeddings(&self) -> crate::error::Result<(usize, usize)> {
+        use crate::embedding::model::{EMBEDDING_BATCH_SIZE, get_embedding_model};
+
+        // Phase 1: Snapshot all candidate objective data.
+        let all_candidates: Vec<(String, std::path::PathBuf, String, String, Vec<String>)> = self
+            .objectives()
+            .iter()
+            .filter_map(|entry| {
+                let objective = entry.value();
+                let id = entry.key().clone();
+                let file_path = objective.file_path.clone()?;
+                let title = objective.title.clone().unwrap_or_default();
+                let description = objective.description.clone().unwrap_or_default();
+                let acceptance_criteria = objective.acceptance_criteria.clone();
+                Some((id, file_path, title, description, acceptance_criteria))
+            })
+            .collect();
+
+        // Phase 2: Filter against embeddings DashMap.
+        let objectives_to_embed: Vec<(String, std::path::PathBuf, String, String, Vec<String>)> =
+            all_candidates
+                .into_iter()
+                .filter(|(id, _, _, _, _)| !self.has_embedding_for(id))
+                .collect();
+
+        let total = objectives_to_embed.len();
+        if total == 0 {
+            return Ok((0, 0));
+        }
+
+        let mut generated = 0usize;
+        let model = get_embedding_model()
+            .await
+            .map_err(|e| JanusError::EmbeddingGenerationFailed(e.to_string()))?;
+
+        // Process in batches
+        for batch in objectives_to_embed.chunks(EMBEDDING_BATCH_SIZE) {
+            // Prepare batch texts
+            let texts: Vec<String> = batch
+                .iter()
+                .map(|(_, _, title, description, acceptance_criteria)| {
+                    let mut text = title.clone();
+                    if !description.is_empty() {
+                        text.push_str("\n\n");
+                        text.push_str(description);
+                    }
+                    if !acceptance_criteria.is_empty() {
+                        text.push_str("\n\n");
+                        text.push_str(&acceptance_criteria.join("\n"));
+                    }
+                    text
+                })
+                .collect();
+
+            let texts_ref: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+
+            match model.embed_batch(&texts_ref).await {
+                Ok(embeddings) => {
+                    let mut saved: Vec<(String, Vec<f32>)> = Vec::with_capacity(embeddings.len());
+
+                    for (i, (id, file_path, _, _, _)) in batch.iter().enumerate() {
+                        if let Some(embedding) = embeddings.get(i) {
+                            let mtime_ns = file_mtime_ns(file_path);
+
+                            if let Some(mtime) = mtime_ns {
+                                let key = match TicketStore::embedding_key(file_path, mtime) {
+                                    Ok(k) => k,
+                                    Err(_) => continue,
+                                };
+
+                                if TicketStore::save_embedding(&key, embedding).is_ok() {
+                                    saved.push((id.clone(), embedding.clone()));
+                                }
+                            }
+                        }
+                    }
+
+                    // Batch-insert into DashMaps
+                    for (id, embedding) in saved {
+                        if self.objectives().contains_key(id.as_str()) {
+                            self.embeddings().insert(id, embedding);
+                            generated += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Batch embedding generation failed for objectives: {e}");
+                }
+            }
+        }
+
+        Ok((generated, total))
+    }
+
     /// Ensure document chunk embeddings are generated.
     ///
     /// This generates embeddings for all chunks of a document.
@@ -642,6 +850,26 @@ impl TicketStore {
             .map(|entry| (entry.key().clone(), entry.value().clone()))
             .collect()
     }
+}
+
+/// Load an embedding for a file given its path and the embeddings directory.
+///
+/// Computes the embedding key from file_path + mtime, reads the .bin file,
+/// validates it, and returns the vector if valid.
+fn load_embedding_for_file(emb_dir: &Path, file_path: &Path) -> Option<Vec<f32>> {
+    let mtime_ns = file_mtime_ns(file_path)?;
+
+    let key = match TicketStore::embedding_key(file_path, mtime_ns) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::warn!("Failed to compute embedding key for {file_path:?}: {e}");
+            return None;
+        }
+    };
+    let bin_path = emb_dir.join(format!("{key}.bin"));
+
+    let data = fs::read(&bin_path).ok()?;
+    validate_and_parse_embedding(&data)
 }
 
 /// Get file modification time as nanoseconds since UNIX epoch.
