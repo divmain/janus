@@ -512,7 +512,19 @@ async fn run_event_loop(
 ///
 /// For each path in the event, stores the event kind. Later events
 /// for the same path overwrite earlier ones (last-writer-wins).
+///
+/// Events classified as `FileAction::Ignore` (e.g. `Access(Open)` /
+/// `Access(Close)` / `Other`) are dropped at this point. Without this
+/// filter, the Linux inotify backend's `IN_CLOSE_WRITE` -> `Access(Close(Write))`
+/// (which fires *after* `IN_CREATE`/`IN_MODIFY` for the same path) would
+/// overwrite an earlier actionable `Create`/`Modify` entry in the pending
+/// map, causing `process_batch` to treat the file as ignorable and silently
+/// drop it. macOS FSEvents does not emit this sequence, so the bug is
+/// Linux-specific. See `tests/` and the watcher integration tests.
 fn accumulate_event(pending: &mut HashMap<PathBuf, EventKind>, event: &notify::Event) {
+    if matches!(classify_event_kind(event.kind), FileAction::Ignore) {
+        return;
+    }
     for path in &event.paths {
         pending.insert(path.clone(), event.kind);
     }
