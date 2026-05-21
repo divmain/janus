@@ -51,7 +51,8 @@ NEW_VERSION="${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
 echo "Bumping version: $CURRENT_VERSION -> $NEW_VERSION"
 
 # Update version in Cargo.toml
-sed -i '' "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+sed -i.bak "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+rm -f Cargo.toml.bak
 
 # Run cargo check to update Cargo.lock
 echo "Running cargo check..."
