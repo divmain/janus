@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 thread_local! {
     /// Thread-local override for the Janus root path.
@@ -82,24 +82,48 @@ pub fn janus_root() -> PathBuf {
     }
 }
 
-/// Returns the path to the tickets items directory.
+/// Returns the path to the tickets items directory under an explicit root.
+///
+/// Prefer this over [`tickets_items_dir`] when the Janus root is known as a
+/// value (e.g. serving multiple workspaces from one process), so the path does
+/// not depend on the ambient [`janus_root`] thread-local / env state.
+pub fn tickets_items_dir_in(root: &Path) -> PathBuf {
+    root.join("items")
+}
+
+/// Returns the path to the plans directory under an explicit root.
+pub fn plans_dir_in(root: &Path) -> PathBuf {
+    root.join("plans")
+}
+
+/// Returns the path to the docs directory under an explicit root.
+pub fn docs_dir_in(root: &Path) -> PathBuf {
+    root.join("docs")
+}
+
+/// Returns the path to the objectives directory under an explicit root.
+pub fn objectives_dir_in(root: &Path) -> PathBuf {
+    root.join("objectives")
+}
+
+/// Returns the path to the tickets items directory (ambient [`janus_root`]).
 pub fn tickets_items_dir() -> PathBuf {
-    janus_root().join("items")
+    tickets_items_dir_in(&janus_root())
 }
 
-/// Returns the path to the plans directory.
+/// Returns the path to the plans directory (ambient [`janus_root`]).
 pub fn plans_dir() -> PathBuf {
-    janus_root().join("plans")
+    plans_dir_in(&janus_root())
 }
 
-/// Returns the path to the docs directory.
+/// Returns the path to the docs directory (ambient [`janus_root`]).
 pub fn docs_dir() -> PathBuf {
-    janus_root().join("docs")
+    docs_dir_in(&janus_root())
 }
 
-/// Returns the path to the objectives directory.
+/// Returns the path to the objectives directory (ambient [`janus_root`]).
 pub fn objectives_dir() -> PathBuf {
-    janus_root().join("objectives")
+    objectives_dir_in(&janus_root())
 }
 
 #[cfg(test)]

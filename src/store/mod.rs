@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use dashmap::DashMap;
 use tokio::fs as tokio_fs;
@@ -13,7 +13,9 @@ use crate::objective::types::ObjectiveMetadata;
 use crate::plan::parser::parse_plan_content;
 use crate::plan::types::PlanMetadata;
 use crate::ticket::parse_ticket;
-use crate::types::{TicketMetadata, docs_dir, objectives_dir, plans_dir, tickets_items_dir};
+use crate::types::{
+    TicketMetadata, docs_dir_in, janus_root, objectives_dir_in, plans_dir_in, tickets_items_dir_in,
+};
 
 /// A warning that occurred during store initialization.
 #[derive(Debug, Clone)]
@@ -196,10 +198,59 @@ pub struct TicketStore {
     init_warnings: InitWarnings,
 }
 
-/// Global singleton for the ticket store.
+/// Global singleton for the ticket store at the ambient [`janus_root`].
 static STORE: OnceCell<TicketStore> = OnceCell::const_new();
 
-/// Get or initialize the global ticket store singleton.
+/// Registry of initialized stores keyed by their (non-ambient) Janus root, so
+/// one process can serve multiple workspaces. The ambient root keeps using the
+/// `STORE` singleton above (so `get_store()` and the existing callers are
+/// unchanged); only an explicit non-ambient root lands here. Each entry is
+/// leaked to `'static` to match the `&'static TicketStore` return contract —
+/// stores live for the process, as the singleton always has.
+static STORES: OnceLock<Mutex<std::collections::HashMap<PathBuf, &'static TicketStore>>> =
+    OnceLock::new();
+
+/// Build + eagerly-embed a store for `root`. Shared by the ambient singleton
+/// path and the per-root registry path so both behave identically.
+async fn build_store_at(root: &Path) -> Result<TicketStore> {
+    // Initialize store (loads tickets, plans, existing embeddings).
+    let store = TicketStore::init_at(root).await?;
+
+    // Ensure all tickets have embeddings unless skipped.
+    // JANUS_SKIP_EMBEDDINGS=1 disables this for tests and environments
+    // where semantic search is not needed.
+    let skip = std::env::var("JANUS_SKIP_EMBEDDINGS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if !skip {
+        match store.ensure_all_embeddings().await {
+            Ok((generated, total)) => {
+                if generated > 0 {
+                    eprintln!("Generated embeddings for {generated}/{total} tickets");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to generate embeddings: {e}");
+            }
+        }
+
+        match store.ensure_all_objective_embeddings().await {
+            Ok((generated, total)) => {
+                if generated > 0 {
+                    eprintln!("Generated embeddings for {generated}/{total} objectives");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to generate objective embeddings: {e}");
+            }
+        }
+    }
+
+    Ok(store)
+}
+
+/// Get or initialize the global ticket store singleton (ambient [`janus_root`]).
 ///
 /// On first call, reads all tickets and plans from disk to populate the store.
 /// Also ensures all tickets have embeddings generated (blocking call).
@@ -211,46 +262,40 @@ static STORE: OnceCell<TicketStore> = OnceCell::const_new();
 /// tests and environments where semantic search is not needed).
 pub async fn get_or_init_store() -> Result<&'static TicketStore> {
     STORE
-        .get_or_try_init(|| async {
-            // Step 1: Initialize store (loads tickets, plans, existing embeddings)
-            let store = TicketStore::init().await?;
-
-            // Step 2: Ensure all tickets have embeddings (unless skipped)
-            // JANUS_SKIP_EMBEDDINGS=1 disables this for tests and environments
-            // where semantic search is not needed.
-            let skip = std::env::var("JANUS_SKIP_EMBEDDINGS")
-                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-            if !skip {
-                match store.ensure_all_embeddings().await {
-                    Ok((generated, total)) => {
-                        if generated > 0 {
-                            // User-facing message for startup
-                            eprintln!("Generated embeddings for {generated}/{total} tickets");
-                        }
-                    }
-                    Err(e) => {
-                        // Log embedding failures for production visibility
-                        tracing::warn!("Failed to generate embeddings: {e}");
-                    }
-                }
-
-                match store.ensure_all_objective_embeddings().await {
-                    Ok((generated, total)) => {
-                        if generated > 0 {
-                            eprintln!("Generated embeddings for {generated}/{total} objectives");
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to generate objective embeddings: {e}");
-                    }
-                }
-            }
-
-            Ok(store)
-        })
+        .get_or_try_init(|| async { build_store_at(&janus_root()).await })
         .await
+}
+
+/// Get or initialize the store for an explicit Janus root, caching it for the
+/// process lifetime.
+///
+/// This is the multi-workspace entry point: one process can hold a store per
+/// `.janus/` root. For the ambient root it returns the same `STORE` singleton
+/// as [`get_or_init_store`] (so behavior is identical and there is no double
+/// initialization); for any other root it initializes once and caches in the
+/// `STORES` registry. The returned reference is `'static` (the store lives for
+/// the process), matching the singleton's contract.
+///
+/// Honors `JANUS_SKIP_EMBEDDINGS=1` exactly as [`get_or_init_store`] does.
+pub async fn get_or_init_store_for(root: &Path) -> Result<&'static TicketStore> {
+    // Ambient root reuses the singleton, so the common path is unchanged.
+    if *root == janus_root() {
+        return get_or_init_store().await;
+    }
+    let registry = STORES.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    if let Some(store) = registry.lock().expect("store registry mutex poisoned").get(root) {
+        return Ok(store);
+    }
+    // Build outside the lock (init is async + slow), then insert. A concurrent
+    // racer for the same root may also build; last writer wins and the loser's
+    // store is dropped — correct, just a rare duplicate init.
+    let built = build_store_at(root).await?;
+    let leaked: &'static TicketStore = Box::leak(Box::new(built));
+    registry
+        .lock()
+        .expect("store registry mutex poisoned")
+        .insert(root.to_path_buf(), leaked);
+    Ok(leaked)
 }
 
 /// Get the store if it has been initialized, otherwise return None.
@@ -280,34 +325,45 @@ impl TicketStore {
     /// internal DashMaps. Files that fail to parse are logged as warnings but
     /// do not prevent initialization.
     pub async fn init() -> Result<Self> {
+        Self::init_at(&janus_root()).await
+    }
+
+    /// Initialize the store from an explicit Janus root directory.
+    ///
+    /// Same as [`init`](Self::init) but reads from `root` (the `.janus/`
+    /// directory) instead of the ambient [`janus_root`]. The root is threaded
+    /// as a value through every path resolution, so it is safe across `.await`
+    /// points and lets one process serve multiple workspaces. [`init`] is the
+    /// ambient-root convenience that delegates here.
+    pub async fn init_at(root: &Path) -> Result<Self> {
         let store = Self::empty();
 
         // Load tickets
-        let items_dir = tickets_items_dir();
+        let items_dir = tickets_items_dir_in(root);
         if tokio_fs::try_exists(&items_dir).await.unwrap_or(false) {
             store.load_tickets_from_dir(&items_dir).await;
         }
 
         // Load plans
-        let p_dir = plans_dir();
+        let p_dir = plans_dir_in(root);
         if tokio_fs::try_exists(&p_dir).await.unwrap_or(false) {
             store.load_plans_from_dir(&p_dir).await;
         }
 
         // Load docs
-        let d_dir = docs_dir();
+        let d_dir = docs_dir_in(root);
         if tokio_fs::try_exists(&d_dir).await.unwrap_or(false) {
             store.load_docs_from_dir(&d_dir).await;
         }
 
         // Load objectives
-        let o_dir = objectives_dir();
+        let o_dir = objectives_dir_in(root);
         if tokio_fs::try_exists(&o_dir).await.unwrap_or(false) {
             store.load_objectives_from_dir(&o_dir).await;
         }
 
         // Load embeddings (requires tickets to be loaded first)
-        if let Err(e) = store.load_embeddings() {
+        if let Err(e) = store.load_embeddings_in(root) {
             tracing::warn!("Failed to load embeddings: {e}");
         }
 
@@ -946,6 +1002,52 @@ mod tests {
         // Verify doc metadata
         let doc = store.docs.get("architecture").unwrap();
         assert_eq!(doc.title.as_deref(), Some("Architecture"));
+    }
+
+    #[tokio::test]
+    async fn test_init_at_reads_explicit_root_ignoring_ambient() {
+        // The fixture lives under `tmp/.janus`, but the ambient janus_root is
+        // pointed at an unrelated empty dir. init_at(explicit) must read the
+        // explicit root, proving the root is threaded as a value (not the
+        // ambient thread-local) — the core multi-workspace guarantee.
+        let tmp = setup_test_dir();
+        let explicit_root = tmp.path().join(".janus");
+
+        let elsewhere = TempDir::new().expect("failed to create temp dir");
+        let _guard = JanusRootGuard::new(elsewhere.path().join(".janus"));
+
+        let store = TicketStore::init_at(&explicit_root)
+            .await
+            .expect("init_at should succeed");
+
+        assert_eq!(store.tickets.len(), 2);
+        assert!(store.tickets.contains_key("j-a1b2"));
+        assert!(store.plans.contains_key("plan-x1y2"));
+    }
+
+    #[tokio::test]
+    async fn test_get_or_init_store_for_caches_and_isolates_roots() {
+        // Two distinct roots get two distinct stores, and a second call for the
+        // same root returns the identical cached pointer.
+        let tmp_a = setup_test_dir();
+        let root_a = tmp_a.path().join(".janus");
+        let empty_b = TempDir::new().expect("failed to create temp dir");
+        let root_b = empty_b.path().join(".janus");
+
+        // Ambient is yet another root, so neither A nor B is the singleton path.
+        let elsewhere = TempDir::new().expect("failed to create temp dir");
+        let _guard = JanusRootGuard::new(elsewhere.path().join(".janus"));
+
+        let a1 = get_or_init_store_for(&root_a).await.expect("init A");
+        let a2 = get_or_init_store_for(&root_a).await.expect("re-get A");
+        let b = get_or_init_store_for(&root_b).await.expect("init B");
+
+        // Same root → same cached pointer.
+        assert!(std::ptr::eq(a1, a2));
+        // Different roots → different stores with isolated contents.
+        assert!(!std::ptr::eq(a1, b));
+        assert_eq!(a1.tickets.len(), 2);
+        assert_eq!(b.tickets.len(), 0);
     }
 
     #[tokio::test]

@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::JanusError;
 
 // Re-export path functions from the paths module
-pub use crate::paths::{docs_dir, janus_root, objectives_dir, plans_dir, tickets_items_dir};
+pub use crate::paths::{
+    docs_dir, docs_dir_in, janus_root, objectives_dir, objectives_dir_in, plans_dir, plans_dir_in,
+    tickets_items_dir, tickets_items_dir_in,
+};
 
 // =============================================================================
 // Newtypes for core identity and temporal fields
