@@ -236,6 +236,13 @@ pub struct ListTicketsRequest {
         description = "Filter by labels. Comma-separated list of labels. Returns tickets matching ANY specified label."
     )]
     pub labels: Option<String>,
+
+    /// Optional workspace name (see list_workspaces); omit for the default root.
+    #[serde(default)]
+    #[schemars(
+        description = "Workspace name to target (from list_workspaces). Omit to use the default root."
+    )]
+    pub workspace: Option<String>,
 }
 
 impl ListTicketsRequest {
@@ -277,6 +284,12 @@ pub struct ShowTicketRequest {
     /// Ticket ID (can be partial)
     #[schemars(description = "ID of the ticket to show")]
     pub id: String,
+    /// Optional workspace name (see list_workspaces); omit for the default root.
+    #[serde(default)]
+    #[schemars(
+        description = "Workspace name to target (from list_workspaces). Omit to use the default root."
+    )]
+    pub workspace: Option<String>,
 }
 
 /// Request parameters for adding a dependency
@@ -349,7 +362,17 @@ pub struct GetNextAvailableTicketRequest {
     /// Maximum number of tickets to return (default: 5)
     #[schemars(description = "Maximum number of tickets to return")]
     pub limit: Option<usize>,
+    /// Optional workspace name (see list_workspaces); omit for the default root.
+    #[serde(default)]
+    #[schemars(
+        description = "Workspace name to target (from list_workspaces). Omit to use the default root."
+    )]
+    pub workspace: Option<String>,
 }
+
+/// Request parameters for listing workspaces (no parameters).
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, Default)]
+pub struct ListWorkspacesRequest {}
 
 /// Request parameters for semantic search
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

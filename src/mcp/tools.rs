@@ -54,7 +54,8 @@ use crate::plan::{Plan, compute_plan_status};
 use crate::status::is_dependency_satisfied;
 use crate::store::get_or_init_store;
 use crate::ticket::{
-    ArrayField, Ticket, TicketBuilder, build_ticket_map, get_all_tickets_with_map,
+    ArrayField, Ticket, TicketBuilder, build_ticket_map, build_ticket_map_in,
+    get_all_tickets_with_map, get_all_tickets_with_map_in,
 };
 use crate::types::{TicketMetadata, TicketPriority, TicketSize, TicketStatus, TicketType};
 use crate::utils::iso_date;
@@ -69,8 +70,8 @@ use super::requests::{
     AddObjectiveNoteRequest, AddTicketToPlanRequest, CreateObjectiveRequest, CreateTicketRequest,
     DeleteObjectiveRequest, DocListRequest, DocSearchRequest, DocSetRequest, DocShowRequest,
     GetChildrenRequest, GetNextAvailableTicketRequest, GetPlanStatusRequest, ListObjectivesRequest,
-    ListTicketsRequest, ObjectiveRefAddRequest, ObjectiveRefRemoveRequest, ObjectiveRefResetRequest,
-    RemoveDependencyRequest, RemoveLabelRequest, SemanticSearchRequest,
+    ListTicketsRequest, ListWorkspacesRequest, ObjectiveRefAddRequest, ObjectiveRefRemoveRequest,
+    ObjectiveRefResetRequest, RemoveDependencyRequest, RemoveLabelRequest, SemanticSearchRequest,
     ShowObjectiveRequest, ShowPlanDetailsRequest, ShowTicketRequest, SpawnSubtaskRequest,
     UpdateStatusRequest,
 };
@@ -97,6 +98,9 @@ fn tool_annotations(
 #[derive(Clone, Debug)]
 pub struct JanusTools {
     tool_router: ToolRouter<Self>,
+    /// Named workspaces this server can address. Empty = single ambient root
+    /// (the default). A tool's `workspace` argument is resolved against this.
+    workspaces: std::sync::Arc<crate::mcp::workspace::WorkspaceRegistry>,
 }
 
 impl Default for JanusTools {
@@ -535,8 +539,31 @@ impl JanusTools {
             tool_annotations(false, false, false, false)
         );
 
+        register_tool!(
+            router,
+            "list_workspaces",
+            "List the Janus workspaces this server can address (the default root plus any registered with --workspace). Use a returned name as the `workspace` argument on other tools.",
+            ListWorkspacesRequest,
+            list_workspaces_impl,
+            true,
+            tool_annotations(true, false, true, false)
+        );
+
         Self {
             tool_router: router,
+            workspaces: std::sync::Arc::new(crate::mcp::workspace::WorkspaceRegistry::new()),
+        }
+    }
+
+    /// Create a JanusTools instance addressing the given named workspaces (from
+    /// `janus mcp --workspace name=path`). Tools without a `workspace` argument
+    /// still use the ambient root.
+    pub fn new_with_workspaces(
+        workspaces: crate::mcp::workspace::WorkspaceRegistry,
+    ) -> Self {
+        Self {
+            workspaces: std::sync::Arc::new(workspaces),
+            ..Self::new()
         }
     }
 
@@ -759,13 +786,14 @@ impl JanusTools {
 
         request.validate()?;
 
-        let (tickets, _ticket_map) = get_all_tickets_with_map()
+        let root = self.workspaces.resolve(request.workspace.as_deref())?;
+        let (tickets, _ticket_map) = get_all_tickets_with_map_in(&root)
             .await
             .map_err(|e| format!("failed to load tickets: {e}"))?;
 
         // Resolve spawned_from partial ID if provided
         let resolved_spawned_from = if let Some(ref partial_id) = request.spawned_from {
-            let ticket = Ticket::find(partial_id)
+            let ticket = Ticket::find_in(partial_id, &root)
                 .await
                 .map_err(|e| format!("spawned_from ticket not found: {e}"))?;
             Some(ticket.id)
@@ -907,12 +935,13 @@ impl JanusTools {
         &self,
         Parameters(request): Parameters<ShowTicketRequest>,
     ) -> Result<String, String> {
-        let ticket = Ticket::find(&request.id)
+        let root = self.workspaces.resolve(request.workspace.as_deref())?;
+        let ticket = Ticket::find_in(&request.id, &root)
             .await
             .map_err(|e| format!("Ticket not found: {e}"))?;
         let content = ticket.read_content().map_err(|e| e.to_string())?;
         let metadata = ticket.read().map_err(|e| e.to_string())?;
-        let ticket_map = build_ticket_map()
+        let ticket_map = build_ticket_map_in(&root)
             .await
             .map_err(|e| format!("failed to load tickets: {e}"))?;
 
@@ -1246,7 +1275,8 @@ impl JanusTools {
     ) -> Result<String, String> {
         let limit = request.limit.unwrap_or(5);
 
-        let ticket_map = build_ticket_map()
+        let root = self.workspaces.resolve(request.workspace.as_deref())?;
+        let ticket_map = build_ticket_map_in(&root)
             .await
             .map_err(|e| format!("failed to load tickets: {e}"))?;
 
@@ -1274,6 +1304,34 @@ impl JanusTools {
         }
 
         Ok(format_next_work_as_markdown(&work_items, &ticket_map))
+    }
+
+    /// List the workspaces this server can address.
+    ///
+    /// Returns JSON: the implicit `default` root (used when a tool omits
+    /// `workspace`) plus every workspace registered with `--workspace`. The
+    /// `workspace` argument on the read tools (show_ticket, list_tickets,
+    /// get_next_available_ticket) accepts any returned name; write tools operate
+    /// on the default root.
+    async fn list_workspaces_impl(
+        &self,
+        Parameters(_request): Parameters<ListWorkspacesRequest>,
+    ) -> Result<String, String> {
+        let default_root = crate::types::janus_root();
+        let mut entries: Vec<serde_json::Value> = vec![serde_json::json!({
+            "name": "default",
+            "root": default_root.to_string_lossy(),
+            "is_default": true,
+        })];
+        for (name, root) in self.workspaces.entries() {
+            entries.push(serde_json::json!({
+                "name": name,
+                "root": root.to_string_lossy(),
+                "is_default": false,
+            }));
+        }
+        serde_json::to_string_pretty(&serde_json::json!({ "workspaces": entries }))
+            .map_err(|e| format!("failed to serialize workspaces: {e}"))
     }
 
     /// Find tickets semantically similar to a natural language query.

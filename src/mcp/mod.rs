@@ -41,6 +41,7 @@ pub mod requests;
 pub mod resources;
 pub mod tools;
 pub mod types;
+pub mod workspace;
 
 use rmcp::{
     RoleServer, ServerHandler, ServiceExt,
@@ -167,17 +168,30 @@ impl ServerHandler for JanusTools {
 ///
 /// Returns an error if the server fails to start or encounters
 /// a fatal error during operation.
-pub async fn cmd_mcp() -> Result<()> {
+pub async fn cmd_mcp(workspace_specs: &[String]) -> Result<()> {
     // Log startup to stderr (stdout is the transport)
     eprintln!("Starting Janus MCP server...");
 
-    // Initialize store and start filesystem watcher for live updates
+    // Parse any `--workspace name=path` specs up front so a bad one fails fast
+    // with a clear message rather than after the server is up.
+    let workspaces = workspace::WorkspaceRegistry::from_specs(workspace_specs)
+        .map_err(|e| crate::error::JanusError::McpServerError(e.to_string()))?;
+    if !workspaces.is_empty() {
+        eprintln!(
+            "Registered workspaces: {} (plus the default root)",
+            workspaces.names().join(", ")
+        );
+    }
+
+    // Initialize store and start filesystem watcher for live updates. The
+    // watcher tracks the ambient (default) root; registered workspaces are read
+    // on demand per tool call.
     let store = crate::store::get_or_init_store().await?;
     if let Err(e) = crate::store::start_watching(store).await {
         eprintln!("Warning: Failed to start filesystem watcher: {e}");
     }
 
-    let server = JanusTools::new();
+    let server = JanusTools::new_with_workspaces(workspaces);
 
     // Create STDIO transport and serve
     let service = server
@@ -240,11 +254,12 @@ mod tests {
     fn test_tools_router_has_tools() {
         let server = JanusTools::new();
         let tools = server.router().list_all();
-        // We should have 29 tools (20 ticket/plan/doc tools + 9 objective tools)
-        assert_eq!(tools.len(), 29);
+        // 30 tools: 20 ticket/plan/doc + 9 objective + list_workspaces.
+        assert_eq!(tools.len(), 30);
 
         // Verify tool names
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        assert!(tool_names.contains(&"list_workspaces"));
         assert!(tool_names.contains(&"create_ticket"));
         assert!(tool_names.contains(&"spawn_subtask"));
         assert!(tool_names.contains(&"update_status"));

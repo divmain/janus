@@ -12,8 +12,9 @@ pub use manipulator::{extract_body, remove_field, update_field, update_title};
 pub use parser::parse as parse_ticket;
 
 pub use repository::{
-    TicketLoadResult, build_ticket_map, find_tickets, get_all_children_counts, get_all_tickets,
-    get_all_tickets_from_disk, get_all_tickets_with_map, get_children_count,
+    TicketLoadResult, build_ticket_map, build_ticket_map_in, find_tickets,
+    get_all_children_counts, get_all_tickets, get_all_tickets_from_disk, get_all_tickets_in,
+    get_all_tickets_with_map, get_all_tickets_with_map_in, get_children_count,
 };
 
 pub use self::validate::enforce_filename_authority;
@@ -39,7 +40,7 @@ use crate::types::TicketMetadata;
 use crate::utils::extract_id_from_path;
 use serde_json;
 use serde_yaml_ng;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs as tokio_fs;
 
 /// A ticket represents a task, bug, feature, or chore stored as a markdown file.
@@ -59,6 +60,20 @@ impl Ticket {
     /// if found uniquely.
     pub async fn find(partial_id: &str) -> Result<Self> {
         let locator = TicketLocator::find(partial_id).await?;
+        Ok(Ticket {
+            file_path: locator.file_path,
+            id: locator.id,
+        })
+    }
+
+    /// Find a ticket by its partial ID within an explicit Janus root.
+    ///
+    /// Same as [`find`](Self::find) but searches `root`'s tickets instead of the
+    /// ambient [`janus_root`]'s. The returned ticket's `file_path` is absolute,
+    /// so subsequent reads operate on the correct file regardless of the ambient
+    /// root — the basis for serving multiple workspaces from one process.
+    pub async fn find_in(partial_id: &str, root: &Path) -> Result<Self> {
+        let locator = TicketLocator::find_in(partial_id, root).await?;
         Ok(Ticket {
             file_path: locator.file_path,
             id: locator.id,
@@ -993,6 +1008,49 @@ impl Entity for Ticket {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ==================== Explicit-root find (multi-workspace) ====================
+
+    #[tokio::test]
+    async fn test_find_in_reads_explicit_root_ignoring_ambient() {
+        use crate::paths::JanusRootGuard;
+        use tempfile::TempDir;
+
+        // A ticket lives under `explicit/.janus/items`, while the ambient root
+        // points at an unrelated empty dir. Ticket::find_in(explicit) must find
+        // it via the passed root (which routes through the per-root store, not
+        // the global singleton), proving the lookup honors the argument rather
+        // than the ambient thread-local. JANUS_SKIP_EMBEDDINGS keeps the per-root
+        // store init from doing embedding work.
+        // SAFETY: setting an env var the whole suite already reads; value is
+        // stable across tests so a concurrent read is benign.
+        unsafe {
+            std::env::set_var("JANUS_SKIP_EMBEDDINGS", "1");
+        }
+
+        let explicit = TempDir::new().expect("temp dir");
+        let explicit_root = explicit.path().join(".janus");
+        let items = explicit_root.join("items");
+        std::fs::create_dir_all(&items).expect("create items dir");
+        std::fs::write(
+            items.join("j-z9y8.md"),
+            "---\nid: j-z9y8\nuuid: 550e8400-e29b-41d4-a716-446655440000\nstatus: new\ndeps: []\nlinks: []\n---\n# Found Me\n",
+        )
+        .expect("write ticket");
+
+        // Ambient points elsewhere (an empty root). find_in must ignore it.
+        let elsewhere = TempDir::new().expect("temp dir");
+        let _guard = JanusRootGuard::new(elsewhere.path().join(".janus"));
+
+        let found = Ticket::find_in("j-z9y8", &explicit_root)
+            .await
+            .expect("find_in should locate the ticket in the explicit root");
+        assert_eq!(found.id, "j-z9y8");
+
+        // A miss in the explicit root is reported as not-found (and does not
+        // fall back to the ambient root).
+        assert!(Ticket::find_in("does-not-exist", &explicit_root).await.is_err());
+    }
 
     // ==================== Tolerant Edit Path Tests ====================
 

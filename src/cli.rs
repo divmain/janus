@@ -417,6 +417,13 @@ pub enum Commands {
         /// Show MCP protocol version instead of starting server
         #[arg(long)]
         version: bool,
+
+        /// Register an additional workspace as `name=path` (path is its `.janus`
+        /// dir). Repeatable. Lets one server address several roots; a tool's
+        /// `workspace` argument selects one by name. Omit to serve only the
+        /// current directory's root.
+        #[arg(long = "workspace", value_name = "NAME=PATH")]
+        workspaces: Vec<String>,
     },
 
     /// Search tickets using semantic similarity
@@ -1478,11 +1485,14 @@ impl Commands {
                 Ok(())
             }
 
-            Commands::Mcp { version } => {
+            Commands::Mcp {
+                version,
+                workspaces,
+            } => {
                 if version {
                     crate::mcp::cmd_mcp_version()
                 } else {
-                    crate::mcp::cmd_mcp().await
+                    crate::mcp::cmd_mcp(&workspaces).await
                 }
             }
 

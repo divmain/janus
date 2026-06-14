@@ -11,9 +11,14 @@ use crate::types::janus_root;
 /// Directory name for embedding storage within the Janus root.
 const EMBEDDINGS_DIR: &str = "embeddings";
 
-/// Return the path to the embeddings directory.
+/// Return the path to the embeddings directory under an explicit root.
+fn embeddings_dir_in(root: &Path) -> std::path::PathBuf {
+    root.join(EMBEDDINGS_DIR)
+}
+
+/// Return the path to the embeddings directory (ambient [`janus_root`]).
 fn embeddings_dir() -> std::path::PathBuf {
-    janus_root().join(EMBEDDINGS_DIR)
+    embeddings_dir_in(&janus_root())
 }
 
 impl TicketStore {
@@ -47,13 +52,25 @@ impl TicketStore {
     /// purpose of the fast mtime-based cache invalidation check.
     ///
     pub fn embedding_key(file_path: &Path, mtime_ns: u128) -> crate::error::Result<String> {
+        Self::embedding_key_in(file_path, mtime_ns, &janus_root())
+    }
+
+    /// Compute the embedding key for a ticket file under an explicit root.
+    ///
+    /// Same as [`embedding_key`](Self::embedding_key) but strips `root` (instead
+    /// of the ambient [`janus_root`]) to form the stable repo-relative path, so
+    /// the key is correct when serving a workspace other than the ambient one.
+    pub fn embedding_key_in(
+        file_path: &Path,
+        mtime_ns: u128,
+        root: &Path,
+    ) -> crate::error::Result<String> {
         // Use a repo-relative path for stability. file_path.display() can vary
         // between runs depending on absolute/relative handling, symlink resolution,
         // and platform formatting—causing cache misses and orphaned .bin files.
-        let root = janus_root();
         let relative =
             file_path
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .map_err(|_| JanusError::EmbeddingKeyError {
                     path: file_path.to_string_lossy().to_string(),
                     root: root.to_string_lossy().to_string(),
@@ -86,9 +103,20 @@ impl TicketStore {
     /// Individual failures (missing file, invalid embedding, etc.)
     /// are logged and skipped rather than causing the entire operation to fail.
     pub fn load_embeddings(&self) -> crate::error::Result<()> {
+        self.load_embeddings_in(&janus_root())
+    }
+
+    /// Load all embeddings for the store's tickets/objectives from an explicit
+    /// root's `embeddings/` dir.
+    ///
+    /// Same as [`load_embeddings`](Self::load_embeddings) but resolves the
+    /// embeddings dir and the stable embedding keys against `root` instead of
+    /// the ambient [`janus_root`], so a store initialized for one workspace
+    /// loads that workspace's embeddings.
+    pub fn load_embeddings_in(&self, root: &Path) -> crate::error::Result<()> {
         self.embeddings().clear();
 
-        let emb_dir = embeddings_dir();
+        let emb_dir = embeddings_dir_in(root);
         if !emb_dir.exists() {
             return Ok(());
         }
@@ -128,14 +156,14 @@ impl TicketStore {
 
         // Load ticket embeddings
         for (id, file_path) in ticket_info {
-            if let Some(vector) = load_embedding_for_file(&emb_dir, &file_path) {
+            if let Some(vector) = load_embedding_for_file_in(&emb_dir, &file_path, root) {
                 loaded.push((id, vector));
             }
         }
 
         // Load objective embeddings
         for (id, file_path) in objective_info {
-            if let Some(vector) = load_embedding_for_file(&emb_dir, &file_path) {
+            if let Some(vector) = load_embedding_for_file_in(&emb_dir, &file_path, root) {
                 loaded.push((id, vector));
             }
         }
@@ -856,10 +884,14 @@ impl TicketStore {
 ///
 /// Computes the embedding key from file_path + mtime, reads the .bin file,
 /// validates it, and returns the vector if valid.
-fn load_embedding_for_file(emb_dir: &Path, file_path: &Path) -> Option<Vec<f32>> {
+fn load_embedding_for_file_in(
+    emb_dir: &Path,
+    file_path: &Path,
+    root: &Path,
+) -> Option<Vec<f32>> {
     let mtime_ns = file_mtime_ns(file_path)?;
 
-    let key = match TicketStore::embedding_key(file_path, mtime_ns) {
+    let key = match TicketStore::embedding_key_in(file_path, mtime_ns, root) {
         Ok(k) => k,
         Err(e) => {
             tracing::warn!("Failed to compute embedding key for {file_path:?}: {e}");

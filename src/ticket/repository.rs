@@ -4,13 +4,14 @@
 //! All functions are async and use the in-memory store.
 
 use crate::TicketMetadata;
-use crate::store::get_or_init_store;
+use crate::store::{get_or_init_store, get_or_init_store_for};
 use crate::ticket::enforce_filename_authority;
 use crate::ticket::parse_ticket;
-use crate::types::LoadResult;
+use crate::types::{LoadResult, janus_root};
 use crate::utils::find_markdown_files;
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 
 /// Find all ticket files in the tickets directory
 pub fn find_tickets() -> Result<Vec<String>, std::io::Error> {
@@ -99,7 +100,18 @@ impl TicketLoadResult {
 /// The store is populated from disk on first access and kept
 /// up-to-date via the filesystem watcher.
 pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusError> {
-    let store = get_or_init_store().await?;
+    get_all_tickets_in(&janus_root()).await
+}
+
+/// Get all tickets from the in-memory store for an explicit Janus root.
+///
+/// Like [`get_all_tickets`] but reads the store for `root` (via the root-keyed
+/// registry) instead of the ambient one, so an MCP tool can list a chosen
+/// workspace's tickets.
+pub async fn get_all_tickets_in(
+    root: &Path,
+) -> Result<TicketLoadResult, crate::error::JanusError> {
+    let store = get_or_init_store_for(root).await?;
     let tickets = store.get_all_tickets();
     let mut result = TicketLoadResult::new();
     for ticket in tickets {
@@ -111,14 +123,28 @@ pub async fn get_all_tickets() -> Result<TicketLoadResult, crate::error::JanusEr
 /// Build a HashMap by ID from all tickets
 pub async fn build_ticket_map() -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError>
 {
-    let store = get_or_init_store().await?;
+    build_ticket_map_in(&janus_root()).await
+}
+
+/// Build a HashMap by ID from all tickets in an explicit Janus root.
+pub async fn build_ticket_map_in(
+    root: &Path,
+) -> Result<HashMap<String, TicketMetadata>, crate::error::JanusError> {
+    let store = get_or_init_store_for(root).await?;
     Ok(store.build_ticket_map())
 }
 
 /// Get all tickets and the map together (efficient single call)
 pub async fn get_all_tickets_with_map()
 -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError> {
-    let result = get_all_tickets().await?;
+    get_all_tickets_with_map_in(&janus_root()).await
+}
+
+/// Get all tickets and the map together for an explicit Janus root.
+pub async fn get_all_tickets_with_map_in(
+    root: &Path,
+) -> Result<(Vec<TicketMetadata>, HashMap<String, TicketMetadata>), crate::error::JanusError> {
+    let result = get_all_tickets_in(root).await?;
     let map: HashMap<_, _> = result
         .items
         .iter()

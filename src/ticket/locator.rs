@@ -4,11 +4,11 @@
 //! between a ticket's ID and its file path on disk. It handles both finding existing
 //! tickets by partial ID and creating locators for new tickets.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::{JanusError, Result};
-use crate::store::get_or_init_store;
-use crate::types::{TicketId, tickets_items_dir};
+use crate::store::get_or_init_store_for;
+use crate::types::{TicketId, janus_root, tickets_items_dir_in};
 use crate::utils::extract_id_from_path;
 
 fn validate_partial_id(id: &str) -> Result<String> {
@@ -31,14 +31,19 @@ fn validate_partial_id(id: &str) -> Result<String> {
 /// Searches for a ticket file matching the given partial ID in the tickets directory.
 /// Returns the full path to the ticket file if found, or an error if not found
 /// or if multiple tickets match (ambiguous).
-async fn find_ticket_by_id_impl(partial_id: &str) -> Result<PathBuf> {
-    let dir = tickets_items_dir();
+/// Find a ticket file by partial ID within an explicit Janus root.
+///
+/// Resolves the items dir and the authoritative store against `root`, so lookups
+/// target the right workspace when one process serves several. The ambient-root
+/// lookup is [`TicketLocator::find`], which calls this with [`janus_root`].
+async fn find_ticket_by_id_impl_in(partial_id: &str, root: &Path) -> Result<PathBuf> {
+    let dir = tickets_items_dir_in(root);
 
     // Validate ID before any path construction using shared validation
     let _trimmed = validate_partial_id(partial_id)?;
 
     // Use store as authoritative source when available; filesystem fallback only when store fails
-    let store = get_or_init_store().await?;
+    let store = get_or_init_store_for(root).await?;
 
     // Exact match check - does file exist on disk?
     let exact_match_path = dir.join(format!("{partial_id}.md"));
@@ -83,8 +88,17 @@ impl TicketLocator {
     ///
     /// Searches for a ticket matching the given partial ID.
     pub async fn find(partial_id: &str) -> Result<Self> {
+        Self::find_in(partial_id, &janus_root()).await
+    }
+
+    /// Find a ticket by its (partial) ID within an explicit Janus root.
+    ///
+    /// Same as [`find`](Self::find) but searches `root`'s tickets instead of the
+    /// ambient [`janus_root`]'s, for serving multiple workspaces from one
+    /// process.
+    pub async fn find_in(partial_id: &str, root: &Path) -> Result<Self> {
         let partial_id = validate_partial_id(partial_id)?;
-        let file_path = find_ticket_by_id_impl(&partial_id).await?;
+        let file_path = find_ticket_by_id_impl_in(&partial_id, root).await?;
         TicketLocator::new(file_path)
     }
 }
