@@ -7,7 +7,7 @@ use iocraft::prelude::*;
 
 use crate::error::{JanusError, Result};
 use crate::plan::Plan;
-use crate::store::{get_or_init_store, start_watching};
+use crate::store::{get_or_init_store, start_watching, stop_watching};
 use crate::tui::plan_hud::PlanHud;
 
 /// Launch the plan HUD TUI
@@ -20,8 +20,15 @@ pub async fn cmd_plan_hud(plan_id: &str, bell: bool) -> Result<()> {
     let store = get_or_init_store().await?;
     let _ = start_watching(store).await;
 
-    element!(PlanHud(plan_id: resolved_id, bell: bell))
+    let result = element!(PlanHud(plan_id: resolved_id, bell: bell))
         .fullscreen()
         .await
-        .map_err(|e| JanusError::TuiError(format!("{e}")))
+        .map_err(|e| JanusError::TuiError(format!("{e}")));
+
+    // Stop the watcher to release OS-level file watch handles (FSEvents
+    // streams on macOS, inotify descriptors on Linux). Without this,
+    // resources accumulate across process invocations.
+    stop_watching();
+
+    result
 }

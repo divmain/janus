@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use dashmap::DashMap;
 use notify::{EventKind, RecursiveMode, Watcher};
@@ -257,13 +257,21 @@ impl StoreWatcher {
         // flag before each batch and performs a full rescan when set.
         let rescan_needed = Arc::new(AtomicBool::new(false));
 
-        // Create the notify watcher with a callback that bridges to tokio
+        // Create the notify watcher with a callback that bridges to tokio.
+        // Ignorable event kinds (Access, Other, etc.) are filtered here
+        // *before* `try_send` so they don't consume channel capacity. On
+        // Linux, a single file write can generate 3+ events (IN_OPEN,
+        // IN_MODIFY, IN_CLOSE_WRITE); filtering the noise events at the
+        // source significantly reduces channel pressure during bursts.
         let watcher = {
             let tx = bridge_tx;
             let rescan = Arc::clone(&rescan_needed);
             notify::RecommendedWatcher::new(
                 move |res: std::result::Result<notify::Event, notify::Error>| match res {
                     Ok(event) => {
+                        if matches!(classify_event_kind(event.kind), FileAction::Ignore) {
+                            return;
+                        }
                         if tx.try_send(event).is_err() {
                             // Channel full — flag a rescan instead of dropping events silently
                             if !rescan.swap(true, Ordering::Relaxed) {
@@ -330,27 +338,21 @@ impl StoreWatcher {
     }
 }
 
-/// Global watcher instance, stored statically to keep the `notify::RecommendedWatcher`
-/// alive for the process lifetime. This replaces `std::mem::forget` with an explicit
-/// static, so the OS file handles are properly documented as intentionally long-lived
-/// and could be reclaimed if we ever add a shutdown path.
+/// Global watcher instance, stored in a `Mutex<Option<...>>` so it can be
+/// explicitly dropped via [`stop_watching`] when the process shuts down.
+///
+/// Proper cleanup is critical: the `notify::RecommendedWatcher` holds OS-level
+/// resources (FSEvents streams on macOS, inotify file descriptors on Linux).
+/// If `Drop` never runs — as was the case when this was an `OnceLock` — the OS
+/// resources accumulate across process invocations, eventually degrading the
+/// host's filesystem-event subsystem until reboot.
 ///
 /// The tuple stores `(StoreWatcher, store_identity)` where `store_identity` is the
 /// raw pointer address of the `&'static TicketStore` that was used to initialize the
 /// watcher. This allows subsequent calls to `start_watching` to detect if a different
 /// store instance is passed and return an explicit error instead of silently keeping
 /// the old binding.
-///
-/// # Limitation: no recovery after watcher failure
-///
-/// If the underlying `notify::RecommendedWatcher` encounters a fatal error after
-/// successful initialization (e.g., the OS revokes the watch handle, or the
-/// background thread panics), the `OnceLock` prevents re-initialization. The
-/// watcher will silently stop delivering events for the rest of the process
-/// lifetime. In practice this is unlikely — `notify` watchers are robust on
-/// macOS (FSEvents), Linux (inotify), and Windows (ReadDirectoryChanges) — but
-/// if it occurs, the process must be restarted.
-static WATCHER: OnceLock<(StoreWatcher, usize)> = OnceLock::new();
+static WATCHER: Mutex<Option<(StoreWatcher, usize)>> = Mutex::new(None);
 
 /// Return the identity (pointer address) of a `&'static TicketStore`.
 fn store_identity(store: &'static TicketStore) -> usize {
@@ -368,17 +370,16 @@ fn store_identity(store: &'static TicketStore) -> usize {
 /// Returns `JanusError::WatcherError` if a subsequent call passes a different
 /// store instance than the one used for initialization. This prevents silent
 /// action-at-a-distance bugs where the watcher keeps updating a stale store.
-///
-/// If two threads race to start the watcher, only one wins the `OnceLock::set`.
-/// The loser's watcher is dropped (its background task ends), but we always
-/// subscribe from the winning watcher stored in `WATCHER`, so the returned
-/// receiver is always valid.
 pub async fn start_watching(
     store: &'static TicketStore,
 ) -> Result<broadcast::Receiver<StoreEvent>> {
     let incoming_identity = store_identity(store);
 
-    if let Some((watcher, bound_identity)) = WATCHER.get() {
+    let mut guard = WATCHER
+        .lock()
+        .map_err(|e| JanusError::WatcherError(format!("watcher mutex poisoned: {e}")))?;
+
+    if let Some((watcher, bound_identity)) = guard.as_ref() {
         if *bound_identity != incoming_identity {
             return Err(JanusError::WatcherError(
                 "watcher singleton is already bound to a different TicketStore instance; \
@@ -389,35 +390,41 @@ pub async fn start_watching(
         return Ok(watcher.subscribe());
     }
 
-    let (watcher, _rx) = StoreWatcher::start(store)?;
+    let (watcher, rx) = StoreWatcher::start(store)?;
+    *guard = Some((watcher, incoming_identity));
 
-    // Store the watcher in a static OnceLock to keep it alive for the process
-    // lifetime. The notify watcher must remain alive or file watching stops.
-    // If another thread raced and set it first, `set` returns Err and our
-    // local watcher is dropped — that's fine, we subscribe from the winner.
-    let _ = WATCHER.set((watcher, incoming_identity));
-
-    // Always subscribe from whichever watcher won the race into WATCHER.
-    // After set, verify the bound store matches ours (handles the race case
-    // where another thread won with a different store).
-    let (winning_watcher, bound_identity) = WATCHER
-        .get()
-        .expect("WATCHER must be initialized: either we set it or another thread did");
-
-    if *bound_identity != incoming_identity {
-        return Err(JanusError::WatcherError(
-            "watcher singleton was initialized by another thread with a different \
-             TicketStore instance"
-                .to_string(),
-        ));
-    }
-
-    Ok(winning_watcher.subscribe())
+    Ok(rx)
 }
 
 /// Subscribe to store change events (if watcher has been started).
 pub fn subscribe_to_changes() -> Option<broadcast::Receiver<StoreEvent>> {
-    WATCHER.get().map(|(watcher, _)| watcher.subscribe())
+    WATCHER
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|(watcher, _)| watcher.subscribe()))
+}
+
+/// Stop the filesystem watcher and release OS resources.
+///
+/// This drops the `notify::RecommendedWatcher`, which runs its `Drop`
+/// implementation to properly clean up OS-level watch handles:
+///
+/// - **macOS**: Stops the FSEvents run loop thread, then calls
+///   `FSEventStreamStop`, `FSEventStreamInvalidate`, and `FSEventStreamRelease`.
+/// - **Linux**: Sends a shutdown message to the inotify event loop thread,
+///   which closes the inotify file descriptor and releases all watch descriptors.
+///
+/// Without this cleanup, OS resources accumulate across process invocations
+/// and can degrade the host's filesystem-event subsystem.
+///
+/// This function should be called when a long-running entry point (TUI, MCP
+/// server) is about to exit. After calling this, a new watcher can be started
+/// with [`start_watching`].
+pub fn stop_watching() {
+    if let Ok(mut guard) = WATCHER.lock() {
+        // Take the watcher out and let it drop, running cleanup.
+        let _ = guard.take();
+    }
 }
 
 /// Background event loop: receives notify events, debounces them, and
@@ -1564,49 +1571,37 @@ mod tests {
 
         let _guard = JanusRootGuard::new(&janus_root);
 
-        // Reset the global WATCHER singleton for this test by using
-        // StoreWatcher::start directly and calling the global start_watching.
-        // Since OnceLock can only be set once per process, we test the
-        // mismatch detection by calling start_watching with two different stores
-        // in sequence. The first call initializes; the second should fail.
-        //
-        // Note: Because OnceLock persists across tests in the same process,
-        // this test may interact with other tests that call start_watching.
-        // The #[serial] attribute ensures no concurrency issues.
+        // Reset the global WATCHER so we get a clean state for this test.
+        // The Mutex<Option<...>> allows us to clear it, unlike OnceLock.
+        stop_watching();
 
         let store_a = leak_store(TicketStore::empty());
         let store_b = leak_store(TicketStore::empty());
 
-        // First call: initializes the watcher (or re-uses if already set by another test)
+        // First call: initializes the watcher
         let result_a = start_watching(store_a).await;
+        assert!(result_a.is_ok(), "first start_watching should succeed");
 
-        if result_a.is_ok() {
-            // We won the initialization — verify that a different store is rejected
-            let result_b = start_watching(store_b).await;
-            assert!(
-                result_b.is_err(),
-                "start_watching with a different store should return an error"
-            );
-            let err_msg = result_b.unwrap_err().to_string();
-            assert!(
-                err_msg.contains("different TicketStore instance"),
-                "error should mention store mismatch, got: {err_msg}"
-            );
+        // Second call with a different store should fail
+        let result_b = start_watching(store_b).await;
+        assert!(
+            result_b.is_err(),
+            "start_watching with a different store should return an error"
+        );
+        let err_msg = result_b.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("different TicketStore instance"),
+            "error should mention store mismatch, got: {err_msg}"
+        );
 
-            // Idempotent re-initialization with the same store should succeed
-            let result_a2 = start_watching(store_a).await;
-            assert!(
-                result_a2.is_ok(),
-                "re-initializing with the same store should succeed"
-            );
-        } else {
-            // Another test already initialized WATCHER with a different store.
-            // Verify both stores are rejected (since neither matches the bound one).
-            let result_b = start_watching(store_b).await;
-            assert!(
-                result_b.is_err(),
-                "both stores should be rejected when WATCHER is bound to a third"
-            );
-        }
+        // Idempotent re-initialization with the same store should succeed
+        let result_a2 = start_watching(store_a).await;
+        assert!(
+            result_a2.is_ok(),
+            "re-initializing with the same store should succeed"
+        );
+
+        // Cleanup: stop the watcher so other tests get a clean state
+        stop_watching();
     }
 }

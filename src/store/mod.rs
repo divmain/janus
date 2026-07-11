@@ -179,7 +179,9 @@ pub mod queries;
 pub mod search;
 pub mod watcher;
 
-pub use watcher::{StoreEvent, mark_recently_edited, start_watching, subscribe_to_changes};
+pub use watcher::{
+    StoreEvent, mark_recently_edited, start_watching, stop_watching, subscribe_to_changes,
+};
 
 /// In-memory store for ticket, plan, and document metadata with concurrent access.
 ///

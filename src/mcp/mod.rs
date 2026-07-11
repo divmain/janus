@@ -186,12 +186,17 @@ pub async fn cmd_mcp() -> Result<()> {
         .map_err(|e| crate::error::JanusError::McpServerError(format!("Failed to start: {e}")))?;
 
     // Wait for the service to complete
-    service
+    let result = service
         .waiting()
         .await
-        .map_err(|e| crate::error::JanusError::McpServerError(format!("{e}")))?;
+        .map_err(|e| crate::error::JanusError::McpServerError(format!("{e}")));
 
-    Ok(())
+    // Stop the watcher to release OS-level file watch handles (FSEvents
+    // streams on macOS, inotify descriptors on Linux). Without this,
+    // resources accumulate across process invocations.
+    crate::store::stop_watching();
+
+    result.map(|_| ())
 }
 
 /// Print the MCP protocol version.

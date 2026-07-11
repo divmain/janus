@@ -8,7 +8,7 @@ use iocraft::prelude::*;
 use crate::archive::sweep_completed_tickets;
 use crate::error::{JanusError, Result};
 use crate::events::Actor;
-use crate::store::{get_or_init_store, start_watching};
+use crate::store::{get_or_init_store, start_watching, stop_watching};
 use crate::tui::KanbanBoard;
 
 /// Launch the kanban board TUI
@@ -23,8 +23,15 @@ pub async fn cmd_board() -> Result<()> {
     let tickets = store.get_all_tickets();
     let _ = sweep_completed_tickets(&tickets, Actor::AutoArchive).await;
 
-    element!(KanbanBoard)
+    let result = element!(KanbanBoard)
         .fullscreen()
         .await
-        .map_err(|e| JanusError::TuiError(format!("{e}")))
+        .map_err(|e| JanusError::TuiError(format!("{e}")));
+
+    // Stop the watcher to release OS-level file watch handles (FSEvents
+    // streams on macOS, inotify descriptors on Linux). Without this,
+    // resources accumulate across process invocations.
+    stop_watching();
+
+    result
 }
